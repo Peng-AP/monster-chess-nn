@@ -14,10 +14,9 @@ def evaluate_board(board):
     eval = 0
     # Evaluate Black's material
     for piece_type in piece_values:
-        eval += len(board.pieces(piece_type, chess.BLACK)) * piece_values[piece_type]
+        eval -= len(board.pieces(piece_type, chess.BLACK)) * piece_values[piece_type]
 
     # Evaluate White's material (scaled higher because they are more valuable)
     white_pawn_value = piece_values[chess.PAWN] * 10
-    eval -= len(board.pieces(chess.PAWN, chess.WHITE)) * white_pawn_value
-
+    eval += len(board.pieces(chess.PAWN, chess.WHITE)) * white_pawn_value + 20000 if board.king(chess.WHITE) != None else 0
     return eval
