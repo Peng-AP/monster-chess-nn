@@ -91,7 +91,7 @@ def process_raw_data(input_path: str, output_dir: str):
 if __name__ == "__main__":
     # This allows the script to be run directly.
     # It finds the project root and sets the correct file paths.
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     input_csv = os.path.join(project_root, 'data', 'raw', 'monster_chess_data.csv')
     output_folder = os.path.join(project_root, 'data', 'processed')
 

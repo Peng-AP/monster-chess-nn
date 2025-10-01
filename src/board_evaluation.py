@@ -1,6 +1,7 @@
 import chess
 import random
 
+
 piece_values = {
     chess.PAWN: 100,
     chess.KNIGHT: 320,
@@ -18,5 +19,6 @@ def evaluate_board(board):
 
     # Evaluate White's material (scaled higher because they are more valuable)
     white_pawn_value = piece_values[chess.PAWN] * 10
-    eval += len(board.pieces(chess.PAWN, chess.WHITE)) * white_pawn_value + 20000 if board.king(chess.WHITE) != None else 0
+    eval += len(board.pieces(chess.PAWN, chess.WHITE)) * white_pawn_value + (20000 if board.king(chess.WHITE) != None else 0)
     return eval
+

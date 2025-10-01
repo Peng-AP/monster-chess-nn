@@ -1,5 +1,5 @@
 import chess
-from .move_selector import choose_move
+from move_selector import choose_move
 
 def outcome(board):
     if(board.king(chess.WHITE) == None): return -1
@@ -10,7 +10,7 @@ def play_game():
     board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1")
     game_positions = []
     
-    max_turns = 200 # A turn is one double-move by White or one move by Black
+    max_turns = 100 # A turn is one double-move by White or one move by Black
     turn_count = 0
     res = 0 # Default to draw
 
@@ -55,7 +55,7 @@ def play_game():
 
 # --- Main data generation block ---
 if __name__ == "__main__":
-    NUM_GAMES = 1000
+    NUM_GAMES = 5
     all_game_data = []
 
     print(f"Generating data from {NUM_GAMES} games...")
