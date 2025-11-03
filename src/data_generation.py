@@ -18,6 +18,7 @@ def play_game():
     is_white_turn = True
 
     while turn_count < max_turns:
+        print(f"Turn {turn_count+1}")
         if is_white_turn:
             # --- WHITE'S DOUBLE MOVE ---
             game_positions.append(board.fen())
@@ -55,7 +56,7 @@ def play_game():
 
 # --- Main data generation block ---
 if __name__ == "__main__":
-    NUM_GAMES = 5
+    NUM_GAMES = 1
     all_game_data = []
 
     print(f"Generating data from {NUM_GAMES} games...")
