@@ -26,6 +26,14 @@ PAWN_ADVANCEMENT_LAYER = 14
 TOTAL_LAYERS = 15
 TENSOR_SHAPE = (8, 8, TOTAL_LAYERS)
 
+# Training
+BATCH_SIZE = 64
+LEARNING_RATE = 1e-3
+EPOCHS = 50
+VALUE_TARGET = "game_result"  # "game_result" or "mcts_value" or "blend"
+BLEND_WEIGHT = 0.5  # weight for mcts_value when VALUE_TARGET="blend"
+MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
+
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
