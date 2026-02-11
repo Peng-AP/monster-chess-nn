@@ -1,7 +1,7 @@
 import math
 import random
 from config import EXPLORATION_CONSTANT, MCTS_SIMULATIONS
-from evaluation import hybrid_evaluate
+from evaluation import evaluate
 
 
 class MCTSNode:
@@ -71,7 +71,7 @@ class MCTSNode:
 class MCTS:
     def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None):
         self.num_simulations = num_simulations
-        self.eval_fn = eval_fn or hybrid_evaluate
+        self.eval_fn = eval_fn or evaluate
 
     def search(self, root_state):
         """Run MCTS from root_state and return (action_probs, root_value).
