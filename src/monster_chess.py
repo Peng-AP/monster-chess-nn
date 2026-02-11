@@ -113,11 +113,16 @@ class MonsterChessGame:
                     self.board.pop()
                     return [(m1, m2)]
 
-                # Only keep pairs that don't leave Black in check illegally
-                # (In Monster Chess we allow king captures, but after White's
-                # double-move Black must not already be in check from a position
-                # where the king wasn't captured — this avoids nonsensical states.)
-                if not self.board.is_check():
+                # After White's double-move the position must be legal:
+                # 1. Black's king must not be in check (board.turn is Black here)
+                # 2. White's king must not be attackable (can't leave king hanging)
+                black_in_check = self.board.is_check()
+                white_king = self.board.king(chess.WHITE)
+                white_attacked = (
+                    white_king is not None
+                    and self.board.is_attacked_by(chess.BLACK, white_king)
+                )
+                if not black_in_check and not white_attacked:
                     pairs.append((m1, m2))
 
                 self.board.pop()
