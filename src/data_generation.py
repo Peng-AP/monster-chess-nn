@@ -1,75 +1,103 @@
-import chess
-from move_selector import choose_move
+import argparse
+import json
+import os
+import time
 
-def outcome(board):
-    if(board.king(chess.WHITE) == None): return -1
-    elif(board.king(chess.BLACK) == None): return 1
-    return 0
+from tqdm import tqdm
 
-def play_game():
-    board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1")
-    game_positions = []
-    
-    max_turns = 100 # A turn is one double-move by White or one move by Black
-    turn_count = 0
-    res = 0 # Default to draw
-
-    # We must track whose turn it is ourselves, as board.turn becomes unreliable
-    is_white_turn = True
-
-    while turn_count < max_turns:
-        print(f"Turn {turn_count+1}")
-        if is_white_turn:
-            # --- WHITE'S DOUBLE MOVE ---
-            game_positions.append(board.fen())
-            
-            # First move
-            moves = choose_move(board, chess.WHITE)
-
-            if moves == None: break
-            board.push(moves[0])
-            res = outcome(board)
-            if(res != 0): break
-            board.turn = chess.WHITE
-
-            # Second move
-            board.push(moves[1])
-            res = outcome(board)
-            if(res != 0): break
-        
-        else: # It is Black's turn
-            game_positions.append(board.fen())
-            
-            move = choose_move(board, chess.BLACK)
-            if not move: break
-            board.push(move)
-            res = outcome(board)
-            if(res != 0): break
-        
-        # Flip the turn for our custom game loop
-        is_white_turn = not is_white_turn
-        turn_count += 1
-
-    return [(fen, res) for fen in game_positions]
+from config import (
+    MCTS_SIMULATIONS, NUM_GAMES,
+    TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
+    RAW_DATA_DIR,
+)
+from monster_chess import MonsterChessGame
+from mcts import MCTS
 
 
+def play_game(mcts_engine):
+    """Play one full game of Monster Chess via MCTS self-play.
 
-# --- Main data generation block ---
+    Returns a list of records, one per position:
+        {fen, mcts_value, policy, current_player, game_result}
+    """
+    game = MonsterChessGame()
+    records = []
+    move_number = 0
+
+    while not game.is_terminal():
+        temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
+
+        action, action_probs, root_value = mcts_engine.get_best_action(
+            game, temperature=temperature,
+        )
+
+        if action is None:
+            break
+
+        is_white = game.is_white_turn
+        records.append({
+            "fen": game.fen(),
+            "mcts_value": round(root_value, 4),
+            "policy": action_probs,  # dict: action_str -> visit proportion
+            "current_player": "white" if is_white else "black",
+        })
+
+        game.apply_action(action)
+        move_number += 1
+
+    # Final game result
+    result = game.get_result()
+
+    # Stamp every position with the game outcome
+    for rec in records:
+        rec["game_result"] = result
+
+    return records
+
+
+def save_game(records, output_dir, game_id):
+    """Save a single game's data as a JSON-lines file."""
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f"game_{game_id:05d}.jsonl")
+    with open(path, "w") as f:
+        for rec in records:
+            f.write(json.dumps(rec) + "\n")
+    return path
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
+    parser.add_argument("--num-games", type=int, default=NUM_GAMES)
+    parser.add_argument("--simulations", type=int, default=MCTS_SIMULATIONS)
+    parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
+    args = parser.parse_args()
+
+    engine = MCTS(num_simulations=args.simulations)
+
+    total_positions = 0
+    results = {1: 0, -1: 0, 0: 0}
+
+    print(f"Generating {args.num_games} games with {args.simulations} MCTS simulations per move...")
+    print(f"Output directory: {args.output_dir}\n")
+
+    for i in tqdm(range(args.num_games), desc="Games"):
+        t0 = time.time()
+        records = play_game(engine)
+        elapsed = time.time() - t0
+
+        save_game(records, args.output_dir, game_id=i)
+
+        n_moves = len(records)
+        total_positions += n_moves
+        game_result = records[-1]["game_result"] if records else 0
+        results[game_result] = results.get(game_result, 0) + 1
+
+        winner = {1: "White", -1: "Black", 0: "Draw"}.get(game_result, "?")
+        tqdm.write(f"  Game {i}: {n_moves} moves, {winner} wins, {elapsed:.1f}s")
+
+    print(f"\nDone! {total_positions} total positions across {args.num_games} games.")
+    print(f"Results — White: {results.get(1,0)}, Black: {results.get(-1,0)}, Draw: {results.get(0,0)}")
+
+
 if __name__ == "__main__":
-    NUM_GAMES = 1
-    all_game_data = []
-
-    print(f"Generating data from {NUM_GAMES} games...")
-    for i in range(NUM_GAMES):
-        if (i + 1) % 10 == 0:
-            print(f"  ... playing game {i + 1}/{NUM_GAMES}")
-        game_data = play_game()
-        all_game_data.extend(game_data)
-
-    # Save the data to a file
-    with open("data/raw/monster_chess_data.csv", "w") as f:
-        f.write("fen,outcome\n") # Header
-        for fen, result in all_game_data:
-            f.write(f'"{fen}",{result}\n')
-
-    print(f"\nDone! Saved {len(all_game_data)} positions to data/raw/monster_chess_data.csv")
+    main()

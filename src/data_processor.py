@@ -1,10 +1,17 @@
 import chess
-import numpy as np
-import pandas as pd
+import json
 import os
+
+import numpy as np
 from tqdm import tqdm
 
-# Define the mapping from a piece to a layer in our tensor
+from config import (
+    TENSOR_SHAPE, TURN_LAYER,
+    MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
+    RAW_DATA_DIR, PROCESSED_DATA_DIR,
+)
+
+# Piece -> layer index
 PIECE_TO_LAYER = {
     (chess.PAWN, chess.WHITE): 0,
     (chess.KNIGHT, chess.WHITE): 1,
@@ -19,85 +26,122 @@ PIECE_TO_LAYER = {
     (chess.QUEEN, chess.BLACK): 10,
     (chess.KING, chess.BLACK): 11,
 }
-NUM_PIECE_LAYERS = 12
-TURN_LAYER_INDEX = 12
-TENSOR_SHAPE = (8, 8, NUM_PIECE_LAYERS + 1)
 
 
-def fen_to_tensor(fen: str) -> np.ndarray:
-    """
-    Converts a FEN string into a 3D NumPy array (tensor).
-    Shape: (8, 8, 13)
-    - 12 layers for piece positions (6 for white, 6 for black).
-    - 1 layer for the side to move (1 for White, -1 for Black).
+def fen_to_tensor(fen, is_white_turn=True):
+    """Convert a FEN string to an (8, 8, 15) tensor.
+
+    Layers:
+      0-11: piece positions (binary)
+      12:   turn indicator (+1 White, -1 Black)
+      13:   move count within turn (0 or 1 for White's double-move)
+      14:   White pawn advancement gradient (0.0 at rank 2, 1.0 at rank 8)
     """
     board = chess.Board(fen)
-    tensor = np.zeros(TENSOR_SHAPE, dtype=np.int8)
+    tensor = np.zeros(TENSOR_SHAPE, dtype=np.float32)
 
-    # Populate piece layers
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if piece:
             layer = PIECE_TO_LAYER[(piece.piece_type, piece.color)]
             rank = chess.square_rank(square)
             file = chess.square_file(square)
-            tensor[rank, file, layer] = 1
+            tensor[rank, file, layer] = 1.0
 
-    # Populate turn layer
-    if board.turn == chess.WHITE:
-        tensor[:, :, TURN_LAYER_INDEX] = 1
-    else:
-        tensor[:, :, TURN_LAYER_INDEX] = -1
+    # Turn indicator
+    tensor[:, :, TURN_LAYER] = 1.0 if is_white_turn else -1.0
+
+    # Move count layer (always 0 at position level — the MCTS treats
+    # double-moves atomically, so we record 0 here; this layer is
+    # reserved for future per-half-move encoding)
+    tensor[:, :, MOVE_COUNT_LAYER] = 0.0
+
+    # White pawn advancement gradient
+    for sq in board.pieces(chess.PAWN, chess.WHITE):
+        rank = chess.square_rank(sq)
+        file = chess.square_file(sq)
+        tensor[rank, file, PAWN_ADVANCEMENT_LAYER] = (rank - 1) / 6.0
 
     return tensor
 
 
-def process_raw_data(input_path: str, output_dir: str):
-    """
-    Reads a CSV of raw game data, converts it to tensors, and saves it.
-    """
-    print(f"Reading raw data from {input_path}...")
-    df = pd.read_csv(input_path)
+def load_all_games(raw_dir):
+    """Load all .jsonl game files from the raw data directory."""
+    records = []
+    files = sorted(f for f in os.listdir(raw_dir) if f.endswith(".jsonl"))
+    if not files:
+        print(f"No .jsonl files found in {raw_dir}")
+        return records
 
-    print(f"Found {len(df)} positions. Converting to tensors...")
-    all_tensors = []
-    all_labels = []
+    for fname in tqdm(files, desc="Loading games"):
+        path = os.path.join(raw_dir, fname)
+        with open(path, "r") as f:
+            for line in f:
+                rec = json.loads(line.strip())
+                records.append(rec)
+    return records
 
-    # Use tqdm for a progress bar
-    for _, row in tqdm(df.iterrows(), total=df.shape[0]):
-        tensor = fen_to_tensor(row['fen'])
-        all_tensors.append(tensor)
-        all_labels.append(row['outcome'])
 
-    X = np.array(all_tensors, dtype=np.int8)
-    y = np.array(all_labels, dtype=np.int8)
+def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR):
+    """Convert raw game records to training tensors and save."""
+    records = load_all_games(raw_dir)
+    if not records:
+        print("No data to process.")
+        return
 
-    print(f"Conversion complete. Tensor shape: {X.shape}")
+    print(f"Processing {len(records)} positions...")
 
-    # Ensure output directory exists
+    tensors = []
+    values = []
+    game_results = []
+
+    for rec in tqdm(records, desc="Converting"):
+        is_white = rec["current_player"] == "white"
+        tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
+        tensors.append(tensor)
+        values.append(rec["mcts_value"])
+        game_results.append(rec["game_result"])
+
+    X = np.array(tensors, dtype=np.float32)
+    y_value = np.array(values, dtype=np.float32)
+    y_result = np.array(game_results, dtype=np.float32)
+
+    # Save policy targets separately (sparse, variable-size dicts)
+    policies = [rec["policy"] for rec in records]
+
     os.makedirs(output_dir, exist_ok=True)
-    
-    data_path = os.path.join(output_dir, "training_data.npy")
-    labels_path = os.path.join(output_dir, "training_labels.npy")
 
-    np.save(data_path, X)
-    np.save(labels_path, y)
+    np.save(os.path.join(output_dir, "positions.npy"), X)
+    np.save(os.path.join(output_dir, "mcts_values.npy"), y_value)
+    np.save(os.path.join(output_dir, "game_results.npy"), y_result)
 
-    print(f"Successfully saved processed data to:")
-    print(f"  - {data_path}")
-    print(f"  - {labels_path}")
+    with open(os.path.join(output_dir, "policies.jsonl"), "w") as f:
+        for p in policies:
+            f.write(json.dumps(p) + "\n")
+
+    # Train / val / test split (80/10/10, stratified by result)
+    n = len(X)
+    indices = np.arange(n)
+    np.random.seed(42)
+    np.random.shuffle(indices)
+
+    n_train = int(0.8 * n)
+    n_val = int(0.1 * n)
+
+    splits = {
+        "train": indices[:n_train],
+        "val": indices[n_train:n_train + n_val],
+        "test": indices[n_train + n_val:],
+    }
+    np.savez(os.path.join(output_dir, "splits.npz"), **splits)
+
+    print(f"\nSaved to {output_dir}:")
+    print(f"  positions.npy:    {X.shape}")
+    print(f"  mcts_values.npy:  {y_value.shape}")
+    print(f"  game_results.npy: {y_result.shape}")
+    print(f"  policies.jsonl:   {len(policies)} entries")
+    print(f"  splits.npz:       train={n_train}, val={n_val}, test={n - n_train - n_val}")
 
 
 if __name__ == "__main__":
-    # This allows the script to be run directly.
-    # It finds the project root and sets the correct file paths.
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    input_csv = os.path.join(project_root, 'data', 'raw', 'monster_chess_data.csv')
-    output_folder = os.path.join(project_root, 'data', 'processed')
-
-    # Check if the raw data exists
-    if not os.path.exists(input_csv):
-        print(f"Error: Raw data file not found at {input_csv}")
-        print("Please run the data generation script first.")
-    else:
-        process_raw_data(input_csv, output_folder)
+    process_raw_data()
