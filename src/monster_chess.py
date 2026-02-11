@@ -1,5 +1,6 @@
 import chess
 import copy
+import random
 from config import STARTING_FEN, MAX_GAME_TURNS
 
 
@@ -156,6 +157,88 @@ class MonsterChessGame:
         self.turn_count += 1
         self._terminal = False
         self._result = None
+
+    def apply_random_action(self):
+        """Pick and apply a random legal action. Much faster than
+        get_legal_actions() for White because it samples single moves
+        instead of enumerating all pairs.
+
+        Returns True if a move was made, False if no moves available.
+        """
+        if self._terminal:
+            return False
+
+        if self.is_white_turn:
+            return self._apply_random_white()
+        else:
+            return self._apply_random_black()
+
+    def _apply_random_white(self):
+        """Sample a random legal double-move for White without enumerating all pairs."""
+        self.board.turn = chess.WHITE
+        first_moves = list(self.board.pseudo_legal_moves)
+        if not first_moves:
+            return False
+
+        random.shuffle(first_moves)
+        for m1 in first_moves:
+            self.board.push(m1)
+            if self.board.king(chess.BLACK) is None:
+                # Captured Black's king on first move
+                self.is_white_turn = False
+                self.turn_count += 1
+                self._terminal = False
+                self._result = None
+                return True
+
+            self.board.turn = chess.WHITE
+            second_moves = list(self.board.pseudo_legal_moves)
+            random.shuffle(second_moves)
+
+            for m2 in second_moves:
+                self.board.push(m2)
+                if self.board.king(chess.BLACK) is None:
+                    # Captured Black's king on second move — keep it
+                    self.is_white_turn = False
+                    self.turn_count += 1
+                    self._terminal = False
+                    self._result = None
+                    return True
+
+                black_in_check = self.board.is_check()
+                white_king = self.board.king(chess.WHITE)
+                white_attacked = (
+                    white_king is not None
+                    and self.board.is_attacked_by(chess.BLACK, white_king)
+                )
+                if not black_in_check and not white_attacked:
+                    # Found a valid pair — keep the board state
+                    self.is_white_turn = False
+                    self.turn_count += 1
+                    self._terminal = False
+                    self._result = None
+                    return True
+
+                self.board.pop()
+
+            self.board.turn = chess.BLACK
+            self.board.pop()
+
+        return False
+
+    def _apply_random_black(self):
+        """Sample a random legal move for Black."""
+        self.board.turn = chess.BLACK
+        moves = list(self.board.pseudo_legal_moves)
+        if not moves:
+            return False
+        move = random.choice(moves)
+        self.board.push(move)
+        self.is_white_turn = True
+        self.turn_count += 1
+        self._terminal = False
+        self._result = None
+        return True
 
     # ------------------------------------------------------------------
     # Utility for action encoding (used by data generation)

@@ -1,6 +1,3 @@
-import random
-
-
 def evaluate(game_state, max_depth=50):
     """Evaluate a position by playing random moves to completion.
 
@@ -11,9 +8,7 @@ def evaluate(game_state, max_depth=50):
     for _ in range(max_depth):
         if state.is_terminal():
             break
-        actions = state.get_legal_actions()
-        if not actions:
+        if not state.apply_random_action():
             break
-        state.apply_action(random.choice(actions))
 
     return float(state.get_result())
