@@ -66,22 +66,28 @@ def play_game(num_simulations):
     while not game.is_terminal():
         is_white = game.is_white_turn
 
+        # Data quality: decide whether to record this position
+        skip_record = (
+            move_number < 5                       # skip noisy early plies
+            or game.board.is_check()              # skip tactical positions
+            or rng.random() < 0.3                 # random subsample (keep ~70%)
+        )
+
         if not is_white and scripted_fn is not None:
             # Use scripted play for Black in curriculum games
             game.board.turn = chess.BLACK
             action = scripted_fn(game.board)
             if action is None:
                 break
-            # Record with heuristic value (no MCTS search for Black)
-            from evaluation import evaluate
-            root_value = evaluate(game)
-            # Convert to Black's perspective for the record
-            records.append({
-                "fen": game.fen(),
-                "mcts_value": round(-root_value, 4),  # from Black's perspective
-                "policy": {action.uci(): 1.0},
-                "current_player": "black",
-            })
+            if not skip_record:
+                from evaluation import evaluate
+                root_value = evaluate(game)
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(-root_value, 4),
+                    "policy": {action.uci(): 1.0},
+                    "current_player": "black",
+                })
             game.apply_action(action)
         else:
             temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
@@ -90,12 +96,13 @@ def play_game(num_simulations):
             )
             if action is None:
                 break
-            records.append({
-                "fen": game.fen(),
-                "mcts_value": round(root_value, 4),
-                "policy": action_probs,
-                "current_player": "white" if is_white else "black",
-            })
+            if not skip_record:
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(root_value, 4),
+                    "policy": action_probs,
+                    "current_player": "white" if is_white else "black",
+                })
             game.apply_action(action)
 
         move_number += 1
