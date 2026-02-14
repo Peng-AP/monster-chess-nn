@@ -233,4 +233,11 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
 
 
 if __name__ == "__main__":
-    process_raw_data()
+    import argparse
+    parser = argparse.ArgumentParser(description="Process raw game data into training tensors")
+    parser.add_argument("--raw-dir", type=str, default=RAW_DATA_DIR)
+    parser.add_argument("--output-dir", type=str, default=PROCESSED_DATA_DIR)
+    parser.add_argument("--no-augment", action="store_true", help="Disable mirror augmentation")
+    args = parser.parse_args()
+    process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
+                     augment=not args.no_augment)

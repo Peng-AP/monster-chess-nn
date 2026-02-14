@@ -66,11 +66,13 @@ def play_game(num_simulations):
     while not game.is_terminal():
         is_white = game.is_white_turn
 
-        # Data quality: decide whether to record this position
+        # Data quality: decide whether to record this position.
+        # Curriculum games are short (3-10 moves) — keep all plies since
+        # the early positions ARE the training signal we want.
         skip_record = (
-            move_number < 5                       # skip noisy early plies
-            or game.board.is_check()              # skip tactical positions
-            or rng.random() < 0.3                 # random subsample (keep ~70%)
+            (move_number < 5 and not _curriculum)  # skip noisy early plies (normal only)
+            or game.board.is_check()               # skip tactical positions
+            or rng.random() < 0.3                  # random subsample (keep ~70%)
         )
 
         if not is_white and scripted_fn is not None:
