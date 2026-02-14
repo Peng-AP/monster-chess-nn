@@ -97,6 +97,8 @@ def main():
     parser = argparse.ArgumentParser(description="Iterate self-play training loop")
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--games", type=int, default=300)
+    parser.add_argument("--curriculum-games", type=int, default=100,
+                        help="Extra curriculum endgame games per iteration (0 to disable)")
     parser.add_argument("--simulations", type=int, default=200)
     parser.add_argument("--epochs", type=int, default=50)
     args = parser.parse_args()
@@ -119,7 +121,7 @@ def main():
     print(f"  SELF-PLAY ITERATION LOOP")
     print(f"{'#'*60}")
     print(f"  Iterations:  {args.iterations}")
-    print(f"  Games/iter:  {args.games}")
+    print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum")
     print(f"  Simulations: {args.simulations}")
     print(f"  Epochs:      {args.epochs}")
     print(f"  Starting at: generation {start_gen}")
@@ -136,16 +138,35 @@ def main():
         print(f"  ITERATION {i+1}/{args.iterations}  —  Generation {gen}")
         print(f"{'#'*60}")
 
-        # Step 1: Generate games with current model
+        # Step 1a: Generate normal games with current model
         t_gen = run([
             sys.executable, "data_generation.py",
             "--num-games", str(args.games),
             "--simulations", str(args.simulations),
             "--output-dir", gen_dir,
             "--use-model", model_path,
-        ], f"[{i+1}/{args.iterations}] Generating {args.games} games (gen {gen})")
+        ], f"[{i+1}/{args.iterations}] Generating {args.games} normal games (gen {gen})")
 
+        print(f"\n  --- Normal Games ---")
         summarize_generation(gen_dir)
+
+        # Step 1b: Generate curriculum endgame games
+        t_cur = 0.0
+        if args.curriculum_games > 0:
+            cur_dir = os.path.join(raw_dir, f"nn_gen{gen}_curriculum")
+            t_cur = run([
+                sys.executable, "data_generation.py",
+                "--num-games", str(args.curriculum_games),
+                "--simulations", str(args.simulations),
+                "--output-dir", cur_dir,
+                "--use-model", model_path,
+                "--curriculum",
+                "--scripted-black",
+            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games (gen {gen})")
+
+            print(f"\n  --- Curriculum Games ---")
+            summarize_generation(cur_dir)
+            t_gen += t_cur
 
         # Step 2: Reprocess all data
         total_games, total_pos = count_data(raw_dir)

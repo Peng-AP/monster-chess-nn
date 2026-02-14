@@ -23,21 +23,28 @@ NUM_GAMES = 100
 # king escapes. Black needs queens/rooks forming rank/file barriers that
 # restrict the king BEFORE trying to deliver mate.
 CURRICULUM_FENS = [
-    # --- 2 rooks vs lone king (no immediate capture) ---
-    # Rooks control adjacent ranks, king on rank 1
-    "4k3/8/8/8/8/r7/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/8/7r/7r/3K4 b - - 0 1",
-    "4k3/8/8/8/r7/8/r7/3K4 b - - 0 1",
-    "4k3/8/r7/8/8/8/7r/4K3 b - - 0 1",
-    # --- 3 rooks vs lone king (tighter net) ---
+    # --- 3 rooks vs lone king (king already near edge) ---
+    "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1",
     "4k3/8/8/8/4r3/1r6/r7/3K4 b - - 0 1",
     "4k3/8/8/8/2r5/r7/1r6/3K4 b - - 0 1",
-    "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1",
-    "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
-    # --- Queen + rook(s) vs lone king ---
-    "4k3/8/8/q7/8/8/r7/7K b - - 0 1",
-    # --- Mid-game Black advantage (has extra heavy pieces + pawns) ---
-    "4k3/pppp4/8/8/8/8/2PP4/4K3 b - - 0 1",
+    # --- Queen + 2 rooks vs lone king (nearly winning) ---
+    "4k3/8/8/8/q7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/r7/q7/r7/7K b - - 0 1",
+    "4k3/8/8/q7/8/r7/r7/K7 b - - 0 1",
+    "4k3/8/8/r7/q7/8/r7/3K4 b - - 0 1",
+    # --- 2 queens + rook vs lone king (overwhelming) ---
+    "4k3/8/8/8/q7/q7/r7/3K4 b - - 0 1",
+    "4k3/8/8/q7/8/q7/8/r2K4 b - - 0 1",
+    # --- Queen + 2 rooks, king in corner ---
+    "4k3/8/8/8/q7/r7/r7/K7 b - - 0 1",
+    "4k3/8/8/8/r7/r7/q7/7K b - - 0 1",
+    # --- 4 rooks vs lone king (maximum barrier) ---
+    "4k3/8/8/r7/r7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/r7/r7/r7/r7/K7 b - - 0 1",
+    # --- Mid-game positions where Black has promoted ---
+    "4k3/8/8/8/8/q7/q7/4K3 b - - 0 1",
+    "r3k3/8/8/8/8/r7/q7/4K3 b - - 0 1",
 ]
 
 # Tensor encoding
