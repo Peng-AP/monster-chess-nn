@@ -11,6 +11,7 @@ from config import (
     TENSOR_SHAPE, POLICY_SIZE, POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET, BLEND_WEIGHT, PROCESSED_DATA_DIR, MODEL_DIR,
+    VALUE_LOSS_EXPONENT, LR_GAMMA,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
@@ -140,6 +141,11 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True):
                       pin_memory=True, num_workers=0)
 
 
+def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
+    """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5."""
+    return torch.pow(torch.abs(pred - target), exponent).mean()
+
+
 def _train_epoch(model, loader, optimizer, device, policy_weight):
     model.train()
     total_loss = 0.0
@@ -153,7 +159,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight):
         yp_b = yp_b.to(device)
 
         value_pred, policy_pred = model(X_b)
-        loss_val = F.mse_loss(value_pred, yv_b)
+        loss_val = _power_loss(value_pred, yv_b)
         loss_pol = F.cross_entropy(policy_pred, yp_b)
         loss = loss_val + policy_weight * loss_pol
 
@@ -185,7 +191,7 @@ def _eval_epoch(model, loader, device, policy_weight):
         yp_b = yp_b.to(device)
 
         value_pred, policy_pred = model(X_b)
-        loss_val = F.mse_loss(value_pred, yv_b)
+        loss_val = _power_loss(value_pred, yv_b)
         loss_pol = F.cross_entropy(policy_pred, yp_b)
         loss = loss_val + policy_weight * loss_pol
 
@@ -241,8 +247,8 @@ def main():
     print(f"Model parameters: {total_params:,}")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6,
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=1, gamma=LR_GAMMA,
     )
 
     # Checkpoint setup
@@ -260,7 +266,7 @@ def main():
         val_loss, val_v, val_p, val_mae = _eval_epoch(
             model, val_loader, device, POLICY_LOSS_WEIGHT,
         )
-        scheduler.step(val_loss)
+        scheduler.step()
 
         lr = optimizer.param_groups[0]["lr"]
         print(f"Epoch {epoch:3d}  "

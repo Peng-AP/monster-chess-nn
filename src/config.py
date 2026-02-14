@@ -125,8 +125,10 @@ DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 
 # Training
-BATCH_SIZE = 64
-LEARNING_RATE = 1e-3
+BATCH_SIZE = 256
+LEARNING_RATE = 2e-3
+VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
+LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
 VALUE_TARGET = "blend"  # "game_result" or "mcts_value" or "blend"
 BLEND_WEIGHT = 0.7  # weight for mcts_value when VALUE_TARGET="blend"
