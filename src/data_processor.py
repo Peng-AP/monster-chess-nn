@@ -99,7 +99,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR):
         is_white = rec["current_player"] == "white"
         tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
         tensors.append(tensor)
-        values.append(rec["mcts_value"])
+        # mcts_value is from the current player's perspective;
+        # convert to White's perspective for consistent training targets
+        mv = rec["mcts_value"]
+        values.append(mv if is_white else -mv)
         game_results.append(rec["game_result"])
 
     X = np.array(tensors, dtype=np.float32)

@@ -1,0 +1,463 @@
+================================================================================
+MONSTER CHESS NEURAL NETWORK — TRANSFER CONTEXT
+================================================================================
+Date: 2026-02-11
+Transferring to: Stronger compute machine
+================================================================================
+
+1. PROJECT OVERVIEW
+================================================================================
+
+This project trains a neural network to play Monster Chess via AlphaZero-style
+self-play. The full pipeline is:
+
+  generate games (MCTS self-play) -> process data -> train CNN -> use model
+  as MCTS evaluator -> generate better games -> repeat
+
+Monster Chess rules:
+  - White has King + 4 pawns, gets TWO consecutive moves per turn
+  - Black has the full army (standard), gets ONE move per turn
+  - King captures end the game (no check/checkmate concept — captures are legal)
+  - No castling for White
+  - Starting FEN: rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1
+
+2. FILE STRUCTURE
+================================================================================
+
+src/
+  config.py          - All hyperparameters, FEN positions, paths
+  monster_chess.py   - Game logic (MonsterChessGame class)
+  mcts.py            - MCTS search (MCTSNode, MCTS classes)
+  evaluation.py      - Heuristic evaluator + NNEvaluator class
+  data_generation.py - Self-play game generation (multiprocessed)
+  data_processor.py  - Converts raw JSONL -> numpy tensors for training
+  train.py           - CNN value network (Keras/TensorFlow)
+  view_board.ipynb   - Jupyter notebook for visualizing games
+
+data/
+  raw/normal/        - JSONL game files from standard opening (INCOMPLETE — only 2 games)
+  raw/curriculum/    - JSONL game files from curriculum positions (200 games, complete)
+  processed/         - numpy arrays for training (NOT YET GENERATED from current data)
+
+models/
+  best_value_net.keras  - Trained model checkpoint (from PREVIOUS iteration, stale)
+
+3. CURRENT STATE OF EACH FILE
+================================================================================
+
+--- src/config.py ---
+Key settings:
+  MCTS_SIMULATIONS = 800
+  MAX_GAME_TURNS = 150
+  TEMPERATURE_MOVES = 15 (high temp first 15 moves, then low)
+  VALUE_TARGET = "blend"  (was "game_result", changed this session)
+  BLEND_WEIGHT = 0.7  (70% mcts_value + 30% game_result)
+  CURRICULUM_FENS = 10 endgame positions (see section 6)
+
+--- src/monster_chess.py ---
+Game wrapper around python-chess. Key design decisions:
+
+  __init__: Now reads turn from FEN (self.is_white_turn = self.board.turn == chess.WHITE)
+    IMPORTANT: This was a bug fix. Previously it was hardcoded to True, which broke
+    curriculum positions that start with Black to move.
+
+  _get_white_actions(): Generates all legal double-move pairs.
+    - Uses pseudo_legal_moves for both moves
+    - Filters: White CANNOT leave its king attacked after the double-move (safe_pairs)
+    - Fallback: if ALL pairs leave king attacked, return all (forced blunder)
+    - King capture detection: if a move captures Black's king, return immediately
+    - NO filter on threatening Black's king (White CAN put Black in check)
+
+  _get_black_actions(): Just list(self.board.legal_moves)
+    - legal_moves prevents self-check (standard chess rule)
+    - No additional filters — MCTS handles threat awareness
+
+  apply_action(): Pushes m1, then m2 for White. Added safety check:
+    if m2 in self.board.pseudo_legal_moves before pushing (prevents crash
+    when m2 becomes invalid after m1 changes the board).
+
+  _apply_random_white(): Tries safe moves first, falls back to any move.
+  _apply_random_black(): Picks random legal_move.
+
+  is_terminal(): Checks king presence + turn count. Does NOT check for
+    stalemate (too expensive for MCTS). Stalemate is handled by MCTS expand
+    returning no actions.
+
+--- src/mcts.py ---
+Standard MCTS with UCB1 selection. Two modes:
+  1. Sequential (heuristic eval): one simulation at a time
+  2. Batched (NN eval): collects batch_size leaves, evaluates in one call
+
+  MCTSNode: __slots__ optimized, stores state/parent/children/action/visits/value
+  MCTS.get_best_action(): Returns (action, action_probs_dict, root_value)
+    - action_probs: {action_string: visit_fraction} for all root children
+    - Temperature-based selection (high temp = explore, low = exploit)
+
+  _run_batched(): Collects leaves into batches, calls eval_fn.batch_evaluate()
+  _backpropagate(): Value is from White's perspective; flips sign for Black nodes
+
+--- src/evaluation.py ---
+Two evaluators:
+
+  evaluate(game_state): Heuristic function, returns float in [-1, 1] from White's
+    perspective. Features:
+    - White pawns: +0.10 each
+    - White pawn advancement: +0.05 per rank above rank 1
+    - White queens (promoted): +0.30 each
+    - Black heavy pieces (Q+R): -0.08 each
+    - Black pawn advancement: -0.03 per rank toward promotion
+    - Black extra queens (>1): -0.35 per extra
+    - King confinement (when black_heavy >= 2):
+      * Edge proximity: -(3 - edge_dist) * 0.10
+      * Adjacent squares attacked: -0.06 per attacked square
+      * Heavy pieces on king's rank/file: -0.08 per piece
+    - Minor pieces: -0.03 each
+
+    Starting position evaluates to about -0.26 (slightly Black-biased due to
+    edge proximity — White king starts on rank 0/edge).
+
+  NNEvaluator(model_path): Wraps a trained Keras model.
+    - __call__: Single position evaluation
+    - batch_evaluate: Batch evaluation for MCTS efficiency
+    - Handles terminal states (king missing) without calling model
+
+--- src/data_generation.py ---
+Multiprocessed self-play with ProcessPoolExecutor.
+
+  CLI flags:
+    --num-games N        (default: 100)
+    --simulations N      (default: 800)
+    --output-dir PATH    (default: data/raw)
+    --workers N          (default: CPU count)
+    --use-model PATH     (path to .keras model for NN evaluation)
+    --curriculum         (use CURRICULUM_FENS instead of standard opening)
+
+  play_game(): Plays one full game, returns list of records:
+    {fen, mcts_value, policy, current_player, game_result}
+    mcts_value is from CURRENT PLAYER's perspective (not White's).
+
+  Performance: ~4s/game with heuristic (16 workers), ~16s/game with NN (4 workers)
+
+--- src/data_processor.py ---
+Converts raw JSONL -> numpy arrays.
+
+  CRITICAL BUG FIX (this session): mcts_value is now converted to White's
+  perspective: values.append(mv if is_white else -mv). Previously it was stored
+  raw, meaning Black's values had the wrong sign when used for training.
+
+  load_all_games(): Loads from a single directory of .jsonl files
+    IMPORTANT: Currently only loads from ONE directory. If you have data in
+    both data/raw/normal/ and data/raw/curriculum/, you need to either:
+    a) Move all .jsonl files into one directory, OR
+    b) Modify load_all_games to walk subdirectories
+
+  process_raw_data(): Creates:
+    positions.npy    - (N, 8, 8, 15) float32 tensors
+    mcts_values.npy  - (N,) float32 (White's perspective now!)
+    game_results.npy - (N,) float32 (+1/-1/0)
+    policies.jsonl   - action probability distributions
+    splits.npz       - train/val/test indices (80/10/10)
+
+--- src/train.py ---
+CNN value network. Architecture:
+  Input: (8, 8, 15) tensor
+  Conv2D(64, 3) + BN + ReLU
+  Conv2D(64, 3) + BN + ReLU
+  Conv2D(128, 3) + BN + ReLU
+  Conv2D(128, 3) + BN + ReLU
+  GlobalAveragePooling2D
+  Dense(128) + ReLU + Dropout(0.3)
+  Dense(64) + ReLU + Dropout(0.3)
+  Dense(1, tanh)  -> output in [-1, 1]
+
+  ~293K parameters. Loss: MSE. Optimizer: Adam(lr=1e-3).
+  EarlyStopping(patience=10), ReduceLROnPlateau(patience=5, factor=0.5)
+
+  Training target selection via --target flag:
+    "game_result": y = game_result (+1/-1/0)
+    "mcts_value":  y = mcts_value (from White's perspective)
+    "blend":       y = 0.7 * mcts_value + 0.3 * game_result (DEFAULT now)
+
+4. THE CORE PROBLEM: BLACK NEVER WINS
+================================================================================
+
+This is the central issue we've been wrestling with. In 500+ games from the
+standard opening, the results are approximately:
+
+  White: ~95-100%    Black: 0-1%    Draw: 0-5%
+
+This is bad for training because:
+  - With game_result as target, EVERY position gets labeled +1 (White wins)
+  - The NN learns "always predict +1" regardless of position
+  - No signal for Black-advantaged positions
+
+WHY Black can't win:
+  1. White's double-move king is extremely slippery. It can outrun 2-3 heavy
+     pieces because it moves twice as fast as Black's pieces.
+  2. With 800 MCTS simulations spread across ~400 double-move pairs for White,
+     each pair gets ~2 visits. White plays reasonably by the safety filter alone.
+  3. Black needs to coordinate multiple pieces to form a "box" that the king
+     can't escape even with 2 moves. This requires a 30+ move plan that MCTS
+     with 800 sims can't discover.
+  4. Even in curriculum positions (3 rooks vs lone king), MCTS-Black can't
+     deliver mate. The king escapes every time with double moves.
+
+We tested extensively:
+  - 2 rooks vs king: White wins 100%
+  - 3 rooks vs king: White wins ~93% (1 Black win in 15 games)
+  - 4 rooks vs king: White wins ~95%
+  - Asymmetric MCTS (Black 800 sims, White 50): Still all White/Draw
+  - 4000 MCTS sims: Still all White
+
+The double-move king fundamentally outpaces MCTS coordination ability.
+
+5. THE SOLUTION: BLEND TRAINING + CURRICULUM
+================================================================================
+
+Since we can't make Black actually WIN games, we use a two-pronged approach:
+
+A) VALUE_TARGET = "blend" (70% mcts_value + 30% game_result)
+   The heuristic correctly evaluates Black-advantaged positions as negative
+   (from White's perspective). Even though the game ends with White winning
+   (because MCTS-Black plays badly), the individual position evaluations
+   capture the correct signal. Example from a curriculum game:
+     Move 0 (Black): mcts_value = +0.73 from Black's perspective
+     Move 1 (White): mcts_value = -0.67 from White's perspective
+     ...but game_result = +1 (White eventually wins)
+   Blend gives: 0.7 * (-0.67) + 0.3 * 1.0 = -0.17 (correctly identifies
+   that Black had an advantage in this position)
+
+B) Curriculum endgame positions
+   Games starting from positions where Black has 2-3 extra rooks or queens.
+   These provide training data with negative mcts_values, even though
+   game_result is still usually +1.
+
+Data distribution from a 10-game test (5 normal + 5 curriculum):
+  568 total positions
+  390 (69%) had negative mcts_value (Black-favorable from White's perspective)
+  126 (22%) near-zero
+  52 (9%) positive (White-favorable)
+
+This is MUCH richer signal than pure game_result (which would be 100% positive).
+
+6. CURRICULUM POSITIONS (config.py CURRICULUM_FENS)
+================================================================================
+
+All verified to have NO immediate king capture (Black to move, can't take
+White's king in 1 move). All have White king on rank 1, not on rook files.
+
+  "4k3/8/8/8/8/r7/r7/3K4 b - - 0 1"     # 2R: rooks a3+a2 vs Kd1
+  "4k3/8/8/8/8/7r/7r/3K4 b - - 0 1"     # 2R: rooks h3+h2 vs Kd1
+  "4k3/8/8/8/r7/8/r7/3K4 b - - 0 1"     # 2R: rooks a4+a2 vs Kd1
+  "4k3/8/r7/8/8/8/7r/4K3 b - - 0 1"     # 2R: rooks a6+h2 vs Ke1
+  "4k3/8/8/8/4r3/1r6/r7/3K4 b - - 0 1"  # 3R: rooks a2+b3+e4 vs Kd1
+  "4k3/8/8/8/2r5/r7/1r6/3K4 b - - 0 1"  # 3R: rooks a3+b2+c4 vs Kd1
+  "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1"  # 3R: rooks a2+c3+f2 vs Kd1
+  "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1"    # 3R: rooks a4+a3+a2 vs Kd1
+  "4k3/8/8/q7/8/8/r7/7K b - - 0 1"      # Q+R: queen a5 + rook a2 vs Kh1
+  "4k3/pppp4/8/8/8/8/2PP4/4K3 b - - 0 1" # Mid-game: Black pawns advantage
+
+7. WHAT'S BEEN DONE (CHANGES IN THIS COMMIT)
+================================================================================
+
+A) Game rules fixed (monster_chess.py):
+   - __init__ reads turn from FEN (was hardcoded True — broke curriculum)
+   - _get_white_actions: White CAN threaten Black's king (no black_in_check filter)
+   - _get_white_actions: White CANNOT leave its own king attacked (safety filter)
+   - _get_white_actions: Fallback if ALL moves are unsafe (forced blunder)
+   - _get_black_actions: Simplified to just legal_moves (no extra filters)
+   - apply_action: Safety check that m2 is pseudo-legal before pushing
+   - Random move methods simplified accordingly
+
+B) Heuristic rebalanced (evaluation.py):
+   - King confinement threshold lowered from 4 to 2 heavy pieces
+   - Added adjacent-squares-attacked signal (-0.06 per square)
+   - Added heavy-pieces-on-king-rank/file signal (-0.08 per piece)
+   - Starting position eval: ~-0.26 (slightly Black-biased)
+   - Curriculum positions eval: -0.48 to -0.64 (correctly Black-favorable)
+
+C) Data processor fixed (data_processor.py):
+   - CRITICAL: mcts_value now converted to White's perspective
+   - Was stored raw (from current player's perspective), causing sign errors
+
+D) Training config updated (config.py):
+   - VALUE_TARGET changed from "game_result" to "blend"
+   - BLEND_WEIGHT set to 0.7 (70% mcts_value, 30% game_result)
+   - CURRICULUM_FENS added (10 validated endgame positions)
+
+E) MCTS supports batched NN evaluation (mcts.py):
+   - _run_batched() collects leaves, evaluates in single model call
+   - 14s/move -> 0.63s/move with NN evaluator
+
+F) Data generation supports curriculum + NN (data_generation.py):
+   - --curriculum flag for endgame starting positions
+   - --use-model flag for NN evaluation instead of heuristic
+   - ProcessPoolExecutor for parallel generation
+
+8. WHAT DATA EXISTS RIGHT NOW
+================================================================================
+
+  data/raw/curriculum/  — 200 games, 5473 positions (complete)
+    Results: 199 White, 1 Black, 0 Draw
+    These still have useful mcts_value signal even though game_result is mostly +1
+
+  data/raw/normal/      — Only 2 games (generation was INTERRUPTED)
+    NEED TO REGENERATE: 300-500 normal games from standard opening
+
+  data/processed/       — STALE from previous iteration, needs regeneration
+
+  models/best_value_net.keras — STALE from previous iteration (trained on old
+    data with the mcts_value sign bug)
+
+9. IMMEDIATE NEXT STEPS
+================================================================================
+
+Step 1: Generate normal games (was interrupted)
+  cd src
+  python data_generation.py --num-games 300 --simulations 800 \
+    --output-dir ../data/raw/normal
+
+Step 2: Merge raw data into one directory for processing
+  The data_processor.py load_all_games() only reads from one directory.
+  Either:
+  a) Copy all .jsonl from data/raw/curriculum/ and data/raw/normal/ into data/raw/
+  b) OR modify load_all_games() to walk subdirectories recursively
+  Option (a) is simpler:
+    mkdir -p data/raw/merged
+    cp data/raw/normal/*.jsonl data/raw/merged/
+    # Rename curriculum files to avoid ID collisions:
+    for f in data/raw/curriculum/*.jsonl; do
+      cp "$f" "data/raw/merged/curriculum_$(basename $f)"
+    done
+
+Step 3: Process data
+  cd src
+  python data_processor.py  # (may need to set RAW_DATA_DIR to merged dir)
+
+Step 4: Train with blend target
+  cd src
+  python train.py --target blend --epochs 50
+
+Step 5: Generate improved data with trained model
+  cd src
+  python data_generation.py --num-games 200 --simulations 800 \
+    --use-model ../models/best_value_net.keras --output-dir ../data/raw/nn_gen1
+
+  python data_generation.py --num-games 100 --simulations 800 \
+    --use-model ../models/best_value_net.keras --curriculum \
+    --output-dir ../data/raw/nn_curriculum_gen1
+
+Step 6: Merge all data, reprocess, retrain (repeat loop)
+
+10. KNOWN ISSUES AND GOTCHAS
+================================================================================
+
+A) data_processor.py only reads one directory
+   load_all_games(raw_dir) only reads .jsonl from the specified directory,
+   not subdirectories. You must merge files or modify the function.
+
+B) The heuristic is slightly Black-biased
+   Starting position evaluates to ~-0.26. This means normal games will have
+   slightly negative mcts_values on average. Not a major issue for blend training
+   but worth being aware of. Could be tuned by adjusting the edge-proximity
+   weight (currently -0.10 per edge unit).
+
+C) Black still almost never wins actual games
+   Even with all fixes, Black wins <1% of games from any position. This is
+   a fundamental limitation of MCTS with heuristic eval against a double-move
+   king. The blend training approach works AROUND this by using mcts_value
+   signal instead of game_result.
+
+D) Curriculum games are short (~10-50 moves)
+   Normal games are longer (~30-150 moves). The curriculum games contribute
+   fewer positions per game but with stronger Black-favorable evaluations.
+
+E) The model from the previous iteration is STALE
+   It was trained with the mcts_value sign bug (Black's values had wrong sign).
+   Do NOT use it as an evaluator for new generation. Train fresh first.
+
+F) NN generation is slower
+   With NN evaluator: ~16s/game with 4 workers (GPU memory limited)
+   With heuristic: ~4s/game with 16 workers
+   Plan accordingly for larger generation runs on the new machine.
+
+G) apply_action m2 safety check
+   Added `if m2 in self.board.pseudo_legal_moves` before pushing m2 in
+   apply_action. This prevents a crash that occurred with some curriculum
+   positions where m1 changed the board enough to invalidate m2. The check
+   is O(n) but only runs once per action application, not in MCTS internals.
+
+11. POSSIBLE IMPROVEMENTS TO EXPLORE
+================================================================================
+
+A) Policy head: Currently only value network. Adding a policy head would let
+   MCTS focus search on promising moves, dramatically improving play quality.
+   This is the biggest potential improvement.
+
+B) Stronger endgame heuristic: Could add features like:
+   - King "accessible area" (BFS with 2 steps for double-move)
+   - Rook ladder detection
+   - Pawn race calculations
+
+C) Asymmetric MCTS for data generation: Give Black more simulations than White
+   in curriculum games. We tested 800 vs 50 but it didn't produce wins. Might
+   work with a policy head to focus Black's search.
+
+D) Scripted endgame play: Instead of MCTS for curriculum games, use a scripted
+   mating algorithm (rook ladder, queen+rook technique). This would guarantee
+   Black wins for training data but loses the MCTS policy signal.
+
+E) Increase model capacity: The current model is ~293K params. For a stronger
+   machine, could try deeper residual networks (ResNet-style with skip
+   connections, like AlphaZero).
+
+F) Training on the blend could be tuned: BLEND_WEIGHT=0.7 is a guess. After
+   initial training, evaluate whether the model is learning good positional
+   understanding or overfitting to heuristic patterns. Adjust the weight
+   accordingly.
+
+G) More diverse curriculum positions: Current positions are all rooks vs lone
+   king. Could add:
+   - Queen vs king+pawns positions
+   - Positions with Black pawns about to promote
+   - Positions where Black has captured some White pawns but not all
+
+12. SELF-IMPROVEMENT LOOP ARCHITECTURE
+================================================================================
+
+The intended workflow:
+
+  Generation 0 (current):
+    - Heuristic evaluator
+    - Generate 300 normal + 200 curriculum games
+    - Train with blend target
+    - Save model as gen0.keras
+
+  Generation 1:
+    - NN evaluator (gen0.keras)
+    - Generate 200 normal + 100 curriculum games
+    - MERGE with Gen 0 data (cumulative training)
+    - Retrain from scratch (not fine-tune)
+    - Save as gen1.keras
+
+  Generation 2+:
+    - Use latest model as evaluator
+    - Generate more games, merge with all previous
+    - Retrain, save
+
+  Key: always merge datasets across generations so the model sees diverse
+  positions. Don't discard old data.
+
+13. DEPENDENCIES
+================================================================================
+
+  Python 3.12
+  python-chess  (chess board representation)
+  tensorflow    (CNN training and inference)
+  numpy
+  tqdm          (progress bars)
+  (see requirements.txt)
+
+================================================================================
+END OF CONTEXT
+================================================================================

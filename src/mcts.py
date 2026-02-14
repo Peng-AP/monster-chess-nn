@@ -69,48 +69,28 @@ class MCTSNode:
 
 
 class MCTS:
-    def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None):
+    def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None,
+                 batch_size=64):
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn or evaluate
-
-    def search(self, root_state):
-        """Run MCTS from root_state and return (action_probs, root_value).
-
-        action_probs: dict mapping action -> visit proportion
-        root_value: average value at root from White's perspective
-        """
-        root = MCTSNode(root_state.clone())
-
-        for _ in range(self.num_simulations):
-            node = self._select(root)
-            leaf, value = self._evaluate_and_expand(node)
-            self._backpropagate(leaf, value)
-
-        # Build action -> visit count mapping
-        action_visits = {}
-        for child in root.children:
-            key = self._action_key(child.action, root_state.is_white_turn)
-            action_visits[key] = child.visit_count
-
-        total_visits = sum(action_visits.values())
-        if total_visits == 0:
-            return {}, 0.0
-
-        action_probs = {a: v / total_visits for a, v in action_visits.items()}
-        root_value = root.q_value
-        return action_probs, root_value
+        self.batch_size = batch_size
+        # Check if eval_fn supports batched calls
+        self._supports_batch = hasattr(self.eval_fn, 'batch_evaluate')
 
     def get_best_action(self, root_state, temperature=1.0):
-        """Run search and select an action using temperature-based sampling.
+        """Run MCTS search and select an action using temperature-based sampling.
 
         Returns (selected_action, action_probs, root_value).
         """
         root = MCTSNode(root_state.clone())
 
-        for _ in range(self.num_simulations):
-            node = self._select(root)
-            leaf, value = self._evaluate_and_expand(node)
-            self._backpropagate(leaf, value)
+        if self._supports_batch:
+            self._run_batched(root)
+        else:
+            for _ in range(self.num_simulations):
+                node = self._select(root)
+                leaf, value = self._evaluate_and_expand(node)
+                self._backpropagate(leaf, value)
 
         if not root.children:
             return None, {}, 0.0
@@ -127,11 +107,9 @@ class MCTS:
 
         # Temperature-based selection
         if temperature < 0.01:
-            # Greedy: pick the most visited
             best = max(children_info, key=lambda x: x[2])
             selected_action = best[0].action
         else:
-            # Sample proportional to visit_count^(1/temperature)
             weights = [info[2] ** (1.0 / temperature) for info in children_info]
             total_w = sum(weights)
             probs = [w / total_w for w in weights]
@@ -140,6 +118,51 @@ class MCTS:
 
         root_value = root.q_value
         return selected_action, action_probs, root_value
+
+    # ------------------------------------------------------------------
+    # Batched MCTS for NN evaluation
+    # ------------------------------------------------------------------
+
+    def _run_batched(self, root):
+        """Run MCTS with batched leaf evaluation for NN efficiency."""
+        sims_done = 0
+        while sims_done < self.num_simulations:
+            # Collect a batch of leaves
+            batch_leaves = []
+            batch_needs_eval = []  # (leaf, index) for NN eval
+            batch_terminal = []    # (leaf, value) for terminal nodes
+
+            batch_count = min(self.batch_size, self.num_simulations - sims_done)
+
+            for _ in range(batch_count):
+                node = self._select(root)
+
+                if node.state.is_terminal():
+                    batch_terminal.append((node, node.state.get_result()))
+                    continue
+
+                child = node.expand()
+                if child is None:
+                    batch_terminal.append((node, self.eval_fn(node.state)))
+                    continue
+
+                if child.state.is_terminal():
+                    batch_terminal.append((child, child.state.get_result()))
+                else:
+                    batch_needs_eval.append(child)
+
+            # Batch evaluate all non-terminal leaves at once
+            if batch_needs_eval:
+                states = [leaf.state for leaf in batch_needs_eval]
+                values = self.eval_fn.batch_evaluate(states)
+                for leaf, value in zip(batch_needs_eval, values):
+                    self._backpropagate(leaf, value)
+
+            # Backprop terminal nodes
+            for leaf, value in batch_terminal:
+                self._backpropagate(leaf, value)
+
+            sims_done += batch_count
 
     # ------------------------------------------------------------------
     # Internal MCTS phases
@@ -177,20 +200,10 @@ class MCTS:
         """
         while node is not None:
             node.visit_count += 1
-            # Value is from White's perspective.
-            # White nodes want to maximise, Black nodes want to minimise.
-            # We store value from White's perspective and UCB handles
-            # the sign flip via the parent's perspective.
-            # For correct UCB: negate value for Black's nodes.
             if node.parent is not None:
-                # The node was reached by the *parent's* player making a move.
-                # If parent is White, this node represents a state after White moved,
-                # so White wants high value → store as-is.
-                # If parent is Black, Black wants low value → negate.
                 parent_is_white = node.parent.state.is_white_turn
                 node.total_value += value if parent_is_white else -value
             else:
-                # Root node
                 is_white = node.state.is_white_turn
                 node.total_value += value if is_white else -value
             node = node.parent

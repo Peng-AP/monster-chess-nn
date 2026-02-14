@@ -2,32 +2,59 @@ import argparse
 import json
 import os
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
 from config import (
     MCTS_SIMULATIONS, NUM_GAMES,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
-    RAW_DATA_DIR,
+    RAW_DATA_DIR, CURRICULUM_FENS,
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 
+# Global variables set by each worker process
+_model_path = None
+_curriculum = False
 
-def play_game(mcts_engine):
+
+def _init_worker(model_path, curriculum):
+    """Initializer for worker processes — stores config globally."""
+    global _model_path, _curriculum
+    _model_path = model_path
+    _curriculum = curriculum
+
+
+def play_game(num_simulations):
     """Play one full game of Monster Chess via MCTS self-play.
+
+    Uses NN evaluator if _model_path is set, otherwise heuristic.
+    Uses curriculum starting positions if _curriculum is set.
 
     Returns a list of records, one per position:
         {fen, mcts_value, policy, current_player, game_result}
     """
-    game = MonsterChessGame()
+    import random as rng
+    eval_fn = None
+    if _model_path:
+        from evaluation import NNEvaluator
+        eval_fn = NNEvaluator(_model_path)
+
+    engine = MCTS(num_simulations=num_simulations, eval_fn=eval_fn)
+
+    if _curriculum:
+        fen = rng.choice(CURRICULUM_FENS)
+        game = MonsterChessGame(fen=fen)
+    else:
+        game = MonsterChessGame()
     records = []
     move_number = 0
 
     while not game.is_terminal():
         temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
 
-        action, action_probs, root_value = mcts_engine.get_best_action(
+        action, action_probs, root_value = engine.get_best_action(
             game, temperature=temperature,
         )
 
@@ -38,17 +65,14 @@ def play_game(mcts_engine):
         records.append({
             "fen": game.fen(),
             "mcts_value": round(root_value, 4),
-            "policy": action_probs,  # dict: action_str -> visit proportion
+            "policy": action_probs,
             "current_player": "white" if is_white else "black",
         })
 
         game.apply_action(action)
         move_number += 1
 
-    # Final game result
     result = game.get_result()
-
-    # Stamp every position with the game outcome
     for rec in records:
         rec["game_result"] = result
 
@@ -65,35 +89,69 @@ def save_game(records, output_dir, game_id):
     return path
 
 
+def _worker(args):
+    """Worker function for multiprocessing."""
+    game_id, num_simulations = args
+    t0 = time.time()
+    records = play_game(num_simulations)
+    elapsed = time.time() - t0
+    return game_id, records, elapsed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
     parser.add_argument("--num-games", type=int, default=NUM_GAMES)
     parser.add_argument("--simulations", type=int, default=MCTS_SIMULATIONS)
     parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
+    parser.add_argument("--workers", type=int, default=None,
+                        help="Number of parallel workers (default: CPU count)")
+    parser.add_argument("--use-model", type=str, default=None,
+                        help="Path to trained .keras model for NN evaluation")
+    parser.add_argument("--curriculum", action="store_true",
+                        help="Use endgame curriculum starting positions")
     args = parser.parse_args()
 
-    engine = MCTS(num_simulations=args.simulations)
+    workers = args.workers or os.cpu_count()
+    model_path = args.use_model
+
+    # With NN evaluation, use fewer workers (GPU memory / TF overhead)
+    if model_path:
+        workers = min(workers, 4)
+        print(f"Using NN evaluator: {model_path}")
+        print(f"(Limiting to {workers} workers for NN memory)")
+
+    if args.curriculum:
+        print("Using curriculum endgame starting positions")
 
     total_positions = 0
     results = {1: 0, -1: 0, 0: 0}
 
     print(f"Generating {args.num_games} games with {args.simulations} MCTS simulations per move...")
+    print(f"Workers: {workers}")
     print(f"Output directory: {args.output_dir}\n")
 
-    for i in tqdm(range(args.num_games), desc="Games"):
-        t0 = time.time()
-        records = play_game(engine)
-        elapsed = time.time() - t0
+    tasks = [(i, args.simulations) for i in range(args.num_games)]
 
-        save_game(records, args.output_dir, game_id=i)
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=_init_worker,
+        initargs=(model_path, args.curriculum),
+    ) as executor:
+        futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
-        n_moves = len(records)
-        total_positions += n_moves
-        game_result = records[-1]["game_result"] if records else 0
-        results[game_result] = results.get(game_result, 0) + 1
+        with tqdm(total=args.num_games, desc="Games") as pbar:
+            for future in as_completed(futures):
+                game_id, records, elapsed = future.result()
+                save_game(records, args.output_dir, game_id=game_id)
 
-        winner = {1: "White", -1: "Black", 0: "Draw"}.get(game_result, "?")
-        tqdm.write(f"  Game {i}: {n_moves} moves, {winner} wins, {elapsed:.1f}s")
+                n_moves = len(records)
+                total_positions += n_moves
+                game_result = records[-1]["game_result"] if records else 0
+                results[game_result] = results.get(game_result, 0) + 1
+
+                winner = {1: "White", -1: "Black", 0: "Draw"}.get(game_result, "?")
+                tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} wins, {elapsed:.1f}s")
+                pbar.update(1)
 
     print(f"\nDone! {total_positions} total positions across {args.num_games} games.")
     print(f"Results — White: {results.get(1,0)}, Black: {results.get(-1,0)}, Draw: {results.get(0,0)}")

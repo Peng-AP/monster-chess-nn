@@ -16,7 +16,7 @@ class MonsterChessGame:
 
     def __init__(self, fen=STARTING_FEN):
         self.board = chess.Board(fen)
-        self.is_white_turn = True
+        self.is_white_turn = self.board.turn == chess.WHITE
         self.turn_count = 0
         self._terminal = False
         self._result = None  # +1 white wins, -1 black wins, 0 draw
@@ -52,9 +52,9 @@ class MonsterChessGame:
         elif self.turn_count >= MAX_GAME_TURNS:
             self._terminal = True
             self._result = 0
-        elif not self.get_legal_actions():
-            self._terminal = True
-            self._result = 0
+        # Skip the expensive get_legal_actions() check — stalemate is
+        # extremely rare in Monster Chess and not worth the O(n²) cost
+        # on every terminal check during MCTS.
         return self._terminal
 
     def get_result(self):
@@ -87,12 +87,19 @@ class MonsterChessGame:
             return self._get_black_actions()
 
     def _get_white_actions(self):
-        """Generate all legal double-move pairs for White."""
+        """Generate all legal double-move pairs for White.
+
+        White CAN put Black's king in check (threaten capture).
+        White CANNOT leave its own king attacked (self-preservation).
+        Exception: if ALL moves leave White's king attacked (checkmate),
+        return all moves — White is forced to blunder and Black captures.
+        """
         first_moves = self._white_single_moves()
         if not first_moves:
             return []
 
-        pairs = []
+        safe_pairs = []
+        all_pairs = []
         for m1 in first_moves:
             self.board.push(m1)
 
@@ -114,52 +121,33 @@ class MonsterChessGame:
                     self.board.pop()
                     return [(m1, m2)]
 
-                # After White's double-move the position must be legal:
-                # 1. Black's king must not be in check (board.turn is Black here)
-                # 2. White's king must not be attackable (can't leave king hanging)
-                black_in_check = self.board.is_check()
+                all_pairs.append((m1, m2))
+
+                # White king must not be left attackable
                 white_king = self.board.king(chess.WHITE)
                 white_attacked = (
                     white_king is not None
                     and self.board.is_attacked_by(chess.BLACK, white_king)
                 )
-                if not black_in_check and not white_attacked:
-                    pairs.append((m1, m2))
+                if not white_attacked:
+                    safe_pairs.append((m1, m2))
 
                 self.board.pop()
 
             self.board.turn = chess.BLACK
             self.board.pop()
 
-        return pairs
+        # If no safe moves, White is forced to blunder (Black captures)
+        return safe_pairs if safe_pairs else all_pairs
 
     def _get_black_actions(self):
         """Generate all legal moves for Black.
 
-        Uses legal_moves (not pseudo_legal) so Black cannot leave its
-        own king in check.  Also filters out moves that leave the king
-        capturable by White's first move next turn — Black must "see"
-        immediate one-move threats from White.
+        Uses legal_moves so Black can't leave its own king in self-check.
+        No additional safety filters — MCTS handles threat awareness.
         """
         self.board.turn = chess.BLACK
-        safe_moves = []
-        for move in self.board.legal_moves:
-            self.board.push(move)
-            # Check if White can capture Black's king with a single move
-            self.board.turn = chess.WHITE
-            king_sq = self.board.king(chess.BLACK)
-            if king_sq is not None and self.board.is_attacked_by(chess.WHITE, king_sq):
-                # White can reach the king in one move — unsafe
-                self.board.pop()
-                continue
-            self.board.pop()
-            safe_moves.append(move)
-        # If every move leaves the king capturable, allow all legal moves
-        # (better to have options than be stuck)
-        if not safe_moves:
-            self.board.turn = chess.BLACK
-            return list(self.board.legal_moves)
-        return safe_moves
+        return list(self.board.legal_moves)
 
     # ------------------------------------------------------------------
     # Applying actions
@@ -172,7 +160,9 @@ class MonsterChessGame:
             self.board.push(m1)
             if self.board.king(chess.BLACK) is not None and m2 != chess.Move.null():
                 self.board.turn = chess.WHITE
-                self.board.push(m2)
+                # Verify m2 is still pseudo-legal after m1 changed the board
+                if m2 in self.board.pseudo_legal_moves:
+                    self.board.push(m2)
         else:
             self.board.push(action)
 
@@ -197,7 +187,7 @@ class MonsterChessGame:
             return self._apply_random_black()
 
     def _apply_random_white(self):
-        """Sample a random legal double-move for White without enumerating all pairs."""
+        """Sample a random safe double-move for White without enumerating all pairs."""
         self.board.turn = chess.WHITE
         first_moves = list(self.board.pseudo_legal_moves)
         if not first_moves:
@@ -207,7 +197,6 @@ class MonsterChessGame:
         for m1 in first_moves:
             self.board.push(m1)
             if self.board.king(chess.BLACK) is None:
-                # Captured Black's king on first move
                 self.is_white_turn = False
                 self.turn_count += 1
                 self._terminal = False
@@ -221,21 +210,18 @@ class MonsterChessGame:
             for m2 in second_moves:
                 self.board.push(m2)
                 if self.board.king(chess.BLACK) is None:
-                    # Captured Black's king on second move — keep it
                     self.is_white_turn = False
                     self.turn_count += 1
                     self._terminal = False
                     self._result = None
                     return True
 
-                black_in_check = self.board.is_check()
                 white_king = self.board.king(chess.WHITE)
-                white_attacked = (
-                    white_king is not None
-                    and self.board.is_attacked_by(chess.BLACK, white_king)
+                white_safe = (
+                    white_king is None
+                    or not self.board.is_attacked_by(chess.BLACK, white_king)
                 )
-                if not black_in_check and not white_attacked:
-                    # Found a valid pair — keep the board state
+                if white_safe:
                     self.is_white_turn = False
                     self.turn_count += 1
                     self._terminal = False
@@ -247,32 +233,27 @@ class MonsterChessGame:
             self.board.turn = chess.BLACK
             self.board.pop()
 
-        return False
+        # No safe moves — pick any move (forced blunder)
+        m1 = random.choice(first_moves)
+        self.board.push(m1)
+        self.board.turn = chess.WHITE
+        second_moves = list(self.board.pseudo_legal_moves)
+        if second_moves:
+            m2 = random.choice(second_moves)
+            self.board.push(m2)
+        self.is_white_turn = False
+        self.turn_count += 1
+        self._terminal = False
+        self._result = None
+        return True
 
     def _apply_random_black(self):
-        """Sample a random legal move for Black, preferring moves that
-        don't leave the king capturable by White in one move."""
+        """Sample a random legal move for Black."""
         self.board.turn = chess.BLACK
         legal = list(self.board.legal_moves)
         if not legal:
             return False
 
-        # Try to find a move that doesn't leave king attacked
-        random.shuffle(legal)
-        for move in legal:
-            self.board.push(move)
-            self.board.turn = chess.WHITE
-            king_sq = self.board.king(chess.BLACK)
-            if king_sq is None or not self.board.is_attacked_by(chess.WHITE, king_sq):
-                # Safe — keep this move
-                self.is_white_turn = True
-                self.turn_count += 1
-                self._terminal = False
-                self._result = None
-                return True
-            self.board.pop()
-
-        # All moves leave king capturable — just pick one
         move = random.choice(legal)
         self.board.push(move)
         self.is_white_turn = True

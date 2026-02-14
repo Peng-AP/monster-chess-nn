@@ -1,7 +1,8 @@
 import chess
+import numpy as np
 
 
-def evaluate(game_state, max_depth=30):
+def evaluate(game_state):
     """Evaluate a Monster Chess position heuristically.
 
     Monster Chess specifics:
@@ -27,18 +28,17 @@ def evaluate(game_state, max_depth=30):
 
     # ---- White's chances ----
 
-    # White pawn count (starts with 4)
     white_pawns = len(board.pieces(chess.PAWN, chess.WHITE))
-    score += white_pawns * 0.12
+    score += white_pawns * 0.10
 
     # White pawn advancement
     for sq in board.pieces(chess.PAWN, chess.WHITE):
         rank = chess.square_rank(sq)
-        score += (rank - 1) * 0.04  # rank 1=start, rank 6=one away
+        score += (rank - 1) * 0.05
 
     # White queens (promoted pawns)
     white_queens = len(board.pieces(chess.QUEEN, chess.WHITE))
-    score += white_queens * 0.35
+    score += white_queens * 0.30
 
     # ---- Black's chances ----
 
@@ -46,47 +46,111 @@ def evaluate(game_state, max_depth=30):
     black_queens = len(board.pieces(chess.QUEEN, chess.BLACK))
     black_rooks = len(board.pieces(chess.ROOK, chess.BLACK))
     black_heavy = black_queens + black_rooks
-    score -= black_heavy * 0.06
+    score -= black_heavy * 0.08
 
     # Black pawn advancement (pawns promote on rank 0 for Black)
-    black_pawns = len(board.pieces(chess.PAWN, chess.BLACK))
     for sq in board.pieces(chess.PAWN, chess.BLACK):
         rank = chess.square_rank(sq)
-        score -= (6 - rank) * 0.02  # closer to rank 0 = closer to promotion
+        score -= (6 - rank) * 0.03
 
-    # Black promoted queens beyond starting one
+    # Black promoted queens beyond starting one — strong signal
     if black_queens > 1:
-        score -= (black_queens - 1) * 0.25  # extra queens = mating net material
+        score -= (black_queens - 1) * 0.35
 
     # ---- King confinement (helps Black's mating pattern) ----
     wk = board.king(chess.WHITE)
-    if wk is not None:
+    if wk is not None and black_heavy >= 2:
         wk_rank = chess.square_rank(wk)
         wk_file = chess.square_file(wk)
-        # Distance from center (0-3 scale, 3 = edge)
+
+        # Edge proximity bonus — king on edge is easier to mate
         rank_edge = min(wk_rank, 7 - wk_rank)
         file_edge = min(wk_file, 7 - wk_file)
         edge_dist = min(rank_edge, file_edge)
-        # White king on edge is bad for White when Black has heavy pieces
-        if black_heavy >= 3:
-            score -= (3 - edge_dist) * 0.08
+        score -= (3 - edge_dist) * 0.10
+
+        # Adjacent squares attacked by Black — measures king confinement
+        adjacent_attacked = 0
+        for dr in [-1, 0, 1]:
+            for df in [-1, 0, 1]:
+                if dr == 0 and df == 0:
+                    continue
+                r, f = wk_rank + dr, wk_file + df
+                if 0 <= r <= 7 and 0 <= f <= 7:
+                    sq = chess.square(f, r)
+                    if board.is_attacked_by(chess.BLACK, sq):
+                        adjacent_attacked += 1
+        # Strong signal: more attacked adjacent squares = more confined
+        score -= adjacent_attacked * 0.06
+
+        # Bonus for heavy pieces controlling same rank/file as king
+        for sq in board.pieces(chess.QUEEN, chess.BLACK) | board.pieces(chess.ROOK, chess.BLACK):
+            sq_rank = chess.square_rank(sq)
+            sq_file = chess.square_file(sq)
+            if sq_rank == wk_rank or sq_file == wk_file:
+                score -= 0.08  # piece directly aiming at king's rank/file
 
     # ---- Material balance (general) ----
-    # Black minor pieces help control squares
     black_knights = len(board.pieces(chess.KNIGHT, chess.BLACK))
     black_bishops = len(board.pieces(chess.BISHOP, chess.BLACK))
     score -= (black_knights + black_bishops) * 0.03
 
-    # Clamp and blend with a short rollout for tactical awareness
-    heuristic = max(-0.95, min(0.95, score))
+    return max(-0.95, min(0.95, score))
 
-    # Short rollout (tactical check — catches immediate captures/mates)
-    state = game_state.clone()
-    for _ in range(max_depth):
-        if state.is_terminal():
-            break
-        if not state.apply_random_action():
-            break
-    rollout_result = float(state.get_result())
 
-    return 0.8 * heuristic + 0.2 * rollout_result
+class NNEvaluator:
+    """Neural network evaluator that wraps a trained Keras model.
+
+    Converts game_state -> tensor -> model.predict -> scalar value.
+    Batches predictions for efficiency.
+    """
+
+    def __init__(self, model_path):
+        from tensorflow import keras
+        from data_processor import fen_to_tensor
+        self.model = keras.models.load_model(model_path)
+        self.fen_to_tensor = fen_to_tensor
+
+    def __call__(self, game_state):
+        board = game_state.board
+
+        # Terminal states — don't need the model
+        if board.king(chess.WHITE) is None:
+            return -1.0
+        if board.king(chess.BLACK) is None:
+            return 1.0
+
+        tensor = self.fen_to_tensor(
+            game_state.fen(),
+            is_white_turn=game_state.is_white_turn,
+        )
+        # model expects batch dimension
+        pred = self.model(np.expand_dims(tensor, axis=0), training=False)
+        return float(pred[0, 0])
+
+    def batch_evaluate(self, game_states):
+        """Evaluate multiple game states in a single model call."""
+        results = []
+        indices_to_predict = []
+        tensors = []
+
+        for i, gs in enumerate(game_states):
+            board = gs.board
+            if board.king(chess.WHITE) is None:
+                results.append(-1.0)
+            elif board.king(chess.BLACK) is None:
+                results.append(1.0)
+            else:
+                results.append(None)  # placeholder
+                indices_to_predict.append(i)
+                tensors.append(self.fen_to_tensor(
+                    gs.fen(), is_white_turn=gs.is_white_turn,
+                ))
+
+        if tensors:
+            batch = np.stack(tensors, axis=0)
+            preds = self.model(batch, training=False).numpy().flatten()
+            for j, idx in enumerate(indices_to_predict):
+                results[idx] = float(preds[j])
+
+        return results
