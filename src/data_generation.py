@@ -17,25 +17,27 @@ from monster_chess import MonsterChessGame
 from mcts import MCTS
 
 # Global variables set by each worker process
-_model_path = None
+_eval_fn = None
 _curriculum = False
 _scripted_black = False
 _force_result = None
 
 
 def _init_worker(model_path, curriculum, scripted_black, force_result):
-    """Initializer for worker processes — stores config globally."""
-    global _model_path, _curriculum, _scripted_black, _force_result
-    _model_path = model_path
+    """Initializer for worker processes — loads model once per worker."""
+    global _eval_fn, _curriculum, _scripted_black, _force_result
     _curriculum = curriculum
     _scripted_black = scripted_black
     _force_result = force_result
+    if model_path:
+        from evaluation import NNEvaluator
+        _eval_fn = NNEvaluator(model_path)
 
 
 def play_game(num_simulations):
     """Play one full game of Monster Chess via MCTS self-play.
 
-    Uses NN evaluator if _model_path is set, otherwise heuristic.
+    Uses NN evaluator if loaded by worker, otherwise heuristic.
     Uses curriculum starting positions if _curriculum is set.
     Uses scripted Black play if _scripted_black is set (curriculum only).
 
@@ -43,12 +45,8 @@ def play_game(num_simulations):
         {fen, mcts_value, policy, current_player, game_result}
     """
     import random as rng
-    eval_fn = None
-    if _model_path:
-        from evaluation import NNEvaluator
-        eval_fn = NNEvaluator(_model_path)
 
-    engine = MCTS(num_simulations=num_simulations, eval_fn=eval_fn)
+    engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
 
     scripted_fn = None
     if _scripted_black:
