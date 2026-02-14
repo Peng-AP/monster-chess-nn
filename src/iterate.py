@@ -96,10 +96,12 @@ def summarize_generation(gen_dir):
 def main():
     parser = argparse.ArgumentParser(description="Iterate self-play training loop")
     parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--games", type=int, default=300)
-    parser.add_argument("--curriculum-games", type=int, default=100,
-                        help="Extra curriculum endgame games per iteration (0 to disable)")
+    parser.add_argument("--games", type=int, default=200)
+    parser.add_argument("--curriculum-games", type=int, default=500,
+                        help="Curriculum endgame games per iteration (0 to disable)")
     parser.add_argument("--simulations", type=int, default=200)
+    parser.add_argument("--curriculum-simulations", type=int, default=50,
+                        help="MCTS simulations for curriculum games (lower = faster)")
     parser.add_argument("--epochs", type=int, default=50)
     args = parser.parse_args()
 
@@ -109,9 +111,39 @@ def main():
     model_path = os.path.join(model_dir, "best_value_net.pt")
 
     if not os.path.exists(model_path):
-        print(f"ERROR: No model found at {model_path}")
-        print("Run the initial training first (pipeline steps 1-3).")
-        sys.exit(1)
+        print("No model found — running initial bootstrap (heuristic games + curriculum + train)...\n")
+        # Generate heuristic normal games
+        run([
+            sys.executable, "data_generation.py",
+            "--num-games", str(args.games),
+            "--simulations", "800",
+            "--output-dir", os.path.join(raw_dir, "normal"),
+        ], f"Bootstrap: generating {args.games} heuristic normal games")
+        # Generate heuristic curriculum games
+        run([
+            sys.executable, "data_generation.py",
+            "--num-games", str(args.curriculum_games),
+            "--simulations", str(args.curriculum_simulations),
+            "--output-dir", os.path.join(raw_dir, "curriculum_bootstrap"),
+            "--curriculum",
+            "--scripted-black",
+            "--force-result", "-1",
+        ], f"Bootstrap: generating {args.curriculum_games} curriculum games (forced Black win)")
+        # Process
+        run([
+            sys.executable, "data_processor.py",
+            "--raw-dir", raw_dir,
+            "--output-dir", processed_dir,
+        ], "Bootstrap: processing all data")
+        # Train initial model
+        run([
+            sys.executable, "train.py",
+            "--target", "blend",
+            "--epochs", str(args.epochs),
+            "--data-dir", processed_dir,
+            "--model-dir", model_dir,
+        ], "Bootstrap: training initial model")
+        print("\n  Bootstrap complete. Starting iteration loop.\n")
 
     start_gen = find_next_gen(raw_dir)
     total_games_existing, total_pos_existing = count_data(raw_dir)
@@ -122,7 +154,7 @@ def main():
     print(f"{'#'*60}")
     print(f"  Iterations:  {args.iterations}")
     print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum")
-    print(f"  Simulations: {args.simulations}")
+    print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum")
     print(f"  Epochs:      {args.epochs}")
     print(f"  Starting at: generation {start_gen}")
     print(f"  Existing:    {total_games_existing} games, {total_pos_existing} positions")
@@ -157,13 +189,13 @@ def main():
             t_cur = run([
                 sys.executable, "data_generation.py",
                 "--num-games", str(args.curriculum_games),
-                "--simulations", str(args.simulations),
+                "--simulations", str(args.curriculum_simulations),
                 "--output-dir", cur_dir,
                 "--use-model", model_path,
                 "--curriculum",
                 "--scripted-black",
                 "--force-result", "-1",
-            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games (gen {gen}, forced Black win)")
+            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, forced Black win)")
 
             print(f"\n  --- Curriculum Games ---")
             summarize_generation(cur_dir)
