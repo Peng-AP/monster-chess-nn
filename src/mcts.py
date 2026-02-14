@@ -4,7 +4,10 @@ from collections import defaultdict
 
 import numpy as np
 
-from config import EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE
+from config import (
+    EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
+    DIRICHLET_ALPHA, DIRICHLET_EPSILON,
+)
 from evaluation import evaluate
 
 
@@ -235,6 +238,15 @@ class MCTS:
     # Batched MCTS with PUCT + policy head
     # ------------------------------------------------------------------
 
+    def _add_dirichlet_noise(self, node):
+        """Mix Dirichlet noise into root children's priors for exploration."""
+        if not node.children:
+            return
+        noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(node.children))
+        eps = DIRICHLET_EPSILON
+        for child, n in zip(node.children, noise):
+            child.prior = (1 - eps) * child.prior + eps * n
+
     def _run_batched_puct(self, root):
         """PUCT-based MCTS with batched NN evaluation and policy priors.
 
@@ -243,6 +255,7 @@ class MCTS:
           2. If leaf is unexpanded: add to batch for NN eval
           3. After batch eval: expand leaf with policy priors, backprop value
         """
+        noise_added = False
         sims_done = 0
         while sims_done < self.num_simulations:
             batch_leaves = []       # unexpanded leaves needing NN eval
@@ -279,6 +292,11 @@ class MCTS:
                         self._expand_with_policy(leaf, policy)
 
                     self._backpropagate(leaf, value)
+
+                # Add Dirichlet noise to root after its first expansion
+                if not noise_added and root.children:
+                    self._add_dirichlet_noise(root)
+                    noise_added = True
 
             for leaf, value in batch_terminal:
                 self._backpropagate(leaf, value)
