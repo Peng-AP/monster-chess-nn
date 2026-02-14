@@ -162,7 +162,8 @@ def main():
                 "--use-model", model_path,
                 "--curriculum",
                 "--scripted-black",
-            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games (gen {gen})")
+                "--force-result", "-1",
+            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games (gen {gen}, forced Black win)")
 
             print(f"\n  --- Curriculum Games ---")
             summarize_generation(cur_dir)

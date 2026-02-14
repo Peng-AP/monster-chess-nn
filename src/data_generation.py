@@ -19,14 +19,16 @@ from mcts import MCTS
 _model_path = None
 _curriculum = False
 _scripted_black = False
+_force_result = None
 
 
-def _init_worker(model_path, curriculum, scripted_black):
+def _init_worker(model_path, curriculum, scripted_black, force_result):
     """Initializer for worker processes — stores config globally."""
-    global _model_path, _curriculum, _scripted_black
+    global _model_path, _curriculum, _scripted_black, _force_result
     _model_path = model_path
     _curriculum = curriculum
     _scripted_black = scripted_black
+    _force_result = force_result
 
 
 def play_game(num_simulations):
@@ -97,7 +99,7 @@ def play_game(num_simulations):
 
         move_number += 1
 
-    result = game.get_result()
+    result = _force_result if _force_result is not None else game.get_result()
     for rec in records:
         rec["game_result"] = result
 
@@ -136,6 +138,8 @@ def main():
                         help="Use endgame curriculum starting positions")
     parser.add_argument("--scripted-black", action="store_true",
                         help="Use scripted endgame play for Black (curriculum only)")
+    parser.add_argument("--force-result", type=int, default=None, choices=[-1, 0, 1],
+                        help="Override game result for all games (1=White, -1=Black, 0=Draw)")
     args = parser.parse_args()
 
     workers = args.workers or os.cpu_count()
@@ -151,6 +155,9 @@ def main():
         print("Using curriculum endgame starting positions")
     if args.scripted_black:
         print("Using scripted endgame play for Black")
+    if args.force_result is not None:
+        label = {1: "White win", -1: "Black win", 0: "Draw"}[args.force_result]
+        print(f"Forcing game result: {args.force_result} ({label})")
 
     total_positions = 0
     results = {1: 0, -1: 0, 0: 0}
@@ -164,7 +171,7 @@ def main():
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(model_path, args.curriculum, args.scripted_black),
+        initargs=(model_path, args.curriculum, args.scripted_black, args.force_result),
     ) as executor:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 

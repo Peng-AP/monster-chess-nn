@@ -23,26 +23,47 @@ NUM_GAMES = 100
 # king escapes. Black needs queens/rooks forming rank/file barriers that
 # restrict the king BEFORE trying to deliver mate.
 CURRICULUM_FENS = [
-    # --- 3 rooks vs lone king (king already near edge) ---
-    "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1",
-    "4k3/8/8/8/4r3/1r6/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/2r5/r7/1r6/3K4 b - - 0 1",
-    # --- Queen + 2 rooks vs lone king (nearly winning) ---
+    # === TIER 1: Immediate king capture (Black takes king this move) ===
+    # Rook directly attacks king on same rank/file
+    "4k3/8/8/8/8/8/4r3/4K3 b - - 0 1",   # Re2 takes Ke1
+    "4k3/8/8/8/8/8/8/r3K3 b - - 0 1",   # Ra1 takes Ke1 along rank
+    "4k3/8/8/8/8/8/7r/7K b - - 0 1",   # Rh2 takes Kh1
+    "4k3/8/8/8/8/8/q7/K7 b - - 0 1",   # Qa2 takes Ka1
+    "7k/8/8/8/8/8/6q1/7K b - - 0 1",   # Qg2 takes Kh1
+    "4k3/8/8/8/8/8/3r4/3K4 b - - 0 1",   # Rd2 takes Kd1
+    "4k3/8/8/8/8/8/r7/K7 b - - 0 1",   # Ra2 takes Ka1
+    "7k/8/8/8/8/8/7r/7K b - - 0 1",   # Rh2 takes Kh1
+
+    # === TIER 2: One move from capture (barrier + attack setup) ===
+    # Rook on same file, one rank away — needs to advance to capture
+    "4k3/8/8/8/8/4r3/8/4K3 b - - 0 1",   # Re3 can play Re1 or Re2
+    "4k3/8/8/8/8/r7/8/K7 b - - 0 1",   # Ra3 approaches Ka1
+    "7k/8/8/8/8/7r/8/7K b - - 0 1",   # Rh3 approaches Kh1
+    "4k3/8/8/8/8/3q4/8/3K4 b - - 0 1",   # Qd3 approaches Kd1
+    # Two rooks — one blocks escape, other delivers capture
+    "4k3/8/8/8/8/r7/r7/K7 b - - 0 1",   # Ra2 blocks rank 2, Ra3->Ra1
+    "7k/8/8/8/8/7r/7r/7K b - - 0 1",   # Rh2 blocks, Rh3->Rh1
+    "4k3/8/8/8/8/8/1r6/Kr6 b - - 0 1",   # Ra1 attacks king, Rb2 covers
+
+    # === TIER 3: Overwhelming material, king near edge ===
+    # Queen + 2 rooks vs lone king
     "4k3/8/8/8/q7/r7/r7/3K4 b - - 0 1",
     "4k3/8/8/8/r7/q7/r7/7K b - - 0 1",
     "4k3/8/8/q7/8/r7/r7/K7 b - - 0 1",
-    "4k3/8/8/r7/q7/8/r7/3K4 b - - 0 1",
-    # --- 2 queens + rook vs lone king (overwhelming) ---
+    # 2 queens + rook vs lone king
     "4k3/8/8/8/q7/q7/r7/3K4 b - - 0 1",
     "4k3/8/8/q7/8/q7/8/r2K4 b - - 0 1",
-    # --- Queen + 2 rooks, king in corner ---
+    # Queen + 2 rooks, king in corner
     "4k3/8/8/8/q7/r7/r7/K7 b - - 0 1",
     "4k3/8/8/8/r7/r7/q7/7K b - - 0 1",
-    # --- 4 rooks vs lone king (maximum barrier) ---
+    # 4 rooks vs lone king
     "4k3/8/8/r7/r7/r7/r7/3K4 b - - 0 1",
     "4k3/8/8/r7/r7/r7/r7/K7 b - - 0 1",
-    # --- Mid-game positions where Black has promoted ---
+    # 3 rooks vs lone king
+    "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1",
+
+    # === TIER 4: Mid-game Black advantage ===
     "4k3/8/8/8/8/q7/q7/4K3 b - - 0 1",
     "r3k3/8/8/8/8/r7/q7/4K3 b - - 0 1",
 ]
