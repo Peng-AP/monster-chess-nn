@@ -96,8 +96,15 @@ class MCTSNode:
             self._is_expanded = True
         return child
 
-    def expand_all(self, actions_and_priors):
-        """Expand ALL children at once with priors (PUCT mode)."""
+    def expand_all(self, actions_and_priors, max_children=None):
+        """Expand children with priors (PUCT mode), optionally pruning low-prior moves."""
+        if max_children and len(actions_and_priors) > max_children:
+            actions_and_priors.sort(key=lambda x: x[1], reverse=True)
+            actions_and_priors = actions_and_priors[:max_children]
+            # Renormalize priors
+            total = sum(p for _, p in actions_and_priors)
+            if total > 0:
+                actions_and_priors = [(a, p / total) for a, p in actions_and_priors]
         for action, prior in actions_and_priors:
             child_state = self.state.clone()
             child_state.apply_action(action)
@@ -125,6 +132,23 @@ class MCTS:
         self.batch_size = batch_size
         self._supports_batch = hasattr(self.eval_fn, 'batch_evaluate')
         self._has_policy = hasattr(self.eval_fn, 'evaluate_with_policy')
+
+    def _should_stop_early(self, root, sims_done):
+        """Stop MCTS early if position is clearly decided or best move dominant."""
+        if sims_done < self.num_simulations * 0.3:
+            return False  # need minimum exploration
+        if not root.children:
+            return False
+        # Near-terminal value
+        if abs(root.q_value) > 0.95:
+            return True
+        # Best child has insurmountable visit lead
+        visits = sorted((c.visit_count for c in root.children), reverse=True)
+        if len(visits) >= 2:
+            remaining = self.num_simulations - sims_done
+            if visits[0] - visits[1] > remaining:
+                return True
+        return False
 
     def get_best_action(self, root_state, temperature=1.0):
         """Run MCTS and return (selected_action, action_probs, root_value)."""
@@ -173,10 +197,12 @@ class MCTS:
     # ------------------------------------------------------------------
 
     def _run_sequential(self, root):
-        for _ in range(self.num_simulations):
+        for i in range(self.num_simulations):
             node = self._select_ucb(root)
             leaf, value = self._evaluate_and_expand_ucb(node)
             self._backpropagate(leaf, value)
+            if i % 32 == 31 and self._should_stop_early(root, i + 1):
+                break
 
     def _select_ucb(self, node):
         while not node.state.is_terminal():
@@ -203,7 +229,7 @@ class MCTS:
 
     def _run_batched(self, root):
         sims_done = 0
-        while sims_done < self.num_simulations:
+        while sims_done < self.num_simulations and not self._should_stop_early(root, sims_done):
             batch_needs_eval = []
             batch_terminal = []
             batch_count = min(self.batch_size, self.num_simulations - sims_done)
@@ -257,7 +283,7 @@ class MCTS:
         """
         noise_added = False
         sims_done = 0
-        while sims_done < self.num_simulations:
+        while sims_done < self.num_simulations and not self._should_stop_early(root, sims_done):
             batch_leaves = []       # unexpanded leaves needing NN eval
             batch_terminal = []     # (leaf, value)
             batch_count = min(self.batch_size, self.num_simulations - sims_done)
@@ -325,10 +351,13 @@ class MCTS:
 
         is_white = node.state.is_white_turn
 
+        # Cap White's double-move children to top 80 by prior (move count pruning)
+        max_ch = 80 if is_white else None
+
         if policy_logits is None:
             # No policy available — use uniform priors
             uniform = 1.0 / len(actions)
-            node.expand_all([(a, uniform) for a in actions])
+            node.expand_all([(a, uniform) for a in actions], max_children=max_ch)
             return
 
         if is_white:
@@ -336,7 +365,7 @@ class MCTS:
         else:
             actions_and_priors = self._black_priors(actions, policy_logits)
 
-        node.expand_all(actions_and_priors)
+        node.expand_all(actions_and_priors, max_children=max_ch)
 
     def _white_priors(self, legal_actions, policy_logits):
         """Compute priors for White's (m1, m2) pairs.
