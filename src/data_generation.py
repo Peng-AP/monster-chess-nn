@@ -3,7 +3,7 @@ import chess
 import json
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
@@ -190,29 +190,36 @@ def main():
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
-            for future in as_completed(futures):
-                try:
-                    game_id, records, elapsed = future.result(timeout=600)
-                except TimeoutError:
-                    gid = futures[future]
-                    tqdm.write(f"  Game {gid}: TIMED OUT (600s), skipping")
+            try:
+                for future in as_completed(futures, timeout=600):
+                    try:
+                        game_id, records, elapsed = future.result()
+                    except (BrokenExecutor, Exception) as e:
+                        gid = futures[future]
+                        tqdm.write(f"  Game {gid}: FAILED ({e}), skipping")
+                        pbar.update(1)
+                        continue
+                    save_game(records, args.output_dir, game_id=game_id)
+
+                    n_moves = len(records)
+                    total_positions += n_moves
+                    game_result = records[-1]["game_result"] if records else 0
+                    results[game_result] = results.get(game_result, 0) + 1
+
+                    if game_result > 0:
+                        winner = "White"
+                    elif game_result < 0:
+                        winner = "Black"
+                    else:
+                        winner = "Draw"
+                    tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
                     pbar.update(1)
-                    continue
-                save_game(records, args.output_dir, game_id=game_id)
-
-                n_moves = len(records)
-                total_positions += n_moves
-                game_result = records[-1]["game_result"] if records else 0
-                results[game_result] = results.get(game_result, 0) + 1
-
-                if game_result > 0:
-                    winner = "White"
-                elif game_result < 0:
-                    winner = "Black"
-                else:
-                    winner = "Draw"
-                tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
-                pbar.update(1)
+            except TimeoutError:
+                hung = sum(1 for f in futures if not f.done())
+                tqdm.write(f"\n  WARNING: {hung} game(s) timed out after 600s, skipping")
+                pbar.update(hung)
+                for f in futures:
+                    f.cancel()
 
     white = sum(v for k, v in results.items() if k > 0)
     black = sum(v for k, v in results.items() if k < 0)
