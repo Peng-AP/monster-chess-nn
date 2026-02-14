@@ -48,6 +48,11 @@ PAWN_ADVANCEMENT_LAYER = 14
 TOTAL_LAYERS = 15
 TENSOR_SHAPE = (8, 8, TOTAL_LAYERS)
 
+# Policy head
+POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
+C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
+POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
+
 # Training
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3

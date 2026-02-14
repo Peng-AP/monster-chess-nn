@@ -1,4 +1,5 @@
 import argparse
+import chess
 import json
 import os
 import time
@@ -17,13 +18,15 @@ from mcts import MCTS
 # Global variables set by each worker process
 _model_path = None
 _curriculum = False
+_scripted_black = False
 
 
-def _init_worker(model_path, curriculum):
+def _init_worker(model_path, curriculum, scripted_black):
     """Initializer for worker processes — stores config globally."""
-    global _model_path, _curriculum
+    global _model_path, _curriculum, _scripted_black
     _model_path = model_path
     _curriculum = curriculum
+    _scripted_black = scripted_black
 
 
 def play_game(num_simulations):
@@ -31,6 +34,7 @@ def play_game(num_simulations):
 
     Uses NN evaluator if _model_path is set, otherwise heuristic.
     Uses curriculum starting positions if _curriculum is set.
+    Uses scripted Black play if _scripted_black is set (curriculum only).
 
     Returns a list of records, one per position:
         {fen, mcts_value, policy, current_player, game_result}
@@ -43,6 +47,11 @@ def play_game(num_simulations):
 
     engine = MCTS(num_simulations=num_simulations, eval_fn=eval_fn)
 
+    scripted_fn = None
+    if _scripted_black:
+        from scripted_endgame import get_scripted_black_move
+        scripted_fn = get_scripted_black_move
+
     if _curriculum:
         fen = rng.choice(CURRICULUM_FENS)
         game = MonsterChessGame(fen=fen)
@@ -52,24 +61,40 @@ def play_game(num_simulations):
     move_number = 0
 
     while not game.is_terminal():
-        temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
-
-        action, action_probs, root_value = engine.get_best_action(
-            game, temperature=temperature,
-        )
-
-        if action is None:
-            break
-
         is_white = game.is_white_turn
-        records.append({
-            "fen": game.fen(),
-            "mcts_value": round(root_value, 4),
-            "policy": action_probs,
-            "current_player": "white" if is_white else "black",
-        })
 
-        game.apply_action(action)
+        if not is_white and scripted_fn is not None:
+            # Use scripted play for Black in curriculum games
+            game.board.turn = chess.BLACK
+            action = scripted_fn(game.board)
+            if action is None:
+                break
+            # Record with heuristic value (no MCTS search for Black)
+            from evaluation import evaluate
+            root_value = evaluate(game)
+            # Convert to Black's perspective for the record
+            records.append({
+                "fen": game.fen(),
+                "mcts_value": round(-root_value, 4),  # from Black's perspective
+                "policy": {action.uci(): 1.0},
+                "current_player": "black",
+            })
+            game.apply_action(action)
+        else:
+            temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
+            action, action_probs, root_value = engine.get_best_action(
+                game, temperature=temperature,
+            )
+            if action is None:
+                break
+            records.append({
+                "fen": game.fen(),
+                "mcts_value": round(root_value, 4),
+                "policy": action_probs,
+                "current_player": "white" if is_white else "black",
+            })
+            game.apply_action(action)
+
         move_number += 1
 
     result = game.get_result()
@@ -106,9 +131,11 @@ def main():
     parser.add_argument("--workers", type=int, default=None,
                         help="Number of parallel workers (default: CPU count)")
     parser.add_argument("--use-model", type=str, default=None,
-                        help="Path to trained .keras model for NN evaluation")
+                        help="Path to trained .pt model for NN evaluation")
     parser.add_argument("--curriculum", action="store_true",
                         help="Use endgame curriculum starting positions")
+    parser.add_argument("--scripted-black", action="store_true",
+                        help="Use scripted endgame play for Black (curriculum only)")
     args = parser.parse_args()
 
     workers = args.workers or os.cpu_count()
@@ -122,6 +149,8 @@ def main():
 
     if args.curriculum:
         print("Using curriculum endgame starting positions")
+    if args.scripted_black:
+        print("Using scripted endgame play for Black")
 
     total_positions = 0
     results = {1: 0, -1: 0, 0: 0}
@@ -135,7 +164,7 @@ def main():
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(model_path, args.curriculum),
+        initargs=(model_path, args.curriculum, args.scripted_black),
     ) as executor:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
