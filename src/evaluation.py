@@ -2,6 +2,56 @@ import chess
 import numpy as np
 
 
+def _white_can_capture_king(board):
+    """Check if White can capture Black's king in one double-move.
+
+    Returns True if any (m1, m2) sequence reaches the Black king square.
+    Short-circuits on first hit — fast O(m) best case.
+    """
+    bk = board.king(chess.BLACK)
+    if bk is None:
+        return False
+    wk = board.king(chess.WHITE)
+    if wk is None:
+        return False
+
+    saved_turn = board.turn
+    board.turn = chess.WHITE
+    for m1 in board.pseudo_legal_moves:
+        if m1.to_square == bk:
+            board.turn = saved_turn
+            return True
+        board.push(m1)
+        board.turn = chess.WHITE
+        for m2 in board.pseudo_legal_moves:
+            if m2.to_square == bk:
+                board.pop()
+                board.turn = saved_turn
+                return True
+        board.turn = chess.BLACK
+        board.pop()
+    board.turn = saved_turn
+    return False
+
+
+def _is_passed_pawn(board, sq, color):
+    """Check if a pawn has no opposing pawns blocking or flanking its path."""
+    file = chess.square_file(sq)
+    rank = chess.square_rank(sq)
+    opp = not color
+    if color == chess.WHITE:
+        check_ranks = range(rank + 1, 8)
+    else:
+        check_ranks = range(0, rank)
+    for f in (file - 1, file, file + 1):
+        if 0 <= f <= 7:
+            for r in check_ranks:
+                p = board.piece_at(chess.square(f, r))
+                if p and p.piece_type == chess.PAWN and p.color == opp:
+                    return False
+    return True
+
+
 def evaluate(game_state):
     """Evaluate a Monster Chess position heuristically.
 
@@ -24,21 +74,59 @@ def evaluate(game_state):
     if board.king(chess.BLACK) is None:
         return 1.0
 
+    # ---- Capture threat scan (dominates all other terms) ----
+    if _white_can_capture_king(board):
+        return 0.95  # White captures Black's king next turn
+
     score = 0.0
+    wk = board.king(chess.WHITE)
+    bk = board.king(chess.BLACK)
+    wk_rank = chess.square_rank(wk)
+    wk_file = chess.square_file(wk)
+    bk_rank = chess.square_rank(bk)
+    bk_file = chess.square_file(bk)
 
     # ---- White's chances ----
 
     white_pawns = len(board.pieces(chess.PAWN, chess.WHITE))
     score += white_pawns * 0.10
 
-    # White pawn advancement
+    # White pawn advancement with passed pawn bonus
     for sq in board.pieces(chess.PAWN, chess.WHITE):
         rank = chess.square_rank(sq)
         score += (rank - 1) * 0.05
+        if _is_passed_pawn(board, sq, chess.WHITE):
+            # Exponential bonus for passed pawns (Stockfish pattern)
+            passed_bonus = 0.02 * (2 ** max(0, rank - 2))
+            score += passed_bonus
+            # Extra if White king can support the pawn advance
+            pawn_file = chess.square_file(sq)
+            support_dist = max(abs(wk_rank - rank), abs(wk_file - pawn_file))
+            if support_dist <= 2:
+                score += passed_bonus * 0.5
 
     # White queens (promoted pawns)
     white_queens = len(board.pieces(chess.QUEEN, chess.WHITE))
     score += white_queens * 0.30
+
+    # ---- King tropism (White king as attacker) ----
+    # Chebyshev distance — with double moves, king threatens at distance 2
+    king_dist = max(abs(wk_rank - bk_rank), abs(wk_file - bk_file))
+    if king_dist <= 2:
+        score += 0.15  # imminent capture threat
+    elif king_dist <= 4:
+        score += 0.05  # within 2-turn striking range
+
+    # Tropism to undefended Black pieces (free captures with double move)
+    piece_values = {chess.PAWN: 0.03, chess.KNIGHT: 0.08, chess.BISHOP: 0.08,
+                    chess.ROOK: 0.12, chess.QUEEN: 0.20}
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece and piece.color == chess.BLACK and piece.piece_type != chess.KING:
+            dist = max(abs(wk_rank - chess.square_rank(sq)),
+                       abs(wk_file - chess.square_file(sq)))
+            if dist <= 2 and not board.is_attacked_by(chess.BLACK, sq):
+                score += piece_values.get(piece.piece_type, 0.05)
 
     # ---- Black's chances ----
 
@@ -58,11 +146,7 @@ def evaluate(game_state):
         score -= (black_queens - 1) * 0.35
 
     # ---- King confinement (helps Black's mating pattern) ----
-    wk = board.king(chess.WHITE)
-    if wk is not None and black_heavy >= 2:
-        wk_rank = chess.square_rank(wk)
-        wk_file = chess.square_file(wk)
-
+    if black_heavy >= 2:
         # Edge proximity bonus — king on edge is easier to mate
         rank_edge = min(wk_rank, 7 - wk_rank)
         file_edge = min(wk_file, 7 - wk_file)
@@ -80,7 +164,6 @@ def evaluate(game_state):
                     sq = chess.square(f, r)
                     if board.is_attacked_by(chess.BLACK, sq):
                         adjacent_attacked += 1
-        # Strong signal: more attacked adjacent squares = more confined
         score -= adjacent_attacked * 0.06
 
         # Bonus for heavy pieces controlling same rank/file as king
@@ -88,7 +171,7 @@ def evaluate(game_state):
             sq_rank = chess.square_rank(sq)
             sq_file = chess.square_file(sq)
             if sq_rank == wk_rank or sq_file == wk_file:
-                score -= 0.08  # piece directly aiming at king's rank/file
+                score -= 0.08
 
     # ---- Material balance (general) ----
     black_knights = len(board.pieces(chess.KNIGHT, chess.BLACK))
