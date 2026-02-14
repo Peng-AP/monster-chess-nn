@@ -131,7 +131,9 @@ VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
 LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
 VALUE_TARGET = "blend"  # "game_result" or "mcts_value" or "blend"
-BLEND_WEIGHT = 0.7  # weight for mcts_value when VALUE_TARGET="blend"
+BLEND_WEIGHT = 0.7      # weight for mcts_value when VALUE_TARGET="blend"
+BLEND_START = 0.8       # lambda at epoch 1 (trust MCTS more early)
+BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # File paths

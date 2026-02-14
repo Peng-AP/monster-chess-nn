@@ -10,7 +10,8 @@ from torch.utils.data import TensorDataset, DataLoader
 from config import (
     TENSOR_SHAPE, POLICY_SIZE, POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
-    VALUE_TARGET, BLEND_WEIGHT, PROCESSED_DATA_DIR, MODEL_DIR,
+    VALUE_TARGET, BLEND_WEIGHT, BLEND_START, BLEND_END,
+    PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA,
 )
 
@@ -128,6 +129,14 @@ def get_targets(mcts_values, game_results, target_type, blend_weight):
         raise ValueError(f"Unknown target type: {target_type}")
 
 
+def get_blend_lambda(epoch, max_epochs):
+    """Anneal blend weight from BLEND_START to BLEND_END over training."""
+    if max_epochs <= 1:
+        return BLEND_START
+    t = (epoch - 1) / (max_epochs - 1)
+    return BLEND_START + (BLEND_END - BLEND_START) * t
+
+
 def _make_loader(X, y_val, y_pol, batch_size, shuffle=True):
     """Create a DataLoader from numpy arrays.
 
@@ -229,17 +238,16 @@ def main():
     val_idx = splits["val"]
     test_idx = splits["test"]
 
-    value_targets = get_targets(mcts_values, game_results, args.target, BLEND_WEIGHT)
-
-    train_loader = _make_loader(positions[train_idx], value_targets[train_idx],
-                                policies[train_idx], args.batch_size, shuffle=True)
-    val_loader = _make_loader(positions[val_idx], value_targets[val_idx],
-                              policies[val_idx], args.batch_size, shuffle=False)
-    test_loader = _make_loader(positions[test_idx], value_targets[test_idx],
-                               policies[test_idx], args.batch_size, shuffle=False)
+    # For non-blend targets, compute once. For blend, recompute per epoch.
+    if args.target != "blend":
+        value_targets = get_targets(mcts_values, game_results, args.target, BLEND_WEIGHT)
+    else:
+        value_targets = None  # computed per epoch with annealing
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
+    if args.target == "blend":
+        print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
 
     # Build model
     model = build_model().to(device)
@@ -260,6 +268,19 @@ def main():
 
     # Training loop
     for epoch in range(1, args.epochs + 1):
+        # Recompute blend targets with annealed lambda each epoch
+        if args.target == "blend":
+            lam = get_blend_lambda(epoch, args.epochs)
+            epoch_targets = lam * mcts_values + (1 - lam) * game_results
+        else:
+            epoch_targets = value_targets
+            lam = BLEND_WEIGHT
+
+        train_loader = _make_loader(positions[train_idx], epoch_targets[train_idx],
+                                    policies[train_idx], args.batch_size, shuffle=True)
+        val_loader = _make_loader(positions[val_idx], epoch_targets[val_idx],
+                                  policies[val_idx], args.batch_size, shuffle=False)
+
         train_loss, train_v, train_p = _train_epoch(
             model, train_loader, optimizer, device, POLICY_LOSS_WEIGHT,
         )
@@ -269,10 +290,11 @@ def main():
         scheduler.step()
 
         lr = optimizer.param_groups[0]["lr"]
+        lam_str = f"  λ={lam:.2f}" if args.target == "blend" else ""
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (v={val_v:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}")
+              f"lr={lr:.1e}{lam_str}")
 
         # Checkpoint
         if val_loss < best_val_loss:
@@ -288,6 +310,10 @@ def main():
 
     # Load best model for test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+    # Use final epoch targets for test eval
+    final_targets = epoch_targets if args.target == "blend" else value_targets
+    test_loader = _make_loader(positions[test_idx], final_targets[test_idx],
+                               policies[test_idx], args.batch_size, shuffle=False)
     test_loss, test_v, test_p, test_mae = _eval_epoch(
         model, test_loader, device, POLICY_LOSS_WEIGHT,
     )
