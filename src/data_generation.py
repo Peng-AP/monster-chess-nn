@@ -191,7 +191,13 @@ def main():
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
             for future in as_completed(futures):
-                game_id, records, elapsed = future.result()
+                try:
+                    game_id, records, elapsed = future.result(timeout=600)
+                except TimeoutError:
+                    gid = futures[future]
+                    tqdm.write(f"  Game {gid}: TIMED OUT (600s), skipping")
+                    pbar.update(1)
+                    continue
                 save_game(records, args.output_dir, game_id=game_id)
 
                 n_moves = len(records)
@@ -199,12 +205,20 @@ def main():
                 game_result = records[-1]["game_result"] if records else 0
                 results[game_result] = results.get(game_result, 0) + 1
 
-                winner = {1: "White", -1: "Black", 0: "Draw"}.get(game_result, "?")
-                tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} wins, {elapsed:.1f}s")
+                if game_result > 0:
+                    winner = "White"
+                elif game_result < 0:
+                    winner = "Black"
+                else:
+                    winner = "Draw"
+                tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
                 pbar.update(1)
 
+    white = sum(v for k, v in results.items() if k > 0)
+    black = sum(v for k, v in results.items() if k < 0)
+    draws = results.get(0, 0)
     print(f"\nDone! {total_positions} total positions across {args.num_games} games.")
-    print(f"Results — White: {results.get(1,0)}, Black: {results.get(-1,0)}, Draw: {results.get(0,0)}")
+    print(f"Results — White: {white}, Black: {black}, Draw: {draws}")
 
 
 if __name__ == "__main__":
