@@ -97,7 +97,7 @@ def main():
     parser = argparse.ArgumentParser(description="Iterate self-play training loop")
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--games", type=int, default=200)
-    parser.add_argument("--curriculum-games", type=int, default=500,
+    parser.add_argument("--curriculum-games", type=int, default=200,
                         help="Curriculum endgame games per iteration (0 to disable)")
     parser.add_argument("--simulations", type=int, default=200)
     parser.add_argument("--curriculum-simulations", type=int, default=50,
@@ -119,7 +119,7 @@ def main():
             "--simulations", "800",
             "--output-dir", os.path.join(raw_dir, "normal"),
         ], f"Bootstrap: generating {args.games} heuristic normal games")
-        # Generate heuristic curriculum games
+        # Generate heuristic curriculum games (per-tier forced values applied automatically)
         run([
             sys.executable, "data_generation.py",
             "--num-games", str(args.curriculum_games),
@@ -127,8 +127,7 @@ def main():
             "--output-dir", os.path.join(raw_dir, "curriculum_bootstrap"),
             "--curriculum",
             "--scripted-black",
-            "--force-result", "-1",
-        ], f"Bootstrap: generating {args.curriculum_games} curriculum games (forced Black win)")
+        ], f"Bootstrap: generating {args.curriculum_games} curriculum games (tiered forced values)")
         # Process
         run([
             sys.executable, "data_processor.py",
@@ -194,8 +193,7 @@ def main():
                 "--use-model", model_path,
                 "--curriculum",
                 "--scripted-black",
-                "--force-result", "-1",
-            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, forced Black win)")
+            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, tiered values)")
 
             print(f"\n  --- Curriculum Games ---")
             summarize_generation(cur_dir)

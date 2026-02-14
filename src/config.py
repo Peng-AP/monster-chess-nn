@@ -33,10 +33,13 @@ NUM_GAMES = 100
 #   - All barrier pieces must stay far enough that the king (moving 2)
 #     cannot reach them.
 #
+# Forced result per tier: Tier 1-2 = -1.0, Tier 3-5 = -0.7
+# (see CURRICULUM_TIER_RESULTS below)
 CURRICULUM_FENS = [
     # === TIER 1: Forced capture — unavoidable king loss ===
     # Pattern: king in corner, 3 pieces covering all 3 reachable ranks/files
     # from the far side (unreachable in 2 king moves).
+    # White has NO pawns — this is a pure endgame.
     #
     # Ka1: ranks 1,2,3 all covered. Every 2-move path lands on attacked sq.
     "7k/8/8/8/8/7r/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh3
@@ -54,6 +57,7 @@ CURRICULUM_FENS = [
 
     # === TIER 2: One move from forced capture ===
     # Black needs to move one piece into position to complete the net.
+    # Still NO White pawns — pure endgame.
     #
     # Queen needs to come to rank 1 to seal the trap
     "7k/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1, Rh2+Rh3 — Bk plays Qh1 idea
@@ -69,35 +73,41 @@ CURRICULUM_FENS = [
 
     # === TIER 3: Isolation — 2 pieces confine king to edge strip ===
     # King trapped on rank 1, can slide but can't escape upward.
-    # Black's task: bring a 3rd piece to cover the rank.
+    # White has PAWNS — distinguishes from normal opening positions.
     #
-    "4k3/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1 confined to rank 1 by Rh2+Rh3
-    "4k3/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1 confined to rank 1 by Ra2+Ra3
-    "4k3/8/8/8/8/7r/7r/3K4 b - - 0 1",   # Kd1 confined to rank 1 by Rh2+Rh3
-    # King trapped on a-file by file barriers
-    "K7/8/8/8/8/8/1r6/1r2k3 b - - 0 1",   # Ka8 confined to a-file by Rb2+Rb1
+    "4k3/8/8/8/8/7r/7r/K1PP4 b - - 0 1",   # Ka1 confined, White still has pawns
+    "4k3/8/8/8/8/r7/r7/2PPK3 b - - 0 1",   # Ke1 confined, White has pawns
+    "4k3/8/8/8/8/7r/7r/3KP3 b - - 0 1",   # Kd1 confined, has pawn
+    # King trapped on a-file by file barriers, with pawns
+    "K1P5/8/8/8/8/8/1r6/1r2k3 b - - 0 1",   # Ka8 confined, has pawn
     # Protected queen as immovable barrier (queen defended by rook)
-    "4k3/8/8/8/8/r3q3/8/K7 b - - 0 1",   # Qe3 defended by Ra3 — impassable
-    "4k3/8/8/8/8/q3r3/8/7K b - - 0 1",   # Qa3 defended by Re3 — impassable
+    "4k3/8/8/8/8/r3q3/8/K1P5 b - - 0 1",   # Qe3 defended by Ra3, White has pawn
+    "4k3/8/8/8/8/q3r3/8/4PK2 b - - 0 1",   # Qa3 defended by Re3, White has pawn
 
     # === TIER 4: Overwhelming material, king near edge ===
-    # Q+2R — enough to force capture with correct play
-    "4k3/8/8/8/q7/r7/r7/K7 b - - 0 1",
-    "4k3/8/8/8/r7/r7/q7/7K b - - 0 1",
-    "4k3/8/8/8/r7/q7/r7/3K4 b - - 0 1",
+    # White has PAWNS — model must learn that even with pawns, this is lost.
+    # Q+2R
+    "4k3/8/8/8/q7/r7/r7/K1PP4 b - - 0 1",
+    "4k3/8/8/8/r7/r7/q7/2PPK3 b - - 0 1",
+    "4k3/8/8/8/r7/q7/r7/2PKP3 b - - 0 1",
     # 2Q+R
-    "4k3/8/8/8/q7/q7/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/r7/q7/q7/7K b - - 0 1",
-    # 4R vs lone king
-    "4k3/8/8/r7/r7/r7/r7/K7 b - - 0 1",
-    "4k3/8/8/r7/r7/r7/r7/7K b - - 0 1",
-    # 3R vs lone king
-    "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/q7/q7/r7/2PKP3 b - - 0 1",
+    "4k3/8/8/8/r7/q7/q7/3KPP2 b - - 0 1",
+    # 4R vs king+pawns
+    "4k3/8/8/r7/r7/r7/r7/K1PP4 b - - 0 1",
+    "4k3/8/8/r7/r7/r7/r7/2PPK3 b - - 0 1",
+    # 3R vs king+pawns
+    "4k3/8/8/8/r7/r7/r7/2PKP3 b - - 0 1",
 
     # === TIER 5: Mid-game Black advantage ===
-    "4k3/8/8/8/8/q7/q7/4K3 b - - 0 1",   # 2 queens
-    "r3k3/8/8/8/8/r7/q7/4K3 b - - 0 1",   # Q+2R with some distance
+    # White has PAWNS — realistic mid-game where Black has promoted.
+    "4k3/8/8/8/8/q7/q7/2PPK3 b - - 0 1",   # 2 queens vs king+pawns
+    "r3k3/8/8/8/8/r7/q7/3KPP2 b - - 0 1",   # Q+2R vs king+pawns
 ]
+
+# Value label per tier: strong signal for forced wins, softer for advantages
+CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29]  # indices where tiers end
+CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7]  # per tier
 
 # Tensor encoding
 NUM_PIECE_LAYERS = 12

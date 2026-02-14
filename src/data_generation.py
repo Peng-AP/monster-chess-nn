@@ -11,6 +11,7 @@ from config import (
     MCTS_SIMULATIONS, NUM_GAMES,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
     RAW_DATA_DIR, CURRICULUM_FENS,
+    CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES,
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
@@ -54,8 +55,10 @@ def play_game(num_simulations):
         from scripted_endgame import get_scripted_black_move
         scripted_fn = get_scripted_black_move
 
+    chosen_fen_idx = None
     if _curriculum:
-        fen = rng.choice(CURRICULUM_FENS)
+        chosen_fen_idx = rng.randrange(len(CURRICULUM_FENS))
+        fen = CURRICULUM_FENS[chosen_fen_idx]
         game = MonsterChessGame(fen=fen)
     else:
         game = MonsterChessGame()
@@ -99,7 +102,18 @@ def play_game(num_simulations):
 
         move_number += 1
 
-    result = _force_result if _force_result is not None else game.get_result()
+    if _force_result is not None:
+        result = _force_result
+    elif _curriculum and chosen_fen_idx is not None:
+        # Per-tier forced value: look up which tier this FEN belongs to
+        tier = 0
+        for boundary in CURRICULUM_TIER_BOUNDARIES:
+            if chosen_fen_idx < boundary:
+                break
+            tier += 1
+        result = CURRICULUM_TIER_VALUES[tier]
+    else:
+        result = game.get_result()
     for rec in records:
         rec["game_result"] = result
 
