@@ -18,54 +18,85 @@ MAX_GAME_TURNS = 150
 # Data generation
 NUM_GAMES = 100
 
-# Curriculum endgame positions — Black has barriers already formed
-# The key insight: scattered queens DON'T work because White's double-move
-# king escapes. Black needs queens/rooks forming rank/file barriers that
-# restrict the king BEFORE trying to deliver mate.
+# Curriculum endgame positions for Monster Chess.
+#
+# Key strategic principles for Black vs double-move king:
+#   - Need 3 heavy pieces to force capture: 2 rank/file barriers + 1 to
+#     cover the edge. With only 2 barriers the king jumps over in 2 moves.
+#   - 2 heavy pieces can ISOLATE the king to a strip (e.g. rank 1) by
+#     controlling 2 adjacent ranks/files from a distance the king can't
+#     reach in 2 moves.
+#   - A protected queen is untouchable: to capture a defended piece, White
+#     must start adjacent (take + escape). But a queen attacks all adjacent
+#     squares, so White can never end a turn next to it — meaning it can
+#     never START adjacent on the next turn to capture it.
+#   - All barrier pieces must stay far enough that the king (moving 2)
+#     cannot reach them.
+#
 CURRICULUM_FENS = [
-    # === TIER 1: Immediate king capture (Black takes king this move) ===
-    # Rook directly attacks king on same rank/file
-    "4k3/8/8/8/8/8/4r3/4K3 b - - 0 1",   # Re2 takes Ke1
-    "4k3/8/8/8/8/8/8/r3K3 b - - 0 1",   # Ra1 takes Ke1 along rank
-    "4k3/8/8/8/8/8/7r/7K b - - 0 1",   # Rh2 takes Kh1
-    "4k3/8/8/8/8/8/q7/K7 b - - 0 1",   # Qa2 takes Ka1
-    "7k/8/8/8/8/8/6q1/7K b - - 0 1",   # Qg2 takes Kh1
-    "4k3/8/8/8/8/8/3r4/3K4 b - - 0 1",   # Rd2 takes Kd1
-    "4k3/8/8/8/8/8/r7/K7 b - - 0 1",   # Ra2 takes Ka1
-    "7k/8/8/8/8/8/7r/7K b - - 0 1",   # Rh2 takes Kh1
+    # === TIER 1: Forced capture — unavoidable king loss ===
+    # Pattern: king in corner, 3 pieces covering all 3 reachable ranks/files
+    # from the far side (unreachable in 2 king moves).
+    #
+    # Ka1: ranks 1,2,3 all covered. Every 2-move path lands on attacked sq.
+    "7k/8/8/8/8/7r/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh3
+    "4k3/8/8/8/8/7r/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh3 (Bk center)
+    # Kh1: mirror
+    "k7/8/8/8/8/r7/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra3
+    "4k3/8/8/8/8/r7/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra3
+    # Ka8: ranks 8,7,6 covered
+    "K6q/7r/7r/8/8/8/8/7k b - - 0 1",   # Ka8, Qh8+Rh7+Rh6
+    # Kh8: mirror
+    "q6K/r7/r7/8/8/8/8/k7 b - - 0 1",   # Kh8, Qa8+Ra7+Ra6
+    # File-based: king on a-file, pieces controlling files a,b,c from far rank
+    "K7/8/8/8/8/8/8/qrrk4 b - - 0 1",   # Ka8, Qa1+Rb1+Rc1
+    "7K/8/8/8/8/8/8/4krrq b - - 0 1",   # Kh8, Qh1+Rg1+Rf1
 
-    # === TIER 2: One move from capture (barrier + attack setup) ===
-    # Rook on same file, one rank away — needs to advance to capture
-    "4k3/8/8/8/8/4r3/8/4K3 b - - 0 1",   # Re3 can play Re1 or Re2
-    "4k3/8/8/8/8/r7/8/K7 b - - 0 1",   # Ra3 approaches Ka1
-    "7k/8/8/8/8/7r/8/7K b - - 0 1",   # Rh3 approaches Kh1
-    "4k3/8/8/8/8/3q4/8/3K4 b - - 0 1",   # Qd3 approaches Kd1
-    # Two rooks — one blocks escape, other delivers capture
-    "4k3/8/8/8/8/r7/r7/K7 b - - 0 1",   # Ra2 blocks rank 2, Ra3->Ra1
-    "7k/8/8/8/8/7r/7r/7K b - - 0 1",   # Rh2 blocks, Rh3->Rh1
-    "4k3/8/8/8/8/8/1r6/Kr6 b - - 0 1",   # Ra1 attacks king, Rb2 covers
+    # === TIER 2: One move from forced capture ===
+    # Black needs to move one piece into position to complete the net.
+    #
+    # Queen needs to come to rank 1 to seal the trap
+    "7k/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1, Rh2+Rh3 — Bk plays Qh1 idea
+    "k7/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1, Ra2+Ra3 — needs Qa1
+    # Rook needs to tighten from rank 4 to rank 3
+    "7k/8/8/8/7r/8/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh4 — Rh4->Rh3
+    "4k3/8/8/8/r7/8/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra4 — Ra4->Ra3
+    # Two rooks isolate king, queen approaching from distance
+    "4k2q/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1, Rh2+Rh3, Qh8 coming down
+    "q3k3/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1, Ra2+Ra3, Qa8 coming down
+    # Rook on king's file, one rank away — delivers capture next move
+    "4k3/8/8/8/8/8/r7/K6r b - - 0 1",   # Ka1, Rh1 attacks rank 1, Ra2 blocks rank 2
 
-    # === TIER 3: Overwhelming material, king near edge ===
-    # Queen + 2 rooks vs lone king
-    "4k3/8/8/8/q7/r7/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/r7/q7/r7/7K b - - 0 1",
-    "4k3/8/8/q7/8/r7/r7/K7 b - - 0 1",
-    # 2 queens + rook vs lone king
-    "4k3/8/8/8/q7/q7/r7/3K4 b - - 0 1",
-    "4k3/8/8/q7/8/q7/8/r2K4 b - - 0 1",
-    # Queen + 2 rooks, king in corner
+    # === TIER 3: Isolation — 2 pieces confine king to edge strip ===
+    # King trapped on rank 1, can slide but can't escape upward.
+    # Black's task: bring a 3rd piece to cover the rank.
+    #
+    "4k3/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1 confined to rank 1 by Rh2+Rh3
+    "4k3/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1 confined to rank 1 by Ra2+Ra3
+    "4k3/8/8/8/8/7r/7r/3K4 b - - 0 1",   # Kd1 confined to rank 1 by Rh2+Rh3
+    # King trapped on a-file by file barriers
+    "K7/8/8/8/8/8/1r6/1r2k3 b - - 0 1",   # Ka8 confined to a-file by Rb2+Rb1
+    # Protected queen as immovable barrier (queen defended by rook)
+    "4k3/8/8/8/8/r3q3/8/K7 b - - 0 1",   # Qe3 defended by Ra3 — impassable
+    "4k3/8/8/8/8/q3r3/8/7K b - - 0 1",   # Qa3 defended by Re3 — impassable
+
+    # === TIER 4: Overwhelming material, king near edge ===
+    # Q+2R — enough to force capture with correct play
     "4k3/8/8/8/q7/r7/r7/K7 b - - 0 1",
     "4k3/8/8/8/r7/r7/q7/7K b - - 0 1",
-    # 4 rooks vs lone king
-    "4k3/8/8/r7/r7/r7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/r7/q7/r7/3K4 b - - 0 1",
+    # 2Q+R
+    "4k3/8/8/8/q7/q7/r7/3K4 b - - 0 1",
+    "4k3/8/8/8/r7/q7/q7/7K b - - 0 1",
+    # 4R vs lone king
     "4k3/8/8/r7/r7/r7/r7/K7 b - - 0 1",
-    # 3 rooks vs lone king
+    "4k3/8/8/r7/r7/r7/r7/7K b - - 0 1",
+    # 3R vs lone king
     "4k3/8/8/8/r7/r7/r7/3K4 b - - 0 1",
-    "4k3/8/8/8/8/2r5/r4r2/3K4 b - - 0 1",
 
-    # === TIER 4: Mid-game Black advantage ===
-    "4k3/8/8/8/8/q7/q7/4K3 b - - 0 1",
-    "r3k3/8/8/8/8/r7/q7/4K3 b - - 0 1",
+    # === TIER 5: Mid-game Black advantage ===
+    "4k3/8/8/8/8/q7/q7/4K3 b - - 0 1",   # 2 queens
+    "r3k3/8/8/8/8/r7/q7/4K3 b - - 0 1",   # Q+2R with some distance
 ]
 
 # Tensor encoding
