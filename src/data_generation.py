@@ -2,6 +2,7 @@ import argparse
 import chess
 import json
 import os
+import signal
 import time
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
 
@@ -15,6 +16,23 @@ from config import (
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
+
+def _kill_workers(executor):
+    """Force-kill any lingering worker processes after shutdown."""
+    # ProcessPoolExecutor stores workers in _processes (dict of pid -> process)
+    procs = getattr(executor, '_processes', None)
+    if not procs:
+        return
+    for pid, proc in list(procs.items()):
+        if proc.is_alive():
+            try:
+                os.kill(pid, signal.SIGTERM)
+                proc.join(timeout=3)
+                if proc.is_alive():
+                    os.kill(pid, 9)  # SIGKILL
+            except (OSError, ProcessLookupError):
+                pass
+
 
 # Global variables set by each worker process
 _eval_fn = None
@@ -189,11 +207,12 @@ def main():
 
     tasks = [(i, args.simulations) for i in range(args.num_games)]
 
-    with ProcessPoolExecutor(
+    executor = ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
         initargs=(model_path, args.curriculum, args.scripted_black, args.force_result),
-    ) as executor:
+    )
+    try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
@@ -223,10 +242,13 @@ def main():
                     pbar.update(1)
             except TimeoutError:
                 hung = sum(1 for f in futures if not f.done())
-                tqdm.write(f"\n  WARNING: {hung} game(s) timed out after 600s, skipping")
+                tqdm.write(f"\n  WARNING: {hung} game(s) timed out after 600s, killing workers")
                 pbar.update(hung)
-                for f in futures:
-                    f.cancel()
+    finally:
+        # shutdown(wait=False) returns immediately; cancel_futures prevents
+        # queued tasks from starting. Then kill any still-running workers.
+        executor.shutdown(wait=False, cancel_futures=True)
+        _kill_workers(executor)
 
     white = sum(v for k, v in results.items() if k > 0)
     black = sum(v for k, v in results.items() if k < 0)
