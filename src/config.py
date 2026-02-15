@@ -137,7 +137,8 @@ BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Human data
-HUMAN_DATA_WEIGHT = 5     # repeat human game positions N times during processing
+HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processing
+SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

@@ -1,6 +1,7 @@
 import chess
 import json
 import os
+import re
 
 import numpy as np
 from tqdm import tqdm
@@ -10,7 +11,7 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
-    HUMAN_DATA_WEIGHT,
+    HUMAN_DATA_WEIGHT, SLIDING_WINDOW,
 )
 
 # Piece -> layer index
@@ -134,8 +135,51 @@ def mirror_policy(policy_vec):
     return mirrored
 
 
-def load_all_games(raw_dir):
-    """Load all .jsonl game files from the raw data directory (recursive).
+def _filter_dirs(raw_dir, keep_generations):
+    """Decide which subdirectories to include based on sliding window.
+
+    Always includes: human_games/, curriculum_bootstrap/
+    Includes last `keep_generations` nn_gen* pairs (normal + curriculum).
+    Excludes everything else (normal/ heuristic bootstrap, older generations).
+    """
+    subdirs = [d for d in os.listdir(raw_dir)
+               if os.path.isdir(os.path.join(raw_dir, d))]
+
+    # Find all nn_gen numbers
+    gen_pattern = re.compile(r'^nn_gen(\d+)$')
+    gen_numbers = set()
+    for d in subdirs:
+        m = gen_pattern.match(d)
+        if m:
+            gen_numbers.add(int(m.group(1)))
+
+    # Keep the last N
+    kept_gens = sorted(gen_numbers)[-keep_generations:] if gen_numbers else []
+    kept_gen_dirs = set()
+    for g in kept_gens:
+        kept_gen_dirs.add(f"nn_gen{g}")
+        kept_gen_dirs.add(f"nn_gen{g}_curriculum")
+
+    # Always-include dirs
+    always_include = {"human_games", "curriculum_bootstrap"}
+
+    include = []
+    exclude = []
+    for d in sorted(subdirs):
+        if d in always_include or d in kept_gen_dirs:
+            include.append(d)
+        else:
+            exclude.append(d)
+
+    return include, exclude
+
+
+def load_all_games(raw_dir, keep_generations=None):
+    """Load .jsonl game files from the raw data directory.
+
+    When keep_generations is set, applies a sliding window: only the
+    last N NN generations (+ curriculum_bootstrap + human_games) are
+    loaded.  When None, loads everything recursively (backward compat).
 
     Human game data (from human_games/ subdirectory) is repeated
     HUMAN_DATA_WEIGHT times to upweight its influence during training.
@@ -143,13 +187,26 @@ def load_all_games(raw_dir):
     records = []
     human_records = []
     paths = []
-    for dirpath, _dirnames, filenames in os.walk(raw_dir):
-        for fname in sorted(filenames):
-            if fname.endswith(".jsonl"):
-                paths.append(os.path.join(dirpath, fname))
+
+    if keep_generations is not None:
+        include, exclude = _filter_dirs(raw_dir, keep_generations)
+        print(f"Sliding window: keeping last {keep_generations} generations")
+        print(f"  Include: {', '.join(include)}")
+        if exclude:
+            print(f"  Exclude: {', '.join(exclude)}")
+        for d in include:
+            dpath = os.path.join(raw_dir, d)
+            for fname in sorted(os.listdir(dpath)):
+                if fname.endswith(".jsonl"):
+                    paths.append(os.path.join(dpath, fname))
+    else:
+        for dirpath, _dirnames, filenames in os.walk(raw_dir):
+            for fname in sorted(filenames):
+                if fname.endswith(".jsonl"):
+                    paths.append(os.path.join(dirpath, fname))
 
     if not paths:
-        print(f"No .jsonl files found in {raw_dir} (searched recursively)")
+        print(f"No .jsonl files found in {raw_dir}")
         return records
 
     for path in tqdm(paths, desc="Loading games"):
@@ -173,15 +230,18 @@ def load_all_games(raw_dir):
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
-                     augment=True):
+                     augment=True, keep_generations=None):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
     mirrored, doubling the dataset size.  The mirror preserves the
     evaluation (same value / game_result) since Monster Chess is
     file-symmetric.
+
+    When keep_generations is set, only the last N NN generations are
+    loaded (sliding window).
     """
-    records = load_all_games(raw_dir)
+    records = load_all_games(raw_dir, keep_generations=keep_generations)
     if not records:
         print("No data to process.")
         return
@@ -256,6 +316,9 @@ if __name__ == "__main__":
     parser.add_argument("--raw-dir", type=str, default=RAW_DATA_DIR)
     parser.add_argument("--output-dir", type=str, default=PROCESSED_DATA_DIR)
     parser.add_argument("--no-augment", action="store_true", help="Disable mirror augmentation")
+    parser.add_argument("--keep-generations", type=int, default=None,
+                        help=f"Sliding window: keep last N generations (default: all)")
     args = parser.parse_args()
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
-                     augment=not args.no_augment)
+                     augment=not args.no_augment,
+                     keep_generations=args.keep_generations)

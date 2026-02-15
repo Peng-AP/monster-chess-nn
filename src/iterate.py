@@ -103,7 +103,12 @@ def main():
     parser.add_argument("--curriculum-simulations", type=int, default=50,
                         help="MCTS simulations for curriculum games (lower = faster)")
     parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--keep-generations", type=int, default=None,
+                        help="Sliding window: keep last N generations (default: from config)")
     args = parser.parse_args()
+
+    from config import SLIDING_WINDOW
+    keep_gens = args.keep_generations if args.keep_generations is not None else SLIDING_WINDOW
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     processed_dir = os.path.join(PROJECT_ROOT, "data", "processed")
@@ -128,7 +133,7 @@ def main():
             "--curriculum",
             "--scripted-black",
         ], f"Bootstrap: generating {args.curriculum_games} curriculum games (tiered forced values)")
-        # Process
+        # Process (no sliding window for bootstrap — only 2 dirs exist)
         run([
             sys.executable, "data_processor.py",
             "--raw-dir", raw_dir,
@@ -155,6 +160,7 @@ def main():
     print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum")
     print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum")
     print(f"  Epochs:      {args.epochs}")
+    print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
     print(f"  Starting at: generation {start_gen}")
     print(f"  Existing:    {total_games_existing} games, {total_pos_existing} positions")
     print(f"  Model:       {model_path}")
@@ -199,13 +205,14 @@ def main():
             summarize_generation(cur_dir)
             t_gen += t_cur
 
-        # Step 2: Reprocess all data
+        # Step 2: Reprocess data (sliding window)
         total_games, total_pos = count_data(raw_dir)
         t_proc = run([
             sys.executable, "data_processor.py",
             "--raw-dir", raw_dir,
             "--output-dir", processed_dir,
-        ], f"[{i+1}/{args.iterations}] Reprocessing all data ({total_games} games, {total_pos} positions)")
+            "--keep-generations", str(keep_gens),
+        ], f"[{i+1}/{args.iterations}] Reprocessing data (window={keep_gens}, total on disk: {total_games} games)")
 
         # Step 3: Retrain
         t_train = run([
