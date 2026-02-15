@@ -9,7 +9,25 @@
       "Bash(pip index:*)",
       "Bash(pip install:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh repo view:*)",
+      "Bash(git clone:*)",
+      "Bash(python data_generation.py:*)",
+      "Bash(where:*)",
+      "Bash(ls:*)",
+      "Bash(conda info:*)",
+      "Bash(PYTHON=\"/c/Users/perfp/AppData/Local/Programs/Python/Python313/python.exe\")",
+      "Bash($PYTHON --version)",
+      "Bash($PYTHON -c \"import chess, torch; print\\(''chess OK''\\); print\\(f''torch {torch.__version__}, CUDA: {torch.cuda.is_available\\(\\)}''\\)\")",
+      "Bash($PYTHON data_generation.py:*)",
+      "Bash($PYTHON data_processor.py --raw-dir ../data/raw --output-dir ../data/raw/test_processed)",
+      "Bash($PYTHON train.py --data-dir ../data/raw/test_processed --model-dir ../data/raw/test_model --epochs 3 --target blend)",
+      "Bash($PYTHON play.py --heuristic --sims 50)",
+      "Bash(/c/Users/perfp/AppData/Local/Programs/Python/Python313/python.exe:*)",
+      "Bash(python3:*)",
+      "Bash(git push:*)"
     ]
   }
 }
