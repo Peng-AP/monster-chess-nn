@@ -10,6 +10,7 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
+    HUMAN_DATA_WEIGHT,
 )
 
 # Piece -> layer index
@@ -134,8 +135,13 @@ def mirror_policy(policy_vec):
 
 
 def load_all_games(raw_dir):
-    """Load all .jsonl game files from the raw data directory (recursive)."""
+    """Load all .jsonl game files from the raw data directory (recursive).
+
+    Human game data (from human_games/ subdirectory) is repeated
+    HUMAN_DATA_WEIGHT times to upweight its influence during training.
+    """
     records = []
+    human_records = []
     paths = []
     for dirpath, _dirnames, filenames in os.walk(raw_dir):
         for fname in sorted(filenames):
@@ -147,10 +153,22 @@ def load_all_games(raw_dir):
         return records
 
     for path in tqdm(paths, desc="Loading games"):
+        is_human = "human_games" in path
         with open(path, "r") as f:
             for line in f:
                 rec = json.loads(line.strip())
-                records.append(rec)
+                if is_human:
+                    human_records.append(rec)
+                else:
+                    records.append(rec)
+
+    if human_records:
+        n_human = len(human_records)
+        repeated = human_records * HUMAN_DATA_WEIGHT
+        records.extend(repeated)
+        print(f"  Human data: {n_human} positions x{HUMAN_DATA_WEIGHT} = {len(repeated)} "
+              f"(of {len(records)} total)")
+
     return records
 
 

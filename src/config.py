@@ -136,6 +136,9 @@ BLEND_START = 0.8       # lambda at epoch 1 (trust MCTS more early)
 BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
+# Human data
+HUMAN_DATA_WEIGHT = 5     # repeat human game positions N times during processing
+
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
