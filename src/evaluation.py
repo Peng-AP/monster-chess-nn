@@ -1,6 +1,14 @@
 import chess
 import numpy as np
 
+from config import (
+    WHITE_PAWN_VALUE, PAWN_ELIMINATION_BONUS, BLOCKED_PAWN_PENALTY,
+    KING_DISPLACEMENT_WEIGHT, KING_MOBILITY_WEIGHT, BARRIER_RANK_FILE_WEIGHT,
+)
+
+_KING_DELTAS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
+                (0, 1), (1, -1), (1, 0), (1, 1)]
+
 
 def _white_can_capture_king(board):
     """Check if White can capture Black's king in one double-move.
@@ -89,21 +97,33 @@ def evaluate(game_state):
     # ---- White's chances ----
 
     white_pawns = len(board.pieces(chess.PAWN, chess.WHITE))
-    score += white_pawns * 0.10
+    score += white_pawns * WHITE_PAWN_VALUE
 
     # White pawn advancement with passed pawn bonus
+    blocked_pawns = 0
     for sq in board.pieces(chess.PAWN, chess.WHITE):
         rank = chess.square_rank(sq)
+        file = chess.square_file(sq)
         score += (rank - 1) * 0.05
         if _is_passed_pawn(board, sq, chess.WHITE):
             # Exponential bonus for passed pawns (Stockfish pattern)
             passed_bonus = 0.02 * (2 ** max(0, rank - 2))
             score += passed_bonus
             # Extra if White king can support the pawn advance
-            pawn_file = chess.square_file(sq)
-            support_dist = max(abs(wk_rank - rank), abs(wk_file - pawn_file))
+            support_dist = max(abs(wk_rank - rank), abs(wk_file - file))
             if support_dist <= 2:
                 score += passed_bonus * 0.5
+        # Check if pawn is blocked/immobilized
+        if rank + 1 <= 7:
+            advance_sq = chess.square(file, rank + 1)
+            occupant = board.piece_at(advance_sq)
+            if occupant is not None:
+                blocked_pawns += 1
+            elif (board.is_attacked_by(chess.BLACK, advance_sq)
+                  and not board.is_attacked_by(chess.WHITE, advance_sq)):
+                blocked_pawns += 1
+
+    score -= blocked_pawns * BLOCKED_PAWN_PENALTY
 
     # White queens (promoted pawns)
     white_queens = len(board.pieces(chess.QUEEN, chess.WHITE))
@@ -145,33 +165,109 @@ def evaluate(game_state):
     if black_queens > 1:
         score -= (black_queens - 1) * 0.35
 
-    # ---- King confinement (helps Black's mating pattern) ----
-    if black_heavy >= 2:
-        # Edge proximity bonus — king on edge is easier to mate
-        rank_edge = min(wk_rank, 7 - wk_rank)
-        file_edge = min(wk_file, 7 - wk_file)
-        edge_dist = min(rank_edge, file_edge)
-        score -= (3 - edge_dist) * 0.10
+    # Pawn elimination bonus: fewer White pawns = Black is winning
+    eliminated_pawns = 4 - white_pawns
+    score -= eliminated_pawns * PAWN_ELIMINATION_BONUS
 
-        # Adjacent squares attacked by Black — measures king confinement
-        adjacent_attacked = 0
-        for dr in [-1, 0, 1]:
-            for df in [-1, 0, 1]:
-                if dr == 0 and df == 0:
-                    continue
-                r, f = wk_rank + dr, wk_file + df
-                if 0 <= r <= 7 and 0 <= f <= 7:
-                    sq = chess.square(f, r)
-                    if board.is_attacked_by(chess.BLACK, sq):
-                        adjacent_attacked += 1
-        score -= adjacent_attacked * 0.06
+    # ---- King confinement & sub-goals ----
 
-        # Bonus for heavy pieces controlling same rank/file as king
-        for sq in board.pieces(chess.QUEEN, chess.BLACK) | board.pieces(chess.ROOK, chess.BLACK):
-            sq_rank = chess.square_rank(sq)
-            sq_file = chess.square_file(sq)
-            if sq_rank == wk_rank or sq_file == wk_file:
-                score -= 0.08
+    # Heavy piece scaling factor (always active, stronger with more pieces)
+    heavy_scale = min(black_heavy + 1, 4) / 4.0  # 0.25 (0 heavy) to 1.0 (3+)
+
+    # King displacement from center (Manhattan distance, normalized)
+    rank_from_center = abs(wk_rank - 3.5)   # 0.5 to 3.5
+    file_from_center = abs(wk_file - 3.5)
+    displacement = (rank_from_center + file_from_center) / 7.0  # 0 to 1
+    score -= displacement * heavy_scale * KING_DISPLACEMENT_WEIGHT
+
+    # Edge proximity — king on edge is easier to confine
+    rank_edge = min(wk_rank, 7 - wk_rank)
+    file_edge = min(wk_file, 7 - wk_file)
+    edge_dist = min(rank_edge, file_edge)
+    score -= (3 - edge_dist) * 0.10 * heavy_scale
+
+    # Adjacent squares attacked by Black — measures immediate confinement
+    adjacent_attacked = 0
+    for dr, df in _KING_DELTAS:
+        r, f = wk_rank + dr, wk_file + df
+        if 0 <= r <= 7 and 0 <= f <= 7:
+            sq = chess.square(f, r)
+            if board.is_attacked_by(chess.BLACK, sq):
+                adjacent_attacked += 1
+    score -= adjacent_attacked * 0.06 * heavy_scale
+
+    # Heavy pieces controlling same rank/file as king
+    for sq in board.pieces(chess.QUEEN, chess.BLACK) | board.pieces(chess.ROOK, chess.BLACK):
+        sq_rank = chess.square_rank(sq)
+        sq_file = chess.square_file(sq)
+        if sq_rank == wk_rank or sq_file == wk_file:
+            score -= 0.08
+
+    # King mobility: 2-move reachable safe squares (king-only double moves)
+    if black_heavy >= 1:
+        reachable = set()
+        for d1r, d1f in _KING_DELTAS:
+            r1, f1 = wk_rank + d1r, wk_file + d1f
+            if not (0 <= r1 <= 7 and 0 <= f1 <= 7):
+                continue
+            sq1 = chess.square(f1, r1)
+            p1 = board.piece_at(sq1)
+            # Can't move through own non-king pieces (pawns block)
+            if p1 and p1.color == chess.WHITE and p1.piece_type != chess.KING:
+                continue
+            for d2r, d2f in _KING_DELTAS:
+                r2, f2 = r1 + d2r, f1 + d2f
+                if 0 <= r2 <= 7 and 0 <= f2 <= 7:
+                    sq2 = chess.square(f2, r2)
+                    if not board.is_attacked_by(chess.BLACK, sq2):
+                        reachable.add(sq2)
+        mobility_loss = max(0, 24 - len(reachable))
+        score -= mobility_loss * KING_MOBILITY_WEIGHT
+
+    # Barrier quality: consecutive ranks/files controlled by Black heavy pieces
+    # between the king and the nearest edge, at safe distance from king
+    rank_to_edge = min(wk_rank, 7 - wk_rank)
+    file_to_edge = min(wk_file, 7 - wk_file)
+    heavy_sqs = (board.pieces(chess.ROOK, chess.BLACK)
+                 | board.pieces(chess.QUEEN, chess.BLACK))
+
+    barriers = 0
+    if rank_to_edge <= file_to_edge:
+        # Push toward nearest rank edge
+        step = -1 if wk_rank <= 3 else 1
+        r = wk_rank + step
+        while 0 <= r <= 7:
+            has_barrier = False
+            for sq in heavy_sqs:
+                if chess.square_rank(sq) == r:
+                    dist = max(abs(r - wk_rank), abs(chess.square_file(sq) - wk_file))
+                    if dist >= 3:
+                        has_barrier = True
+                        break
+            if has_barrier:
+                barriers += 1
+            else:
+                break  # gap in barrier chain
+            r += step
+    else:
+        # Push toward nearest file edge
+        step = -1 if wk_file <= 3 else 1
+        f = wk_file + step
+        while 0 <= f <= 7:
+            has_barrier = False
+            for sq in heavy_sqs:
+                if chess.square_file(sq) == f:
+                    dist = max(abs(chess.square_rank(sq) - wk_rank), abs(f - wk_file))
+                    if dist >= 3:
+                        has_barrier = True
+                        break
+            if has_barrier:
+                barriers += 1
+            else:
+                break
+            f += step
+
+    score -= barriers * BARRIER_RANK_FILE_WEIGHT
 
     # ---- Material balance (general) ----
     black_knights = len(board.pieces(chess.KNIGHT, chess.BLACK))

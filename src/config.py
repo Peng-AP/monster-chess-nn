@@ -141,6 +141,14 @@ HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processin
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 
+# Sub-goal reward shaping (Black strategic progress in heuristic eval)
+WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)
+PAWN_ELIMINATION_BONUS = 0.10       # bonus per eliminated White pawn (4 - count)
+BLOCKED_PAWN_PENALTY = 0.08         # penalty per White pawn that can't advance
+KING_DISPLACEMENT_WEIGHT = 0.06     # reward per unit of king displacement from center
+KING_MOBILITY_WEIGHT = 0.01         # penalty per restricted square (2-move reachability)
+BARRIER_RANK_FILE_WEIGHT = 0.12     # bonus per barrier rank/file between king and edge
+
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
