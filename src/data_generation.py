@@ -9,7 +9,7 @@ from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
 from config import (
-    MCTS_SIMULATIONS, NUM_GAMES,
+    MCTS_SIMULATIONS, NUM_GAMES, OPPONENT_SIMULATIONS,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
     RAW_DATA_DIR, CURRICULUM_FENS,
     CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES,
@@ -36,20 +36,30 @@ def _kill_workers(executor):
 
 # Global variables set by each worker process
 _eval_fn = None
+_opponent_eval_fn = None
 _curriculum = False
 _scripted_black = False
 _force_result = None
+_train_side = "both"
+_opponent_sims = OPPONENT_SIMULATIONS
 
 
-def _init_worker(model_path, curriculum, scripted_black, force_result):
-    """Initializer for worker processes — loads model once per worker."""
-    global _eval_fn, _curriculum, _scripted_black, _force_result
+def _init_worker(model_path, opponent_model_path, curriculum, scripted_black,
+                 force_result, train_side, opponent_sims):
+    """Initializer for worker processes — loads model(s) once per worker."""
+    global _eval_fn, _opponent_eval_fn, _curriculum, _scripted_black
+    global _force_result, _train_side, _opponent_sims
     _curriculum = curriculum
     _scripted_black = scripted_black
     _force_result = force_result
+    _train_side = train_side
+    _opponent_sims = opponent_sims
     if model_path:
         from evaluation import NNEvaluator
         _eval_fn = NNEvaluator(model_path)
+    if opponent_model_path:
+        from evaluation import NNEvaluator
+        _opponent_eval_fn = NNEvaluator(opponent_model_path)
 
 
 def play_game(num_simulations):
@@ -59,12 +69,32 @@ def play_game(num_simulations):
     Uses curriculum starting positions if _curriculum is set.
     Uses scripted Black play if _scripted_black is set (curriculum only).
 
+    When _train_side is "white" or "black", uses separate MCTS engines
+    for each side (frozen-opponent alternating training).
+
     Returns a list of records, one per position:
         {fen, mcts_value, policy, current_player, game_result}
     """
     import random as rng
 
-    engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
+    # Build engine(s) based on training mode
+    if _train_side == "both":
+        # Single engine for both sides (backward-compatible)
+        engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
+        white_engine = engine
+        black_engine = engine
+    else:
+        # Dual engines: training side gets full sims + main model,
+        # opponent side gets fewer sims + frozen/heuristic model
+        train_engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
+        opponent_engine = MCTS(num_simulations=_opponent_sims,
+                               eval_fn=_opponent_eval_fn)
+        if _train_side == "white":
+            white_engine = train_engine
+            black_engine = opponent_engine
+        else:  # "black"
+            white_engine = opponent_engine
+            black_engine = train_engine
 
     scripted_fn = None
     if _scripted_black:
@@ -110,6 +140,8 @@ def play_game(num_simulations):
                 })
             game.apply_action(action)
         else:
+            # Pick the engine for the current side
+            engine = white_engine if is_white else black_engine
             temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
             action, action_probs, root_value = engine.get_best_action(
                 game, temperature=temperature,
@@ -179,16 +211,31 @@ def main():
                         help="Use scripted endgame play for Black (curriculum only)")
     parser.add_argument("--force-result", type=int, default=None, choices=[-1, 0, 1],
                         help="Override game result for all games (1=White, -1=Black, 0=Draw)")
+    parser.add_argument("--train-side", type=str, default="both",
+                        choices=["white", "black", "both"],
+                        help="Which side is being trained (frozen-opponent mode)")
+    parser.add_argument("--opponent-model", type=str, default=None,
+                        help="Path to frozen opponent model (omit = heuristic)")
+    parser.add_argument("--opponent-sims", type=int, default=OPPONENT_SIMULATIONS,
+                        help=f"MCTS simulations for frozen opponent (default: {OPPONENT_SIMULATIONS})")
     args = parser.parse_args()
 
     workers = args.workers or os.cpu_count()
     model_path = args.use_model
+    opponent_model_path = args.opponent_model
 
-    # With NN evaluation, use fewer workers (GPU memory / TF overhead)
-    if model_path:
+    # With NN evaluation, use fewer workers (GPU memory)
+    if model_path or opponent_model_path:
         workers = min(workers, 4)
-        print(f"Using NN evaluator: {model_path}")
+        if model_path:
+            print(f"Using NN evaluator: {model_path}")
+        if opponent_model_path:
+            print(f"Using opponent NN evaluator: {opponent_model_path}")
         print(f"(Limiting to {workers} workers for NN memory)")
+
+    if args.train_side != "both":
+        print(f"Alternating training: {args.train_side} side is training "
+              f"({args.simulations} sims), opponent gets {args.opponent_sims} sims")
 
     if args.curriculum:
         print("Using curriculum endgame starting positions")
@@ -210,7 +257,9 @@ def main():
     executor = ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(model_path, args.curriculum, args.scripted_black, args.force_result),
+        initargs=(model_path, opponent_model_path, args.curriculum,
+                  args.scripted_black, args.force_result,
+                  args.train_side, args.opponent_sims),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}

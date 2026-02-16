@@ -1,5 +1,9 @@
 """Continuous self-play iteration loop.
 
+Supports two modes:
+  - Standard: both sides use the same model (original behavior)
+  - Alternating: frozen-opponent training, alternates which side trains
+
 Repeats: generate NN-guided games -> reprocess all data -> retrain model.
 Each generation is saved to data/raw/nn_genN/ so nothing is overwritten.
 """
@@ -7,6 +11,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -105,15 +110,21 @@ def main():
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--keep-generations", type=int, default=None,
                         help="Sliding window: keep last N generations (default: from config)")
+    parser.add_argument("--alternating", action="store_true",
+                        help="Use frozen-opponent alternating training")
+    parser.add_argument("--opponent-sims", type=int, default=None,
+                        help="MCTS sims for frozen opponent (default: from config)")
     args = parser.parse_args()
 
-    from config import SLIDING_WINDOW
+    from config import SLIDING_WINDOW, OPPONENT_SIMULATIONS
     keep_gens = args.keep_generations if args.keep_generations is not None else SLIDING_WINDOW
+    opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     processed_dir = os.path.join(PROJECT_ROOT, "data", "processed")
     model_dir = os.path.join(PROJECT_ROOT, "models")
     model_path = os.path.join(model_dir, "best_value_net.pt")
+    frozen_path = os.path.join(model_dir, "frozen_opponent.pt")
 
     if not os.path.exists(model_path):
         print("No model found — running initial bootstrap (heuristic games + curriculum + train)...\n")
@@ -142,7 +153,7 @@ def main():
         # Train initial model
         run([
             sys.executable, "train.py",
-            "--target", "blend",
+            "--target", "mcts_value",
             "--epochs", str(args.epochs),
             "--data-dir", processed_dir,
             "--model-dir", model_dir,
@@ -153,12 +164,16 @@ def main():
     total_games_existing, total_pos_existing = count_data(raw_dir)
     loop_start = time.time()
 
+    mode_str = "ALTERNATING" if args.alternating else "STANDARD"
+
     print(f"\n{'#'*60}")
-    print(f"  SELF-PLAY ITERATION LOOP")
+    print(f"  SELF-PLAY ITERATION LOOP ({mode_str})")
     print(f"{'#'*60}")
     print(f"  Iterations:  {args.iterations}")
     print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum")
     print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum")
+    if args.alternating:
+        print(f"  Opponent:    {opponent_sims} sims (frozen)")
     print(f"  Epochs:      {args.epochs}")
     print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
     print(f"  Starting at: generation {start_gen}")
@@ -171,18 +186,38 @@ def main():
         gen_dir = os.path.join(raw_dir, f"nn_gen{gen}")
         iter_start = time.time()
 
+        # Determine training side for alternating mode
+        if args.alternating:
+            # Odd iterations train Black, even train White
+            train_side = "black" if (i % 2 == 0) else "white"
+            side_label = train_side.upper()
+        else:
+            train_side = "both"
+            side_label = "BOTH"
+
         print(f"\n{'#'*60}")
-        print(f"  ITERATION {i+1}/{args.iterations}  —  Generation {gen}")
+        print(f"  ITERATION {i+1}/{args.iterations}  —  Generation {gen}  —  Training: {side_label}")
         print(f"{'#'*60}")
 
-        # Step 1a: Generate normal games with current model
-        t_gen = run([
+        # Step 1a: Generate normal games
+        gen_cmd = [
             sys.executable, "data_generation.py",
             "--num-games", str(args.games),
             "--simulations", str(args.simulations),
             "--output-dir", gen_dir,
             "--use-model", model_path,
-        ], f"[{i+1}/{args.iterations}] Generating {args.games} normal games (gen {gen})")
+        ]
+
+        if args.alternating:
+            gen_cmd.extend(["--train-side", train_side])
+            gen_cmd.extend(["--opponent-sims", str(opponent_sims)])
+            # Use frozen model as opponent if it exists
+            if os.path.exists(frozen_path):
+                gen_cmd.extend(["--opponent-model", frozen_path])
+
+        t_gen = run(gen_cmd,
+            f"[{i+1}/{args.iterations}] Generating {args.games} normal games "
+            f"(gen {gen}, training {side_label})")
 
         print(f"\n  --- Normal Games ---")
         summarize_generation(gen_dir)
@@ -217,18 +252,23 @@ def main():
         # Step 3: Retrain
         t_train = run([
             sys.executable, "train.py",
-            "--target", "blend",
+            "--target", "mcts_value",
             "--epochs", str(args.epochs),
             "--data-dir", processed_dir,
             "--model-dir", model_dir,
         ], f"[{i+1}/{args.iterations}] Retraining model")
+
+        # Step 4: Freeze the current model for next iteration's opponent
+        if args.alternating:
+            shutil.copy2(model_path, frozen_path)
+            print(f"\n  Frozen model saved to {frozen_path}")
 
         iter_elapsed = time.time() - iter_start
         total_elapsed = time.time() - loop_start
         remaining = (args.iterations - i - 1) * iter_elapsed
 
         print(f"\n{'─'*60}")
-        print(f"  Iteration {i+1}/{args.iterations} complete")
+        print(f"  Iteration {i+1}/{args.iterations} complete (trained {side_label})")
         print(f"  Time:  generate {format_time(t_gen)}  |  process {format_time(t_proc)}  |  train {format_time(t_train)}  |  total {format_time(iter_elapsed)}")
         print(f"  Clock: {format_time(total_elapsed)} elapsed  |  ~{format_time(remaining)} remaining")
         print(f"{'─'*60}")
