@@ -1,0 +1,108 @@
+{
+  "stage": 0,
+  "description": "Baseline snapshot before improvement plan",
+  "timestamp": "2026-02-18T17:42:12",
+  "model": {
+    "path": "C:\\Users\\xaep\\Desktop\\monster-chess-nn\\models\\best_value_net.pt",
+    "sha256": "e986f28de765c90e03c5bd98d4e13c2e6c2df72985fbe8bf77cb060412e10b8a",
+    "total_params": 1235781
+  },
+  "data": {
+    "processed_dir": "C:\\Users\\xaep\\Desktop\\monster-chess-nn\\data\\processed",
+    "total_positions": 26537,
+    "train_size": 21229,
+    "val_size": 2653,
+    "test_size": 2655,
+    "value_distribution": {
+      "mean": -0.0157,
+      "std": 0.3437,
+      "min": -0.9975,
+      "max": 1.0,
+      "pct_positive": 0.4765,
+      "pct_negative": 0.5226,
+      "pct_zero": 0.0009
+    }
+  },
+  "metrics": {
+    "val": {
+      "split": "val",
+      "n_positions": 2653,
+      "total_loss": 0.699414,
+      "power_loss_2.5": 0.699414,
+      "true_mse": 0.675412,
+      "mae": 0.709026,
+      "policy_ce": 0.0,
+      "sign_accuracy": 0.5202,
+      "pred_mean": 0.5798,
+      "pred_std": 0.5303,
+      "target_mean": -0.0293,
+      "target_std": 0.3377
+    },
+    "test": {
+      "split": "test",
+      "n_positions": 2655,
+      "total_loss": 0.687745,
+      "power_loss_2.5": 0.687745,
+      "true_mse": 0.669094,
+      "mae": 0.711941,
+      "policy_ce": 0.0,
+      "sign_accuracy": 0.5341,
+      "pred_mean": 0.6053,
+      "pred_std": 0.5187,
+      "target_mean": -0.0132,
+      "target_std": 0.339
+    }
+  },
+  "self_play_results": {
+    "curriculum": {
+      "games": 200,
+      "positions": 5473,
+      "white_wins": 199,
+      "black_wins": 1,
+      "draws": 0,
+      "avg_length": 27.4
+    },
+    "human_games": {
+      "games": 7,
+      "positions": 136,
+      "white_wins": 1,
+      "black_wins": 6,
+      "draws": 0,
+      "avg_length": 19.4
+    },
+    "normal": {
+      "games": 2,
+      "positions": 18,
+      "white_wins": 2,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 9.0
+    }
+  },
+  "self_play_totals": {
+    "games": 209,
+    "white_wins": 202,
+    "black_wins": 7,
+    "draws": 0
+  },
+  "config": {
+    "MCTS_SIMULATIONS": 800,
+    "SLIDING_WINDOW": 2,
+    "HUMAN_DATA_WEIGHT": 40,
+    "OPPONENT_SIMULATIONS": 200,
+    "C_PUCT": 1.5,
+    "DIRICHLET_ALPHA": 0.3,
+    "DIRICHLET_EPSILON": 0.25,
+    "EXPLORATION_CONSTANT": 1.41,
+    "MAX_GAME_TURNS": 150,
+    "VALUE_TARGET": "mcts_value",
+    "BLEND_WEIGHT": 0.7,
+    "VALUE_LOSS_EXPONENT": 2.5,
+    "LR_GAMMA": 0.95,
+    "LEARNING_RATE": 0.002,
+    "EPOCHS": 50,
+    "BATCH_SIZE": 256,
+    "POLICY_SIZE": 4096,
+    "POLICY_LOSS_WEIGHT": 1.0
+  }
+}

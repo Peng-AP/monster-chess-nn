@@ -595,7 +595,14 @@ H) Evaluation diversity: play against random opponents, Stockfish adapter,
   ipywidgets        (notebook play interface)
   (TF 2.20 installed but CPU-only, unused)
 
-12. CHANGELOG
+12. IMPROVEMENT WORKFLOW
+================================================================================
+
+Each improvement stage (see IMPROVEMENT_PLAN.md and IMPROVEMENT_EXECUTION_ORDER.md)
+is a separate git commit and push. Commit format: "Stage N: <short description>".
+Gates between stages must pass before proceeding. See those files for full details.
+
+13. CHANGELOG
 ================================================================================
 
 --- 2026-02-15: Frozen-opponent alternating training ---
@@ -688,6 +695,100 @@ EVALUATION RESULTS (sample positions):
   Tier 4 (Q+2R vs K+P):   -0.95 (overwhelming)
   No White pawns:          -0.95 (pawnless White = dead)
   Mid-game (1 blocked):    -0.11 (blocked pawn slightly hurts White)
+
+--- 2026-02-18: Analysis — Why the model still isn't learning well ---
+
+DIAGNOSIS (from thorough codebase review + external research):
+
+  The model has gone through 10 generations of self-play but still doesn't play
+  well. Multiple interacting issues have been identified:
+
+  1. NETWORK TOO SMALL:
+     The current DualHeadNet has only 4 residual blocks (64→64→128→128) with
+     ~200K parameters. Leela Chess Zero's smallest useful nets are 10x128
+     (~1.5M params). Even alpha-zero-general projects for simpler games use
+     4-8 blocks with 64-256 filters. The network lacks capacity to learn
+     complex positional patterns, especially for Monster Chess where White's
+     double-move creates non-local spatial relationships.
+
+  2. NO GRADIENT CLIPPING:
+     train.py has no gradient clipping. Rare large gradients (from outlier
+     positions in curriculum data with forced values of -1.0 vs normal games
+     near 0.0) can cause catastrophic weight updates. This is a known
+     stability issue in small-scale AlphaZero training.
+
+  3. SLIDING WINDOW TOO SMALL (2 generations):
+     SLIDING_WINDOW=2 means the model is retrained from scratch each iteration
+     on only the last 2 generations + curriculum_bootstrap + human_games.
+     This causes catastrophic forgetting — the network loses endgame knowledge
+     learned in earlier generations. Leela keeps 500K-2M positions; even
+     small-scale projects use 4-6 generation windows.
+
+  4. NO NETWORK GATING:
+     Every trained network immediately replaces the previous best, even if
+     it's worse. Without evaluation games between old and new networks, bad
+     training runs cascade into a death spiral: bad model → bad self-play
+     data → worse model. Leela requires 55% win rate to accept a new net.
+
+  5. NO WEIGHT DECAY:
+     Adam optimizer has no weight_decay parameter. With ~250K training
+     positions and a network of ~200K params, regularization is critical
+     to prevent overfitting. AlphaZero uses weight decay of 1e-4.
+
+  6. NO FPU (First Play Urgency) REDUCTION:
+     In mcts.py, unvisited nodes have Q=0. This means MCTS doesn't trust the
+     policy head's move ordering — it explores uniformly among unvisited nodes.
+     Leela uses FPU reduction (Q = parent_Q - 0.4 for unvisited children) to
+     make MCTS trust the policy more, focusing search on promising moves.
+
+  7. POLICY HEAD BOTTLENECK:
+     The policy head reduces 128 channels to 2 via 1x1 conv, then flattens
+     to 128 features, then projects to 4096. Only 2 channels of spatial
+     information reach the policy FC layer — very little capacity for the
+     policy to reason about piece relationships.
+
+  8. VALUE HEAD GRADIENT VANISHING:
+     Tanh activation saturates near ±1, producing near-zero gradients for
+     decisive positions. Combined with power-law loss (exponent 2.5), this
+     means the network learns poorly from clear wins/losses. A WDL (Win/Draw/
+     Loss) 3-way softmax head (as Leela uses) would provide much better
+     gradient signal.
+
+  9. NO AUXILIARY TRAINING TARGETS:
+     KataGo achieved 50x compute efficiency over AlphaZero by adding auxiliary
+     heads (ownership, score distribution, moves-to-end). These force the
+     shared backbone to learn richer spatial representations even when the
+     main value/policy signal is weak. Monster Chess badly needs this because
+     game outcomes are uninformative (White almost always wins).
+
+  10. ADAM vs SGD:
+      AlphaZero and Leela both use SGD with momentum (0.9), not Adam. Adam's
+      adaptive learning rates can interfere with batch normalization and tend
+      to converge to sharper minima that generalize worse. For self-play RL,
+      SGD + momentum + step-wise LR drops is strongly preferred.
+
+  11. RETRAINING FROM SCRATCH EACH ITERATION:
+      iterate.py retrains from random initialization every generation. This
+      discards all learned weights and relies purely on the data. Fine-tuning
+      from the previous model (with a brief LR warmup) would be much more
+      stable and efficient, preserving knowledge across generations.
+
+  12. SINGLE NETWORK FOR BOTH SIDES:
+      White and Black have fundamentally different strategies and action
+      spaces. A shared backbone must learn two different evaluation functions
+      simultaneously, and when White dominates training data, the backbone
+      tilts toward White's perspective, actively hurting Black's learning.
+
+EXTERNAL REFERENCES:
+  - Leela Chess Zero: 10-20 res blocks, 128-256 filters, WDL head, SE blocks,
+    FPU reduction, SGD+momentum, step-wise LR drops, network gating
+  - KataGo: auxiliary training targets (ownership, score distribution, moves-
+    to-end), playout cap randomization, 50x more efficient than AlphaZero
+  - Fairy-Stockfish: NNUE for variants via HalfKAv2 features, variant config
+    system (variants.ini), data generation via variant-nnue-tools
+  - alpha-zero-general: 4-8 res blocks for small games, SE blocks for Elo gain
+  - AlphaStar: opponent pool (3-5 frozen snapshots) prevents co-adaptation
+    in asymmetric games
 
 ================================================================================
 END OF CONTEXT
