@@ -222,7 +222,13 @@ def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_h
     return include, exclude, summary
 
 
-def load_all_games(raw_dir, keep_generations=None, position_budget=None, include_human=True):
+def load_all_games(
+    raw_dir,
+    keep_generations=None,
+    position_budget=None,
+    include_human=True,
+    min_blackfocus_plies=0,
+):
     """Load game files as game-level units.
 
     Returns a list of dicts:
@@ -276,12 +282,19 @@ def load_all_games(raw_dir, keep_generations=None, position_budget=None, include
         return []
 
     games = []
+    skipped_blackfocus_short = 0
+    skipped_blackfocus_short_positions = 0
     for path in tqdm(paths, desc="Loading games"):
         rel = os.path.relpath(path, raw_dir).replace("\\", "/")
         is_human = "human_games/" in rel or rel.startswith("human_games")
         with open(path, "r") as f:
             records = [json.loads(line.strip()) for line in f if line.strip()]
         if not records:
+            continue
+        is_blackfocus = "_blackfocus/" in rel or rel.endswith("_blackfocus")
+        if (not is_human) and is_blackfocus and len(records) < min_blackfocus_plies:
+            skipped_blackfocus_short += 1
+            skipped_blackfocus_short_positions += len(records)
             continue
         result = records[-1].get("game_result", 0)
         games.append({
@@ -290,6 +303,13 @@ def load_all_games(raw_dir, keep_generations=None, position_budget=None, include
             "is_human": is_human,
             "result_bucket": _result_bucket(result),
         })
+
+    if min_blackfocus_plies > 0:
+        print(
+            f"  Black-focus short-game filter: min_plies={min_blackfocus_plies}, "
+            f"skipped_games={skipped_blackfocus_short}, "
+            f"skipped_positions={skipped_blackfocus_short_positions}"
+        )
 
     return games
 
@@ -394,7 +414,8 @@ def _convert_games_to_arrays(games, augment, human_repeat):
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      augment=True, keep_generations=None, position_budget=None,
                      seed=RANDOM_SEED,
-                     include_human=True):
+                     include_human=True,
+                     min_blackfocus_plies=0):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -411,6 +432,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         keep_generations=keep_generations,
         position_budget=position_budget,
         include_human=include_human,
+        min_blackfocus_plies=min_blackfocus_plies,
     )
     if not games:
         print("No data to process.")
@@ -500,13 +522,18 @@ if __name__ == "__main__":
                         help=f"Random seed for deterministic game-level splitting (default: {RANDOM_SEED})")
     parser.add_argument("--exclude-human-games", action="store_true",
                         help="Exclude data/raw/human_games from processing")
+    parser.add_argument("--min-blackfocus-plies", type=int, default=0,
+                        help="Drop non-human _blackfocus games shorter than this many plies")
     args = parser.parse_args()
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
+    if args.min_blackfocus_plies < 0:
+        raise ValueError("--min-blackfocus-plies must be >= 0")
 
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
                      augment=not args.no_augment,
                      keep_generations=args.keep_generations,
                      position_budget=args.position_budget,
                      seed=args.seed,
-                     include_human=not args.exclude_human_games)
+                     include_human=not args.exclude_human_games,
+                     min_blackfocus_plies=args.min_blackfocus_plies)

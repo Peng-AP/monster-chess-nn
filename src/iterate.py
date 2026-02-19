@@ -490,6 +490,8 @@ def main():
                         help="Include model value diagnostics on human positions (slower)")
     parser.add_argument("--exclude-human-games", action="store_true",
                         help="Exclude data/raw/human_games from training data processing")
+    parser.add_argument("--min-blackfocus-plies", type=int, default=0,
+                        help="Drop non-human _blackfocus games shorter than this many plies during processing")
     parser.add_argument("--keep-check-positions", action="store_true",
                         help="Keep in-check positions during self-play data generation")
     parser.add_argument("--selfplay-sims-jitter-pct", type=float, default=None,
@@ -604,6 +606,8 @@ def main():
         raise ValueError("--adaptive-down-factor must be > 0")
     if args.adaptive_min_normal_games < 0:
         raise ValueError("--adaptive-min-normal-games must be >= 0")
+    if args.min_blackfocus_plies < 0:
+        raise ValueError("--min-blackfocus-plies must be >= 0")
     if se_reduction <= 0:
         raise ValueError("--se-reduction must be > 0")
     if args.consolidation_epochs < 0:
@@ -664,6 +668,7 @@ def main():
             "--raw-dir", raw_dir,
             "--output-dir", processed_dir,
             "--seed", str(base_seed),
+            "--min-blackfocus-plies", str(args.min_blackfocus_plies),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ], "Bootstrap: processing all data")
         # Train initial model
@@ -822,6 +827,7 @@ def main():
         else:
             print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
     print(f"  Check pos:   {'keep' if args.keep_check_positions else 'skip'}")
+    print(f"  BF filter:   min_blackfocus_plies={args.min_blackfocus_plies}")
     print(f"  Starting at: generation {start_gen}")
     print(f"  Existing:    {total_games_existing} games, {total_pos_existing} positions")
     print(f"  Model:       {model_path}")
@@ -1022,6 +1028,7 @@ def main():
             "--raw-dir", raw_dir,
             "--output-dir", processed_dir,
             "--seed", str(base_seed + gen * 10 + 3),
+            "--min-blackfocus-plies", str(args.min_blackfocus_plies),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
         if position_budget is not None:
