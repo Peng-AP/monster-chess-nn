@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+import re
 import subprocess
 import time
 
@@ -18,6 +19,7 @@ from config import (
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
+    POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
@@ -103,31 +105,44 @@ class DualHeadNet(nn.Module):
     """Dual-head ResNet: (N, 15, 8, 8) -> (value in [-1,1], policy logits[4096]).
 
     Shared backbone:
-      Conv 64 stem + 2x res blocks (64) + 2x res blocks (128)
+      Configurable stem and residual tower from config.py
     Value head:
       GAP -> Dense 128 -> Dense 64 -> Dense 1 (tanh)
     Policy head:
-      Conv 2x1x1 -> BN -> ReLU -> Flatten -> Dense 4096 (logits)
+      Conv Cx1x1 -> BN -> ReLU -> Flatten -> Dense 4096 (logits)
     """
-    def __init__(self):
+    def __init__(
+        self,
+        policy_head_channels=POLICY_HEAD_CHANNELS,
+        stem_channels=STEM_CHANNELS,
+        residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
+    ):
         super().__init__()
+        self.policy_head_channels = int(policy_head_channels)
+        self.stem_channels = int(stem_channels)
+        self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
+        if not self.residual_block_channels:
+            raise ValueError("residual_block_channels must contain at least one block")
+
         # Stem
         self.stem = nn.Sequential(
-            nn.Conv2d(IN_CHANNELS, 64, 3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(IN_CHANNELS, self.stem_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(self.stem_channels),
             nn.ReLU(),
         )
-        # Residual tower
-        self.res1 = ResidualBlock(64, 64)
-        self.res2 = ResidualBlock(64, 64)
-        self.res3 = ResidualBlock(64, 128)
-        self.res4 = ResidualBlock(128, 128)
+        # Residual tower. Keep deterministic resN naming for checkpoint compatibility.
+        in_ch = self.stem_channels
+        for i, out_ch in enumerate(self.residual_block_channels, start=1):
+            setattr(self, f"res{i}", ResidualBlock(in_ch, out_ch))
+            in_ch = out_ch
+        self.residual_block_count = len(self.residual_block_channels)
+        self.backbone_out_channels = in_ch
 
         # Value head
         self.value_head = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),       # (N, 128, 1, 1)
-            nn.Flatten(),                  # (N, 128)
-            nn.Linear(128, 128),
+            nn.AdaptiveAvgPool2d(1),       # (N, C, 1, 1)
+            nn.Flatten(),                  # (N, C)
+            nn.Linear(self.backbone_out_channels, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(128, 64),
@@ -139,30 +154,98 @@ class DualHeadNet(nn.Module):
 
         # Policy head
         self.policy_conv = nn.Sequential(
-            nn.Conv2d(128, 2, 1, bias=False),  # channel reduction
-            nn.BatchNorm2d(2),
+            nn.Conv2d(self.backbone_out_channels, self.policy_head_channels, 1, bias=False),
+            nn.BatchNorm2d(self.policy_head_channels),
             nn.ReLU(),
         )
-        self.policy_fc = nn.Linear(2 * 8 * 8, POLICY_SIZE)
+        self.policy_fc = nn.Linear(self.policy_head_channels * 8 * 8, POLICY_SIZE)
 
     def forward(self, x):
         # x: (N, C, 8, 8)  — PyTorch uses channels-first
         x = self.stem(x)
-        x = self.res1(x)
-        x = self.res2(x)
-        x = self.res3(x)
-        x = self.res4(x)
+        for i in range(1, self.residual_block_count + 1):
+            x = getattr(self, f"res{i}")(x)
 
         value = self.value_head(x)          # (N, 1)
-        p = self.policy_conv(x)             # (N, 2, 8, 8)
-        p = p.flatten(1)                    # (N, 128)
+        p = self.policy_conv(x)             # (N, C, 8, 8)
+        p = p.flatten(1)                    # (N, C*64)
         policy = self.policy_fc(p)          # (N, 4096)
 
         return value, policy
 
 
-def build_model():
-    return DualHeadNet()
+def infer_policy_head_channels(state_dict):
+    """Infer policy bottleneck width from checkpoint state dict."""
+    w = state_dict.get("policy_conv.0.weight")
+    if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[0] > 0:
+        return int(w.shape[0])
+    return POLICY_HEAD_CHANNELS
+
+
+def infer_backbone_architecture(state_dict):
+    """Infer stem width and residual tower channels from a checkpoint."""
+    stem_channels = STEM_CHANNELS
+    stem_w = state_dict.get("stem.0.weight")
+    if isinstance(stem_w, torch.Tensor) and stem_w.ndim == 4 and stem_w.shape[0] > 0:
+        stem_channels = int(stem_w.shape[0])
+
+    pattern = re.compile(r"^res(\d+)\.conv1\.weight$")
+    block_out_channels = {}
+    for key, tensor in state_dict.items():
+        if not isinstance(tensor, torch.Tensor) or tensor.ndim != 4:
+            continue
+        m = pattern.match(key)
+        if m:
+            idx = int(m.group(1))
+            block_out_channels[idx] = int(tensor.shape[0])
+
+    if block_out_channels:
+        block_channels = tuple(block_out_channels[i] for i in sorted(block_out_channels))
+    else:
+        block_channels = RESIDUAL_BLOCK_CHANNELS
+    return stem_channels, block_channels
+
+
+def build_model(
+    policy_head_channels=POLICY_HEAD_CHANNELS,
+    stem_channels=STEM_CHANNELS,
+    residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
+):
+    return DualHeadNet(
+        policy_head_channels=policy_head_channels,
+        stem_channels=stem_channels,
+        residual_block_channels=residual_block_channels,
+    )
+
+
+def load_model_for_inference(checkpoint_path, device):
+    """Load model with architecture inferred from checkpoint."""
+    state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    pol_ch = infer_policy_head_channels(state_dict)
+    stem_ch, block_ch = infer_backbone_architecture(state_dict)
+    model = build_model(
+        policy_head_channels=pol_ch,
+        stem_channels=stem_ch,
+        residual_block_channels=block_ch,
+    ).to(device)
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model, pol_ch
+
+
+def load_state_dict_flexible(model, state_dict):
+    """Load only shape-compatible tensors. Returns (loaded_count, skipped_keys)."""
+    model_state = model.state_dict()
+    compatible = {}
+    skipped = []
+    for k, v in state_dict.items():
+        if k in model_state and model_state[k].shape == v.shape:
+            compatible[k] = v
+        else:
+            skipped.append(k)
+    model_state.update(compatible)
+    model.load_state_dict(model_state)
+    return len(compatible), skipped
 
 
 def load_data(data_dir):
@@ -356,13 +439,22 @@ def main():
     model = build_model().to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
+    print(f"Policy head channels: {model.policy_head_channels}")
+    print(f"Stem channels: {model.stem_channels}")
+    print(f"Residual blocks: {list(model.residual_block_channels)}")
+    resume_loaded_count = None
+    resume_skipped = None
     if args.resume_from:
         if not os.path.exists(args.resume_from):
             raise FileNotFoundError(f"--resume-from not found: {args.resume_from}")
-        model.load_state_dict(
-            torch.load(args.resume_from, map_location=device, weights_only=True)
+        resume_state = torch.load(args.resume_from, map_location=device, weights_only=True)
+        loaded_count, skipped_keys = load_state_dict_flexible(model, resume_state)
+        resume_loaded_count = loaded_count
+        resume_skipped = skipped_keys
+        print(
+            f"Resumed weights from {args.resume_from}: "
+            f"loaded {loaded_count} tensors, skipped {len(skipped_keys)} incompatible"
         )
-        print(f"Resumed weights from {args.resume_from}")
 
     optimizer, decay_count, no_decay_count = build_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay,
@@ -389,7 +481,13 @@ def main():
         "device": str(device),
         "args": vars(args),
         "model_params": total_params,
+        "policy_head_channels": int(model.policy_head_channels),
+        "stem_channels": int(model.stem_channels),
+        "residual_block_channels": [int(x) for x in model.residual_block_channels],
+        "residual_block_count": int(model.residual_block_count),
         "resume_from": args.resume_from,
+        "resume_loaded_tensors": int(resume_loaded_count) if resume_loaded_count is not None else None,
+        "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
         "optimizer": {
             "name": "AdamW",
             "weight_decay": args.weight_decay,

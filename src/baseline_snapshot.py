@@ -28,7 +28,7 @@ from config import (
     EXPLORATION_CONSTANT, MAX_GAME_TURNS,
     PROCESSED_DATA_DIR, MODEL_DIR, RAW_DATA_DIR,
 )
-from train import DualHeadNet, _make_loader, _eval_epoch
+from train import load_model_for_inference, _make_loader, _eval_epoch
 
 
 def model_checksum(path):
@@ -166,9 +166,7 @@ def main():
     print(f"Raw:    {args.raw_dir}")
 
     # Load model
-    model = DualHeadNet().to(device)
-    model.load_state_dict(torch.load(model_path, weights_only=True, map_location=device))
-    model.eval()
+    model, policy_head_channels = load_model_for_inference(model_path, device)
 
     total_params = sum(p.numel() for p in model.parameters())
     checksum = model_checksum(model_path)
@@ -264,6 +262,7 @@ def main():
             "path": model_path,
             "sha256": checksum,
             "total_params": total_params,
+            "policy_head_channels": int(policy_head_channels),
             "git_commit": get_git_commit(),
         },
         "data": {

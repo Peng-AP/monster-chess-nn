@@ -287,19 +287,16 @@ class NNEvaluator:
 
     def __init__(self, model_path):
         import torch
-        from train import DualHeadNet
+        from train import load_model_for_inference
         from data_processor import fen_to_tensor
 
         self.torch = torch
         self.fen_to_tensor = fen_to_tensor
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = DualHeadNet()
-        self.model.load_state_dict(
-            torch.load(model_path, map_location=self.device, weights_only=True)
+        self.model, self.policy_head_channels = load_model_for_inference(
+            model_path, self.device,
         )
-        self.model.to(self.device)
-        self.model.eval()
         # FP16 for faster inference on GPU
         if self.device.type == "cuda":
             self.model.half()

@@ -1,855 +1,110 @@
 ================================================================================
-MONSTER CHESS NEURAL NETWORK — TRANSFER CONTEXT
+MONSTER CHESS NN - CURRENT CONTEXT (COMPACT)
 ================================================================================
-Date: 2026-02-15
+Last updated: 2026-02-19
+Purpose: Fast technical handoff context aligned with current code state.
+
+1) PROJECT
 ================================================================================
+This project trains a neural network to play Monster Chess using a self-play loop
+with MCTS, data processing, model training, and candidate-vs-incumbent gating.
 
-1. PROJECT OVERVIEW
+Monster Chess rules in this project:
+- White: King + 4 pawns, takes TWO consecutive moves per turn.
+- Black: standard full army, takes ONE move per turn.
+- King capture ends game (no checkmate semantics).
+- White cannot castle.
+
+Starting FEN:
+rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1
+
+2) CORE PIPELINE
 ================================================================================
+Loop in `src/iterate.py`:
+1. Generate data via `src/data_generation.py`
+2. Process JSONL games via `src/data_processor.py`
+3. Train candidate via `src/train.py`
+4. Gate candidate vs incumbent via arena matches
+5. Promote only if gate passes
 
-This project trains a neural network to play Monster Chess via AlphaZero-style
-self-play. The full pipeline is:
-
-  generate games (MCTS self-play) -> process data -> train dual-head CNN
-  -> use model as MCTS evaluator -> generate better games -> repeat
-
-Monster Chess rules:
-  - White has King + 4 pawns, gets TWO consecutive moves per turn
-  - Black has the full army (standard), gets ONE move per turn
-  - King captures end the game (no check/checkmate concept — captures are legal)
-  - No castling for White
-  - Starting FEN: rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1
-
-Machine: RTX 5060 Ti (16GB VRAM), 32GB RAM, 16 logical CPUs
-Python 3.13, PyTorch 2.10.0+cu130 (GPU working)
-
-2. FILE STRUCTURE
+3) WHAT IS IMPLEMENTED (IMPORTANT)
 ================================================================================
+Implemented in current code:
+- Game-level split integrity (prevents train/val/test leakage by game)
+- Deterministic seed controls and metadata logging in train/iterate runs
+- True MSE + MAE reporting alongside value power loss
+- Arena gating with color-swap and side-aware acceptance thresholds
+- Alternating-side training with frozen/pool opponents
+- AdamW with no-decay param groups for biases/norm layers
+- Gradient clipping
+- Warmup fine-tuning from incumbent model
+- Baseline snapshot utility (`src/baseline_snapshot.py`)
+- Human game evaluation utility (`src/human_eval.py`)
 
-src/
-  config.py            - All hyperparameters, FEN positions, paths
-  monster_chess.py     - Game logic (MonsterChessGame class)
-  mcts.py              - MCTS search (MCTSNode, MCTS classes)
-  evaluation.py        - Heuristic evaluator + NNEvaluator class (PyTorch)
-  data_generation.py   - Self-play game generation (multiprocessed)
-  data_processor.py    - Converts raw JSONL -> numpy tensors for training
-  train.py             - Dual-head ResNet (PyTorch): value + policy
-  iterate.py           - Automated self-play iteration loop
-  play.py              - CLI interface for playing against the AI
-  play.ipynb           - Jupyter notebook UI for playing against the AI
-  scripted_endgame.py  - Rook-ladder heuristic for Black in curriculum games
-  view_board.ipynb     - Jupyter notebook for visualizing game data
-  __init__.py          - Empty
-
-data/
-  raw/                   - JSONL game files organized by generation
-    normal/              - 200 heuristic games from standard opening (bootstrap)
-    curriculum_bootstrap/- 200 heuristic curriculum games (bootstrap)
-    nn_gen1/ through nn_gen10/          - NN-guided normal games (10 generations)
-    nn_gen1_curriculum/ through nn_gen10_curriculum/ - NN-guided curriculum games
-    human_games/         - 13 human-played games (upweighted 5x during processing)
-  processed/             - numpy arrays for training (248,928 positions after augmentation)
-
-models/
-  best_value_net.pt    - Current best model (PyTorch state_dict, ~5MB, gen 10)
-
-3. CURRENT STATE OF EACH FILE
+4) KNOWN OPEN GAPS
 ================================================================================
-
---- src/config.py ---
-Key settings:
-  MCTS_SIMULATIONS = 800
-  EXPLORATION_CONSTANT = 1.41 (UCB1 C parameter)
-  MAX_GAME_TURNS = 150
-  TEMPERATURE_MOVES = 15 (high temp first 15 moves, then low)
-  TEMPERATURE_HIGH = 1.0, TEMPERATURE_LOW = 0.1
-
-  POLICY_SIZE = 4096 (flat from_sq * 64 + to_sq encoding)
-  C_PUCT = 1.5 (PUCT exploration constant for NN mode)
-  DIRICHLET_ALPHA = 0.3, DIRICHLET_EPSILON = 0.25 (root noise)
-  POLICY_LOSS_WEIGHT = 1.0 (policy CE loss weight relative to value loss)
-
-  VALUE_TARGET = "mcts_value" (was "blend" — game_result ~always +1, uninformative)
-  BLEND_WEIGHT = 0.7 (70% mcts_value + 30% game_result, static fallback)
-  BLEND_START = 0.8, BLEND_END = 0.5 (annealed per epoch during training)
-  OPPONENT_SIMULATIONS = 200 (MCTS sims for frozen opponent in alternating training)
-
-  Sub-goal reward shaping weights (Black strategic progress):
-    WHITE_PAWN_VALUE = 0.18           (value per White pawn, was 0.10)
-    PAWN_ELIMINATION_BONUS = 0.10     (bonus per eliminated White pawn)
-    BLOCKED_PAWN_PENALTY = 0.08       (penalty per immobilized White pawn)
-    KING_DISPLACEMENT_WEIGHT = 0.06   (king displacement from center)
-    KING_MOBILITY_WEIGHT = 0.01       (per restricted 2-move square)
-    BARRIER_RANK_FILE_WEIGHT = 0.12   (per consecutive barrier rank/file)
-
-  VALUE_LOSS_EXPONENT = 2.5 (power-law loss, Stockfish-style)
-  LR_GAMMA = 0.95 (exponential LR decay per epoch)
-  BATCH_SIZE = 256, LEARNING_RATE = 2e-3, EPOCHS = 50
-
-  HUMAN_DATA_WEIGHT = 40 (repeat human game positions 40x during processing)
-
-  CURRICULUM_FENS = 31 tiered endgame positions (5 tiers):
-    Tier 1 (8 FENs): Forced capture — unavoidable king loss
-    Tier 2 (7 FENs): One move from forced capture
-    Tier 3 (6 FENs): Isolation — 2 pieces confine king to edge strip (with pawns)
-    Tier 4 (8 FENs): Overwhelming material with pawns (Q+2R, 2Q+R, 4R, 3R)
-    Tier 5 (2 FENs): Mid-game Black advantage
-  CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29]
-  CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7]
-
-  Tensor encoding: 15 layers (12 piece, turn, move_count, pawn_advancement)
-
---- src/monster_chess.py ---
-Game wrapper around python-chess. Key design:
-
-  __init__: Reads turn from FEN (self.is_white_turn = board.turn == WHITE)
-  clone(): Manual copy (board.copy() + field copy), avoids deepcopy overhead
-
-  _get_white_actions(): Generates all legal double-move (m1, m2) pairs.
-    - Uses pseudo_legal_moves for both moves
-    - Filters: White CANNOT leave its king attacked after the double-move
-    - Fallback: if ALL pairs leave king attacked, return all (forced blunder)
-    - King capture detection: if a move captures Black's king, return immediately
-    - White CAN put Black in check (no restriction)
-
-  _get_black_actions(): list(board.legal_moves), no extra filters
-
-  apply_action(): Pushes m1, then m2 for White. Safety check:
-    if m2 in board.pseudo_legal_moves before pushing (prevents crash
-    when m2 becomes invalid after m1 changes the board)
-
-  apply_random_action(): Samples randomly without enumerating all pairs.
-    _apply_random_white: tries safe pairs first, falls back to any (forced blunder)
-    _apply_random_black: random legal_move
-
-  is_terminal(): Checks king presence + turn count (MAX_GAME_TURNS=150).
-    Does NOT check stalemate (too expensive for MCTS).
-
-  Static helpers: action_to_str / str_to_action for serialization
-
---- src/mcts.py ---
-Three MCTS modes dispatched in get_best_action():
-  1. Sequential UCB1 (heuristic eval): _run_sequential
-  2. Batched UCB1 (NN value-only): _run_batched
-  3. Batched PUCT (NN dual-head, policy + value): _run_batched_puct
-
-MCTSNode:
-  - __slots__ optimized: state/parent/children/action/visit_count/total_value/prior
-  - ucb_score/best_child_ucb: for heuristic and value-only modes
-  - puct_score/best_child_puct: AlphaZero PUCT = Q + c * P * sqrt(N_parent) / (1+N)
-  - expand_one(): single-child expansion for UCB1 mode
-  - expand_all(actions_and_priors, max_children): bulk expansion with priors for PUCT
-    Optional move count pruning via max_children (top N by prior, renormalized)
-
-MCTS class (VIRTUAL_LOSS = 3):
-  - get_best_action(root_state, temperature): returns (action, action_probs, root_value)
-    Dispatches to appropriate run method based on eval_fn capabilities
-    Temperature-based action selection from visit distribution
-
-  - _run_batched_puct(): PUCT with batched NN eval:
-    1. Select leaf via PUCT scores
-    2. Batch unexpanded leaves for NN evaluation
-    3. Expand with policy priors, backprop value
-    4. Dirichlet noise added to root after first expansion
-
-  - _expand_with_policy(): Creates children from policy logits
-    White: cap to top 80 children by prior (move count pruning)
-    Black: no cap
-    White priors: P(m1,m2) = P(m1) / |m2s| (marginalize m1, uniform m2)
-    Black priors: direct softmax over legal move indices
-
-  - Virtual loss: applied/reverted during batched eval for path diversity
-  - _backpropagate(): value from White's perspective, flips sign for Black nodes
-  - _should_stop_early(): stops if |q_value| > 0.95 or best child has
-    insurmountable visit lead (after 30% minimum exploration)
-
-  _softmax_masked(): utility for computing softmax over subset of logit indices
-
---- src/evaluation.py ---
-Two evaluators:
-
-  evaluate(game_state): Heuristic function, returns float in [-1, 1] from White's
-    perspective. Features:
-    - Capture threat scan: _white_can_capture_king() -> returns 0.95 if true
-    - White pawns: +WHITE_PAWN_VALUE (0.18) each
-    - White pawn advancement: +0.05 per rank above rank 1
-    - Passed pawn bonus: exponential 0.02 * 2^max(0, rank-2), with king support
-    - Blocked pawn penalty: -BLOCKED_PAWN_PENALTY per immobilized pawn
-    - White queens (promoted): +0.30 each
-    - King tropism: +0.15 if Chebyshev distance <= 2, +0.05 if <= 4
-    - Tropism to undefended Black pieces: bonus for free captures
-    - Black heavy pieces (Q+R): -0.08 each
-    - Black pawn advancement: -0.03 per rank toward promotion
-    - Black extra queens (>1): -0.35 per extra
-    - Pawn elimination bonus: -PAWN_ELIMINATION_BONUS per eliminated White pawn
-    - King confinement (always active, scaled by heavy_scale):
-      * Displacement from center: Manhattan distance, normalized
-      * Edge proximity: -(3 - edge_dist) * 0.10 * heavy_scale
-      * Adjacent squares attacked: -0.06 * heavy_scale per attacked square
-      * Heavy pieces on king's rank/file: -0.08 per piece
-    - King mobility: 2-move reachable safe squares (when black_heavy >= 1)
-    - Barrier quality: consecutive rank/file barriers between king and edge
-    - Minor pieces: -0.03 each
-    - Clamped to [-0.95, 0.95]
-
-  NNEvaluator(model_path): Wraps a PyTorch dual-head model.
-    - __init__: loads DualHeadNet state_dict, FP16 on GPU for speed
-    - __call__(game_state): returns value only (backward-compat with heuristic)
-    - evaluate_with_policy(game_state): returns (value, policy_logits[4096])
-    - batch_evaluate(game_states): returns list of values
-    - batch_evaluate_with_policy(game_states): returns (values, policies)
-    - Terminal states (king missing) handled without model call
-    - Input: (8,8,15) -> transpose to (1,C,8,8) channels-first for PyTorch
-
---- src/data_generation.py ---
-Multiprocessed self-play with ProcessPoolExecutor.
-Supports dual-engine mode for frozen-opponent alternating training.
-
-  CLI flags:
-    --num-games N             (default: 100)
-    --simulations N           (default: 800)
-    --output-dir PATH         (default: data/raw)
-    --workers N               (default: CPU count, capped to 4 for NN)
-    --use-model PATH          (path to .pt model for NN evaluation)
-    --curriculum              (use CURRICULUM_FENS starting positions)
-    --scripted-black          (use scripted endgame play for Black, curriculum only)
-    --force-result {-1,0,1}   (override game result for all games)
-    --train-side {white,black,both}  (which side uses main model; default: both)
-    --opponent-model PATH     (path to frozen opponent .pt model; omit = heuristic)
-    --opponent-sims N         (MCTS sims for frozen opponent; default: 200)
-
-  Worker initialization: _init_worker loads model(s) once per process
-    Loads main model (_eval_fn) and optionally opponent model (_opponent_eval_fn)
-
-  play_game(): Plays one full game, returns list of records:
-    {fen, mcts_value, policy, current_player, game_result}
-    mcts_value is from CURRENT PLAYER's perspective (converted to White's in processing)
-
-  Dual-engine mode (--train-side white/black):
-    - Training side: full sims + main model (_eval_fn)
-    - Opponent side: reduced sims (--opponent-sims) + frozen model (_opponent_eval_fn)
-    - Two separate MCTS instances, each with its own eval function
-    - Both sides' positions are recorded for training
-    - When --train-side both (default): single engine, backward-compatible
-
-  Data quality filters:
-    - Skip first 5 plies in normal games (not curriculum)
-    - Skip positions where king is in check
-    - Random 30% subsample (keep ~70%)
-
-  Curriculum game result: per-tier forced values from CURRICULUM_TIER_VALUES
-    (Tier 1-2: -1.0, Tier 3-5: -0.7)
-
-  Scripted Black: when --scripted-black, Black uses get_scripted_black_move()
-    from scripted_endgame.py instead of MCTS. Heuristic eval provides mcts_value.
-
-  Error handling: BrokenExecutor + timeout (600s per game)
-
---- src/data_processor.py ---
-Converts raw JSONL -> numpy arrays.
-
-  fen_to_tensor(fen, is_white_turn): -> (8, 8, 15) float32
-    Layers 0-11: piece positions (binary)
-    Layer 12: turn indicator (+1 White, -1 Black)
-    Layer 13: move count (always 0, reserved)
-    Layer 14: White pawn advancement gradient (rank-1)/6
-
-  mirror_tensor(): horizontal flip for data augmentation (file-symmetric game)
-  move_to_index(move): from_sq * 64 + to_sq (flat 4096 encoding)
-  mirror_move_index(idx): mirror policy index across file axis
-  policy_dict_to_target(policy_dict, is_white): MCTS probs -> dense 4096 vector
-    White: marginalizes over m2 to get P(m1) distribution
-    Black: direct UCI move -> index mapping
-
-  load_all_games(raw_dir): Recursive os.walk to load all .jsonl files
-    Human games (from human_games/ subdir) repeated HUMAN_DATA_WEIGHT times (40x)
-
-  process_raw_data(raw_dir, output_dir, augment=True):
-    - mcts_value converted to White's perspective: val = mv if white else -mv
-    - Mirror augmentation doubles dataset (positions, values, policies)
-    - Saves: positions.npy, mcts_values.npy, game_results.npy, policies.npy, splits.npz
-    - Split: 80/10/10 train/val/test (shuffled, seed=42)
-
-  CLI: --raw-dir, --output-dir, --no-augment
-
---- src/train.py ---
-Dual-head ResNet (PyTorch). Architecture:
-
-  ResidualBlock: Conv(3x3) -> BN -> ReLU -> Conv(3x3) -> BN -> skip connection
-    1x1 projection shortcut when channel count changes
-
-  DualHeadNet:
-    Input: (N, 15, 8, 8) channels-first
-    Stem: Conv2D(15->64, 3x3) + BN + ReLU
-    Residual tower: res1(64->64), res2(64->64), res3(64->128), res4(128->128)
-    Value head: GAP -> Dense(128) + ReLU + Dropout(0.3) -> Dense(64) + ReLU
-                + Dropout(0.3) -> Dense(1) + Tanh -> output in [-1, 1]
-    Policy head: Conv2D(128->2, 1x1) + BN + ReLU -> Flatten(128) -> Dense(4096)
-                 -> raw logits (softmax applied externally)
-
-  Training:
-    Loss: power-law value loss (|pred-target|^2.5) + policy cross-entropy
-    Optimizer: Adam(lr=2e-3) with StepLR(gamma=0.95) per epoch
-    Blend target annealing: lambda goes from BLEND_START(0.8) to BLEND_END(0.5)
-      over training epochs. Recomputes targets each epoch.
-    Early stopping: patience=10 on total val_loss
-    Checkpoint: saves best model to models/best_value_net.pt
-
-  Test evaluation: total loss, value MSE, policy CE, value MAE,
-    winner prediction accuracy (sign match on non-draw positions)
-
-  CLI: --data-dir, --model-dir, --epochs, --batch-size, --lr, --target
-
---- src/iterate.py ---
-Automated self-play loop. Repeats: generate -> process -> train.
-Supports two modes: standard (both sides same model) and alternating
-(frozen-opponent training, alternates which side trains each iteration).
-
-  Bootstrap (if no model exists):
-    1. Generate heuristic normal games (800 sims)
-    2. Generate heuristic curriculum games (scripted Black, tiered forced values)
-    3. Process all data
-    4. Train initial model (target: mcts_value)
-
-  Standard mode (default):
-    Each iteration generates games with single engine for both sides.
-
-  Alternating mode (--alternating):
-    Each iteration trains only ONE side while the other uses a frozen model:
-    - Iteration 1, 3, 5...: Black trains (full sims + current model),
-                             White uses frozen model (reduced sims)
-    - Iteration 2, 4, 6...: White trains, Black uses frozen model
-    - After training, copies best_value_net.pt -> frozen_opponent.pt
-    - First iteration: if no frozen model exists, opponent uses heuristic
-    - Simulation asymmetry: training side gets full sims, opponent gets
-      OPPONENT_SIMULATIONS (default 200)
-
-  Each iteration:
-    1a. Generate normal games with current model
-    1b. Generate curriculum games with scripted Black + tiered forced values
-    2. Reprocess data (sliding window: last N generations + always-include dirs)
-    3. Retrain model from scratch (target: mcts_value)
-    4. (Alternating only) Freeze current model for next iteration's opponent
-
-  Generation directories: data/raw/nn_genN/ and nn_genN_curriculum/
-  Each generation's data is preserved (never overwritten).
-
-  CLI: --iterations (10), --games (200), --curriculum-games (200),
-       --simulations (200), --curriculum-simulations (50), --epochs (50),
-       --keep-generations (from config, default 2),
-       --alternating (enable frozen-opponent mode),
-       --opponent-sims (MCTS sims for frozen opponent, from config)
-
-  Utilities: format_time, find_next_gen, count_data, summarize_generation
-
---- src/scripted_endgame.py ---
-Rook-ladder heuristic for Black in curriculum games.
-
-  get_scripted_black_move(board): Main entry point.
-    Determines push direction (nearest edge for White king).
-    Dispatches to _push_to_rank or _push_to_file.
-
-  Algorithm: scores each legal move:
-    - Heavy pieces (R/Q): reward barrier placement between king and target edge
-      (+30 for ideal barrier rank/file), penalize proximity to double-move king (-20)
-    - King: stay far from White king (-10 if too close), follow push direction
-    - Captures: small bonus (+8)
-    - Safety: -50 for hanging heavy pieces to White
-
-  Still can't reliably mate the double-move king, but provides stronger Black
-  play than MCTS alone in curriculum positions.
-
---- src/play.py ---
-CLI interface for playing Monster Chess against the AI.
-
-  Features:
-    - Play as Black (default, recommended) or White
-    - NN or heuristic evaluator
-    - Custom MCTS simulations (--sims)
-    - Custom starting FEN (--fen)
-    - Save game data for training (--save-data -> data/raw/human_games/)
-    - ANSI true-color board rendering with move highlights
-    - Eval bar display after each AI move
-    - Accepts UCI (e2e4) or SAN (Nf3) input
-    - White double-move entry: 2 sequential prompts
-    - Safety check: prevents White from leaving king attacked (unless forced)
-
---- src/play.ipynb ---
-Jupyter notebook play interface with ipywidgets.
-
-  GameUI class: widget-based interactive game.
-    - SVG board rendering via chess.svg with move arrows
-    - Eval bar HTML widget
-    - Text input for moves (continuous_update=False triggers on Enter)
-    - Focus management via JS injection (onerror trick for VS Code notebooks)
-    - Move log table
-    - Supports both Black and White play
-    - Auto-saves game data to human_games/ directory
-
-  Config: PLAY_AS, USE_HEURISTIC, MODEL_PATH, SIMULATIONS (top of Setup cell)
-
---- src/view_board.ipynb ---
-Game data viewer. Loads all .jsonl from data/raw/, provides:
-  - Dropdown to select game file
-  - Slider to navigate positions within a game
-  - SVG board display
-  - Position info: turn, mcts_value, game_result, FEN
-  - Top 5 policy moves with visit percentages
-
-4. THE CORE PROBLEM: BLACK NEVER WINS
+Not yet implemented or still partial:
+- Fixed-generation sliding window remains (`SLIDING_WINDOW=2`)
+  instead of position-budget policy
+- No FPU reduction in PUCT unvisited-node scoring path
+- Check-position filtering in data generation is still hardcoded
+  (not yet exposed as ablation flag)
+- Policy head bottleneck remains narrow (2 channels before FC)
+
+5) MOST IMPORTANT BEHAVIORAL ISSUE
 ================================================================================
+Asymmetry remains the dominant challenge:
+- White-side performance improves faster than Black-side performance.
+- Side-aware gate can reject candidates that fail the non-trained side floor.
 
-In 4000+ games from all generations, Black essentially never wins actual games.
-The double-move king is fundamentally too slippery for MCTS-coordinated Black.
-
-WHY Black can't win:
-  1. White's double-move king outpaces Black's pieces. It can outrun 2-3 heavy
-     pieces because it moves twice as fast.
-  2. With 800 MCTS sims spread across ~400 double-move pairs for White,
-     each pair gets ~2 visits. White plays reasonably by the safety filter alone.
-  3. Black needs to coordinate multiple pieces to form a "box" that the king
-     can't escape even with 2 moves. This requires 30+ move plans that MCTS can't
-     discover at practical simulation counts.
-
-Even with scripted Black endgame play and 3+ rooks, Black still mostly can't
-capture the double-move king. The curriculum tier system works around this by
-assigning forced result values (-1.0 or -0.7) rather than relying on game outcomes.
-
-5. THE SOLUTION: FROZEN-OPPONENT TRAINING + CURRICULUM + TIERED VALUES
+6) KEY FILE MAP
 ================================================================================
+src/config.py             Hyperparameters, paths, curriculum FENs
+src/monster_chess.py      Game rules wrapper
+src/mcts.py               UCB + PUCT search
+src/evaluation.py         Heuristic + NN evaluator wrapper
+src/data_generation.py    Self-play generation
+src/data_processor.py     Game JSONL -> numpy tensors
+src/train.py              Dual-head residual model training
+src/iterate.py            Iteration loop + gating + metadata
+src/baseline_snapshot.py  Baseline artifact capture
+src/human_eval.py         Human game diagnostics
+src/play.py               CLI human vs AI
 
-A) VALUE_TARGET = "mcts_value" (pure MCTS value, no game_result blending)
-   game_result is almost always +1 (White wins), making it uninformative.
-   Pure mcts_value preserves the heuristic's Black-favorable evaluations.
-   (Blend mode still available via --target blend if needed.)
-
-A2) Frozen-opponent alternating training (--alternating in iterate.py)
-   Breaks the feedback loop where White learns to avoid Black-dangerous
-   positions from human data, making self-play even more White-dominated.
-   Each iteration only trains ONE side while the opponent uses a frozen
-   copy of the previous model. This prevents immediate counter-adaptation.
-   See iterate.py section above for full details.
-
-B) Curriculum endgame positions (31 FENs, 5 tiers)
-   Tiered forced values: Tier 1-2 (forced capture) get game_result=-1.0,
-   Tier 3-5 (advantage/overwhelming) get game_result=-0.7.
-   This provides meaningful negative training signal that actual game outcomes can't.
-
-C) Scripted Black play in curriculum games
-   Uses rook-ladder heuristic from scripted_endgame.py for stronger Black play,
-   providing better policy signal than MCTS alone.
-
-D) Human game data (13 games, upweighted 40x)
-   Human-played games from play.py/play.ipynb saved to human_games/ and
-   repeated 40x during data processing for stronger influence.
-
-E) Data quality filters
-   Skip first 5 plies (noisy opening), skip check positions (tactical noise),
-   random 30% subsample to prevent overfitting to common positions.
-
-F) Horizontal mirror augmentation
-   Doubles training data (Monster Chess is file-symmetric). Both positions
-   and policy vectors are mirrored.
-
-6. WHAT DATA EXISTS RIGHT NOW
+7) VERIFIED LOCAL SNAPSHOT (2026-02-19)
 ================================================================================
+- Highest raw generation directory observed: nn_gen24
+- Processed positions shape: (86990, 8, 8, 15)
+- Processed splits: train=69592, val=8699, test=8699
+- Human game files: 25
+- Current model: models/best_value_net.pt
+- Current model SHA256:
+  D54E3117A7A28BD4C0C678FE2D3FAB231AA8943660CFBC1FF6958E9B70BC815B
 
-Total: 248,928 processed positions (after augmentation)
-  Train: 199,142 | Val: 24,892 | Test: 24,894
-  Value distribution: mean=-0.23, std=0.60
-
-Raw data breakdown (all in data/raw/):
-  normal/                - 200 heuristic bootstrap games
-  curriculum_bootstrap/  - 200 heuristic curriculum games (scripted Black)
-  nn_gen1/ through nn_gen10/          - 10 generations of NN-guided normal games
-                                        (155-200 games each, some failed/timed out)
-  nn_gen1_curriculum/ through nn_gen10_curriculum/ - 10 gens of NN curriculum games
-                                                     (200 each)
-  human_games/           - 13 human-played games (upweighted 40x in processing)
-
-Model: models/best_value_net.pt (generation 10, ~5MB)
-  Architecture: DualHeadNet — stem(15->64) + 4 res blocks + value/policy heads
-  models/frozen_opponent.pt - frozen copy used as opponent in alternating training
-
-7. MODEL ARCHITECTURE SUMMARY
+8) DOCUMENTS TO TRUST FIRST
 ================================================================================
+- README.md                         onboarding + command map
+- IMPROVEMENT_PLAN.md              living status of roadmap items
+- IMPROVEMENT_EXECUTION_ORDER.md   next implementation sequence
+- TRANSFER_HANDOFF_2026-02-19.md   historical + current transfer notes
 
-  DualHeadNet (PyTorch):
-    Input: (N, 15, 8, 8) — 15 channels, 8x8 board
-    Stem: Conv2D(15->64, 3x3, pad=1) + BN + ReLU
-    ResBlock 1-2: 64 channels each
-    ResBlock 3-4: 128 channels (with 1x1 projection shortcut)
-    Value head: AdaptiveAvgPool2d(1) -> Linear(128->128) -> ReLU -> Dropout(0.3)
-                -> Linear(128->64) -> ReLU -> Dropout(0.3) -> Linear(64->1) -> Tanh
-    Policy head: Conv2D(128->2, 1x1) + BN + ReLU -> Flatten(128) -> Linear(128->4096)
-
-  Policy encoding: flat from_sq * 64 + to_sq = 4096 indices
-  For White double-moves: P(m1,m2) = P(m1) / |m2s| (marginalize, uniform m2)
-  Move count pruning: White limited to top 80 children by prior in PUCT mode
-
-  Training loss: power_loss(value, 2.5) + 1.0 * cross_entropy(policy)
-  Optimizer: Adam(lr=2e-3) + StepLR(gamma=0.95)
-  Blend annealing: lambda from 0.8 -> 0.5 over epochs
-
-8. SELF-IMPROVEMENT LOOP (iterate.py)
+9) QUICK OPERATING COMMANDS
 ================================================================================
-
-The loop has completed 10 generations of standard self-play.
-Now supports frozen-opponent alternating training (--alternating).
-
-  Bootstrap (heuristic):
-    - 200 normal games (800 sims, heuristic eval)
-    - 200 curriculum games (scripted Black, tiered forced values)
-    - Process + train initial model (target: mcts_value)
-
-  Standard mode — each iteration (NN-guided):
-    - 200 normal games with current model (single engine for both sides)
-    - 200 curriculum games with model + scripted Black (50 sims)
-    - Reprocess data (sliding window: last 2 NN generations + always-include dirs)
-    - Retrain model from scratch (target: mcts_value)
-
-  Alternating mode (--alternating) — each iteration:
-    - Alternates training side: Black (iter 1,3,5...) / White (iter 2,4,6...)
-    - Training side: full sims + current model
-    - Opponent side: 200 sims + frozen model (copy of previous iteration's model)
-    - 200 curriculum games (unchanged — scripted Black + current model)
-    - Reprocess data (sliding window)
-    - Retrain model, then freeze updated model for next iteration
-
-  Key: data uses sliding window (last 2 NN generations + curriculum_bootstrap
-  + human_games). Each generation saved to nn_genN/ (never overwritten).
-
-9. KNOWN ISSUES AND GOTCHAS
-================================================================================
-
-A) Double-move king is nearly unbeatable by Black
-   Fundamental limitation. Even scripted play + 3 rooks + 4000 sims can't win.
-   Training signal comes from heuristic evaluations, not game outcomes.
-
-B) Some normal game generations have fewer than 200 games
-   Games can fail or timeout (600s limit). Gen 1: 179, Gen 6: 155, etc.
-   Failed games are skipped and reported but don't crash the pipeline.
-
-C) The heuristic is slightly Black-biased
-   Starting position evaluates to ~-0.26 due to edge proximity penalty.
-   Normal games have slightly negative mcts_values on average.
-
-D) Curriculum games are short (~3-50 moves)
-   Contribute fewer positions per game but with stronger Black-favorable
-   evaluations. Tier 1-2 positions force game_result=-1.0.
-
-E) Model file is .pt (PyTorch state_dict), NOT .keras
-   TF on Windows = CPU-only since TF 2.11. Entire pipeline uses PyTorch.
-
-F) NN generation is slower than heuristic
-   With NN evaluator: workers capped to 4 (GPU memory limited)
-   With heuristic: full CPU count (16 workers)
-
-G) apply_action m2 safety check
-   Verifies m2 in board.pseudo_legal_moves before pushing. Prevents crash
-   when m1 changes the board enough to invalidate m2.
-
-H) Input tensor format mismatch
-   Data is stored as (N, 8, 8, 15) but PyTorch needs (N, 15, 8, 8).
-   Transposed at load time in train.py and NNEvaluator.
-
-I) FP16 inference on GPU
-   NNEvaluator uses half precision for speed. Disabled on CPU.
-
-10. POSSIBLE IMPROVEMENTS
-================================================================================
-
-A) Deeper/wider ResNet: Current model has 4 res blocks (64->128 channels).
-   Could try 8-12 blocks with 256 channels for more capacity.
-
-B) Stronger scripted endgame: Current rook-ladder is simplistic. Could add
-   queen+rook coordination, king box detection, zugzwang exploitation.
-
-C) Asymmetric MCTS: Give Black more simulations than White. Not tested
-   with current NN-guided pipeline.
-
-D) More diverse curriculum: Current 31 positions are mostly rooks/queens
-   vs lone king. Could add positions with Black pawns about to promote,
-   mid-game advantages with mixed pieces.
-
-E) Policy head for White's m2: Currently m2 is uniform. A separate policy
-   head or conditional policy for the second move could improve White play.
-
-F) Tune blend annealing schedule: Current 0.8->0.5 is a guess. Could
-   experiment with different curves or static blends.
-
-G) Increase data generation simulations: iterate.py uses 200 sims for normal
-   games and 50 for curriculum. Higher sims = better data but slower.
-
-H) Evaluation diversity: play against random opponents, Stockfish adapter,
-   or self-play tournaments between generations.
-
-11. DEPENDENCIES
-================================================================================
-
-  Python 3.13
-  python-chess      (chess board representation)
-  torch (PyTorch)   (GPU training and inference, CUDA 13.0)
-  numpy             (tensor operations)
-  tqdm              (progress bars)
-  ipywidgets        (notebook play interface)
-  (TF 2.20 installed but CPU-only, unused)
-
-12. IMPROVEMENT WORKFLOW
-================================================================================
-
-Each improvement stage (see IMPROVEMENT_PLAN.md and IMPROVEMENT_EXECUTION_ORDER.md)
-is a separate git commit and push. Commit format: "Stage N: <short description>".
-Gates between stages must pass before proceeding. See those files for full details.
-
-13. CHANGELOG
-================================================================================
-
---- 2026-02-15: Frozen-opponent alternating training ---
-Commit: 8760d66
-
-PROBLEM:
-  After adding human games (upweighted 40x), self-play unexpectedly increased
-  the number of quick White wins. Root cause: feedback loop in AlphaZero-style
-  self-play for asymmetric games. Human data teaches model "Black positions X
-  are dangerous" → White learns to avoid X → self-play becomes more
-  White-dominated → each generation reinforces White's dominance. The standard
-  self-play structure assumes symmetric improvement, which doesn't hold for
-  Monster Chess where White is fundamentally stronger.
-
-  Additionally, VALUE_TARGET="blend" was mixing game_result (almost always +1)
-  into training targets, drowning out the meaningful mcts_value signal.
-
-REASONING:
-  Considered 6 options (A-F):
-    A) Train only on mcts_value — quick fix, doesn't address feedback loop
-    B) Train only on human + curriculum data — loses self-play signal
-    C) Frozen-opponent alternating training — breaks feedback loop structurally
-    D) Quality-gated self-play — complex, hard to tune gates
-    E) Balanced sampling — masks symptoms, doesn't fix root cause
-    F) Separate White/Black models — doubles complexity, halves data per model
-  Chose C: frozen-opponent is the most structurally sound fix. Each generation
-  only trains one side while the other uses a frozen copy. Prevents the
-  immediate counter-adaptation that creates the feedback loop.
-
-CHANGES:
-  1. config.py:
-     - VALUE_TARGET: "blend" -> "mcts_value" (game_result ~always +1, uninformative)
-     - Added OPPONENT_SIMULATIONS = 200
-  2. data_generation.py:
-     - Added dual-engine support: --train-side, --opponent-model, --opponent-sims
-     - Two separate MCTS instances when train_side != "both"
-     - Training side gets full sims + main model
-     - Opponent side gets reduced sims + frozen/heuristic model
-     - Full backward compatibility with --train-side both (default)
-  3. iterate.py:
-     - Added --alternating flag for frozen-opponent mode
-     - Alternates training side: Black (odd iter) / White (even iter)
-     - After training, copies best_value_net.pt -> frozen_opponent.pt
-     - Changed training target from "blend" to "mcts_value" in all train.py calls
-     - Added --opponent-sims CLI arg
-
-RESULTS:
-  Not yet tested — changes committed and pushed, ready to run:
-    python src/iterate.py --iterations 10 --games 200 --alternating
-
---- 2026-02-15: Sub-goal reward shaping for Black ---
-
-PROBLEM:
-  Even with frozen-opponent training, Black may not improve because the
-  heuristic undervalues Black's strategic progress. The training signal
-  (mcts_value from heuristic) doesn't capture key Monster Chess strategies:
-  trading pieces for pawns, blocking pawns, king displacement, barrier quality.
-  Without stronger gradient signal, Black can't learn what "progress" looks like.
-
-REASONING:
-  In Monster Chess, White's pawns are its ONLY promotion path. Eliminating them
-  is strategically devastating — worth more than keeping a minor piece. The old
-  heuristic valued White pawns at only 0.10 and Black minors at 0.03, so
-  pawn-for-minor trades barely registered. Similarly, king confinement was only
-  active when black_heavy >= 2, missing early-game opportunities.
-
-  Sub-goal reward shaping gives direct, tunable control over what Black learns
-  to value. All weights are in config.py for easy experimentation.
-
-CHANGES:
-  1. config.py — added 6 tunable sub-goal weight constants:
-     WHITE_PAWN_VALUE=0.18, PAWN_ELIMINATION_BONUS=0.10,
-     BLOCKED_PAWN_PENALTY=0.08, KING_DISPLACEMENT_WEIGHT=0.06,
-     KING_MOBILITY_WEIGHT=0.01, BARRIER_RANK_FILE_WEIGHT=0.12
-
-  2. evaluation.py — enhanced evaluate() with 6 new sub-goals:
-     a) Increased White pawn value (0.10 → 0.18)
-     b) Pawn elimination bonus: -(4 - white_pawns) * 0.10
-     c) Blocked pawn penalty: pawns blocked by occupant or undefended attack
-     d) King displacement: Manhattan distance from center, scaled by heavy count
-     e) King mobility: 2-move reachable safe squares (king-only double moves)
-     f) Barrier quality: consecutive rank/file barriers at safe distance
-     Also: removed black_heavy >= 2 gate on confinement terms, now always
-     active but scaled by heavy_scale = min(black_heavy + 1, 4) / 4.0
-
-EVALUATION RESULTS (sample positions):
-  Starting position:       -0.13 (slightly Black-favorable, reasonable)
-  Tier 1 (forced capture): -0.95 (max Black advantage)
-  Tier 3 (isolation+pawns):-0.62 (moderate, pawns give White something)
-  Tier 4 (Q+2R vs K+P):   -0.95 (overwhelming)
-  No White pawns:          -0.95 (pawnless White = dead)
-  Mid-game (1 blocked):    -0.11 (blocked pawn slightly hurts White)
-
---- 2026-02-18: Analysis — Why the model still isn't learning well ---
-
-DIAGNOSIS (from thorough codebase review + external research):
-
-  The model has gone through 10 generations of self-play but still doesn't play
-  well. Multiple interacting issues have been identified:
-
-  1. NETWORK TOO SMALL:
-     The current DualHeadNet has only 4 residual blocks (64→64→128→128) with
-     ~200K parameters. Leela Chess Zero's smallest useful nets are 10x128
-     (~1.5M params). Even alpha-zero-general projects for simpler games use
-     4-8 blocks with 64-256 filters. The network lacks capacity to learn
-     complex positional patterns, especially for Monster Chess where White's
-     double-move creates non-local spatial relationships.
-
-  2. NO GRADIENT CLIPPING:
-     train.py has no gradient clipping. Rare large gradients (from outlier
-     positions in curriculum data with forced values of -1.0 vs normal games
-     near 0.0) can cause catastrophic weight updates. This is a known
-     stability issue in small-scale AlphaZero training.
-
-  3. SLIDING WINDOW TOO SMALL (2 generations):
-     SLIDING_WINDOW=2 means the model is retrained from scratch each iteration
-     on only the last 2 generations + curriculum_bootstrap + human_games.
-     This causes catastrophic forgetting — the network loses endgame knowledge
-     learned in earlier generations. Leela keeps 500K-2M positions; even
-     small-scale projects use 4-6 generation windows.
-
-  4. NO NETWORK GATING:
-     Every trained network immediately replaces the previous best, even if
-     it's worse. Without evaluation games between old and new networks, bad
-     training runs cascade into a death spiral: bad model → bad self-play
-     data → worse model. Leela requires 55% win rate to accept a new net.
-
-  5. NO WEIGHT DECAY:
-     Adam optimizer has no weight_decay parameter. With ~250K training
-     positions and a network of ~200K params, regularization is critical
-     to prevent overfitting. AlphaZero uses weight decay of 1e-4.
-
-  6. NO FPU (First Play Urgency) REDUCTION:
-     In mcts.py, unvisited nodes have Q=0. This means MCTS doesn't trust the
-     policy head's move ordering — it explores uniformly among unvisited nodes.
-     Leela uses FPU reduction (Q = parent_Q - 0.4 for unvisited children) to
-     make MCTS trust the policy more, focusing search on promising moves.
-
-  7. POLICY HEAD BOTTLENECK:
-     The policy head reduces 128 channels to 2 via 1x1 conv, then flattens
-     to 128 features, then projects to 4096. Only 2 channels of spatial
-     information reach the policy FC layer — very little capacity for the
-     policy to reason about piece relationships.
-
-  8. VALUE HEAD GRADIENT VANISHING:
-     Tanh activation saturates near ±1, producing near-zero gradients for
-     decisive positions. Combined with power-law loss (exponent 2.5), this
-     means the network learns poorly from clear wins/losses. A WDL (Win/Draw/
-     Loss) 3-way softmax head (as Leela uses) would provide much better
-     gradient signal.
-
-  9. NO AUXILIARY TRAINING TARGETS:
-     KataGo achieved 50x compute efficiency over AlphaZero by adding auxiliary
-     heads (ownership, score distribution, moves-to-end). These force the
-     shared backbone to learn richer spatial representations even when the
-     main value/policy signal is weak. Monster Chess badly needs this because
-     game outcomes are uninformative (White almost always wins).
-
-  10. ADAM vs SGD:
-      AlphaZero and Leela both use SGD with momentum (0.9), not Adam. Adam's
-      adaptive learning rates can interfere with batch normalization and tend
-      to converge to sharper minima that generalize worse. For self-play RL,
-      SGD + momentum + step-wise LR drops is strongly preferred.
-
-  11. RETRAINING FROM SCRATCH EACH ITERATION:
-      iterate.py retrains from random initialization every generation. This
-      discards all learned weights and relies purely on the data. Fine-tuning
-      from the previous model (with a brief LR warmup) would be much more
-      stable and efficient, preserving knowledge across generations.
-
-  12. SINGLE NETWORK FOR BOTH SIDES:
-      White and Black have fundamentally different strategies and action
-      spaces. A shared backbone must learn two different evaluation functions
-      simultaneously, and when White dominates training data, the backbone
-      tilts toward White's perspective, actively hurting Black's learning.
-
-EXTERNAL REFERENCES:
-  - Leela Chess Zero: 10-20 res blocks, 128-256 filters, WDL head, SE blocks,
-    FPU reduction, SGD+momentum, step-wise LR drops, network gating
-  - KataGo: auxiliary training targets (ownership, score distribution, moves-
-    to-end), playout cap randomization, 50x more efficient than AlphaZero
-  - Fairy-Stockfish: NNUE for variants via HalfKAv2 features, variant config
-    system (variants.ini), data generation via variant-nnue-tools
-  - alpha-zero-general: 4-8 res blocks for small games, SE blocks for Elo gain
-  - AlphaStar: opponent pool (3-5 frozen snapshots) prevents co-adaptation
-    in asymmetric games
-
-14. 2026-02-19 TRANSFER HANDOFF (LATEST)
-================================================================================
-
-Status:
-  - All monster-chess training processes were stopped intentionally.
-  - Iteration 2 was aborted and cleaned for transfer to higher-compute machine.
-  - Partial iteration-2 artifacts removed:
-      data/raw/nn_gen12
-      data/raw/nn_gen12_curriculum
-      data/raw/nn_gen12_blackfocus (if present)
-
-Large run used:
-  Log: models/run_large_20260218_221423.log
-  Err: models/run_large_20260218_221423.err.log
-
-Completed work in that run before stopping:
-  - Generation 11 normal self-play:
-      data/raw/nn_gen11 -> 180 games, White 180 / Black 0 / Draw 0
-  - Generation 11 black-focus self-play:
-      data/raw/nn_gen11_blackfocus -> 219 saved / 260 attempted
-      41 timed out at 600s, results White 209 / Black 10 / Draw 0
-  - Generation 11 curriculum:
-      data/raw/nn_gen11_curriculum -> 220 games, White 0 / Black 220 / Draw 0
-  - Processing completed from windowed data:
-      positions.npy shape: (70864, 8, 8, 15)
-      splits: train=58878, val=6160, test=5826
-  - Candidate training completed:
-      models/candidates/gen_0011/best_value_net.pt
-      (from log tail: Policy CE 0.4819, Value MAE 0.0979, winner sign acc 96.3%)
-
-Gate result (authoritative source):
-  models/archive/manifest.jsonl (timestamp 2026-02-19T01:33:22)
-  - generation: 11
-  - accepted: false
-  - side-aware gate:
-      candidate_white score = 1.000 (40/40 wins as White)
-      candidate_black score = 0.000 (0/40 wins as Black)
-      overall score = 0.500 over 80 games
-  - threshold config in run:
-      gate_threshold=0.54, gate_min_other_side=0.42
-
-Important interpretation:
-  - The long run again confirms the core asymmetry issue:
-    candidate networks strongly improve White-side play but still fail as Black.
-  - Iteration 2 started after the gen11 rejection, but was intentionally stopped
-    before completion for transfer to stronger compute.
-
-How to resume on destination machine:
-  1) Ensure this repo state is checked out.
-  2) Keep or copy models/best_value_net.pt and models/archive/*.
-  3) Start a fresh run from next available generation:
-     python src/iterate.py --iterations 2 --games 180 --curriculum-games 220 \
-       --black-focus-games 260 --simulations 120 --curriculum-simulations 50 \
-       --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 \
-       --warmup-start-factor 0.1 --keep-generations 3 --alternating \
-       --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 \
-       --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 \
-       --seed 20260219 --human-eval
-  4) Recommend increasing compute or lowering timeout risk for black-focus games.
+Baseline snapshot:
+  py -3 src/baseline_snapshot.py
+
+Iterative training (example):
+  py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 \
+    --black-focus-games 260 --simulations 120 --curriculum-simulations 50 \
+    --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 \
+    --warmup-start-factor 0.1 --keep-generations 3 --alternating \
+    --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 \
+    --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 \
+    --seed 20260219 --human-eval
+
+Human eval:
+  py -3 src/human_eval.py --human-dir data/raw/human_games --model models/best_value_net.pt
 
 ================================================================================
-END OF CONTEXT
+END CONTEXT
 ================================================================================

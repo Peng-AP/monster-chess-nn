@@ -1,212 +1,134 @@
-# Monster Chess NN - Execution Order
+# Monster Chess NN - Execution Order (From Current State)
 
-**Date:** 2026-02-18
-**Input:** `IMPROVEMENT_PLAN.md` (revised)
+**Last updated:** 2026-02-19  
+**Input:** `IMPROVEMENT_PLAN.md` (living version)
 
-This is the concrete implementation order with gates. Do not skip gates.
+This is the practical next sequence given what is already implemented.
 
-**Version control rule:** Each stage is a separate git commit and push. Commit message format: `Stage N: <short description>`.
+## Stage Status Snapshot
 
----
+- Stage 0 (baseline snapshot tooling): `complete` tooling, `refresh needed` baseline artifact
+- Stage 1 (evaluation hygiene): `complete`
+- Stage 2 (stability patch set): `partial` (position-budget max-cap still open)
+- Stage 3 (gating infrastructure): `complete`
+- Stage 4+ (architecture/research): `partial` (policy widening + backbone scaling implemented)
 
-## Stage 0 - Baseline Snapshot (No Behavior Changes)
+## Immediate Sprint (Recommended)
 
-1. Record current baseline metrics from latest model:
-- self-play result distribution
-- curriculum tier eval summary
-- train/val/test metrics currently reported
-
-2. Save baseline artifact bundle:
-- metrics json/txt
-- key config values
-- model hash/checksum
-
-**Gate to proceed:** baseline artifacts saved and reproducible.
-
----
-
-## Stage 1 - Evaluation Hygiene (Blocking Stage)
-
-### Step 1.1 Game-level split
+### Stage A - Refresh Baseline Artifacts
 
 Files:
-- `src/data_processor.py`
+
+- `src/baseline_snapshot.py`
+- `baselines/`
 
 Tasks:
-- Split by game files before conversion/augmentation.
-- Ensure no game appears in more than one split.
 
-Acceptance:
-- Script/assertion confirms zero overlap at game id level.
+1. Run a fresh baseline snapshot on current data/model.
+2. Record model hash, split sizes, and gate-relevant metrics.
+3. Save artifact with timestamp in `baselines/`.
 
-### Step 1.2 Deterministic seeds + run metadata
+Gate:
 
-Files:
-- `src/train.py`
-- `src/iterate.py`
+- Baseline JSON exists and matches current repository state.
 
-Tasks:
-- Add seed controls (CLI + defaults).
-- Persist metadata per training run.
-
-Acceptance:
-- Two runs with same seed/data produce near-identical first-epoch metrics.
-
-### Step 1.3 Metric correctness
+### Stage B - Position-Budget Windowing (Finish Remaining Gap)
 
 Files:
-- `src/train.py`
 
-Tasks:
-- Add true MSE metric.
-- Rename power-loss metric to avoid ambiguity.
-
-Acceptance:
-- Logs clearly distinguish power loss vs MSE.
-
-**Gate to proceed:** Stage 1 complete and baseline rerun done on corrected split.
-
----
-
-## Stage 2 - Stability Patch Set (Single PR)
-
-### Step 2.1 Gradient clipping
-### Step 2.2 AdamW + weight decay parameter groups
-### Step 2.3 Resume-from checkpoint + warmup
-### Step 2.4 Position-budget sliding window
-### Step 2.5 Configurable tactical filtering
-### Step 2.6 FPU in PUCT path only
-
-Files:
-- `src/train.py`
-- `src/iterate.py`
 - `src/config.py`
 - `src/data_processor.py`
+- `src/iterate.py`
+
+Tasks:
+
+1. Keep current min-budget behavior.
+2. Add optional max-cap for deterministic budget banding.
+3. Keep existing include/exclude behavior for curriculum/human data.
+
+Gate:
+
+- Processing reports deterministic generation selection and budget hit within configured bounds.
+
+### Stage C - Gated Validation Sweep (Current Priority)
+
+Files:
+
+- `src/iterate.py`
+- `models/iterate_run_*.json`
+- `models/arena_runs/`
+
+Tasks:
+
+1. Run short alternating gated iterations with current architecture defaults.
+2. Compare trained-side and non-trained-side arena scores against prior runs.
+3. Confirm whether acceptance rate improves over the previous rejection-only streak.
+
+Gate:
+
+- At least one accepted candidate or a clear metric trend that justifies next change axis.
+
+### Stage D - Baseline Refresh Artifact
+
+Files:
+
+- `src/baseline_snapshot.py`
+- `baselines/`
+
+Tasks:
+
+1. Capture fresh baseline JSON with current incumbent and processed split.
+2. Store model hash and evaluation metrics for future comparison.
+
+Gate:
+
+- Baseline artifact exists and references current incumbent hash.
+
+## Next Sprint (After Stage A-D)
+
+### Stage E - Playout-Cap Randomization (Implemented)
+
+Files:
+
 - `src/data_generation.py`
 - `src/mcts.py`
 
-Acceptance:
-- Training runs without instability spikes seen in baseline.
-- Offline metrics improve or remain neutral.
-- No regression in quick manual play sanity checks.
-
-**Gate to proceed:** candidate passes arena test versus incumbent (temporary manual arena acceptable).
-
----
-
-## Stage 3 - Permanent Gating Infrastructure
-
-### Step 3.1 Arena command/tooling
-
-Files:
-- `src/iterate.py` or new `src/arena.py`
-
 Tasks:
-- Candidate vs incumbent matches with color swap.
-- Return win/draw/loss and score.
 
-### Step 3.2 Promotion policy
+1. Added bounded randomization over simulation budgets per game.
+2. Added generation summary artifacts with sampled simulation statistics.
 
-Files:
-- `src/iterate.py`
+Gate:
 
-Tasks:
-- Promote model only if score >= threshold.
-- On fail, keep incumbent.
+- Implemented in code and validated in a gated run; continue monitoring for acceptance impact.
 
-Acceptance:
-- Iteration loop can reject a candidate cleanly.
-
-**Gate to proceed:** at least one accepted and one rejected candidate observed in test runs.
-
----
-
-## Stage 4 - Architecture Track (One Change at a Time)
-
-### Step 4.1 Policy head widening
+### Stage F - Adaptive Curriculum Allocation
 
 Files:
-- `src/train.py`
 
-Acceptance:
-- Arena non-regression and improved policy metrics.
-
-### Step 4.2 Backbone 8x128
-
-Files:
-- `src/train.py`
-
-Acceptance:
-- Stable training and arena improvement vs Stage 2 model.
-
-### Step 4.3 SE blocks
-
-Files:
-- `src/train.py`
-
-Acceptance:
-- Arena gain or no-regression with lower variance.
-
-### Step 4.4 WDL head (separate experiment)
-
-Files:
-- `src/train.py`
-- `src/evaluation.py`
-- `src/mcts.py`
-- possibly `src/data_processor.py`
-
-Acceptance:
-- End-to-end compatibility validated.
-- Arena gain over best scalar-value model.
-
-**Gate to proceed:** each sub-step individually gated before stacking next one.
-
----
-
-## Stage 5 - Self-Play/Data Robustness
-
-### Step 5.1 Opponent pool
-### Step 5.2 Asymmetric sims policy
-### Step 5.3 Playout-cap randomization
-### Step 5.4 Adaptive curriculum allocation
-
-Files:
 - `src/iterate.py`
 - `src/data_generation.py`
-- `src/config.py`
-- optionally `src/train.py` and `src/data_processor.py`
 
-Acceptance:
-- Improved arena trend over multiple generations.
-- Reduced oscillation between generations.
+Tasks:
 
----
+1. Shift curriculum/normal/black-focus mix based on recent gate outcomes.
+2. Keep hard bounds to avoid destabilizing data distribution.
 
-## Stage 6 - Advanced Research Additions
+Gate:
 
-### Step 6.1 Auxiliary heads
-### Step 6.2 Separate White/Black networks
-### Step 6.3 Dynamic curriculum generation
-
-Acceptance:
-- Each feature is introduced behind flags.
-- Each passes gating before default enablement.
-
----
+- Better trained-side gate scores without collapse on the other side.
 
 ## Operational Rules
 
-1. Only one major axis change per experiment batch (data, optimizer, architecture, search).
-2. Keep a changelog with experiment id -> code diff -> metrics -> gate outcome.
-3. Default to rollback on failed gate.
-4. Do not overwrite incumbent model on failed gate.
+1. One major change axis per stage.
+2. Do not disable gating for normal development runs.
+3. Keep each stage as an isolated commit.
+4. On failed gate, keep incumbent and continue from known-good state.
 
----
+## Suggested Commit Titles
 
-## Minimal First Sprint (Recommended)
-
-1. Stage 1 fully.
-2. Stage 2 fully.
-3. Stage 3 fully.
-
-That gives a trustworthy and safe training loop before spending compute on larger architecture work.
+1. `Stage A: Refresh baseline snapshot artifact`
+2. `Stage B: Add position-budget max-cap windowing`
+3. `Stage C: Run gated validation sweep for expanded backbone`
+4. `Stage D: Refresh baseline snapshot for new architecture`
+5. `Stage E: Add playout-cap randomization`

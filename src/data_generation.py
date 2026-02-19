@@ -2,8 +2,10 @@ import argparse
 import chess
 import json
 import os
+import random
 import signal
 import time
+from collections import Counter
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
@@ -13,6 +15,7 @@ from config import (
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
     RAW_DATA_DIR, CURRICULUM_FENS,
     CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES,
+    SKIP_CHECK_POSITIONS,
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
@@ -44,6 +47,7 @@ _scripted_black = False
 _force_result = None
 _train_side = "both"
 _opponent_sims = OPPONENT_SIMULATIONS
+_skip_check_positions = SKIP_CHECK_POSITIONS
 
 
 def _is_training_side_position(is_white):
@@ -86,21 +90,24 @@ def _should_skip_record(move_number, is_white, board_is_check, rng):
         early_skip = move_number < early_cutoff
 
     random_skip = rng.random() < subsample_p
-    return early_skip or board_is_check or random_skip
+    check_skip = _skip_check_positions and board_is_check
+    return early_skip or check_skip or random_skip
 
 
 def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results, scripted_black,
-                 force_result, train_side, opponent_sims, opponent_pool_paths):
+                 force_result, train_side, opponent_sims, opponent_pool_paths,
+                 skip_check_positions):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
-    global _force_result, _train_side, _opponent_sims
+    global _force_result, _train_side, _opponent_sims, _skip_check_positions
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
     _force_result = force_result
     _train_side = train_side
     _opponent_sims = opponent_sims
+    _skip_check_positions = skip_check_positions
     if model_path:
         from evaluation import NNEvaluator
         _eval_fn = NNEvaluator(model_path)
@@ -243,6 +250,25 @@ def save_game(records, output_dir, game_id):
     return path
 
 
+def _simulation_stats(sim_values):
+    """Build compact stats for sampled per-game simulation budgets."""
+    if not sim_values:
+        return {
+            "min": None,
+            "max": None,
+            "mean": None,
+            "counts": {},
+        }
+    counts = Counter(sim_values)
+    mean_val = sum(sim_values) / len(sim_values)
+    return {
+        "min": int(min(sim_values)),
+        "max": int(max(sim_values)),
+        "mean": float(mean_val),
+        "counts": {str(k): int(v) for k, v in sorted(counts.items())},
+    }
+
+
 def _worker(args):
     """Worker function for multiprocessing."""
     game_id, num_simulations, seed = args
@@ -258,13 +284,17 @@ def _worker(args):
     t0 = time.time()
     records = play_game(num_simulations)
     elapsed = time.time() - t0
-    return game_id, records, elapsed
+    return game_id, num_simulations, records, elapsed
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
     parser.add_argument("--num-games", type=int, default=NUM_GAMES)
     parser.add_argument("--simulations", type=int, default=MCTS_SIMULATIONS)
+    parser.add_argument("--simulations-min", type=int, default=None,
+                        help="Minimum simulations per game (default: --simulations)")
+    parser.add_argument("--simulations-max", type=int, default=None,
+                        help="Maximum simulations per game (default: --simulations)")
     parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
     parser.add_argument("--workers", type=int, default=None,
                         help="Number of parallel workers (default: CPU count)")
@@ -291,7 +321,20 @@ def main():
                         help=f"MCTS simulations for frozen opponent (default: {OPPONENT_SIMULATIONS})")
     parser.add_argument("--seed", type=int, default=None,
                         help="Base random seed (optional, enables deterministic game seeding)")
+    parser.add_argument("--keep-check-positions", action="store_true",
+                        help="Keep positions where side to move is in check (default: skip them)")
     args = parser.parse_args()
+    if args.simulations <= 0:
+        raise ValueError("--simulations must be > 0")
+    if args.simulations_min is not None and args.simulations_min <= 0:
+        raise ValueError("--simulations-min must be > 0")
+    if args.simulations_max is not None and args.simulations_max <= 0:
+        raise ValueError("--simulations-max must be > 0")
+
+    sim_min = args.simulations if args.simulations_min is None else args.simulations_min
+    sim_max = args.simulations if args.simulations_max is None else args.simulations_max
+    if sim_min > sim_max:
+        raise ValueError("--simulations-min must be <= --simulations-max")
 
     workers = args.workers or os.cpu_count()
     model_path = args.use_model
@@ -340,6 +383,14 @@ def main():
         print(f"Forcing game result: {args.force_result} ({label})")
     if args.seed is not None:
         print(f"Using deterministic base seed: {args.seed}")
+    if args.keep_check_positions:
+        print("Retention: keeping in-check positions")
+    else:
+        print("Retention: skipping in-check positions")
+    if sim_min == sim_max:
+        print(f"Simulation budget: fixed {sim_min} per game")
+    else:
+        print(f"Simulation budget: randomized uniformly in [{sim_min}, {sim_max}] per game")
 
     total_positions = 0
     results = {1: 0, -1: 0, 0: 0}
@@ -348,21 +399,35 @@ def main():
     failed_games = 0
     timed_out_games = 0
 
-    print(f"Generating {args.num_games} games with {args.simulations} MCTS simulations per move...")
+    if sim_min == sim_max:
+        print(f"Generating {args.num_games} games with {sim_min} MCTS simulations per move...")
+    else:
+        print(
+            f"Generating {args.num_games} games with randomized MCTS simulations per move "
+            f"in [{sim_min}, {sim_max}]..."
+        )
     print(f"Workers: {workers}")
     print(f"Output directory: {args.output_dir}\n")
 
     tasks = []
+    sampled_simulations = []
+    schedule_rng = random.Random(args.seed) if args.seed is not None else random.Random()
     for i in range(args.num_games):
         task_seed = None if args.seed is None else args.seed + i
-        tasks.append((i, args.simulations, task_seed))
+        if sim_min == sim_max:
+            sim_for_game = sim_min
+        else:
+            sim_for_game = schedule_rng.randint(sim_min, sim_max)
+        sampled_simulations.append(sim_for_game)
+        tasks.append((i, sim_for_game, task_seed))
 
     executor = ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
         initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
                   args.scripted_black, args.force_result,
-                  args.train_side, args.opponent_sims, opponent_pool_paths),
+                  args.train_side, args.opponent_sims, opponent_pool_paths,
+                  not args.keep_check_positions),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
@@ -371,7 +436,7 @@ def main():
             try:
                 for future in as_completed(futures, timeout=600):
                     try:
-                        game_id, records, elapsed = future.result()
+                        game_id, _sim_used, records, elapsed = future.result()
                     except (BrokenExecutor, Exception) as e:
                         gid = futures[future]
                         tqdm.write(f"  Game {gid}: FAILED ({e}), skipping")
@@ -421,6 +486,44 @@ def main():
     if timed_out_games > 0:
         print(f"Timed out games: {timed_out_games}")
     print(f"Results - White: {white}, Black: {black}, Draw: {draws} (saved games only)")
+    sim_stats = _simulation_stats(sampled_simulations)
+    if sim_stats["min"] is not None:
+        print(
+            f"Simulation usage stats: min={sim_stats['min']} max={sim_stats['max']} "
+            f"mean={sim_stats['mean']:.2f}"
+        )
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    summary_path = os.path.join(args.output_dir, "generation_summary.json")
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "num_games_requested": int(args.num_games),
+            "saved_games": int(saved_games),
+            "skipped_empty": int(skipped_empty),
+            "failed_games": int(failed_games),
+            "timed_out_games": int(timed_out_games),
+            "total_positions": int(total_positions),
+            "results": {
+                "white_wins": int(white),
+                "black_wins": int(black),
+                "draws": int(draws),
+            },
+            "simulations": {
+                "configured_base": int(args.simulations),
+                "configured_min": int(sim_min),
+                "configured_max": int(sim_max),
+                "sampled_stats": sim_stats,
+            },
+            "workers": int(workers),
+            "train_side": args.train_side,
+            "curriculum": bool(args.curriculum),
+            "curriculum_live_results": bool(args.curriculum_live_results),
+            "scripted_black": bool(args.scripted_black),
+            "keep_check_positions": bool(args.keep_check_positions),
+            "seed": int(args.seed) if args.seed is not None else None,
+        }, f, indent=2)
+    print(f"Generation summary saved to {summary_path}")
 
 
 if __name__ == "__main__":

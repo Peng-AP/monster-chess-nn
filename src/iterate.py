@@ -140,16 +140,7 @@ def summarize_generation(gen_dir):
     max_len = max(game_lengths)
     total_pos = sum(game_lengths)
 
-    print(f"\n  --- Generation Summary ---")
-    print(f"  Games:     {n} (files={len(files)}, empty={empty_files})")
-    print(f"  Positions: {total_pos}")
-    print(
-        f"  Results:   White {white_wins} ({100*white_wins/n:.0f}%)  |  "
-        f"Black {black_wins} ({100*black_wins/n:.0f}%)  |  "
-        f"Draw {draws} ({100*draws/n:.0f}%)"
-    )
-    print(f"  Length:    avg {avg_len:.0f}  |  min {min_len}  |  max {max_len}")
-    return {
+    summary = {
         "games": n,
         "positions": total_pos,
         "white_wins": white_wins,
@@ -161,6 +152,35 @@ def summarize_generation(gen_dir):
         "empty_files": empty_files,
         "files": len(files),
     }
+
+    gen_summary_path = os.path.join(gen_dir, "generation_summary.json")
+    if os.path.exists(gen_summary_path):
+        try:
+            with open(gen_summary_path, "r", encoding="utf-8") as f:
+                generation_summary = json.load(f)
+            summary["simulations"] = generation_summary.get("simulations")
+        except Exception as e:
+            summary["generation_summary_error"] = str(e)
+
+    print(f"\n  --- Generation Summary ---")
+    print(f"  Games:     {n} (files={len(files)}, empty={empty_files})")
+    print(f"  Positions: {total_pos}")
+    print(
+        f"  Results:   White {white_wins} ({100*white_wins/n:.0f}%)  |  "
+        f"Black {black_wins} ({100*black_wins/n:.0f}%)  |  "
+        f"Draw {draws} ({100*draws/n:.0f}%)"
+    )
+    print(f"  Length:    avg {avg_len:.0f}  |  min {min_len}  |  max {max_len}")
+    sim_info = summary.get("simulations")
+    if isinstance(sim_info, dict):
+        sampled = sim_info.get("sampled_stats", {})
+        if sampled.get("min") is not None:
+            print(
+                f"  Sims:      min {sampled['min']}  |  max {sampled['max']}  |  "
+                f"mean {sampled['mean']:.2f}"
+            )
+
+    return summary
 
 
 def _scan_result_dir(gen_dir):
@@ -311,6 +331,8 @@ def main():
                         help="Warmup start LR factor when fine-tuning (default: from config)")
     parser.add_argument("--keep-generations", type=int, default=None,
                         help="Sliding window: keep last N generations (default: from config)")
+    parser.add_argument("--position-budget", type=int, default=None,
+                        help="Position budget window: include enough recent generations to hit N raw positions")
     parser.add_argument("--alternating", action="store_true",
                         help="Use frozen-opponent alternating training")
     parser.add_argument("--opponent-sims", type=int, default=None,
@@ -340,15 +362,26 @@ def main():
                         help="Include model value diagnostics on human positions (slower)")
     parser.add_argument("--exclude-human-games", action="store_true",
                         help="Exclude data/raw/human_games from training data processing")
+    parser.add_argument("--keep-check-positions", action="store_true",
+                        help="Keep in-check positions during self-play data generation")
+    parser.add_argument("--selfplay-sims-jitter-pct", type=float, default=None,
+                        help="Randomize self-play per-game simulations by +/- this fraction (e.g. 0.20)")
     args = parser.parse_args()
 
     from config import (
-        SLIDING_WINDOW, OPPONENT_SIMULATIONS, RANDOM_SEED,
-        WARMUP_EPOCHS, WARMUP_START_FACTOR,
+        SLIDING_WINDOW, POSITION_BUDGET, OPPONENT_SIMULATIONS, RANDOM_SEED,
+        WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
     )
     base_seed = args.seed if args.seed is not None else RANDOM_SEED
     set_seed(base_seed)
     keep_gens = args.keep_generations if args.keep_generations is not None else SLIDING_WINDOW
+    position_budget = args.position_budget if args.position_budget is not None else POSITION_BUDGET
+    selfplay_sims_jitter_pct = (
+        args.selfplay_sims_jitter_pct
+        if args.selfplay_sims_jitter_pct is not None else SELFPLAY_SIMS_JITTER_PCT
+    )
+    if position_budget is not None and position_budget <= 0:
+        position_budget = None
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
     warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else WARMUP_EPOCHS
     warmup_start_factor = (
@@ -365,8 +398,12 @@ def main():
         raise ValueError("--black-focus-games must be >= 0")
     if args.black_focus_simulations <= 0:
         raise ValueError("--black-focus-simulations must be > 0")
+    if selfplay_sims_jitter_pct < 0.0 or selfplay_sims_jitter_pct >= 1.0:
+        raise ValueError("--selfplay-sims-jitter-pct must be in [0.0, 1.0)")
     if args.alternating and not args.no_gating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
+    if args.keep_generations is not None and args.position_budget is not None:
+        raise ValueError("Specify only one of --keep-generations or --position-budget")
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     processed_dir = os.path.join(PROJECT_ROOT, "data", "processed")
@@ -437,11 +474,14 @@ def main():
         "black_focus_games": args.black_focus_games,
         "black_focus_simulations": args.black_focus_simulations,
         "opponent_pool_size": args.pool_size,
+        "position_budget_effective": position_budget,
+        "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
         "human_eval_value_diagnostics": args.human_eval_value_diagnostics,
         "exclude_human_games": args.exclude_human_games,
+        "keep_check_positions": args.keep_check_positions,
         "mode": "alternating" if args.alternating else "standard",
         "start_generation": start_gen,
         "model_path": model_path,
@@ -456,6 +496,8 @@ def main():
     print(f"  Iterations:  {args.iterations}")
     print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum + {args.black_focus_games} black-focus")
     print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, {args.black_focus_simulations} black-focus")
+    if selfplay_sims_jitter_pct > 0:
+        print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
         print(f"  Pool size:   {args.pool_size} archived models")
@@ -466,10 +508,15 @@ def main():
         if args.alternating:
             print(f"               alternating side floor={args.gate_min_other_side:.2f} on non-trained side")
     print(f"  Epochs:      {args.epochs}")
-    if args.exclude_human_games:
-        print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap, no human_games)")
+    if position_budget is not None:
+        budget_human = "no human_games" if args.exclude_human_games else "with human_games"
+        print(f"  Window:      position budget {position_budget} raw positions (+ curriculum_bootstrap, {budget_human})")
     else:
-        print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
+        if args.exclude_human_games:
+            print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap, no human_games)")
+        else:
+            print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
+    print(f"  Check pos:   {'keep' if args.keep_check_positions else 'skip'}")
     print(f"  Starting at: generation {start_gen}")
     print(f"  Existing:    {total_games_existing} games, {total_pos_existing} positions")
     print(f"  Model:       {model_path}")
@@ -500,6 +547,13 @@ def main():
 
         # Step 1a: Generate normal games
         opponent_pool_count = 0
+        def _sim_bounds(base_sims):
+            if selfplay_sims_jitter_pct <= 0:
+                return None
+            min_sims = max(1, int(round(base_sims * (1.0 - selfplay_sims_jitter_pct))))
+            max_sims = max(min_sims, int(round(base_sims * (1.0 + selfplay_sims_jitter_pct))))
+            return min_sims, max_sims
+
         gen_cmd = [
             sys.executable, "data_generation.py",
             "--num-games", str(args.games),
@@ -508,6 +562,14 @@ def main():
             "--use-model", model_path,
             "--seed", str(base_seed + gen * 10 + 1),
         ]
+        normal_sim_bounds = _sim_bounds(args.simulations)
+        if normal_sim_bounds is not None:
+            gen_cmd.extend([
+                "--simulations-min", str(normal_sim_bounds[0]),
+                "--simulations-max", str(normal_sim_bounds[1]),
+            ])
+        if args.keep_check_positions:
+            gen_cmd.append("--keep-check-positions")
 
         if args.alternating:
             gen_cmd.extend(["--train-side", train_side])
@@ -545,6 +607,14 @@ def main():
                 "--opponent-sims", str(opponent_sims),
                 "--seed", str(base_seed + gen * 10 + 5),
             ]
+            blackfocus_sim_bounds = _sim_bounds(args.black_focus_simulations)
+            if blackfocus_sim_bounds is not None:
+                bf_cmd.extend([
+                    "--simulations-min", str(blackfocus_sim_bounds[0]),
+                    "--simulations-max", str(blackfocus_sim_bounds[1]),
+                ])
+            if args.keep_check_positions:
+                bf_cmd.append("--keep-check-positions")
             if args.pool_size > 0 and archived_models:
                 bf_cmd.extend(["--opponent-pool-dir", archive_dir])
                 bf_cmd.extend(["--opponent-pool-size", str(args.pool_size)])
@@ -573,6 +643,13 @@ def main():
                 "--curriculum",
                 "--scripted-black",
                 "--seed", str(base_seed + gen * 10 + 2),
+                *(
+                    [
+                        "--simulations-min", str(_sim_bounds(args.curriculum_simulations)[0]),
+                        "--simulations-max", str(_sim_bounds(args.curriculum_simulations)[1]),
+                    ] if _sim_bounds(args.curriculum_simulations) is not None else []
+                ),
+                *(["--keep-check-positions"] if args.keep_check_positions else []),
             ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, tiered values)")
 
             print(f"\n  --- Curriculum Games ---")
@@ -583,14 +660,26 @@ def main():
 
         # Step 2: Reprocess data (sliding window)
         total_games, total_pos = count_data(raw_dir)
-        t_proc = run([
+        proc_cmd = [
             sys.executable, "data_processor.py",
             "--raw-dir", raw_dir,
             "--output-dir", processed_dir,
-            "--keep-generations", str(keep_gens),
             "--seed", str(base_seed + gen * 10 + 3),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
-        ], f"[{i+1}/{args.iterations}] Reprocessing data (window={keep_gens}, total on disk: {total_games} games)")
+        ]
+        if position_budget is not None:
+            proc_cmd.extend(["--position-budget", str(position_budget)])
+            proc_desc = (
+                f"[{i+1}/{args.iterations}] Reprocessing data "
+                f"(position_budget={position_budget}, total on disk: {total_games} games)"
+            )
+        else:
+            proc_cmd.extend(["--keep-generations", str(keep_gens)])
+            proc_desc = (
+                f"[{i+1}/{args.iterations}] Reprocessing data "
+                f"(window={keep_gens}, total on disk: {total_games} games)"
+            )
+        t_proc = run(proc_cmd, proc_desc)
 
         # Step 3: Train candidate model (fine-tune from incumbent)
         candidate_dir = os.path.join(model_dir, "candidates", f"gen_{gen:04d}")

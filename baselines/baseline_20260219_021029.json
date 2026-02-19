@@ -1,0 +1,596 @@
+{
+  "stage": 0,
+  "description": "Baseline snapshot before improvement plan",
+  "timestamp": "2026-02-19T02:10:29",
+  "model": {
+    "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\best_value_net.pt",
+    "sha256": "d54e3117a7a28bd4c0c678fe2d3fab231aa8943660cfbc1ff6958e9b70bc815b",
+    "total_params": 1235781,
+    "policy_head_channels": 2,
+    "git_commit": "2e08609"
+  },
+  "data": {
+    "processed_dir": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed",
+    "total_positions": 65154,
+    "train_size": 59204,
+    "val_size": 3504,
+    "test_size": 2446,
+    "value_distribution": {
+      "mean": -0.2723,
+      "std": 0.6099,
+      "min": -0.9508,
+      "max": 1.0,
+      "pct_positive": 0.3395,
+      "pct_negative": 0.6597,
+      "pct_zero": 0.0008
+    }
+  },
+  "metrics": {
+    "val": {
+      "split": "val",
+      "n_positions": 3504,
+      "total_loss": 0.647284,
+      "power_loss_2.5": 0.006765,
+      "true_mse": 0.014115,
+      "mae": 0.085835,
+      "policy_ce": 0.640519,
+      "sign_accuracy": 0.9808,
+      "pred_mean": -0.4805,
+      "pred_std": 0.585,
+      "target_mean": -0.4463,
+      "target_std": 0.5796
+    },
+    "test": {
+      "split": "test",
+      "n_positions": 2446,
+      "total_loss": 0.359912,
+      "power_loss_2.5": 0.01109,
+      "true_mse": 0.020363,
+      "mae": 0.097063,
+      "policy_ce": 0.348822,
+      "sign_accuracy": 0.9746,
+      "pred_mean": -0.2619,
+      "pred_std": 0.6762,
+      "target_mean": -0.2919,
+      "target_std": 0.7045
+    }
+  },
+  "self_play_results": {
+    "curriculum_bootstrap": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 4624,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 23.1
+    },
+    "human_games": {
+      "games": 25,
+      "files": 25,
+      "empty_files": 0,
+      "positions": 506,
+      "white_wins": 0,
+      "black_wins": 25,
+      "draws": 0,
+      "avg_length": 20.2
+    },
+    "nn_gen1": {
+      "games": 177,
+      "files": 179,
+      "empty_files": 2,
+      "positions": 4642,
+      "white_wins": 171,
+      "black_wins": 0,
+      "draws": 6,
+      "avg_length": 26.2
+    },
+    "nn_gen10": {
+      "games": 163,
+      "files": 164,
+      "empty_files": 1,
+      "positions": 4273,
+      "white_wins": 154,
+      "black_wins": 0,
+      "draws": 9,
+      "avg_length": 26.2
+    },
+    "nn_gen10_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7097,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 35.5
+    },
+    "nn_gen11": {
+      "games": 170,
+      "files": 171,
+      "empty_files": 1,
+      "positions": 4421,
+      "white_wins": 161,
+      "black_wins": 0,
+      "draws": 9,
+      "avg_length": 26.0
+    },
+    "nn_gen11_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7664,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 38.3
+    },
+    "nn_gen12": {
+      "games": 198,
+      "files": 200,
+      "empty_files": 2,
+      "positions": 3878,
+      "white_wins": 193,
+      "black_wins": 0,
+      "draws": 5,
+      "avg_length": 19.6
+    },
+    "nn_gen12_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6819,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.1
+    },
+    "nn_gen13": {
+      "games": 198,
+      "files": 199,
+      "empty_files": 1,
+      "positions": 3295,
+      "white_wins": 193,
+      "black_wins": 0,
+      "draws": 5,
+      "avg_length": 16.6
+    },
+    "nn_gen14": {
+      "games": 186,
+      "files": 192,
+      "empty_files": 6,
+      "positions": 1289,
+      "white_wins": 185,
+      "black_wins": 0,
+      "draws": 1,
+      "avg_length": 6.9
+    },
+    "nn_gen14_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6619,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 33.1
+    },
+    "nn_gen15": {
+      "games": 195,
+      "files": 200,
+      "empty_files": 5,
+      "positions": 1377,
+      "white_wins": 195,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 7.1
+    },
+    "nn_gen15_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6690,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 33.5
+    },
+    "nn_gen16": {
+      "games": 193,
+      "files": 200,
+      "empty_files": 7,
+      "positions": 2193,
+      "white_wins": 190,
+      "black_wins": 0,
+      "draws": 3,
+      "avg_length": 11.4
+    },
+    "nn_gen16_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6890,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.5
+    },
+    "nn_gen17": {
+      "games": 194,
+      "files": 200,
+      "empty_files": 6,
+      "positions": 1972,
+      "white_wins": 193,
+      "black_wins": 0,
+      "draws": 1,
+      "avg_length": 10.2
+    },
+    "nn_gen17_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7088,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 35.4
+    },
+    "nn_gen18": {
+      "games": 192,
+      "files": 200,
+      "empty_files": 8,
+      "positions": 2297,
+      "white_wins": 191,
+      "black_wins": 0,
+      "draws": 1,
+      "avg_length": 12.0
+    },
+    "nn_gen18_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6872,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.4
+    },
+    "nn_gen19": {
+      "games": 197,
+      "files": 200,
+      "empty_files": 3,
+      "positions": 2433,
+      "white_wins": 197,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 12.4
+    },
+    "nn_gen19_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7923,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 39.6
+    },
+    "nn_gen1_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7628,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 38.1
+    },
+    "nn_gen2": {
+      "games": 156,
+      "files": 158,
+      "empty_files": 2,
+      "positions": 4280,
+      "white_wins": 150,
+      "black_wins": 0,
+      "draws": 6,
+      "avg_length": 27.4
+    },
+    "nn_gen20": {
+      "games": 197,
+      "files": 200,
+      "empty_files": 3,
+      "positions": 2420,
+      "white_wins": 197,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 12.3
+    },
+    "nn_gen20_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6736,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 33.7
+    },
+    "nn_gen21": {
+      "games": 196,
+      "files": 200,
+      "empty_files": 4,
+      "positions": 2451,
+      "white_wins": 195,
+      "black_wins": 0,
+      "draws": 1,
+      "avg_length": 12.5
+    },
+    "nn_gen21_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6976,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.9
+    },
+    "nn_gen22": {
+      "games": 197,
+      "files": 199,
+      "empty_files": 2,
+      "positions": 2510,
+      "white_wins": 197,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 12.7
+    },
+    "nn_gen23": {
+      "games": 199,
+      "files": 199,
+      "empty_files": 0,
+      "positions": 2135,
+      "white_wins": 198,
+      "black_wins": 0,
+      "draws": 1,
+      "avg_length": 10.7
+    },
+    "nn_gen24": {
+      "games": 199,
+      "files": 200,
+      "empty_files": 1,
+      "positions": 2335,
+      "white_wins": 199,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 11.7
+    },
+    "nn_gen24_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7101,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 35.5
+    },
+    "nn_gen25": {
+      "games": 8,
+      "files": 8,
+      "empty_files": 0,
+      "positions": 87,
+      "white_wins": 8,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 10.9
+    },
+    "nn_gen25_curriculum": {
+      "games": 8,
+      "files": 8,
+      "empty_files": 0,
+      "positions": 179,
+      "white_wins": 0,
+      "black_wins": 8,
+      "draws": 0,
+      "avg_length": 22.4
+    },
+    "nn_gen2_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7312,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 36.6
+    },
+    "nn_gen3": {
+      "games": 181,
+      "files": 181,
+      "empty_files": 0,
+      "positions": 4291,
+      "white_wins": 172,
+      "black_wins": 0,
+      "draws": 9,
+      "avg_length": 23.7
+    },
+    "nn_gen3_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6403,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 32.0
+    },
+    "nn_gen4": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 4421,
+      "white_wins": 190,
+      "black_wins": 0,
+      "draws": 10,
+      "avg_length": 22.1
+    },
+    "nn_gen4_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7415,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 37.1
+    },
+    "nn_gen5": {
+      "games": 172,
+      "files": 173,
+      "empty_files": 1,
+      "positions": 4376,
+      "white_wins": 162,
+      "black_wins": 0,
+      "draws": 10,
+      "avg_length": 25.4
+    },
+    "nn_gen5_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6951,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.8
+    },
+    "nn_gen6": {
+      "games": 155,
+      "files": 155,
+      "empty_files": 0,
+      "positions": 4395,
+      "white_wins": 146,
+      "black_wins": 0,
+      "draws": 9,
+      "avg_length": 28.4
+    },
+    "nn_gen6_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6396,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 32.0
+    },
+    "nn_gen7": {
+      "games": 169,
+      "files": 169,
+      "empty_files": 0,
+      "positions": 4302,
+      "white_wins": 160,
+      "black_wins": 0,
+      "draws": 9,
+      "avg_length": 25.5
+    },
+    "nn_gen7_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 6900,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 34.5
+    },
+    "nn_gen8": {
+      "games": 186,
+      "files": 186,
+      "empty_files": 0,
+      "positions": 4183,
+      "white_wins": 179,
+      "black_wins": 0,
+      "draws": 7,
+      "avg_length": 22.5
+    },
+    "nn_gen8_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7293,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 36.5
+    },
+    "nn_gen9": {
+      "games": 198,
+      "files": 200,
+      "empty_files": 2,
+      "positions": 4464,
+      "white_wins": 191,
+      "black_wins": 0,
+      "draws": 7,
+      "avg_length": 22.5
+    },
+    "nn_gen9_curriculum": {
+      "games": 200,
+      "files": 200,
+      "empty_files": 0,
+      "positions": 7045,
+      "white_wins": 0,
+      "black_wins": 200,
+      "draws": 0,
+      "avg_length": 35.2
+    },
+    "normal": {
+      "games": 199,
+      "files": 200,
+      "empty_files": 1,
+      "positions": 5398,
+      "white_wins": 192,
+      "black_wins": 0,
+      "draws": 7,
+      "avg_length": 27.1
+    },
+    "_tmp_smoke": {
+      "games": 1,
+      "files": 1,
+      "empty_files": 0,
+      "positions": 37,
+      "white_wins": 1,
+      "black_wins": 0,
+      "draws": 0,
+      "avg_length": 37.0
+    }
+  },
+  "self_play_totals": {
+    "games": 9109,
+    "white_wins": 4560,
+    "black_wins": 4433,
+    "draws": 116
+  },
+  "config": {
+    "MCTS_SIMULATIONS": 800,
+    "SLIDING_WINDOW": 2,
+    "HUMAN_DATA_WEIGHT": 40,
+    "OPPONENT_SIMULATIONS": 200,
+    "C_PUCT": 1.5,
+    "DIRICHLET_ALPHA": 0.3,
+    "DIRICHLET_EPSILON": 0.25,
+    "EXPLORATION_CONSTANT": 1.41,
+    "MAX_GAME_TURNS": 150,
+    "VALUE_TARGET": "mcts_value",
+    "BLEND_WEIGHT": 0.7,
+    "VALUE_LOSS_EXPONENT": 2.5,
+    "LR_GAMMA": 0.95,
+    "LEARNING_RATE": 0.002,
+    "EPOCHS": 50,
+    "BATCH_SIZE": 256,
+    "POLICY_SIZE": 4096,
+    "POLICY_LOSS_WEIGHT": 1.0
+  }
+}

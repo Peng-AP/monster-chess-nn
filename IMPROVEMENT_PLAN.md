@@ -1,214 +1,148 @@
-# Monster Chess NN - Revised Improvement Plan
+# Monster Chess NN - Improvement Plan (Living)
 
-**Date:** 2026-02-18
-**Status:** Revised after code-level review of `src/` and training pipeline behavior.
+**Last updated:** 2026-02-19  
+**Scope:** Current repo state on this machine (`main`)
 
----
+## Status Legend
+
+- `complete`: implemented in code and actively used
+- `partial`: implemented in part, missing key behavior
+- `pending`: not implemented yet
 
 ## Executive Summary
 
-The original plan had many good ideas, but it mixed high-risk architecture changes with missing evaluation hygiene. The revised plan prioritizes **measurement correctness first**, then low-risk stability fixes, then architecture/search upgrades with strict gating.
+The core reliability foundation is now in place:
 
-Core principle:
-- If validation is leaky or promotion is ungated, later improvements can look good while actual play gets worse.
+- game-level split hygiene
+- deterministic seeds and run metadata
+- candidate gating with side-aware thresholds
+- stability defaults (AdamW, weight decay groups, grad clipping, warmup fine-tune)
 
----
+The next bottlenecks are search/data quality and model capacity for Black-side play.
 
 ## Guiding Rules
 
-1. Fix evaluation hygiene before model redesign.
-2. Promote models only via arena gating, never by default.
-3. Introduce one major change class at a time (data, optimizer, architecture, search).
-4. Keep all key knobs in `config.py` or CLI flags for fast ablation.
-5. Each stage is a separate git commit and push. No stage is merged silently.
+1. Keep gating mandatory for promotion.
+2. Change one major axis per experiment batch.
+3. Keep every tunable exposed via `config.py` or CLI.
+4. Track every experiment with run metadata and gate outcome.
+5. Roll back by rejection, not by deleting history.
 
----
+## Phase 0 - Evaluation Hygiene
 
-## Phase 0 - Evaluation Hygiene (Must Do First)
+### 0.1 Split by game, not position: `complete`
 
-Goal: make metrics trustworthy and reproducible.
+- Implemented in `src/data_processor.py` via game-level grouping and split integrity checks.
 
-### 0.1 Split by game, not by position
+### 0.2 Deterministic seeds + metadata: `complete`
 
-**File:** `src/data_processor.py`
+- Implemented in `src/train.py` and `src/iterate.py` (seed control + JSON run metadata).
 
-Current split happens after position expansion/augmentation, so near-duplicate positions from the same game can land in train and val/test. This inflates metrics.
+### 0.3 Metric correctness (power loss vs true MSE/MAE): `complete`
 
-Change:
-- Split at game-file level first (train/val/test game sets), then convert positions.
-- Apply augmentation only within each split.
+- Implemented in `src/train.py` logging and test summary.
 
-### 0.2 Add deterministic run metadata
+### 0.4 Arena evaluation harness for gating: `complete`
 
-**Files:** `src/train.py`, `src/iterate.py`
+- Implemented in `src/iterate.py` (`_run_arena` + gate decision logic).
 
-Change:
-- Seed Python, NumPy, and Torch consistently.
-- Save run metadata (seed, git commit hash if available, key hyperparameters, data counts).
+## Phase 1 - Stability and Low-Risk Quality
 
-### 0.3 Fix metric labeling and add true MSE readout
+### 1.1 Gradient clipping: `complete`
 
-**File:** `src/train.py`
+- Implemented in `src/train.py` (`clip_grad_norm_`).
 
-Current code prints "Value MSE" while optimizing/recording power loss. Keep power loss but report true MSE and MAE explicitly.
+### 1.2 AdamW + decoupled weight decay: `complete`
 
-### 0.4 Add arena evaluation harness
+- Implemented with no-decay groups for bias/norm params in `src/train.py`.
 
-**File:** `src/iterate.py` (or new `src/arena.py`)
+### 1.3 Fine-tune from incumbent + warmup: `complete`
 
-Add head-to-head evaluation between candidate and incumbent models with both color assignments. This is prerequisite for gating.
+- Implemented with `--resume-from`, `--warmup-epochs`, `--warmup-start-factor`.
 
----
+### 1.4 Position-budget data window (replace fixed generation window): `partial`
 
-## Phase 1 - Stability and Low-Risk Quality Wins
+- Implemented min-budget selection via `POSITION_BUDGET` and `--position-budget` in
+  `src/config.py`, `src/data_processor.py`, and `src/iterate.py`.
+- Remaining gap: optional max-cap behavior is not yet implemented.
 
-Goal: improve training stability without changing game semantics.
+### 1.5 FPU reduction in PUCT path: `complete`
 
-### 1.1 Gradient clipping
+- Implemented as `FPU_REDUCTION` in `src/config.py`, used in PUCT path in `src/mcts.py`.
 
-**File:** `src/train.py`
+### 1.6 Configurable tactical filtering in generation: `complete`
 
-Add `clip_grad_norm_` before optimizer step.
-
-### 1.2 Weight decay with decoupled optimizer
-
-**File:** `src/train.py`
-
-Use AdamW with `weight_decay=1e-4`, excluding BatchNorm and bias terms from decay (parameter groups).
-
-### 1.3 Fine-tune from previous best model
-
-**Files:** `src/train.py`, `src/iterate.py`
-
-Add `--resume-from` and warmup schedule for first few epochs. Keep bootstrap-from-scratch for initial model only.
-
-### 1.4 Replace fixed sliding window with position-budget policy
-
-**Files:** `src/config.py`, `src/data_processor.py`, `src/iterate.py`
-
-Instead of fixed `SLIDING_WINDOW=2`, target a minimum number of recent positions (for example 400k-800k) and include enough generations to hit that budget.
-
-### 1.5 Add FPU reduction in PUCT path only
-
-**File:** `src/mcts.py`
-
-Implement FPU inside `puct_score`/selection logic for unvisited children; do not globally alter `q_value` for all modes.
-
-### 1.6 Make tactical filtering configurable
-
-**File:** `src/data_generation.py`
-
-Current rule drops all check positions. Move this behind a flag so it can be ablated. In this variant, check-like king pressure may carry important tactical signal.
-
----
+- Implemented via `SKIP_CHECK_POSITIONS` default and `--keep-check-positions` control path
+  in `src/data_generation.py` and `src/iterate.py`.
 
 ## Phase 2 - Controlled Architecture Upgrades
 
-Goal: increase representational capacity without destabilizing training.
+### 2.1 Policy head widening: `complete`
 
-### 2.1 Policy head bottleneck fix first
+- Implemented via `POLICY_HEAD_CHANNELS` (currently `16`) in `src/config.py` and wired in
+  `src/train.py`.
 
-**File:** `src/train.py`
+### 2.2 Backbone expansion (e.g., 8x128): `complete`
 
-Increase policy head channel width (for example 2 -> 16/32) before deeper backbone changes.
+- Implemented via configurable `STEM_CHANNELS` and `RESIDUAL_BLOCK_CHANNELS` in
+  `src/config.py`, with dynamic tower construction and checkpoint-architecture inference
+  in `src/train.py`.
 
-### 2.2 Backbone expansion
+### 2.3 SE blocks: `pending`
 
-**File:** `src/train.py`
-
-Move to 8x128 residual tower only after Phase 1+gating is stable.
-
-### 2.3 Add SE blocks
-
-**File:** `src/train.py`
-
-Add SE after residual conv stack for incremental gain.
-
-### 2.4 Delay WDL head until baseline is stable
-
-**Files:** `src/train.py`, `src/evaluation.py`, `src/mcts.py`
-
-WDL is worthwhile, but touches labels, losses, evaluator plumbing, and MCTS interfaces. Treat as separate experiment after capacity and stability improvements are validated.
-
----
+### 2.4 WDL value head experiment: `pending`
 
 ## Phase 3 - Search and Self-Play Robustness
 
-Goal: improve data quality and avoid model regressions in iterative self-play.
+### 3.1 Enforced network gating: `complete`
 
-### 3.1 Enforce network gating
+- Candidate promotion is gate-controlled by default in `src/iterate.py`.
 
-**File:** `src/iterate.py`
+### 3.2 Opponent pool: `complete`
 
-Require candidate >= threshold (for example 55%) in arena games to replace incumbent.
+- Implemented via archive pool options in `src/iterate.py` + `src/data_generation.py`.
 
-### 3.2 Opponent pool (3-5 snapshots)
+### 3.3 Asymmetric simulation budgets: `complete`
 
-**Files:** `src/iterate.py`, `src/data_generation.py`
+- Implemented with train-side/opponent simulation split.
 
-Sample opponents from a pool to reduce co-adaptation to a single frozen net.
+### 3.4 Playout-cap randomization: `complete`
 
-### 3.3 Asymmetric simulation budgets
+- Implemented per-game simulation budget sampling via
+  `--simulations-min/--simulations-max` in `src/data_generation.py`.
+- Wired from iteration loop via `--selfplay-sims-jitter-pct` and
+  `SELFPLAY_SIMS_JITTER_PCT` in `src/iterate.py` / `src/config.py`.
+- Generation-level simulation stats are persisted in
+  `generation_summary.json` and carried into iterate metadata summaries.
 
-**Files:** `src/config.py`, `src/iterate.py`, `src/data_generation.py`
+### 3.5 Adaptive curriculum allocation: `pending`
 
-Give Black more simulations while training Black; keep policy configurable and measured.
+## Phase 4 - Advanced Additions
 
-### 3.4 Playout-cap randomization
+### 4.1 Auxiliary heads: `pending`
 
-**Files:** `src/data_generation.py`, `src/data_processor.py`, `src/train.py`
+### 4.2 Separate White/Black networks: `pending`
 
-Randomize sims per move/game and optionally weight losses by search reliability.
+### 4.3 Dynamic curriculum generation: `pending`
 
-### 3.5 Adaptive curriculum allocation
+## Current Priority Queue
 
-**Files:** `src/iterate.py`, `src/data_generation.py`
+1. Run multi-iteration gated alternating validation with playout randomization enabled.
+2. Add optional max-cap behavior to position-budget windowing.
+3. Adaptive curriculum allocation.
+4. SE block experiment on backbone.
 
-Reallocate curriculum games toward tiers with weakest current performance while preserving minimum coverage.
+## Validation Protocol (Required Per Major Change)
 
----
+1. Training stability: loss curves and no gradient spikes.
+2. Offline metrics: power loss, true MSE, MAE, policy CE.
+3. Gate outcome: candidate vs incumbent, color-balanced.
+4. Alternating mode check: trained side and non-trained side thresholds both pass.
+5. Human eval trend check when relevant (`src/human_eval.py`).
 
-## Phase 4 - Advanced/Research Additions
+## Exit Criteria
 
-Goal: maximize efficiency after core pipeline is reliable.
-
-### 4.1 Auxiliary heads (KataGo style)
-
-Predict extra targets such as moves-to-terminal and piece survival.
-
-### 4.2 Separate side-specific networks
-
-Two-model setup for White and Black if shared-network limits remain after Phases 1-3.
-
-### 4.3 Dynamic curriculum generation
-
-Generate curriculum positions from real trajectories rather than relying only on fixed FEN bank.
-
----
-
-## Explicit De-prioritization (for now)
-
-1. Full migration to SGD before stabilizing and gating current pipeline.
-2. Large semantic rule changes (handicapped rules) before proving baseline improvements.
-3. Multiple major architecture+training changes in one iteration.
-
----
-
-## Validation Protocol (Required per Major Change)
-
-For each change set, run:
-
-1. Training stability: no exploding loss, smoother val curves.
-2. Offline metrics: true value MSE, MAE, policy CE/top-k.
-3. Curriculum diagnostics: tier-wise value targets and errors.
-4. Arena gating: candidate vs incumbent over fixed game count and color balance.
-5. Regression guard: if gate fails, reject candidate and keep incumbent.
-
----
-
-## Exit Criteria for "Plan Successful"
-
-1. Gated promotion acceptance settles in healthy range (roughly 40-80%).
-2. White win rate in self-play decreases materially from current baseline without collapse in overall play quality.
-3. Curriculum tier evaluations become monotonic and consistent with intended difficulty.
-4. Improvements persist for multiple generations, not just one-run spikes.
+1. Candidate acceptance settles in a healthy non-trivial range.
+2. Black-side gate score improves without collapsing White-side play.
+3. Improvements persist across multiple generations.
+4. No metric inflation from data leakage or split contamination.

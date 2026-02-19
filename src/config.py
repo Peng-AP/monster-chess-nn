@@ -121,9 +121,15 @@ TENSOR_SHAPE = (8, 8, TOTAL_LAYERS)
 # Policy head
 POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
 C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
+FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
 DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
+POLICY_HEAD_CHANNELS = 16  # policy head bottleneck channels (was 2)
+STEM_CHANNELS = 64
+RESIDUAL_BLOCK_CHANNELS = (
+    64, 64, 128, 128, 128, 128, 128, 128
+)  # deeper tower (stage F backbone scaling)
 
 # Training
 BATCH_SIZE = 256
@@ -144,7 +150,10 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 # Human data
 HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processing
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
+POSITION_BUDGET = 0       # if >0, include enough recent generations to hit this many raw positions
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
+SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
+SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)

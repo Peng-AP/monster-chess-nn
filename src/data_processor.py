@@ -11,7 +11,7 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
-    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, RANDOM_SEED,
+    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, POSITION_BUDGET, RANDOM_SEED,
 )
 
 # Piece -> layer index
@@ -135,30 +135,69 @@ def mirror_policy(policy_vec):
     return mirrored
 
 
-def _filter_dirs(raw_dir, keep_generations, include_human=True):
+def _collect_generation_dirs(subdirs):
+    """Map generation number -> list of matching nn_gen* directory names."""
+    gen_pattern = re.compile(r'^nn_gen(\d+)(?:_.*)?$')
+    gen_to_dirs = {}
+    for d in subdirs:
+        m = gen_pattern.match(d)
+        if not m:
+            continue
+        gen = int(m.group(1))
+        gen_to_dirs.setdefault(gen, []).append(d)
+    return gen_to_dirs
+
+
+def _count_positions_in_dir(raw_dir, dirname):
+    """Count recorded positions (JSONL lines) in one raw data subdirectory."""
+    total = 0
+    dpath = os.path.join(raw_dir, dirname)
+    for fname in os.listdir(dpath):
+        if not fname.endswith(".jsonl"):
+            continue
+        path = os.path.join(dpath, fname)
+        with open(path, "r", encoding="utf-8") as f:
+            total += sum(1 for line in f if line.strip())
+    return total
+
+
+def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_human=True):
     """Decide which subdirectories to include based on sliding window.
 
     Always includes: curriculum_bootstrap/ and optionally human_games/
-    Includes last `keep_generations` nn_gen* pairs (normal + curriculum).
+    Includes either:
+      - last `keep_generations` nn_gen* pairs (normal + curriculum), or
+      - enough recent generations to hit `position_budget` raw positions.
     Excludes everything else (normal/ heuristic bootstrap, older generations).
     """
+    if keep_generations is not None and position_budget is not None:
+        raise ValueError("Use either keep_generations or position_budget, not both.")
     subdirs = [d for d in os.listdir(raw_dir)
                if os.path.isdir(os.path.join(raw_dir, d))]
 
-    # Find all nn_gen numbers (allow suffix dirs like nn_gen12_curriculum)
-    gen_pattern = re.compile(r'^nn_gen(\d+)(?:_.*)?$')
-    gen_numbers = set()
-    for d in subdirs:
-        m = gen_pattern.match(d)
-        if m:
-            gen_numbers.add(int(m.group(1)))
+    gen_to_dirs = _collect_generation_dirs(subdirs)
+    gen_numbers = sorted(gen_to_dirs.keys())
+    kept_gens = []
+    position_total = 0
+    generation_position_counts = {}
+    if keep_generations is not None:
+        kept_gens = gen_numbers[-keep_generations:] if gen_numbers else []
+    elif position_budget is not None:
+        for gen in reversed(gen_numbers):
+            gen_dirs = gen_to_dirs.get(gen, [])
+            gen_pos = sum(_count_positions_in_dir(raw_dir, d) for d in gen_dirs)
+            generation_position_counts[gen] = gen_pos
+            kept_gens.append(gen)
+            position_total += gen_pos
+            if position_total >= position_budget:
+                break
+        kept_gens.sort()
 
-    # Keep the last N
-    kept_gens = sorted(gen_numbers)[-keep_generations:] if gen_numbers else []
+    kept_gen_set = set(kept_gens)
     kept_gen_dirs = set()
     for d in subdirs:
-        m = gen_pattern.match(d)
-        if m and int(m.group(1)) in kept_gens:
+        m = re.match(r'^nn_gen(\d+)(?:_.*)?$', d)
+        if m and int(m.group(1)) in kept_gen_set:
             kept_gen_dirs.add(d)
 
     # Always-include dirs
@@ -174,10 +213,16 @@ def _filter_dirs(raw_dir, keep_generations, include_human=True):
         else:
             exclude.append(d)
 
-    return include, exclude
+    summary = {
+        "kept_generations": kept_gens,
+        "position_budget": position_budget,
+        "estimated_positions": position_total,
+        "generation_position_counts": generation_position_counts,
+    }
+    return include, exclude, summary
 
 
-def load_all_games(raw_dir, keep_generations=None, include_human=True):
+def load_all_games(raw_dir, keep_generations=None, position_budget=None, include_human=True):
     """Load game files as game-level units.
 
     Returns a list of dicts:
@@ -193,9 +238,21 @@ def load_all_games(raw_dir, keep_generations=None, include_human=True):
     """
     paths = []
 
-    if keep_generations is not None:
-        include, exclude = _filter_dirs(raw_dir, keep_generations, include_human=include_human)
-        print(f"Sliding window: keeping last {keep_generations} generations")
+    if keep_generations is not None or position_budget is not None:
+        include, exclude, summary = _filter_dirs(
+            raw_dir,
+            keep_generations=keep_generations,
+            position_budget=position_budget,
+            include_human=include_human,
+        )
+        if position_budget is not None:
+            print(
+                f"Position budget window: target={position_budget}, "
+                f"estimated={summary['estimated_positions']} raw positions"
+            )
+            print(f"  Generations kept: {summary['kept_generations']}")
+        else:
+            print(f"Sliding window: keeping last {keep_generations} generations")
         print(f"  Human games: {'included' if include_human else 'excluded'}")
         print(f"  Include: {', '.join(include)}")
         if exclude:
@@ -333,7 +390,8 @@ def _convert_games_to_arrays(games, augment, human_repeat):
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
-                     augment=True, keep_generations=None, seed=RANDOM_SEED,
+                     augment=True, keep_generations=None, position_budget=None,
+                     seed=RANDOM_SEED,
                      include_human=True):
     """Convert raw game records to training tensors and save.
 
@@ -342,10 +400,16 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     evaluation (same value / game_result) since Monster Chess is
     file-symmetric.
 
-    When keep_generations is set, only the last N NN generations are
-    loaded (sliding window).
+    When keep_generations is set, only the last N NN generations are loaded.
+    When position_budget is set, enough recent generations are loaded to hit
+    at least that many raw positions.
     """
-    games = load_all_games(raw_dir, keep_generations=keep_generations, include_human=include_human)
+    games = load_all_games(
+        raw_dir,
+        keep_generations=keep_generations,
+        position_budget=position_budget,
+        include_human=include_human,
+    )
     if not games:
         print("No data to process.")
         return
@@ -428,13 +492,19 @@ if __name__ == "__main__":
     parser.add_argument("--no-augment", action="store_true", help="Disable mirror augmentation")
     parser.add_argument("--keep-generations", type=int, default=None,
                         help=f"Sliding window: keep last N generations (default: all)")
+    parser.add_argument("--position-budget", type=int, default=None,
+                        help=f"Position budget window: include enough recent generations to hit N raw positions (default: {POSITION_BUDGET})")
     parser.add_argument("--seed", type=int, default=RANDOM_SEED,
                         help=f"Random seed for deterministic game-level splitting (default: {RANDOM_SEED})")
     parser.add_argument("--exclude-human-games", action="store_true",
                         help="Exclude data/raw/human_games from processing")
     args = parser.parse_args()
+    if args.keep_generations is not None and args.position_budget is not None:
+        raise ValueError("Specify only one of --keep-generations or --position-budget")
+
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
                      augment=not args.no_augment,
                      keep_generations=args.keep_generations,
+                     position_budget=args.position_budget,
                      seed=args.seed,
                      include_human=not args.exclude_human_games)

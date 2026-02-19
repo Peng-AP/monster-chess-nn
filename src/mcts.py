@@ -6,7 +6,7 @@ import numpy as np
 
 from config import (
     EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
-    DIRICHLET_ALPHA, DIRICHLET_EPSILON,
+    DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION,
 )
 from evaluation import evaluate
 
@@ -64,15 +64,20 @@ class MCTSNode:
 
     # --- PUCT (NN policy mode) ---
 
-    def puct_score(self, c_puct=C_PUCT):
+    def puct_score(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION):
         """AlphaZero-style PUCT: Q + c * P * sqrt(N_parent) / (1 + N)."""
         parent_visits = max(1, self.parent.visit_count) if self.parent else 1
         if self.visit_count == 0:
-            return c_puct * self.prior * math.sqrt(parent_visits)
+            # FPU: start unvisited child Q slightly below parent Q.
+            if self.parent is None:
+                fpu_q = 0.0
+            else:
+                fpu_q = max(-1.0, min(1.0, self.parent.q_value - fpu_reduction))
+            return fpu_q + c_puct * self.prior * math.sqrt(parent_visits)
         return self.q_value + c_puct * self.prior * math.sqrt(parent_visits) / (1 + self.visit_count)
 
-    def best_child_puct(self, c_puct=C_PUCT):
-        return max(self.children, key=lambda ch: ch.puct_score(c_puct))
+    def best_child_puct(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION):
+        return max(self.children, key=lambda ch: ch.puct_score(c_puct, fpu_reduction=fpu_reduction))
 
     # --- Expansion ---
 
@@ -336,7 +341,7 @@ class MCTS:
                 return node
             if not node.children:
                 return node  # fully expanded with no legal moves
-            node = node.best_child_puct()
+            node = node.best_child_puct(fpu_reduction=FPU_REDUCTION)
         return node
 
     def _expand_with_policy(self, node, policy_logits):
