@@ -13,13 +13,14 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from config import (
-    TENSOR_SHAPE, POLICY_SIZE, POLICY_LOSS_WEIGHT,
+    TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET, BLEND_WEIGHT, BLEND_START, BLEND_END,
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
     POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
+    USE_SE_BLOCKS, SE_REDUCTION,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
@@ -79,13 +80,30 @@ def build_optimizer(model, lr, weight_decay):
     return optimizer, len(decay_params), len(no_decay_params)
 
 
+class SqueezeExcite(nn.Module):
+    def __init__(self, channels, reduction=SE_REDUCTION):
+        super().__init__()
+        hidden = max(1, channels // reduction)
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Linear(channels, hidden)
+        self.fc2 = nn.Linear(hidden, channels)
+
+    def forward(self, x):
+        b, c, _, _ = x.shape
+        s = self.pool(x).view(b, c)
+        s = F.relu(self.fc1(s), inplace=True)
+        s = torch.sigmoid(self.fc2(s)).view(b, c, 1, 1)
+        return x * s
+
+
 class ResidualBlock(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch, out_ch, use_se=False, se_reduction=SE_REDUCTION):
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_ch)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_ch)
+        self.se = SqueezeExcite(out_ch, reduction=se_reduction) if use_se else None
         # 1x1 projection if channel count changes
         self.proj = None
         if in_ch != out_ch:
@@ -98,6 +116,8 @@ class ResidualBlock(nn.Module):
         shortcut = x if self.proj is None else self.proj(x)
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.bn2(self.conv2(x))
+        if self.se is not None:
+            x = self.se(x)
         return F.relu(x + shortcut)
 
 
@@ -116,13 +136,19 @@ class DualHeadNet(nn.Module):
         policy_head_channels=POLICY_HEAD_CHANNELS,
         stem_channels=STEM_CHANNELS,
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
+        use_se_blocks=USE_SE_BLOCKS,
+        se_reduction=SE_REDUCTION,
     ):
         super().__init__()
         self.policy_head_channels = int(policy_head_channels)
         self.stem_channels = int(stem_channels)
         self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
+        self.use_se_blocks = bool(use_se_blocks)
+        self.se_reduction = int(se_reduction)
         if not self.residual_block_channels:
             raise ValueError("residual_block_channels must contain at least one block")
+        if self.se_reduction <= 0:
+            raise ValueError("se_reduction must be > 0")
 
         # Stem
         self.stem = nn.Sequential(
@@ -133,7 +159,15 @@ class DualHeadNet(nn.Module):
         # Residual tower. Keep deterministic resN naming for checkpoint compatibility.
         in_ch = self.stem_channels
         for i, out_ch in enumerate(self.residual_block_channels, start=1):
-            setattr(self, f"res{i}", ResidualBlock(in_ch, out_ch))
+            setattr(
+                self,
+                f"res{i}",
+                ResidualBlock(
+                    in_ch, out_ch,
+                    use_se=self.use_se_blocks,
+                    se_reduction=self.se_reduction,
+                ),
+            )
             in_ch = out_ch
         self.residual_block_count = len(self.residual_block_channels)
         self.backbone_out_channels = in_ch
@@ -206,15 +240,38 @@ def infer_backbone_architecture(state_dict):
     return stem_channels, block_channels
 
 
+def infer_se_config(state_dict):
+    """Infer whether SE blocks are present (and reduction) from checkpoint."""
+    se_key = None
+    for k in state_dict.keys():
+        if ".se.fc1.weight" in k:
+            se_key = k
+            break
+    if se_key is None:
+        return False, SE_REDUCTION
+    w = state_dict.get(se_key)
+    if isinstance(w, torch.Tensor) and w.ndim == 2 and w.shape[0] > 0:
+        channels = int(w.shape[1])
+        hidden = int(w.shape[0])
+        reduction = max(1, channels // hidden)
+    else:
+        reduction = SE_REDUCTION
+    return True, reduction
+
+
 def build_model(
     policy_head_channels=POLICY_HEAD_CHANNELS,
     stem_channels=STEM_CHANNELS,
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
+    use_se_blocks=USE_SE_BLOCKS,
+    se_reduction=SE_REDUCTION,
 ):
     return DualHeadNet(
         policy_head_channels=policy_head_channels,
         stem_channels=stem_channels,
         residual_block_channels=residual_block_channels,
+        use_se_blocks=use_se_blocks,
+        se_reduction=se_reduction,
     )
 
 
@@ -223,10 +280,13 @@ def load_model_for_inference(checkpoint_path, device):
     state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
     pol_ch = infer_policy_head_channels(state_dict)
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
+    use_se_blocks, se_reduction = infer_se_config(state_dict)
     model = build_model(
         policy_head_channels=pol_ch,
         stem_channels=stem_ch,
         residual_block_channels=block_ch,
+        use_se_blocks=use_se_blocks,
+        se_reduction=se_reduction,
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -291,6 +351,45 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None):
                       pin_memory=True, num_workers=0, generator=generator)
 
 
+def _side_labels_from_positions(positions):
+    """Return bool array: True for white-to-move, False for black-to-move."""
+    turn_plane = positions[:, 0, 0, TURN_LAYER]
+    return turn_plane > 0
+
+
+def _balanced_train_indices(train_idx, positions, seed):
+    """Build balanced white/black-to-move train indices with stable total size."""
+    if len(train_idx) == 0:
+        return train_idx
+    sides = _side_labels_from_positions(positions[train_idx])
+    white = train_idx[sides]
+    black = train_idx[~sides]
+    if len(white) == 0 or len(black) == 0:
+        return train_idx
+
+    target_each = max(1, len(train_idx) // 2)
+    rng = np.random.default_rng(seed)
+    white_bal = rng.choice(white, size=target_each, replace=len(white) < target_each)
+    black_bal = rng.choice(black, size=target_each, replace=len(black) < target_each)
+    balanced = np.concatenate([white_bal, black_bal]).astype(np.int64, copy=False)
+
+    if len(train_idx) % 2 == 1:
+        extra_pool = white if len(white) >= len(black) else black
+        extra = rng.choice(extra_pool, size=1, replace=True).astype(np.int64, copy=False)
+        balanced = np.concatenate([balanced, extra])
+
+    rng.shuffle(balanced)
+    return balanced
+
+
+def _policy_distill_kl(student_logits, teacher_logits, temperature):
+    """KL(teacher || student) distillation loss with temperature scaling."""
+    t = float(temperature)
+    student_logp = F.log_softmax(student_logits / t, dim=1)
+    teacher_p = F.softmax(teacher_logits / t, dim=1)
+    return F.kl_div(student_logp, teacher_p, reduction="batchmean") * (t * t)
+
+
 def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
     """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5."""
     return torch.pow(torch.abs(pred - target), exponent).mean()
@@ -317,11 +416,15 @@ def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor)
     return optimizer.param_groups[0]["lr"]
 
 
-def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm):
+def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm,
+                 teacher_model=None, distill_value_weight=0.0,
+                 distill_policy_weight=0.0, distill_temperature=1.0):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
+    total_distill_value = 0.0
+    total_distill_policy = 0.0
     n = 0
 
     for X_b, yv_b, yp_b in loader:
@@ -334,6 +437,20 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         loss_pol = F.cross_entropy(policy_pred, yp_b)
         loss = loss_val + policy_weight * loss_pol
 
+        loss_distill_val = torch.zeros((), device=device)
+        loss_distill_pol = torch.zeros((), device=device)
+        if teacher_model is not None and (distill_value_weight > 0 or distill_policy_weight > 0):
+            with torch.no_grad():
+                teacher_value, teacher_policy = teacher_model(X_b)
+            if distill_value_weight > 0:
+                loss_distill_val = F.mse_loss(value_pred, teacher_value)
+                loss = loss + distill_value_weight * loss_distill_val
+            if distill_policy_weight > 0:
+                loss_distill_pol = _policy_distill_kl(
+                    policy_pred, teacher_policy, temperature=distill_temperature,
+                )
+                loss = loss + distill_policy_weight * loss_distill_pol
+
         optimizer.zero_grad()
         loss.backward()
         if grad_clip_norm > 0:
@@ -344,9 +461,17 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_loss += loss.item() * bs
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
+        total_distill_value += loss_distill_val.item() * bs
+        total_distill_policy += loss_distill_pol.item() * bs
         n += bs
 
-    return total_loss / n, total_val_loss / n, total_pol_loss / n
+    return (
+        total_loss / n,
+        total_val_loss / n,
+        total_pol_loss / n,
+        total_distill_value / n,
+        total_distill_policy / n,
+    )
 
 
 @torch.no_grad()
@@ -393,6 +518,20 @@ def main():
     parser.add_argument("--warmup-start-factor", type=float, default=WARMUP_START_FACTOR)
     parser.add_argument("--resume-from", type=str, default=None)
     parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument("--use-se-blocks", action=argparse.BooleanOptionalAction, default=USE_SE_BLOCKS,
+                        help=f"Enable SE modules in residual blocks (default: {USE_SE_BLOCKS})")
+    parser.add_argument("--se-reduction", type=int, default=SE_REDUCTION,
+                        help=f"SE channel reduction ratio (default: {SE_REDUCTION})")
+    parser.add_argument("--balanced-sides-train", action=argparse.BooleanOptionalAction, default=False,
+                        help="Use side-balanced white/black-to-move sampling for each train epoch")
+    parser.add_argument("--distill-from", type=str, default=None,
+                        help="Teacher checkpoint path for anti-forgetting distillation")
+    parser.add_argument("--distill-value-weight", type=float, default=0.0,
+                        help="Weight for value distillation MSE term")
+    parser.add_argument("--distill-policy-weight", type=float, default=0.0,
+                        help="Weight for policy distillation KL term")
+    parser.add_argument("--distill-temperature", type=float, default=1.0,
+                        help="Temperature for policy distillation")
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
                         choices=["game_result", "mcts_value", "blend"])
     args = parser.parse_args()
@@ -403,6 +542,16 @@ def main():
         raise ValueError("--warmup-start-factor must be in (0, 1]")
     if args.grad_clip < 0:
         raise ValueError("--grad-clip must be >= 0")
+    if args.se_reduction <= 0:
+        raise ValueError("--se-reduction must be > 0")
+    if args.distill_value_weight < 0:
+        raise ValueError("--distill-value-weight must be >= 0")
+    if args.distill_policy_weight < 0:
+        raise ValueError("--distill-policy-weight must be >= 0")
+    if args.distill_temperature <= 0:
+        raise ValueError("--distill-temperature must be > 0")
+    if (args.distill_value_weight > 0 or args.distill_policy_weight > 0) and not args.distill_from:
+        raise ValueError("Distillation weights require --distill-from")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -436,12 +585,16 @@ def main():
         print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
 
     # Build model
-    model = build_model().to(device)
+    model = build_model(
+        use_se_blocks=args.use_se_blocks,
+        se_reduction=args.se_reduction,
+    ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
     print(f"Policy head channels: {model.policy_head_channels}")
     print(f"Stem channels: {model.stem_channels}")
     print(f"Residual blocks: {list(model.residual_block_channels)}")
+    print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
     resume_loaded_count = None
     resume_skipped = None
     if args.resume_from:
@@ -455,6 +608,24 @@ def main():
             f"Resumed weights from {args.resume_from}: "
             f"loaded {loaded_count} tensors, skipped {len(skipped_keys)} incompatible"
         )
+
+    teacher_model = None
+    distill_enabled = args.distill_value_weight > 0 or args.distill_policy_weight > 0
+    if args.distill_from:
+        if not os.path.exists(args.distill_from):
+            raise FileNotFoundError(f"--distill-from not found: {args.distill_from}")
+        if distill_enabled:
+            teacher_model, _ = load_model_for_inference(args.distill_from, device)
+            teacher_model.eval()
+            for p in teacher_model.parameters():
+                p.requires_grad_(False)
+            print(
+                f"Distillation teacher: {args.distill_from} "
+                f"(value_w={args.distill_value_weight}, policy_w={args.distill_policy_weight}, "
+                f"T={args.distill_temperature})"
+            )
+        else:
+            print("Distillation teacher path provided, but both distillation weights are zero.")
 
     optimizer, decay_count, no_decay_count = build_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay,
@@ -485,6 +656,16 @@ def main():
         "stem_channels": int(model.stem_channels),
         "residual_block_channels": [int(x) for x in model.residual_block_channels],
         "residual_block_count": int(model.residual_block_count),
+        "use_se_blocks": bool(model.use_se_blocks),
+        "se_reduction": int(model.se_reduction),
+        "balanced_sides_train": bool(args.balanced_sides_train),
+        "distillation": {
+            "enabled": bool(distill_enabled),
+            "teacher_path": args.distill_from,
+            "value_weight": float(args.distill_value_weight),
+            "policy_weight": float(args.distill_policy_weight),
+            "temperature": float(args.distill_temperature),
+        },
         "resume_from": args.resume_from,
         "resume_loaded_tensors": int(resume_loaded_count) if resume_loaded_count is not None else None,
         "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
@@ -529,14 +710,31 @@ def main():
 
         train_gen = torch.Generator()
         train_gen.manual_seed(args.seed + epoch)
-        train_loader = _make_loader(positions[train_idx], epoch_targets[train_idx],
-                                    policies[train_idx], args.batch_size, shuffle=True,
-                                    generator=train_gen)
+        if args.balanced_sides_train:
+            epoch_train_idx = _balanced_train_indices(
+                train_idx, positions, seed=args.seed + epoch * 17,
+            )
+        else:
+            epoch_train_idx = train_idx
         val_loader = _make_loader(positions[val_idx], epoch_targets[val_idx],
                                   policies[val_idx], args.batch_size, shuffle=False)
 
-        train_loss, train_v, train_p = _train_epoch(
+        # Keep policy labels aligned with selected train indices.
+        train_loader = _make_loader(
+            positions[epoch_train_idx],
+            epoch_targets[epoch_train_idx],
+            policies[epoch_train_idx],
+            args.batch_size,
+            shuffle=True,
+            generator=train_gen,
+        )
+
+        train_loss, train_v, train_p, train_dv, train_dp = _train_epoch(
             model, train_loader, optimizer, device, POLICY_LOSS_WEIGHT, args.grad_clip,
+            teacher_model=teacher_model,
+            distill_value_weight=args.distill_value_weight,
+            distill_policy_weight=args.distill_policy_weight,
+            distill_temperature=args.distill_temperature,
         )
         val_loss, val_v, val_p, val_mae, val_mse = _eval_epoch(
             model, val_loader, device, POLICY_LOSS_WEIGHT,
@@ -546,15 +744,22 @@ def main():
 
         lr = lr_used
         lam_str = f"  λ={lam:.2f}" if args.target == "blend" else ""
+        distill_str = ""
+        if distill_enabled:
+            distill_str = f"  distill(v={train_dv:.4f} p={train_dp:.4f})"
+        balance_str = " balanced" if args.balanced_sides_train else ""
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{lam_str}")
+              f"lr={lr:.1e}{lam_str}{distill_str}{balance_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
+            "train_samples": int(len(epoch_train_idx)),
             "train_total_loss": float(train_loss),
             "train_value_power_loss": float(train_v),
             "train_policy_ce": float(train_p),
+            "train_distill_value_mse": float(train_dv),
+            "train_distill_policy_kl": float(train_dp),
             "val_total_loss": float(val_loss),
             "val_value_power_loss": float(val_v),
             "val_value_mse": float(val_mse),

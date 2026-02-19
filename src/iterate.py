@@ -467,11 +467,31 @@ def main():
                         help="Scale multiplier after accepted candidate (decrease aux focus)")
     parser.add_argument("--adaptive-min-normal-games", type=int, default=80,
                         help="Minimum normal games per iteration when adaptive curriculum is enabled")
+    parser.add_argument("--use-se-blocks", action=argparse.BooleanOptionalAction, default=None,
+                        help="Enable SE modules in training backbone (default: from config)")
+    parser.add_argument("--se-reduction", type=int, default=None,
+                        help="SE channel reduction ratio for training backbone (default: from config)")
+    parser.add_argument("--consolidation-epochs", type=int, default=2,
+                        help="Post-train consolidation epochs on balanced mixed-side data (0 to disable)")
+    parser.add_argument("--consolidation-lr-factor", type=float, default=0.35,
+                        help="Multiplier on base LR for consolidation phase")
+    parser.add_argument("--consolidation-batch-size", type=int, default=192,
+                        help="Batch size for consolidation phase")
+    parser.add_argument("--consolidation-balance-sides", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use side-balanced sampling during consolidation phase")
+    parser.add_argument("--consolidation-distill-value-weight", type=float, default=0.20,
+                        help="Value distillation weight in consolidation phase")
+    parser.add_argument("--consolidation-distill-policy-weight", type=float, default=0.60,
+                        help="Policy distillation weight in consolidation phase")
+    parser.add_argument("--consolidation-distill-temperature", type=float, default=1.0,
+                        help="Distillation temperature in consolidation phase")
     args = parser.parse_args()
 
     from config import (
         SLIDING_WINDOW, POSITION_BUDGET, OPPONENT_SIMULATIONS, RANDOM_SEED,
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
+        LEARNING_RATE,
+        USE_SE_BLOCKS, SE_REDUCTION,
     )
     base_seed = args.seed if args.seed is not None else RANDOM_SEED
     set_seed(base_seed)
@@ -481,6 +501,8 @@ def main():
         args.selfplay_sims_jitter_pct
         if args.selfplay_sims_jitter_pct is not None else SELFPLAY_SIMS_JITTER_PCT
     )
+    use_se_blocks = args.use_se_blocks if args.use_se_blocks is not None else USE_SE_BLOCKS
+    se_reduction = args.se_reduction if args.se_reduction is not None else SE_REDUCTION
     if position_budget is not None and position_budget <= 0:
         position_budget = None
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
@@ -511,10 +533,25 @@ def main():
         raise ValueError("--adaptive-down-factor must be > 0")
     if args.adaptive_min_normal_games < 0:
         raise ValueError("--adaptive-min-normal-games must be >= 0")
+    if se_reduction <= 0:
+        raise ValueError("--se-reduction must be > 0")
+    if args.consolidation_epochs < 0:
+        raise ValueError("--consolidation-epochs must be >= 0")
+    if args.consolidation_lr_factor <= 0:
+        raise ValueError("--consolidation-lr-factor must be > 0")
+    if args.consolidation_batch_size <= 0:
+        raise ValueError("--consolidation-batch-size must be > 0")
+    if args.consolidation_distill_value_weight < 0:
+        raise ValueError("--consolidation-distill-value-weight must be >= 0")
+    if args.consolidation_distill_policy_weight < 0:
+        raise ValueError("--consolidation-distill-policy-weight must be >= 0")
+    if args.consolidation_distill_temperature <= 0:
+        raise ValueError("--consolidation-distill-temperature must be > 0")
     if args.alternating and not args.no_gating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
+    consolidation_lr = LEARNING_RATE * args.consolidation_lr_factor
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     processed_dir = os.path.join(PROJECT_ROOT, "data", "processed")
@@ -595,6 +632,19 @@ def main():
             "down_factor": float(args.adaptive_down_factor),
             "min_normal_games": int(args.adaptive_min_normal_games),
         },
+        "se_blocks_enabled": bool(use_se_blocks),
+        "se_reduction": int(se_reduction),
+        "consolidation": {
+            "enabled": bool(args.consolidation_epochs > 0),
+            "epochs": int(args.consolidation_epochs),
+            "lr_factor": float(args.consolidation_lr_factor),
+            "lr": float(consolidation_lr),
+            "batch_size": int(args.consolidation_batch_size),
+            "balance_sides": bool(args.consolidation_balance_sides),
+            "distill_value_weight": float(args.consolidation_distill_value_weight),
+            "distill_policy_weight": float(args.consolidation_distill_policy_weight),
+            "distill_temperature": float(args.consolidation_distill_temperature),
+        },
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
@@ -625,6 +675,16 @@ def main():
             f"up={args.adaptive_up_factor:.2f}, down={args.adaptive_down_factor:.2f}, "
             f"min normal={args.adaptive_min_normal_games})"
         )
+    print(f"  SE blocks:   {'on' if use_se_blocks else 'off'} (reduction={se_reduction})")
+    if args.consolidation_epochs > 0:
+        print(
+            f"  Consolidate: epochs={args.consolidation_epochs}, lr={consolidation_lr:.2e}, "
+            f"batch={args.consolidation_batch_size}, balanced={args.consolidation_balance_sides}, "
+            f"distill(v={args.consolidation_distill_value_weight}, "
+            f"p={args.consolidation_distill_policy_weight}, t={args.consolidation_distill_temperature})"
+        )
+    else:
+        print("  Consolidate: disabled")
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
         print(f"  Pool size:   {args.pool_size} archived models")
@@ -852,10 +912,48 @@ def main():
             "--seed", str(base_seed + gen * 10 + 4),
             "--warmup-epochs", str(warmup_epochs),
             "--warmup-start-factor", str(warmup_start_factor),
+            "--se-reduction", str(se_reduction),
         ]
+        train_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
         if os.path.exists(model_path):
             train_cmd.extend(["--resume-from", model_path])
-        t_train = run(train_cmd, f"[{i+1}/{args.iterations}] Training candidate model")
+        t_train_primary = run(train_cmd, f"[{i+1}/{args.iterations}] Training candidate model")
+        t_train_consolidation = 0.0
+        if args.consolidation_epochs > 0:
+            if not os.path.exists(candidate_path):
+                raise FileNotFoundError(
+                    f"Candidate model missing before consolidation: {candidate_path}"
+                )
+            consolidation_cmd = [
+                sys.executable, "train.py",
+                "--target", "mcts_value",
+                "--epochs", str(args.consolidation_epochs),
+                "--data-dir", processed_dir,
+                "--model-dir", candidate_dir,
+                "--seed", str(base_seed + gen * 10 + 5),
+                "--batch-size", str(args.consolidation_batch_size),
+                "--lr", str(consolidation_lr),
+                "--warmup-epochs", "0",
+                "--resume-from", candidate_path,
+                "--se-reduction", str(se_reduction),
+                "--distill-value-weight", str(args.consolidation_distill_value_weight),
+                "--distill-policy-weight", str(args.consolidation_distill_policy_weight),
+                "--distill-temperature", str(args.consolidation_distill_temperature),
+            ]
+            consolidation_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
+            consolidation_cmd.append(
+                "--balanced-sides-train" if args.consolidation_balance_sides else "--no-balanced-sides-train"
+            )
+            if (
+                args.consolidation_distill_value_weight > 0
+                or args.consolidation_distill_policy_weight > 0
+            ):
+                consolidation_cmd.extend(["--distill-from", model_path])
+            t_train_consolidation = run(
+                consolidation_cmd,
+                f"[{i+1}/{args.iterations}] Consolidation pass"
+            )
+        t_train = t_train_primary + t_train_consolidation
 
         # Step 4: Gate candidate vs incumbent and promote if accepted
         if not os.path.exists(candidate_path):
@@ -1001,6 +1099,8 @@ def main():
             "timings_seconds": {
                 "generate_total": float(t_gen),
                 "process": float(t_proc),
+                "train_primary": float(t_train_primary),
+                "train_consolidation": float(t_train_consolidation),
                 "train": float(t_train),
                 "iteration_total": float(iter_elapsed),
             },

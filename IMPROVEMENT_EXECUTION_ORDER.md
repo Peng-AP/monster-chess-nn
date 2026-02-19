@@ -113,10 +113,63 @@ Tasks:
 
 1. Shift curriculum/normal/black-focus mix based on recent gate outcomes.
 2. Keep hard bounds to avoid destabilizing data distribution.
+3. Persist effective mix + scale updates in run metadata.
 
 Gate:
 
-- Better trained-side gate scores without collapse on the other side.
+- Implemented in code and smoke-validated; monitor impact across multiple gated iterations.
+
+### Stage G - SE Blocks On Backbone
+
+Files:
+
+- `src/train.py`
+- `src/config.py`
+
+Tasks:
+
+1. Add optional SE modules to residual blocks behind a config flag.
+2. Keep default behavior backward-compatible for checkpoint loading.
+3. Compare arena and policy/value metrics against current backbone.
+
+Gate:
+
+- Implemented in code and exercised in SE-enabled gated runs; continue monitoring trend.
+
+### Stage H - Consolidation + Distillation Anti-Forgetting
+
+Files:
+
+- `src/iterate.py`
+- `src/train.py`
+
+Tasks:
+
+1. Add a second consolidation train pass after primary fine-tune.
+2. Use side-balanced sampling in consolidation to reduce side-collapse.
+3. Distill from incumbent during consolidation to preserve prior strength.
+4. Persist consolidation timings and metadata in iterate/train run artifacts.
+
+Gate:
+
+- Implemented and smoke-validated end-to-end (`iterate_run_20260219_125036.json`).
+
+### Stage I - WDL Value Head Experiment
+
+Files:
+
+- `src/train.py`
+- `src/evaluation.py`
+
+Tasks:
+
+1. Add optional WDL-style value head experiment path.
+2. Keep existing scalar value head as default for compatibility.
+3. Compare gate outcomes and calibration on human-eval positions.
+
+Gate:
+
+- Stable training, non-regression on existing gate floors, and improved robustness.
 
 ## Operational Rules
 
@@ -132,3 +185,7 @@ Gate:
 3. `Stage C: Run gated validation sweep for expanded backbone`
 4. `Stage D: Refresh baseline snapshot for new architecture`
 5. `Stage E: Add playout-cap randomization`
+6. `Stage F: Add adaptive curriculum scheduling`
+7. `Stage G: Add optional SE modules in residual backbone`
+8. `Stage H: Add anti-forgetting consolidation distillation`
+9. `Stage I: Add WDL value-head experiment path`

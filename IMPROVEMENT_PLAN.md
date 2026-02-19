@@ -88,7 +88,13 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
   `src/config.py`, with dynamic tower construction and checkpoint-architecture inference
   in `src/train.py`.
 
-### 2.3 SE blocks: `pending`
+### 2.3 SE blocks: `complete`
+
+- Implemented optional SE modules in residual blocks via:
+  - `USE_SE_BLOCKS` / `SE_REDUCTION` in `src/config.py`
+  - SE-enabled residual blocks and checkpoint inference support in `src/train.py`
+  - iterate passthrough flags in `src/iterate.py` (`--use-se-blocks`, `--se-reduction`)
+- Validated with SE-enabled training smoke test and SE-enabled gated iterate runs.
 
 ### 2.4 WDL value head experiment: `pending`
 
@@ -115,7 +121,30 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 - Generation-level simulation stats are persisted in
   `generation_summary.json` and carried into iterate metadata summaries.
 
-### 3.5 Adaptive curriculum allocation: `pending`
+### 3.5 Adaptive curriculum allocation: `complete`
+
+- Implemented adaptive game-mix scheduling in `src/iterate.py`:
+  - `--adaptive-curriculum`
+  - side-specific scaling with bounded range and update factors
+  - per-iteration `effective_mix` and `adaptive_update` metadata
+- Validated with a smoke gated iteration (`iterate_run_20260219_115558.json`).
+
+### 3.6 Anti-forgetting consolidation pass: `complete`
+
+- Implemented teacher-distilled consolidation in `src/iterate.py`:
+  - `--consolidation-epochs`
+  - `--consolidation-lr-factor`
+  - `--consolidation-batch-size`
+  - `--consolidation-balance-sides`
+  - `--consolidation-distill-*`
+- Implemented training-side controls in `src/train.py`:
+  - `--balanced-sides-train`
+  - `--distill-from`
+  - `--distill-value-weight`
+  - `--distill-policy-weight`
+  - `--distill-temperature`
+- Validated with a full iteration smoke run (`iterate_run_20260219_125036.json`)
+  showing primary + consolidation timing and enabled distillation metadata.
 
 ## Phase 4 - Advanced Additions
 
@@ -127,10 +156,10 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 
 ## Current Priority Queue
 
-1. Run multi-iteration gated alternating validation with playout randomization enabled.
+1. Continue multi-iteration gated alternating validation with consolidation + SE + adaptive curriculum + playout randomization.
 2. Add optional max-cap behavior to position-budget windowing.
-3. Adaptive curriculum allocation.
-4. SE block experiment on backbone.
+3. WDL value head experiment.
+4. Separate White/Black network experiment.
 
 ## Validation Protocol (Required Per Major Change)
 

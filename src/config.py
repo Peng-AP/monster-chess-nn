@@ -130,6 +130,8 @@ STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
 )  # deeper tower (stage F backbone scaling)
+USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
+SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
 
 # Training
 BATCH_SIZE = 256
