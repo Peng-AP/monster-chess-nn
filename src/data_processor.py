@@ -11,7 +11,7 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
-    HUMAN_DATA_WEIGHT, SLIDING_WINDOW,
+    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, RANDOM_SEED,
 )
 
 # Piece -> layer index
@@ -135,18 +135,18 @@ def mirror_policy(policy_vec):
     return mirrored
 
 
-def _filter_dirs(raw_dir, keep_generations):
+def _filter_dirs(raw_dir, keep_generations, include_human=True):
     """Decide which subdirectories to include based on sliding window.
 
-    Always includes: human_games/, curriculum_bootstrap/
+    Always includes: curriculum_bootstrap/ and optionally human_games/
     Includes last `keep_generations` nn_gen* pairs (normal + curriculum).
     Excludes everything else (normal/ heuristic bootstrap, older generations).
     """
     subdirs = [d for d in os.listdir(raw_dir)
                if os.path.isdir(os.path.join(raw_dir, d))]
 
-    # Find all nn_gen numbers
-    gen_pattern = re.compile(r'^nn_gen(\d+)$')
+    # Find all nn_gen numbers (allow suffix dirs like nn_gen12_curriculum)
+    gen_pattern = re.compile(r'^nn_gen(\d+)(?:_.*)?$')
     gen_numbers = set()
     for d in subdirs:
         m = gen_pattern.match(d)
@@ -156,12 +156,15 @@ def _filter_dirs(raw_dir, keep_generations):
     # Keep the last N
     kept_gens = sorted(gen_numbers)[-keep_generations:] if gen_numbers else []
     kept_gen_dirs = set()
-    for g in kept_gens:
-        kept_gen_dirs.add(f"nn_gen{g}")
-        kept_gen_dirs.add(f"nn_gen{g}_curriculum")
+    for d in subdirs:
+        m = gen_pattern.match(d)
+        if m and int(m.group(1)) in kept_gens:
+            kept_gen_dirs.add(d)
 
     # Always-include dirs
-    always_include = {"human_games", "curriculum_bootstrap"}
+    always_include = {"curriculum_bootstrap"}
+    if include_human:
+        always_include.add("human_games")
 
     include = []
     exclude = []
@@ -174,23 +177,26 @@ def _filter_dirs(raw_dir, keep_generations):
     return include, exclude
 
 
-def load_all_games(raw_dir, keep_generations=None):
-    """Load .jsonl game files from the raw data directory.
+def load_all_games(raw_dir, keep_generations=None, include_human=True):
+    """Load game files as game-level units.
 
-    When keep_generations is set, applies a sliding window: only the
-    last N NN generations (+ curriculum_bootstrap + human_games) are
-    loaded.  When None, loads everything recursively (backward compat).
+    Returns a list of dicts:
+      {
+        "game_id": relative path,
+        "records": [position records...],
+        "is_human": bool,
+        "result_bucket": -1/0/1 (sign of game_result)
+      }
 
-    Human game data (from human_games/ subdirectory) is repeated
-    HUMAN_DATA_WEIGHT times to upweight its influence during training.
+    This keeps game boundaries intact so train/val/test can be split
+    at the game level (no leakage across splits).
     """
-    records = []
-    human_records = []
     paths = []
 
     if keep_generations is not None:
-        include, exclude = _filter_dirs(raw_dir, keep_generations)
+        include, exclude = _filter_dirs(raw_dir, keep_generations, include_human=include_human)
         print(f"Sliding window: keeping last {keep_generations} generations")
+        print(f"  Human games: {'included' if include_human else 'excluded'}")
         print(f"  Include: {', '.join(include)}")
         if exclude:
             print(f"  Exclude: {', '.join(exclude)}")
@@ -201,36 +207,134 @@ def load_all_games(raw_dir, keep_generations=None):
                     paths.append(os.path.join(dpath, fname))
     else:
         for dirpath, _dirnames, filenames in os.walk(raw_dir):
+            rel_dir = os.path.relpath(dirpath, raw_dir).replace("\\", "/")
+            if (not include_human) and (rel_dir == "human_games" or rel_dir.startswith("human_games/")):
+                continue
             for fname in sorted(filenames):
                 if fname.endswith(".jsonl"):
                     paths.append(os.path.join(dirpath, fname))
 
     if not paths:
         print(f"No .jsonl files found in {raw_dir}")
-        return records
+        return []
 
+    games = []
     for path in tqdm(paths, desc="Loading games"):
-        is_human = "human_games" in path
+        rel = os.path.relpath(path, raw_dir).replace("\\", "/")
+        is_human = "human_games/" in rel or rel.startswith("human_games")
         with open(path, "r") as f:
-            for line in f:
-                rec = json.loads(line.strip())
-                if is_human:
-                    human_records.append(rec)
-                else:
-                    records.append(rec)
+            records = [json.loads(line.strip()) for line in f if line.strip()]
+        if not records:
+            continue
+        result = records[-1].get("game_result", 0)
+        games.append({
+            "game_id": rel,
+            "records": records,
+            "is_human": is_human,
+            "result_bucket": _result_bucket(result),
+        })
 
-    if human_records:
-        n_human = len(human_records)
-        repeated = human_records * HUMAN_DATA_WEIGHT
-        records.extend(repeated)
-        print(f"  Human data: {n_human} positions x{HUMAN_DATA_WEIGHT} = {len(repeated)} "
-              f"(of {len(records)} total)")
+    return games
 
-    return records
+
+def _result_bucket(result):
+    """Bucket scalar game results to {-1, 0, +1} by sign."""
+    if result > 0:
+        return 1
+    if result < 0:
+        return -1
+    return 0
+
+
+def _split_games_by_result(games, seed):
+    """Stratified game-level split (80/10/10) by result bucket."""
+    rng = np.random.default_rng(seed)
+    by_bucket = {-1: [], 0: [], 1: []}
+    for game in games:
+        by_bucket[game["result_bucket"]].append(game)
+
+    split = {"train": [], "val": [], "test": []}
+    for bucket in (-1, 0, 1):
+        group = by_bucket[bucket]
+        if not group:
+            continue
+        group = list(group)
+        rng.shuffle(group)
+        n = len(group)
+        n_train = int(0.8 * n)
+        n_val = int(0.1 * n)
+        split["train"].extend(group[:n_train])
+        split["val"].extend(group[n_train:n_train + n_val])
+        split["test"].extend(group[n_train + n_val:])
+
+    for key in ("train", "val", "test"):
+        rng.shuffle(split[key])
+
+    # Small-dataset fallback: keep splits non-empty when possible.
+    if len(games) >= 3 and len(split["val"]) == 0:
+        donor = "test" if len(split["test"]) > 1 else "train"
+        if split[donor]:
+            split["val"].append(split[donor].pop())
+    if len(games) >= 2 and len(split["test"]) == 0:
+        donor = "val" if len(split["val"]) > 1 else "train"
+        if split[donor]:
+            split["test"].append(split[donor].pop())
+    if len(split["train"]) == 0:
+        donor = "test" if split["test"] else "val"
+        if split[donor]:
+            split["train"].append(split[donor].pop())
+
+    return split
+
+
+def _convert_games_to_arrays(games, augment, human_repeat):
+    """Convert game records to tensors for one split."""
+    tensors = []
+    values = []
+    game_results = []
+    policy_targets = []
+    split_game_ids = []
+
+    for game in tqdm(games, desc="Converting", leave=False):
+        repeat = human_repeat if game["is_human"] else 1
+        for _ in range(repeat):
+            split_game_ids.append(game["game_id"])
+            for rec in game["records"]:
+                is_white = rec["current_player"] == "white"
+                tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
+                mv = rec["mcts_value"]
+                val = mv if is_white else -mv
+                gr = rec["game_result"]
+                pol = policy_dict_to_target(rec["policy"], is_white)
+
+                tensors.append(tensor)
+                values.append(val)
+                game_results.append(gr)
+                policy_targets.append(pol)
+
+                if augment:
+                    tensors.append(mirror_tensor(tensor))
+                    values.append(val)
+                    game_results.append(gr)
+                    policy_targets.append(mirror_policy(pol))
+
+    if tensors:
+        X = np.array(tensors, dtype=np.float32)
+        y_value = np.array(values, dtype=np.float32)
+        y_result = np.array(game_results, dtype=np.float32)
+        y_policy = np.array(policy_targets, dtype=np.float32)
+    else:
+        X = np.zeros((0,) + TENSOR_SHAPE, dtype=np.float32)
+        y_value = np.zeros((0,), dtype=np.float32)
+        y_result = np.zeros((0,), dtype=np.float32)
+        y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
+
+    return X, y_value, y_result, y_policy, split_game_ids
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
-                     augment=True, keep_generations=None):
+                     augment=True, keep_generations=None, seed=RANDOM_SEED,
+                     include_human=True):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -241,43 +345,43 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     When keep_generations is set, only the last N NN generations are
     loaded (sliding window).
     """
-    records = load_all_games(raw_dir, keep_generations=keep_generations)
-    if not records:
+    games = load_all_games(raw_dir, keep_generations=keep_generations, include_human=include_human)
+    if not games:
         print("No data to process.")
         return
 
-    print(f"Processing {len(records)} positions (augment={augment})...")
+    split_games = _split_games_by_result(games, seed=seed)
+    train_games = split_games["train"]
+    val_games = split_games["val"]
+    test_games = split_games["test"]
 
-    tensors = []
-    values = []
-    game_results = []
-    policy_targets = []
+    train_ids = {g["game_id"] for g in train_games}
+    val_ids = {g["game_id"] for g in val_games}
+    test_ids = {g["game_id"] for g in test_games}
+    overlap_tv = train_ids & val_ids
+    overlap_tt = train_ids & test_ids
+    overlap_vt = val_ids & test_ids
+    if overlap_tv or overlap_tt or overlap_vt:
+        raise RuntimeError("Game-level split overlap detected")
+    print("Game split integrity: PASS (no overlap across train/val/test game IDs)")
+    print(f"  Games: train={len(train_games)}, val={len(val_games)}, test={len(test_games)}")
+    print(f"  Processing positions (augment={augment})...")
 
-    for rec in tqdm(records, desc="Converting"):
-        is_white = rec["current_player"] == "white"
-        tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
-        # mcts_value is from the current player's perspective;
-        # convert to White's perspective for consistent training targets
-        mv = rec["mcts_value"]
-        val = mv if is_white else -mv
-        gr = rec["game_result"]
-        pol = policy_dict_to_target(rec["policy"], is_white)
+    # Upweight human games in TRAIN split only to avoid validation/test skew.
+    X_train, yv_train, yr_train, yp_train, train_game_ids = _convert_games_to_arrays(
+        train_games, augment=augment, human_repeat=HUMAN_DATA_WEIGHT,
+    )
+    X_val, yv_val, yr_val, yp_val, val_game_ids = _convert_games_to_arrays(
+        val_games, augment=augment, human_repeat=1,
+    )
+    X_test, yv_test, yr_test, yp_test, test_game_ids = _convert_games_to_arrays(
+        test_games, augment=augment, human_repeat=1,
+    )
 
-        tensors.append(tensor)
-        values.append(val)
-        game_results.append(gr)
-        policy_targets.append(pol)
-
-        if augment:
-            tensors.append(mirror_tensor(tensor))
-            values.append(val)
-            game_results.append(gr)
-            policy_targets.append(mirror_policy(pol))
-
-    X = np.array(tensors, dtype=np.float32)
-    y_value = np.array(values, dtype=np.float32)
-    y_result = np.array(game_results, dtype=np.float32)
-    y_policy = np.array(policy_targets, dtype=np.float32)
+    X = np.concatenate([X_train, X_val, X_test], axis=0)
+    y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
+    y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
+    y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -286,28 +390,34 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
 
-    # Train / val / test split (80/10/10, stratified by result)
-    n = len(X)
-    indices = np.arange(n)
-    np.random.seed(42)
-    np.random.shuffle(indices)
-
-    n_train = int(0.8 * n)
-    n_val = int(0.1 * n)
-
+    n_train = len(X_train)
+    n_val = len(X_val)
+    n_test = len(X_test)
     splits = {
-        "train": indices[:n_train],
-        "val": indices[n_train:n_train + n_val],
-        "test": indices[n_train + n_val:],
+        "train": np.arange(0, n_train, dtype=np.int64),
+        "val": np.arange(n_train, n_train + n_val, dtype=np.int64),
+        "test": np.arange(n_train + n_val, n_train + n_val + n_test, dtype=np.int64),
     }
     np.savez(os.path.join(output_dir, "splits.npz"), **splits)
+
+    split_game_ids = {
+        "train": sorted(train_ids),
+        "val": sorted(val_ids),
+        "test": sorted(test_ids),
+        "train_weighted_instances": len(train_game_ids),
+        "val_weighted_instances": len(val_game_ids),
+        "test_weighted_instances": len(test_game_ids),
+    }
+    with open(os.path.join(output_dir, "split_game_ids.json"), "w") as f:
+        json.dump(split_game_ids, f, indent=2)
 
     print(f"\nSaved to {output_dir}:")
     print(f"  positions.npy:    {X.shape}")
     print(f"  mcts_values.npy:  {y_value.shape}")
     print(f"  game_results.npy: {y_result.shape}")
     print(f"  policies.npy:     {y_policy.shape}")
-    print(f"  splits.npz:       train={n_train}, val={n_val}, test={n - n_train - n_val}")
+    print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
+    print("  split_game_ids.json: game-level split membership saved")
 
 
 if __name__ == "__main__":
@@ -318,7 +428,13 @@ if __name__ == "__main__":
     parser.add_argument("--no-augment", action="store_true", help="Disable mirror augmentation")
     parser.add_argument("--keep-generations", type=int, default=None,
                         help=f"Sliding window: keep last N generations (default: all)")
+    parser.add_argument("--seed", type=int, default=RANDOM_SEED,
+                        help=f"Random seed for deterministic game-level splitting (default: {RANDOM_SEED})")
+    parser.add_argument("--exclude-human-games", action="store_true",
+                        help="Exclude data/raw/human_games from processing")
     args = parser.parse_args()
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
                      augment=not args.no_augment,
-                     keep_generations=args.keep_generations)
+                     keep_generations=args.keep_generations,
+                     seed=args.seed,
+                     include_human=not args.exclude_human_games)

@@ -1,5 +1,9 @@
 import argparse
+import json
 import os
+import random
+import subprocess
+import time
 
 import numpy as np
 import torch
@@ -12,11 +16,65 @@ from config import (
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET, BLEND_WEIGHT, BLEND_START, BLEND_END,
     PROCESSED_DATA_DIR, MODEL_DIR,
-    VALUE_LOSS_EXPONENT, LR_GAMMA,
+    VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
+    WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
 IN_CHANNELS = TENSOR_SHAPE[2]
+
+
+def set_seed(seed):
+    """Seed Python/NumPy/Torch for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+def get_git_commit():
+    """Best-effort short git commit hash."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        return None
+
+
+def build_optimizer(model, lr, weight_decay):
+    """AdamW with weight decay excluded for norm layers and biases."""
+    norm_layers = (
+        nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d,
+        nn.LayerNorm, nn.GroupNorm,
+        nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d,
+    )
+    decay_params = []
+    no_decay_params = []
+
+    for _, module in model.named_modules():
+        for param_name, param in module.named_parameters(recurse=False):
+            if not param.requires_grad:
+                continue
+            if param_name == "bias" or isinstance(module, norm_layers):
+                no_decay_params.append(param)
+            else:
+                decay_params.append(param)
+
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": decay_params, "weight_decay": weight_decay},
+            {"params": no_decay_params, "weight_decay": 0.0},
+        ],
+        lr=lr,
+    )
+    return optimizer, len(decay_params), len(no_decay_params)
 
 
 class ResidualBlock(nn.Module):
@@ -137,7 +195,7 @@ def get_blend_lambda(epoch, max_epochs):
     return BLEND_START + (BLEND_END - BLEND_START) * t
 
 
-def _make_loader(X, y_val, y_pol, batch_size, shuffle=True):
+def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
@@ -147,7 +205,7 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True):
     y_p = torch.from_numpy(y_pol)                      # (N, 4096)
     ds = TensorDataset(X_t, y_v, y_p)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
-                      pin_memory=True, num_workers=0)
+                      pin_memory=True, num_workers=0, generator=generator)
 
 
 def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
@@ -155,7 +213,28 @@ def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
     return torch.pow(torch.abs(pred - target), exponent).mean()
 
 
-def _train_epoch(model, loader, optimizer, device, policy_weight):
+def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor):
+    """Apply linear warmup schedule and return the LR used this epoch."""
+    if warmup_epochs <= 0:
+        return optimizer.param_groups[0]["lr"]
+
+    if epoch <= warmup_epochs:
+        if warmup_epochs == 1:
+            t = 1.0
+        else:
+            t = (epoch - 1) / (warmup_epochs - 1)
+        lr = base_lr * (warmup_start_factor + (1.0 - warmup_start_factor) * t)
+        for pg in optimizer.param_groups:
+            pg["lr"] = lr
+        return lr
+
+    if epoch == warmup_epochs + 1:
+        for pg in optimizer.param_groups:
+            pg["lr"] = base_lr
+    return optimizer.param_groups[0]["lr"]
+
+
+def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
@@ -174,6 +253,8 @@ def _train_epoch(model, loader, optimizer, device, policy_weight):
 
         optimizer.zero_grad()
         loss.backward()
+        if grad_clip_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
         optimizer.step()
 
         bs = X_b.size(0)
@@ -192,6 +273,7 @@ def _eval_epoch(model, loader, device, policy_weight):
     total_val_loss = 0.0
     total_pol_loss = 0.0
     total_mae = 0.0
+    total_mse = 0.0
     n = 0
 
     for X_b, yv_b, yp_b in loader:
@@ -209,9 +291,10 @@ def _eval_epoch(model, loader, device, policy_weight):
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
         total_mae += (value_pred - yv_b).abs().sum().item()
+        total_mse += F.mse_loss(value_pred, yv_b, reduction="sum").item()
         n += bs
 
-    return total_loss / n, total_val_loss / n, total_pol_loss / n, total_mae / n
+    return total_loss / n, total_val_loss / n, total_pol_loss / n, total_mae / n, total_mse / n
 
 
 def main():
@@ -221,12 +304,27 @@ def main():
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
+    parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
+    parser.add_argument("--grad-clip", type=float, default=GRAD_CLIP_NORM)
+    parser.add_argument("--warmup-epochs", type=int, default=WARMUP_EPOCHS)
+    parser.add_argument("--warmup-start-factor", type=float, default=WARMUP_START_FACTOR)
+    parser.add_argument("--resume-from", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=RANDOM_SEED)
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
                         choices=["game_result", "mcts_value", "blend"])
     args = parser.parse_args()
 
+    if args.warmup_epochs < 0:
+        raise ValueError("--warmup-epochs must be >= 0")
+    if not (0.0 < args.warmup_start_factor <= 1.0):
+        raise ValueError("--warmup-start-factor must be in (0, 1]")
+    if args.grad_clip < 0:
+        raise ValueError("--grad-clip must be >= 0")
+
+    set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+    print(f"Seed: {args.seed}")
     if device.type == "cuda":
         print(f"  GPU: {torch.cuda.get_device_name(0)}")
 
@@ -237,6 +335,11 @@ def main():
     train_idx = splits["train"]
     val_idx = splits["val"]
     test_idx = splits["test"]
+    if len(train_idx) == 0 or len(val_idx) == 0 or len(test_idx) == 0:
+        raise ValueError(
+            f"Empty split detected (train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}). "
+            "Regenerate processed data with enough games per split."
+        )
 
     # For non-blend targets, compute once. For blend, recompute per epoch.
     if args.target != "blend":
@@ -253,8 +356,19 @@ def main():
     model = build_model().to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
+    if args.resume_from:
+        if not os.path.exists(args.resume_from):
+            raise FileNotFoundError(f"--resume-from not found: {args.resume_from}")
+        model.load_state_dict(
+            torch.load(args.resume_from, map_location=device, weights_only=True)
+        )
+        print(f"Resumed weights from {args.resume_from}")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer, decay_count, no_decay_count = build_optimizer(
+        model, lr=args.lr, weight_decay=args.weight_decay,
+    )
+    print(f"Optimizer: AdamW (weight_decay={args.weight_decay})")
+    print(f"  Param groups: decay={decay_count}, no_decay={no_decay_count}")
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=1, gamma=LR_GAMMA,
     )
@@ -265,6 +379,37 @@ def main():
     best_val_loss = float("inf")
     patience_counter = 0
     patience = 10
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    metadata_path = os.path.join(args.model_dir, f"train_run_{run_id}.json")
+    run_metadata = {
+        "run_id": run_id,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "git_commit": get_git_commit(),
+        "seed": args.seed,
+        "device": str(device),
+        "args": vars(args),
+        "model_params": total_params,
+        "resume_from": args.resume_from,
+        "optimizer": {
+            "name": "AdamW",
+            "weight_decay": args.weight_decay,
+            "decay_group_count": decay_count,
+            "no_decay_group_count": no_decay_count,
+        },
+        "warmup": {
+            "epochs": args.warmup_epochs,
+            "start_factor": args.warmup_start_factor,
+        },
+        "gradient_clipping": {
+            "max_norm": args.grad_clip,
+        },
+        "data_sizes": {
+            "train": int(len(train_idx)),
+            "val": int(len(val_idx)),
+            "test": int(len(test_idx)),
+        },
+        "epochs": [],
+    }
 
     # Training loop
     for epoch in range(1, args.epochs + 1):
@@ -276,25 +421,50 @@ def main():
             epoch_targets = value_targets
             lam = BLEND_WEIGHT
 
+        lr_used = _set_epoch_lr(
+            optimizer,
+            epoch=epoch,
+            base_lr=args.lr,
+            warmup_epochs=args.warmup_epochs,
+            warmup_start_factor=args.warmup_start_factor,
+        )
+
+        train_gen = torch.Generator()
+        train_gen.manual_seed(args.seed + epoch)
         train_loader = _make_loader(positions[train_idx], epoch_targets[train_idx],
-                                    policies[train_idx], args.batch_size, shuffle=True)
+                                    policies[train_idx], args.batch_size, shuffle=True,
+                                    generator=train_gen)
         val_loader = _make_loader(positions[val_idx], epoch_targets[val_idx],
                                   policies[val_idx], args.batch_size, shuffle=False)
 
         train_loss, train_v, train_p = _train_epoch(
-            model, train_loader, optimizer, device, POLICY_LOSS_WEIGHT,
+            model, train_loader, optimizer, device, POLICY_LOSS_WEIGHT, args.grad_clip,
         )
-        val_loss, val_v, val_p, val_mae = _eval_epoch(
+        val_loss, val_v, val_p, val_mae, val_mse = _eval_epoch(
             model, val_loader, device, POLICY_LOSS_WEIGHT,
         )
-        scheduler.step()
+        if epoch > args.warmup_epochs:
+            scheduler.step()
 
-        lr = optimizer.param_groups[0]["lr"]
+        lr = lr_used
         lam_str = f"  λ={lam:.2f}" if args.target == "blend" else ""
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
-              f"val={val_loss:.4f} (v={val_v:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
+              f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
               f"lr={lr:.1e}{lam_str}")
+        run_metadata["epochs"].append({
+            "epoch": epoch,
+            "train_total_loss": float(train_loss),
+            "train_value_power_loss": float(train_v),
+            "train_policy_ce": float(train_p),
+            "val_total_loss": float(val_loss),
+            "val_value_power_loss": float(val_v),
+            "val_value_mse": float(val_mse),
+            "val_policy_ce": float(val_p),
+            "val_value_mae": float(val_mae),
+            "lr": float(lr),
+            "blend_lambda": float(lam),
+        })
 
         # Checkpoint
         if val_loss < best_val_loss:
@@ -314,13 +484,14 @@ def main():
     final_targets = epoch_targets if args.target == "blend" else value_targets
     test_loader = _make_loader(positions[test_idx], final_targets[test_idx],
                                policies[test_idx], args.batch_size, shuffle=False)
-    test_loss, test_v, test_p, test_mae = _eval_epoch(
+    test_loss, test_v, test_p, test_mae, test_mse = _eval_epoch(
         model, test_loader, device, POLICY_LOSS_WEIGHT,
     )
 
     print("\n--- Test set evaluation ---")
     print(f"Total loss: {test_loss:.4f}")
-    print(f"Value MSE:  {test_v:.4f}")
+    print(f"Value power loss: {test_v:.4f}")
+    print(f"Value true MSE:   {test_mse:.4f}")
     print(f"Policy CE:  {test_p:.4f}")
     print(f"Value MAE:  {test_mae:.4f}")
 
@@ -340,7 +511,22 @@ def main():
         acc = np.mean(np.sign(vpreds[non_draw]) == np.sign(vtrue[non_draw]))
         print(f"Winner prediction accuracy (non-draw): {acc:.1%}")
 
+    run_metadata["test"] = {
+        "total_loss": float(test_loss),
+        "value_power_loss": float(test_v),
+        "value_true_mse": float(test_mse),
+        "policy_ce": float(test_p),
+        "value_mae": float(test_mae),
+        "winner_sign_accuracy_non_draw": float(acc) if non_draw.sum() > 0 else None,
+    }
+    run_metadata["best_val_loss"] = float(best_val_loss)
+    run_metadata["checkpoint_path"] = checkpoint_path
+    run_metadata["end_timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(metadata_path, "w") as f:
+        json.dump(run_metadata, f, indent=2)
+
     print(f"\nBest model saved to {checkpoint_path}")
+    print(f"Run metadata saved to {metadata_path}")
 
 
 if __name__ == "__main__":

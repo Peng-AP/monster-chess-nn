@@ -267,6 +267,9 @@ def main():
 
     engine = MCTS(num_simulations=args.sims, eval_fn=eval_fn)
     human_is_white = args.color == "white"
+    session_id = time.strftime("%Y%m%d_%H%M%S")
+    ai_color = "black" if human_is_white else "white"
+    model_used = args.model or os.path.join(MODEL_DIR, "best_value_net.pt")
 
     print(f"\n{'='*50}")
     print(f"  MONSTER CHESS")
@@ -343,6 +346,13 @@ def main():
                     "mcts_value": round(root_value, 4),
                     "policy": action_probs,
                     "current_player": "white" if is_white else "black",
+                    "source": "human_game",
+                    "session_id": session_id,
+                    "human_color": args.color,
+                    "ai_color": ai_color,
+                    "ai_simulations": args.sims,
+                    "ai_eval_type": "heuristic" if eval_fn is None else "nn",
+                    "ai_model_path": None if eval_fn is None else model_used,
                 })
 
             game.apply_action(action)

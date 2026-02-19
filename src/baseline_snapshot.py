@@ -6,10 +6,10 @@ and self-play result distribution. Saves to baselines/baseline_<timestamp>.json.
 No behavior changes — read-only against existing data and model.
 """
 import argparse
-import glob
 import hashlib
 import json
 import os
+import subprocess
 import time
 
 import numpy as np
@@ -28,7 +28,7 @@ from config import (
     EXPLORATION_CONSTANT, MAX_GAME_TURNS,
     PROCESSED_DATA_DIR, MODEL_DIR, RAW_DATA_DIR,
 )
-from train import DualHeadNet, _power_loss, _make_loader, _eval_epoch
+from train import DualHeadNet, _make_loader, _eval_epoch
 
 
 def model_checksum(path):
@@ -40,6 +40,19 @@ def model_checksum(path):
     return h.hexdigest()
 
 
+def get_git_commit():
+    """Best-effort short git commit hash."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=PROJECT_ROOT,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        return None
+
+
 def scan_raw_results(raw_dir):
     """Scan all raw JSONL files for game result distribution."""
     results_by_dir = {}
@@ -48,8 +61,12 @@ def scan_raw_results(raw_dir):
         jsonl_files = [f for f in filenames if f.endswith(".jsonl")]
         if not jsonl_files:
             continue
-        wins = {1: 0, -1: 0, 0: 0}
+        white_wins = 0
+        black_wins = 0
+        draws = 0
         game_lengths = []
+        counted_games = 0
+        empty_files = 0
         for fname in jsonl_files:
             path = os.path.join(dirpath, fname)
             with open(path) as f:
@@ -57,39 +74,48 @@ def scan_raw_results(raw_dir):
             if lines:
                 last = json.loads(lines[-1])
                 r = last.get("game_result", 0)
-                wins[r] = wins.get(r, 0) + 1
+                if r > 0:
+                    white_wins += 1
+                elif r < 0:
+                    black_wins += 1
+                else:
+                    draws += 1
                 game_lengths.append(len(lines))
-        n = len(jsonl_files)
+                counted_games += 1
+            else:
+                empty_files += 1
+        n = counted_games
         results_by_dir[dirname] = {
             "games": n,
+            "files": len(jsonl_files),
+            "empty_files": empty_files,
             "positions": sum(game_lengths),
-            "white_wins": wins.get(1, 0),
-            "black_wins": wins.get(-1, 0),
-            "draws": wins.get(0, 0),
+            "white_wins": white_wins,
+            "black_wins": black_wins,
+            "draws": draws,
             "avg_length": round(sum(game_lengths) / n, 1) if n else 0,
         }
     return results_by_dir
 
 
-def evaluate_model(model, positions, mcts_values, game_results, split_indices,
+def evaluate_model(model, positions, mcts_values, policies, split_indices,
                    split_name, device):
     """Evaluate model on a data split, returning metrics dict."""
     idx = split_indices
     targets = mcts_values[idx]  # always use mcts_value for baseline
 
-    # Check if policies exist
-    policy_path = os.path.join(PROCESSED_DATA_DIR, "policies.npy")
-    if os.path.exists(policy_path):
-        policies = np.load(policy_path)
+    if policies is not None:
         pol_split = policies[idx]
     else:
-        # No policy npy — create dummy zeros (policy CE won't be meaningful)
+        # No policy data -> create dummy zeros (policy CE won't be meaningful)
         pol_split = np.zeros((len(idx), POLICY_SIZE), dtype=np.float32)
 
     loader = _make_loader(positions[idx], targets, pol_split, BATCH_SIZE, shuffle=False)
-    total_loss, val_loss, pol_loss, mae = _eval_epoch(model, loader, device, POLICY_LOSS_WEIGHT)
+    total_loss, val_loss, pol_loss, mae, mse = _eval_epoch(
+        model, loader, device, POLICY_LOSS_WEIGHT,
+    )
 
-    # True MSE (separate from power loss)
+    # Sign accuracy on non-draw positions
     model.eval()
     all_preds = []
     all_true = []
@@ -100,14 +126,9 @@ def evaluate_model(model, positions, mcts_values, game_results, split_indices,
             all_true.append(yv_b.numpy())
     preds = np.concatenate(all_preds).flatten()
     true = np.concatenate(all_true).flatten()
-
-    mse = float(np.mean((preds - true) ** 2))
-
-    # Sign accuracy on non-draw positions
     non_draw = true != 0
     sign_acc = float(np.mean(np.sign(preds[non_draw]) == np.sign(true[non_draw]))) if non_draw.sum() > 0 else None
 
-    # Value distribution stats
     return {
         "split": split_name,
         "n_positions": len(idx),
@@ -157,8 +178,9 @@ def main():
     # Load processed data (handle missing policies.npy gracefully)
     positions = np.load(os.path.join(args.data_dir, "positions.npy"))
     mcts_values = np.load(os.path.join(args.data_dir, "mcts_values.npy"))
-    game_results = np.load(os.path.join(args.data_dir, "game_results.npy"))
     splits = np.load(os.path.join(args.data_dir, "splits.npz"))
+    policy_path = os.path.join(args.data_dir, "policies.npy")
+    policies = np.load(policy_path) if os.path.exists(policy_path) else None
     train_idx = splits["train"]
     val_idx = splits["val"]
     test_idx = splits["test"]
@@ -168,7 +190,7 @@ def main():
 
     # Evaluate on val and test
     print("\nEvaluating on val split...")
-    val_metrics = evaluate_model(model, positions, mcts_values, game_results,
+    val_metrics = evaluate_model(model, positions, mcts_values, policies,
                                  val_idx, "val", device)
     print(f"  Power loss: {val_metrics['power_loss_2.5']:.4f}")
     print(f"  True MSE:   {val_metrics['true_mse']:.4f}")
@@ -177,7 +199,7 @@ def main():
     print(f"  Sign acc:   {val_metrics['sign_accuracy']}")
 
     print("\nEvaluating on test split...")
-    test_metrics = evaluate_model(model, positions, mcts_values, game_results,
+    test_metrics = evaluate_model(model, positions, mcts_values, policies,
                                   test_idx, "test", device)
     print(f"  Power loss: {test_metrics['power_loss_2.5']:.4f}")
     print(f"  True MSE:   {test_metrics['true_mse']:.4f}")
@@ -242,6 +264,7 @@ def main():
             "path": model_path,
             "sha256": checksum,
             "total_params": total_params,
+            "git_commit": get_git_commit(),
         },
         "data": {
             "processed_dir": args.data_dir,
@@ -278,3 +301,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -790,6 +790,66 @@ EXTERNAL REFERENCES:
   - AlphaStar: opponent pool (3-5 frozen snapshots) prevents co-adaptation
     in asymmetric games
 
+14. 2026-02-19 TRANSFER HANDOFF (LATEST)
+================================================================================
+
+Status:
+  - All monster-chess training processes were stopped intentionally.
+  - Iteration 2 was aborted and cleaned for transfer to higher-compute machine.
+  - Partial iteration-2 artifacts removed:
+      data/raw/nn_gen12
+      data/raw/nn_gen12_curriculum
+      data/raw/nn_gen12_blackfocus (if present)
+
+Large run used:
+  Log: models/run_large_20260218_221423.log
+  Err: models/run_large_20260218_221423.err.log
+
+Completed work in that run before stopping:
+  - Generation 11 normal self-play:
+      data/raw/nn_gen11 -> 180 games, White 180 / Black 0 / Draw 0
+  - Generation 11 black-focus self-play:
+      data/raw/nn_gen11_blackfocus -> 219 saved / 260 attempted
+      41 timed out at 600s, results White 209 / Black 10 / Draw 0
+  - Generation 11 curriculum:
+      data/raw/nn_gen11_curriculum -> 220 games, White 0 / Black 220 / Draw 0
+  - Processing completed from windowed data:
+      positions.npy shape: (70864, 8, 8, 15)
+      splits: train=58878, val=6160, test=5826
+  - Candidate training completed:
+      models/candidates/gen_0011/best_value_net.pt
+      (from log tail: Policy CE 0.4819, Value MAE 0.0979, winner sign acc 96.3%)
+
+Gate result (authoritative source):
+  models/archive/manifest.jsonl (timestamp 2026-02-19T01:33:22)
+  - generation: 11
+  - accepted: false
+  - side-aware gate:
+      candidate_white score = 1.000 (40/40 wins as White)
+      candidate_black score = 0.000 (0/40 wins as Black)
+      overall score = 0.500 over 80 games
+  - threshold config in run:
+      gate_threshold=0.54, gate_min_other_side=0.42
+
+Important interpretation:
+  - The long run again confirms the core asymmetry issue:
+    candidate networks strongly improve White-side play but still fail as Black.
+  - Iteration 2 started after the gen11 rejection, but was intentionally stopped
+    before completion for transfer to stronger compute.
+
+How to resume on destination machine:
+  1) Ensure this repo state is checked out.
+  2) Keep or copy models/best_value_net.pt and models/archive/*.
+  3) Start a fresh run from next available generation:
+     python src/iterate.py --iterations 2 --games 180 --curriculum-games 220 \
+       --black-focus-games 260 --simulations 120 --curriculum-simulations 50 \
+       --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 \
+       --warmup-start-factor 0.1 --keep-generations 3 --alternating \
+       --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 \
+       --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 \
+       --seed 20260219 --human-eval
+  4) Recommend increasing compute or lowering timeout risk for black-focus games.
+
 ================================================================================
 END OF CONTEXT
 ================================================================================

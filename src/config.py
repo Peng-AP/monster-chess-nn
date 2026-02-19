@@ -17,6 +17,7 @@ MAX_GAME_TURNS = 150
 
 # Data generation
 NUM_GAMES = 100
+RANDOM_SEED = 42
 
 # Curriculum endgame positions for Monster Chess.
 #
@@ -127,6 +128,10 @@ POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 # Training
 BATCH_SIZE = 256
 LEARNING_RATE = 2e-3
+WEIGHT_DECAY = 1e-4
+GRAD_CLIP_NORM = 1.0
+WARMUP_EPOCHS = 3
+WARMUP_START_FACTOR = 0.1
 VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
 LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
