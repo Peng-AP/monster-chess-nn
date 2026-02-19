@@ -450,6 +450,13 @@ def main():
                         help="Position budget window: include enough recent generations to hit N raw positions")
     parser.add_argument("--alternating", action="store_true",
                         help="Use frozen-opponent alternating training")
+    parser.add_argument(
+        "--alternating-pattern",
+        type=str,
+        default="alternate",
+        choices=["alternate", "black_only", "white_only"],
+        help="Alternating mode side schedule: alternate each iteration, or lock to one side",
+    )
     parser.add_argument("--opponent-sims", type=int, default=None,
                         help="MCTS sims for frozen opponent (default: from config)")
     parser.add_argument("--pool-size", type=int, default=5,
@@ -617,6 +624,8 @@ def main():
         raise ValueError("--consolidation-balanced-black-ratio must be in (0, 1)")
     if args.alternating and not args.no_gating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
+    if (not args.alternating) and args.alternating_pattern != "alternate":
+        raise ValueError("--alternating-pattern requires --alternating")
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
     consolidation_lr = LEARNING_RATE * args.consolidation_lr_factor
@@ -789,6 +798,7 @@ def main():
             f"  Black tune:  train_sims x{args.black_train_sims_mult:.2f}, "
             f"opp_sims x{args.black_opponent_sims_mult:.2f}"
         )
+        print(f"  Pattern:     {args.alternating_pattern}")
         print(f"  Pool size:   {args.pool_size} archived models")
     if args.no_gating:
         print("  Gating:      disabled (auto-promote candidates)")
@@ -830,8 +840,12 @@ def main():
 
         # Determine training side for alternating mode
         if args.alternating:
-            # Odd iterations train Black, even train White
-            train_side = "black" if (i % 2 == 0) else "white"
+            if args.alternating_pattern == "black_only":
+                train_side = "black"
+            elif args.alternating_pattern == "white_only":
+                train_side = "white"
+            else:
+                train_side = "black" if (i % 2 == 0) else "white"
             side_label = train_side.upper()
         else:
             train_side = "both"
