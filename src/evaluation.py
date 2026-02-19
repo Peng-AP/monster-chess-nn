@@ -27,16 +27,33 @@ def _white_can_capture_king(board):
     board.turn = chess.WHITE
     for m1 in board.pseudo_legal_moves:
         if m1.to_square == bk:
-            board.turn = saved_turn
-            return True
+            board.push(m1)
+            wk_after = board.king(chess.WHITE)
+            white_safe = (
+                wk_after is None
+                or not board.is_attacked_by(chess.BLACK, wk_after)
+            )
+            board.pop()
+            if white_safe:
+                board.turn = saved_turn
+                return True
+            continue
         board.push(m1)
         board.turn = chess.WHITE
         for m2 in board.pseudo_legal_moves:
             if m2.to_square == bk:
+                board.push(m2)
+                wk_after = board.king(chess.WHITE)
+                white_safe = (
+                    wk_after is None
+                    or not board.is_attacked_by(chess.BLACK, wk_after)
+                )
                 board.pop()
-                board.turn = saved_turn
-                return True
-        board.turn = chess.BLACK
+                if white_safe:
+                    board.pop()
+                    board.turn = saved_turn
+                    return True
+            board.turn = chess.BLACK
         board.pop()
     board.turn = saved_turn
     return False

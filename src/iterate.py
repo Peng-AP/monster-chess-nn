@@ -249,9 +249,10 @@ def _seed_archive_if_empty(model_path, archive_dir, manifest_path):
 
 
 def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
-               arena_sims, arena_workers, base_seed):
+               arena_sims, arena_workers, base_seed, arena_tag="standard",
+               curriculum=False, curriculum_live_results=False):
     """Evaluate candidate vs incumbent with color swap. Returns score dict."""
-    arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}")
+    arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", arena_tag)
     white_dir = os.path.join(arena_root, "candidate_white")
     black_dir = os.path.join(arena_root, "candidate_black")
     if os.path.exists(arena_root):
@@ -263,7 +264,7 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
     n_black = arena_games - n_white
 
     if n_white > 0:
-        run([
+        white_cmd = [
             sys.executable, "data_generation.py",
             "--num-games", str(n_white),
             "--simulations", str(arena_sims),
@@ -274,10 +275,18 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             "--opponent-model", incumbent_model,
             "--opponent-sims", str(arena_sims),
             "--seed", str(base_seed + gen * 100 + 11),
-        ], f"Arena gen {gen}: candidate as White vs incumbent ({n_white} games)")
+        ]
+        if curriculum:
+            white_cmd.append("--curriculum")
+            if curriculum_live_results:
+                white_cmd.append("--curriculum-live-results")
+        run(
+            white_cmd,
+            f"Arena[{arena_tag}] gen {gen}: candidate as White vs incumbent ({n_white} games)",
+        )
 
     if n_black > 0:
-        run([
+        black_cmd = [
             sys.executable, "data_generation.py",
             "--num-games", str(n_black),
             "--simulations", str(arena_sims),
@@ -288,7 +297,15 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             "--opponent-model", incumbent_model,
             "--opponent-sims", str(arena_sims),
             "--seed", str(base_seed + gen * 100 + 22),
-        ], f"Arena gen {gen}: candidate as Black vs incumbent ({n_black} games)")
+        ]
+        if curriculum:
+            black_cmd.append("--curriculum")
+            if curriculum_live_results:
+                black_cmd.append("--curriculum-live-results")
+        run(
+            black_cmd,
+            f"Arena[{arena_tag}] gen {gen}: candidate as Black vs incumbent ({n_black} games)",
+        )
 
     white_summary = _scan_result_dir(white_dir)
     black_summary = _scan_result_dir(black_dir)
@@ -379,7 +396,7 @@ def _update_adaptive_scale(current_scale, accepted, gate_info,
         reason = "accepted_reduce_aux"
     else:
         # If non-trained side collapsed, reduce aux emphasis; otherwise increase.
-        if gate_info.get("decision_mode") == "side_aware":
+        if gate_info.get("decision_mode") in ("side_aware", "side_aware_black_focus"):
             other_score = gate_info.get("other_score")
             other_floor = gate_info.get("min_other_side")
             if (
@@ -418,6 +435,8 @@ def main():
     parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
                         help="Multiplier on opponent simulations when training Black in alternating mode")
     parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--primary-no-resume", action="store_true",
+                        help="Do not initialize primary training from incumbent checkpoint")
     parser.add_argument("--train-target", type=str, default="mcts_value",
                         choices=["mcts_value", "game_result", "blend"],
                         help="Training target passed to train.py")
@@ -445,6 +464,12 @@ def main():
                         help="Accept candidate if arena score >= threshold")
     parser.add_argument("--gate-min-other-side", type=float, default=0.45,
                         help="Alternating mode: minimum arena score on non-trained side")
+    parser.add_argument("--black-focus-arena-games", type=int, default=0,
+                        help="Extra black-focus arena games (curriculum live starts) for Black-side gating")
+    parser.add_argument("--black-focus-arena-sims", type=int, default=None,
+                        help="MCTS simulations per move for black-focus arena games (default: --arena-sims)")
+    parser.add_argument("--black-focus-gate-threshold", type=float, default=0.40,
+                        help="Alternating Black mode: accept if black-focus arena score >= this threshold")
     parser.add_argument("--no-gating", action="store_true",
                         help="Disable arena gating and always promote candidate")
     parser.add_argument("--seed", type=int, default=None,
@@ -478,6 +503,8 @@ def main():
                         help="Enable SE modules in training backbone (default: from config)")
     parser.add_argument("--se-reduction", type=int, default=None,
                         help="SE channel reduction ratio for training backbone (default: from config)")
+    parser.add_argument("--use-side-specialized-heads", action=argparse.BooleanOptionalAction, default=None,
+                        help="Use side-specialized value/policy heads in training model (default: from config)")
     parser.add_argument("--consolidation-epochs", type=int, default=2,
                         help="Post-train consolidation epochs on balanced mixed-side data (0 to disable)")
     parser.add_argument("--consolidation-lr-factor", type=float, default=0.35,
@@ -498,13 +525,19 @@ def main():
                         help="Use side-balanced sampling during primary training phase")
     parser.add_argument("--primary-balanced-black-ratio", type=float, default=0.5,
                         help="Black-to-move fraction when primary side balancing is enabled")
+    parser.add_argument("--primary-train-only-side", type=str, default="auto",
+                        choices=["auto", "none", "white", "black"],
+                        help="Restrict primary training data to one side-to-move (auto=training side in alternating)")
+    parser.add_argument("--consolidation-train-only-side", type=str, default="auto",
+                        choices=["auto", "none", "white", "black"],
+                        help="Restrict consolidation training data to one side-to-move (auto=training side in alternating)")
     args = parser.parse_args()
 
     from config import (
         SLIDING_WINDOW, POSITION_BUDGET, OPPONENT_SIMULATIONS, RANDOM_SEED,
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
         LEARNING_RATE,
-        USE_SE_BLOCKS, SE_REDUCTION,
+        USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
     )
     base_seed = args.seed if args.seed is not None else RANDOM_SEED
     set_seed(base_seed)
@@ -516,9 +549,17 @@ def main():
     )
     use_se_blocks = args.use_se_blocks if args.use_se_blocks is not None else USE_SE_BLOCKS
     se_reduction = args.se_reduction if args.se_reduction is not None else SE_REDUCTION
+    use_side_specialized_heads = (
+        args.use_side_specialized_heads
+        if args.use_side_specialized_heads is not None else USE_SIDE_SPECIALIZED_HEADS
+    )
     if position_budget is not None and position_budget <= 0:
         position_budget = None
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
+    black_focus_arena_sims = (
+        args.black_focus_arena_sims
+        if args.black_focus_arena_sims is not None else args.arena_sims
+    )
     warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else WARMUP_EPOCHS
     warmup_start_factor = (
         args.warmup_start_factor
@@ -528,12 +569,18 @@ def main():
         raise ValueError("--gate-threshold must be in [0, 1]")
     if not (0.0 <= args.gate_min_other_side <= 1.0):
         raise ValueError("--gate-min-other-side must be in [0, 1]")
+    if not (0.0 <= args.black_focus_gate_threshold <= 1.0):
+        raise ValueError("--black-focus-gate-threshold must be in [0, 1]")
     if args.pool_size < 0:
         raise ValueError("--pool-size must be >= 0")
     if args.black_focus_games < 0:
         raise ValueError("--black-focus-games must be >= 0")
     if args.black_focus_simulations <= 0:
         raise ValueError("--black-focus-simulations must be > 0")
+    if args.black_focus_arena_games < 0:
+        raise ValueError("--black-focus-arena-games must be >= 0")
+    if black_focus_arena_sims <= 0:
+        raise ValueError("--black-focus-arena-sims must be > 0")
     if args.black_train_sims_mult <= 0:
         raise ValueError("--black-train-sims-mult must be > 0")
     if args.black_opponent_sims_mult <= 0:
@@ -618,6 +665,13 @@ def main():
             "--data-dir", processed_dir,
             "--model-dir", model_dir,
             "--seed", str(base_seed),
+            "--se-reduction", str(se_reduction),
+            *(
+                ["--use-side-specialized-heads"]
+                if use_side_specialized_heads
+                else ["--no-use-side-specialized-heads"]
+            ),
+            *(["--use-se-blocks"] if use_se_blocks else ["--no-use-se-blocks"]),
         ], "Bootstrap: training initial model")
         print("\n  Bootstrap complete. Starting iteration loop.\n")
 
@@ -640,10 +694,14 @@ def main():
         "gate_min_other_side": args.gate_min_other_side,
         "arena_games": args.arena_games,
         "arena_sims": args.arena_sims,
+        "black_focus_arena_games": args.black_focus_arena_games,
+        "black_focus_arena_sims": black_focus_arena_sims,
+        "black_focus_gate_threshold": args.black_focus_gate_threshold,
         "black_focus_games": args.black_focus_games,
         "black_focus_simulations": args.black_focus_simulations,
         "black_train_sims_mult": float(args.black_train_sims_mult),
         "black_opponent_sims_mult": float(args.black_opponent_sims_mult),
+        "primary_no_resume": bool(args.primary_no_resume),
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
         "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
@@ -657,6 +715,7 @@ def main():
         },
         "se_blocks_enabled": bool(use_se_blocks),
         "se_reduction": int(se_reduction),
+        "side_specialized_heads_enabled": bool(use_side_specialized_heads),
         "consolidation": {
             "enabled": bool(args.consolidation_epochs > 0),
             "epochs": int(args.consolidation_epochs),
@@ -671,6 +730,8 @@ def main():
         },
         "primary_balance_sides": bool(args.primary_balance_sides),
         "primary_balanced_black_ratio": float(args.primary_balanced_black_ratio),
+        "primary_train_only_side": args.primary_train_only_side,
+        "consolidation_train_only_side": args.consolidation_train_only_side,
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
@@ -703,6 +764,7 @@ def main():
             f"min normal={args.adaptive_min_normal_games})"
         )
     print(f"  SE blocks:   {'on' if use_se_blocks else 'off'} (reduction={se_reduction})")
+    print(f"  Side heads:  {'on' if use_side_specialized_heads else 'off'}")
     if args.consolidation_epochs > 0:
         print(
             f"  Consolidate: epochs={args.consolidation_epochs}, lr={consolidation_lr:.2e}, "
@@ -717,6 +779,10 @@ def main():
         f"  Primary bal: {args.primary_balance_sides} "
         f"(black_ratio={args.primary_balanced_black_ratio:.2f})"
     )
+    print(
+        f"  Side focus:  primary={args.primary_train_only_side}, "
+        f"consolidation={args.consolidation_train_only_side}"
+    )
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
         print(
@@ -730,6 +796,12 @@ def main():
         print(f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, threshold={args.gate_threshold:.2f}")
         if args.alternating:
             print(f"               alternating side floor={args.gate_min_other_side:.2f} on non-trained side")
+            if args.black_focus_arena_games > 0:
+                print(
+                    f"               black-focus arena {args.black_focus_arena_games} games @ "
+                    f"{black_focus_arena_sims} sims, threshold={args.black_focus_gate_threshold:.2f} "
+                    f"(Black training side only)"
+                )
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
         budget_human = "no human_games" if args.exclude_human_games else "with human_games"
@@ -745,6 +817,7 @@ def main():
     print(f"  Model:       {model_path}")
     print(f"  Seed:        {base_seed}")
     print(f"  Fine-tune:   warmup_epochs={warmup_epochs}, warmup_start_factor={warmup_start_factor}")
+    print(f"  Resume:      {'disabled (primary cold start)' if args.primary_no_resume else 'from incumbent'}")
     if args.human_eval:
         diag_label = "on" if args.human_eval_value_diagnostics else "off"
         print(f"  Human eval:  enabled (dir={args.human_eval_dir}, value_diag={diag_label})")
@@ -763,6 +836,13 @@ def main():
         else:
             train_side = "both"
             side_label = "BOTH"
+
+        primary_train_only_side = args.primary_train_only_side
+        if primary_train_only_side == "auto":
+            primary_train_only_side = train_side if args.alternating else "none"
+        consolidation_train_only_side = args.consolidation_train_only_side
+        if consolidation_train_only_side == "auto":
+            consolidation_train_only_side = train_side if args.alternating else "none"
 
         print(f"\n{'#'*60}")
         print(f"  ITERATION {i+1}/{args.iterations}  -  Generation {gen}  -  Training: {side_label}")
@@ -966,7 +1046,13 @@ def main():
         )
         train_cmd.extend(["--balanced-black-ratio", str(args.primary_balanced_black_ratio)])
         train_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
-        if os.path.exists(model_path):
+        train_cmd.append(
+            "--use-side-specialized-heads"
+            if use_side_specialized_heads else "--no-use-side-specialized-heads"
+        )
+        if primary_train_only_side != "none":
+            train_cmd.extend(["--train-only-side", primary_train_only_side])
+        if os.path.exists(model_path) and not args.primary_no_resume:
             train_cmd.extend(["--resume-from", model_path])
         t_train_primary = run(train_cmd, f"[{i+1}/{args.iterations}] Training candidate model")
         t_train_consolidation = 0.0
@@ -993,11 +1079,17 @@ def main():
             ]
             consolidation_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
             consolidation_cmd.append(
+                "--use-side-specialized-heads"
+                if use_side_specialized_heads else "--no-use-side-specialized-heads"
+            )
+            consolidation_cmd.append(
                 "--balanced-sides-train" if args.consolidation_balance_sides else "--no-balanced-sides-train"
             )
             consolidation_cmd.extend(
                 ["--balanced-black-ratio", str(args.consolidation_balanced_black_ratio)]
             )
+            if consolidation_train_only_side != "none":
+                consolidation_cmd.extend(["--train-only-side", consolidation_train_only_side])
             if (
                 args.consolidation_distill_value_weight > 0
                 or args.consolidation_distill_policy_weight > 0
@@ -1033,6 +1125,7 @@ def main():
                 arena_sims=args.arena_sims,
                 arena_workers=args.arena_workers,
                 base_seed=base_seed,
+                arena_tag="standard",
             )
             gate_info["enabled"] = True
             gate_info["threshold"] = args.gate_threshold
@@ -1042,6 +1135,23 @@ def main():
                 other_side = "white" if train_side == "black" else "black"
                 primary_info = gate_info[f"candidate_{primary_side}"]
                 other_info = gate_info[f"candidate_{other_side}"]
+                black_focus_gate = None
+                if train_side == "black" and args.black_focus_arena_games > 0:
+                    black_focus_gate = _run_arena(
+                        candidate_model=candidate_path,
+                        incumbent_model=model_path,
+                        gen=gen,
+                        model_dir=model_dir,
+                        arena_games=args.black_focus_arena_games,
+                        arena_sims=black_focus_arena_sims,
+                        arena_workers=args.arena_workers,
+                        base_seed=base_seed + 700000,
+                        arena_tag="black_focus",
+                        curriculum=True,
+                        curriculum_live_results=True,
+                    )
+                    gate_info["black_focus_arena"] = black_focus_gate
+                    gate_info["black_focus_threshold"] = args.black_focus_gate_threshold
                 gate_info.update({
                     "decision_mode": "side_aware",
                     "primary_side": primary_side,
@@ -1051,13 +1161,34 @@ def main():
                     "primary_games": primary_info["games"],
                     "other_games": other_info["games"],
                 })
-                accepted = (
+                base_side_pass = (
                     gate_info["total_games"] > 0
                     and gate_info["primary_games"] > 0
                     and gate_info["other_games"] > 0
                     and gate_info["primary_score"] >= args.gate_threshold
                     and gate_info["other_score"] >= args.gate_min_other_side
                 )
+                if black_focus_gate is None:
+                    accepted = base_side_pass
+                else:
+                    focus_primary = black_focus_gate["candidate_black"]["score"]
+                    focus_games = black_focus_gate["candidate_black"]["games"]
+                    gate_info["black_focus_primary_score"] = focus_primary
+                    gate_info["black_focus_primary_games"] = focus_games
+                    gate_info["decision_mode"] = "side_aware_black_focus"
+                    accepted = (
+                        gate_info["total_games"] > 0
+                        and gate_info["primary_games"] > 0
+                        and gate_info["other_games"] > 0
+                        and gate_info["other_score"] >= args.gate_min_other_side
+                        and (
+                            gate_info["primary_score"] >= args.gate_threshold
+                            or (
+                                focus_games > 0
+                                and focus_primary >= args.black_focus_gate_threshold
+                            )
+                        )
+                    )
             else:
                 gate_info.update({
                     "decision_mode": "overall",
@@ -1081,7 +1212,16 @@ def main():
                 shutil.copy2(model_path, frozen_path)
                 print(f"  Frozen fallback updated -> {frozen_path}")
         else:
-            if gate_info.get("decision_mode") == "side_aware":
+            if gate_info.get("decision_mode") == "side_aware_black_focus":
+                print(
+                    f"\n  Candidate REJECTED "
+                    f"(trained-{gate_info['primary_side']} opening score={gate_info['primary_score']:.3f} "
+                    f"vs {args.gate_threshold:.3f}, black-focus score={gate_info.get('black_focus_primary_score', 0.0):.3f} "
+                    f"vs {args.black_focus_gate_threshold:.3f}, other-{gate_info['other_side']} "
+                    f"score={gate_info['other_score']:.3f} vs {args.gate_min_other_side:.3f}); "
+                    f"keeping incumbent"
+                )
+            elif gate_info.get("decision_mode") == "side_aware":
                 print(
                     f"\n  Candidate REJECTED "
                     f"(trained-{gate_info['primary_side']} score={gate_info['primary_score']:.3f} "
@@ -1133,6 +1273,8 @@ def main():
             "iteration": i + 1,
             "generation": gen,
             "train_side": train_side,
+            "primary_train_only_side_effective": primary_train_only_side,
+            "consolidation_train_only_side_effective": consolidation_train_only_side,
             "effective_mix": {
                 "normal_games": int(effective_normal_games),
                 "curriculum_games": int(effective_curriculum_games),
@@ -1168,7 +1310,14 @@ def main():
         print(f"  Iteration {i+1}/{args.iterations} complete (trained {side_label}, candidate {gate_label})")
         print(f"  Time:  generate {format_time(t_gen)}  |  process {format_time(t_proc)}  |  train {format_time(t_train)}  |  total {format_time(iter_elapsed)}")
         if gate_info.get("enabled"):
-            if gate_info.get("decision_mode") == "side_aware":
+            if gate_info.get("decision_mode") == "side_aware_black_focus":
+                print(
+                    f"  Gate:  trained-{gate_info['primary_side']} opening={gate_info['primary_score']:.3f} "
+                    f"(>={args.gate_threshold:.3f})  black-focus={gate_info.get('black_focus_primary_score', 0.0):.3f} "
+                    f"(>={args.black_focus_gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
+                    f"(>={args.gate_min_other_side:.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+                )
+            elif gate_info.get("decision_mode") == "side_aware":
                 print(
                     f"  Gate:  trained-{gate_info['primary_side']}={gate_info['primary_score']:.3f} "
                     f"(>={args.gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "

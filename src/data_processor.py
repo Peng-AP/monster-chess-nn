@@ -359,8 +359,10 @@ def _convert_games_to_arrays(games, augment, human_repeat):
             for rec in game["records"]:
                 is_white = rec["current_player"] == "white"
                 tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
+                # mcts_value from data_generation is already from the
+                # side-to-move perspective for both White and Black.
                 mv = rec["mcts_value"]
-                val = mv if is_white else -mv
+                val = mv
                 gr = rec["game_result"]
                 pol = policy_dict_to_target(rec["policy"], is_white)
 

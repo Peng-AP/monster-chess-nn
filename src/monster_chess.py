@@ -105,8 +105,16 @@ class MonsterChessGame:
 
             # If first move captured Black's king, game over — pair with null
             if self.board.king(chess.BLACK) is None:
+                white_king = self.board.king(chess.WHITE)
+                white_attacked = (
+                    white_king is not None
+                    and self.board.is_attacked_by(chess.BLACK, white_king)
+                )
                 self.board.pop()
-                return [(m1, chess.Move.null())]
+                if not white_attacked:
+                    return [(m1, chess.Move.null())]
+                # Unsafe king-capture is illegal under self-preservation.
+                continue
 
             self.board.turn = chess.WHITE
             second_moves = list(self.board.pseudo_legal_moves)
@@ -116,10 +124,18 @@ class MonsterChessGame:
 
                 # If second move captured Black's king, instant win
                 if self.board.king(chess.BLACK) is None:
+                    white_king = self.board.king(chess.WHITE)
+                    white_attacked = (
+                        white_king is not None
+                        and self.board.is_attacked_by(chess.BLACK, white_king)
+                    )
                     self.board.pop()
-                    self.board.turn = chess.BLACK
-                    self.board.pop()
-                    return [(m1, m2)]
+                    if not white_attacked:
+                        self.board.turn = chess.BLACK
+                        self.board.pop()
+                        return [(m1, m2)]
+                    # Unsafe king-capture is illegal under self-preservation.
+                    continue
 
                 all_pairs.append((m1, m2))
 
@@ -197,11 +213,19 @@ class MonsterChessGame:
         for m1 in first_moves:
             self.board.push(m1)
             if self.board.king(chess.BLACK) is None:
-                self.is_white_turn = False
-                self.turn_count += 1
-                self._terminal = False
-                self._result = None
-                return True
+                white_king = self.board.king(chess.WHITE)
+                white_attacked = (
+                    white_king is not None
+                    and self.board.is_attacked_by(chess.BLACK, white_king)
+                )
+                if not white_attacked:
+                    self.is_white_turn = False
+                    self.turn_count += 1
+                    self._terminal = False
+                    self._result = None
+                    return True
+                self.board.pop()
+                continue
 
             self.board.turn = chess.WHITE
             second_moves = list(self.board.pseudo_legal_moves)
@@ -210,11 +234,19 @@ class MonsterChessGame:
             for m2 in second_moves:
                 self.board.push(m2)
                 if self.board.king(chess.BLACK) is None:
-                    self.is_white_turn = False
-                    self.turn_count += 1
-                    self._terminal = False
-                    self._result = None
-                    return True
+                    white_king = self.board.king(chess.WHITE)
+                    white_safe = (
+                        white_king is None
+                        or not self.board.is_attacked_by(chess.BLACK, white_king)
+                    )
+                    if white_safe:
+                        self.is_white_turn = False
+                        self.turn_count += 1
+                        self._terminal = False
+                        self._result = None
+                        return True
+                    self.board.pop()
+                    continue
 
                 white_king = self.board.king(chess.WHITE)
                 white_safe = (

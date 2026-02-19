@@ -20,7 +20,7 @@ from config import (
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
     POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
-    USE_SE_BLOCKS, SE_REDUCTION,
+    USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
@@ -138,6 +138,7 @@ class DualHeadNet(nn.Module):
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
         use_se_blocks=USE_SE_BLOCKS,
         se_reduction=SE_REDUCTION,
+        use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
     ):
         super().__init__()
         self.policy_head_channels = int(policy_head_channels)
@@ -145,6 +146,7 @@ class DualHeadNet(nn.Module):
         self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
         self.use_se_blocks = bool(use_se_blocks)
         self.se_reduction = int(se_reduction)
+        self.use_side_specialized_heads = bool(use_side_specialized_heads)
         if not self.residual_block_channels:
             raise ValueError("residual_block_channels must contain at least one block")
         if self.se_reduction <= 0:
@@ -172,8 +174,27 @@ class DualHeadNet(nn.Module):
         self.residual_block_count = len(self.residual_block_channels)
         self.backbone_out_channels = in_ch
 
-        # Value head
-        self.value_head = nn.Sequential(
+        # Value head(s)
+        self.value_head = self._make_value_head()
+        if self.use_side_specialized_heads:
+            self.value_head_white = self._make_value_head()
+            self.value_head_black = self._make_value_head()
+
+        # Policy head(s)
+        self.policy_conv, self.policy_fc = self._make_policy_head()
+        if self.use_side_specialized_heads:
+            self.policy_conv_white, self.policy_fc_white = self._make_policy_head()
+            self.policy_conv_black, self.policy_fc_black = self._make_policy_head()
+            # Initialize side-specific heads from the shared heads for smoother warm start.
+            self.value_head_white.load_state_dict(self.value_head.state_dict())
+            self.value_head_black.load_state_dict(self.value_head.state_dict())
+            self.policy_conv_white.load_state_dict(self.policy_conv.state_dict())
+            self.policy_conv_black.load_state_dict(self.policy_conv.state_dict())
+            self.policy_fc_white.load_state_dict(self.policy_fc.state_dict())
+            self.policy_fc_black.load_state_dict(self.policy_fc.state_dict())
+
+    def _make_value_head(self):
+        return nn.Sequential(
             nn.AdaptiveAvgPool2d(1),       # (N, C, 1, 1)
             nn.Flatten(),                  # (N, C)
             nn.Linear(self.backbone_out_channels, 128),
@@ -186,24 +207,42 @@ class DualHeadNet(nn.Module):
             nn.Tanh(),
         )
 
-        # Policy head
-        self.policy_conv = nn.Sequential(
+    def _make_policy_head(self):
+        conv = nn.Sequential(
             nn.Conv2d(self.backbone_out_channels, self.policy_head_channels, 1, bias=False),
             nn.BatchNorm2d(self.policy_head_channels),
             nn.ReLU(),
         )
-        self.policy_fc = nn.Linear(self.policy_head_channels * 8 * 8, POLICY_SIZE)
+        fc = nn.Linear(self.policy_head_channels * 8 * 8, POLICY_SIZE)
+        return conv, fc
+
+    @staticmethod
+    def _policy_logits(backbone, policy_conv, policy_fc):
+        p = policy_conv(backbone)
+        p = p.flatten(1)
+        return policy_fc(p)
 
     def forward(self, x):
         # x: (N, C, 8, 8)  — PyTorch uses channels-first
+        side_turn = x[:, TURN_LAYER, 0, 0]
         x = self.stem(x)
         for i in range(1, self.residual_block_count + 1):
             x = getattr(self, f"res{i}")(x)
 
-        value = self.value_head(x)          # (N, 1)
-        p = self.policy_conv(x)             # (N, C, 8, 8)
-        p = p.flatten(1)                    # (N, C*64)
-        policy = self.policy_fc(p)          # (N, 4096)
+        value = self.value_head(x)
+        policy = self._policy_logits(x, self.policy_conv, self.policy_fc)
+        if self.use_side_specialized_heads:
+            white_mask = (side_turn > 0).unsqueeze(1)
+            value_white = self.value_head_white(x)
+            value_black = self.value_head_black(x)
+            policy_white = self._policy_logits(x, self.policy_conv_white, self.policy_fc_white)
+            policy_black = self._policy_logits(x, self.policy_conv_black, self.policy_fc_black)
+            value = torch.where(white_mask, value_white, value_black)
+            policy = torch.where(
+                white_mask.expand(-1, POLICY_SIZE),
+                policy_white,
+                policy_black,
+            )
 
         return value, policy
 
@@ -211,9 +250,21 @@ class DualHeadNet(nn.Module):
 def infer_policy_head_channels(state_dict):
     """Infer policy bottleneck width from checkpoint state dict."""
     w = state_dict.get("policy_conv.0.weight")
+    if w is None:
+        w = state_dict.get("policy_conv_white.0.weight")
+    if w is None:
+        w = state_dict.get("policy_conv_black.0.weight")
     if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[0] > 0:
         return int(w.shape[0])
     return POLICY_HEAD_CHANNELS
+
+
+def infer_side_head_config(state_dict):
+    """Infer whether side-specialized heads are present in checkpoint."""
+    return (
+        "value_head_white.2.weight" in state_dict
+        or "policy_conv_white.0.weight" in state_dict
+    )
 
 
 def infer_backbone_architecture(state_dict):
@@ -265,6 +316,7 @@ def build_model(
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
     use_se_blocks=USE_SE_BLOCKS,
     se_reduction=SE_REDUCTION,
+    use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
 ):
     return DualHeadNet(
         policy_head_channels=policy_head_channels,
@@ -272,6 +324,7 @@ def build_model(
         residual_block_channels=residual_block_channels,
         use_se_blocks=use_se_blocks,
         se_reduction=se_reduction,
+        use_side_specialized_heads=use_side_specialized_heads,
     )
 
 
@@ -281,12 +334,14 @@ def load_model_for_inference(checkpoint_path, device):
     pol_ch = infer_policy_head_channels(state_dict)
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
     use_se_blocks, se_reduction = infer_se_config(state_dict)
+    use_side_specialized_heads = infer_side_head_config(state_dict)
     model = build_model(
         policy_head_channels=pol_ch,
         stem_channels=stem_ch,
         residual_block_channels=block_ch,
         use_se_blocks=use_se_blocks,
         se_reduction=se_reduction,
+        use_side_specialized_heads=use_side_specialized_heads,
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -316,6 +371,12 @@ def load_data(data_dir):
     policies = np.load(os.path.join(data_dir, "policies.npy"))
     splits = np.load(os.path.join(data_dir, "splits.npz"))
     return positions, mcts_values, game_results, policies, splits
+
+
+def to_side_perspective(values_white_perspective, positions):
+    """Convert white-perspective targets to side-to-move perspective."""
+    side_sign = np.where(positions[:, 0, 0, TURN_LAYER] > 0, 1.0, -1.0).astype(np.float32)
+    return values_white_perspective * side_sign
 
 
 def get_targets(mcts_values, game_results, target_type, blend_weight):
@@ -522,10 +583,16 @@ def main():
                         help=f"Enable SE modules in residual blocks (default: {USE_SE_BLOCKS})")
     parser.add_argument("--se-reduction", type=int, default=SE_REDUCTION,
                         help=f"SE channel reduction ratio (default: {SE_REDUCTION})")
+    parser.add_argument("--use-side-specialized-heads", action=argparse.BooleanOptionalAction,
+                        default=USE_SIDE_SPECIALIZED_HEADS,
+                        help=f"Use side-specialized value/policy heads (default: {USE_SIDE_SPECIALIZED_HEADS})")
     parser.add_argument("--balanced-sides-train", action=argparse.BooleanOptionalAction, default=False,
                         help="Use side-balanced white/black-to-move sampling for each train epoch")
     parser.add_argument("--balanced-black-ratio", type=float, default=0.5,
                         help="When balanced sampling is enabled, target fraction of black-to-move samples")
+    parser.add_argument("--train-only-side", type=str, default="none",
+                        choices=["none", "white", "black"],
+                        help="Restrict training samples to one side-to-move")
     parser.add_argument("--distill-from", type=str, default=None,
                         help="Teacher checkpoint path for anti-forgetting distillation")
     parser.add_argument("--distill-value-weight", type=float, default=0.0,
@@ -577,9 +644,11 @@ def main():
             "Regenerate processed data with enough games per split."
         )
 
+    game_results_side = to_side_perspective(game_results, positions)
+
     # For non-blend targets, compute once. For blend, recompute per epoch.
     if args.target != "blend":
-        value_targets = get_targets(mcts_values, game_results, args.target, BLEND_WEIGHT)
+        value_targets = get_targets(mcts_values, game_results_side, args.target, BLEND_WEIGHT)
     else:
         value_targets = None  # computed per epoch with annealing
 
@@ -592,6 +661,7 @@ def main():
     model = build_model(
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
+        use_side_specialized_heads=args.use_side_specialized_heads,
     ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
@@ -599,6 +669,7 @@ def main():
     print(f"Stem channels: {model.stem_channels}")
     print(f"Residual blocks: {list(model.residual_block_channels)}")
     print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
+    print(f"Side-specialized heads: {model.use_side_specialized_heads}")
     resume_loaded_count = None
     resume_skipped = None
     if args.resume_from:
@@ -662,8 +733,10 @@ def main():
         "residual_block_count": int(model.residual_block_count),
         "use_se_blocks": bool(model.use_se_blocks),
         "se_reduction": int(model.se_reduction),
+        "use_side_specialized_heads": bool(model.use_side_specialized_heads),
         "balanced_sides_train": bool(args.balanced_sides_train),
         "balanced_black_ratio": float(args.balanced_black_ratio),
+        "train_only_side": args.train_only_side,
         "distillation": {
             "enabled": bool(distill_enabled),
             "teacher_path": args.distill_from,
@@ -700,7 +773,7 @@ def main():
         # Recompute blend targets with annealed lambda each epoch
         if args.target == "blend":
             lam = get_blend_lambda(epoch, args.epochs)
-            epoch_targets = lam * mcts_values + (1 - lam) * game_results
+            epoch_targets = lam * mcts_values + (1 - lam) * game_results_side
         else:
             epoch_targets = value_targets
             lam = BLEND_WEIGHT
@@ -715,13 +788,22 @@ def main():
 
         train_gen = torch.Generator()
         train_gen.manual_seed(args.seed + epoch)
+        base_train_idx = train_idx
+        if args.train_only_side != "none":
+            all_sides = _side_labels_from_positions(positions[train_idx])
+            if args.train_only_side == "white":
+                base_train_idx = train_idx[all_sides]
+            else:
+                base_train_idx = train_idx[~all_sides]
+            if len(base_train_idx) == 0:
+                raise ValueError(f"--train-only-side={args.train_only_side} produced 0 samples")
         if args.balanced_sides_train:
             epoch_train_idx = _balanced_train_indices(
-                train_idx, positions, seed=args.seed + epoch * 17,
+                base_train_idx, positions, seed=args.seed + epoch * 17,
                 black_ratio=args.balanced_black_ratio,
             )
         else:
-            epoch_train_idx = train_idx
+            epoch_train_idx = base_train_idx
         val_loader = _make_loader(positions[val_idx], epoch_targets[val_idx],
                                   policies[val_idx], args.batch_size, shuffle=False)
 
@@ -756,10 +838,13 @@ def main():
         balance_str = ""
         if args.balanced_sides_train:
             balance_str = f" balanced(b={args.balanced_black_ratio:.2f})"
+        side_str = ""
+        if args.train_only_side != "none":
+            side_str = f" side={args.train_only_side}"
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{lam_str}{distill_str}{balance_str}")
+              f"lr={lr:.1e}{lam_str}{distill_str}{balance_str}{side_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
             "train_samples": int(len(epoch_train_idx)),

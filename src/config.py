@@ -132,6 +132,7 @@ RESIDUAL_BLOCK_CHANNELS = (
 )  # deeper tower (stage F backbone scaling)
 USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
+USE_SIDE_SPECIALIZED_HEADS = False  # optional side-specific value/policy heads
 
 # Training
 BATCH_SIZE = 256
