@@ -357,27 +357,27 @@ def _side_labels_from_positions(positions):
     return turn_plane > 0
 
 
-def _balanced_train_indices(train_idx, positions, seed):
-    """Build balanced white/black-to-move train indices with stable total size."""
+def _balanced_train_indices(train_idx, positions, seed, black_ratio=0.5):
+    """Build side-balanced train indices with optional black-side skew."""
     if len(train_idx) == 0:
         return train_idx
+    r = float(black_ratio)
+    if not (0.0 < r < 1.0):
+        raise ValueError("black_ratio must be in (0, 1)")
     sides = _side_labels_from_positions(positions[train_idx])
     white = train_idx[sides]
     black = train_idx[~sides]
     if len(white) == 0 or len(black) == 0:
         return train_idx
 
-    target_each = max(1, len(train_idx) // 2)
+    n = len(train_idx)
+    target_black = int(round(n * r))
+    target_black = max(1, min(n - 1, target_black))
+    target_white = n - target_black
     rng = np.random.default_rng(seed)
-    white_bal = rng.choice(white, size=target_each, replace=len(white) < target_each)
-    black_bal = rng.choice(black, size=target_each, replace=len(black) < target_each)
+    white_bal = rng.choice(white, size=target_white, replace=len(white) < target_white)
+    black_bal = rng.choice(black, size=target_black, replace=len(black) < target_black)
     balanced = np.concatenate([white_bal, black_bal]).astype(np.int64, copy=False)
-
-    if len(train_idx) % 2 == 1:
-        extra_pool = white if len(white) >= len(black) else black
-        extra = rng.choice(extra_pool, size=1, replace=True).astype(np.int64, copy=False)
-        balanced = np.concatenate([balanced, extra])
-
     rng.shuffle(balanced)
     return balanced
 
@@ -524,6 +524,8 @@ def main():
                         help=f"SE channel reduction ratio (default: {SE_REDUCTION})")
     parser.add_argument("--balanced-sides-train", action=argparse.BooleanOptionalAction, default=False,
                         help="Use side-balanced white/black-to-move sampling for each train epoch")
+    parser.add_argument("--balanced-black-ratio", type=float, default=0.5,
+                        help="When balanced sampling is enabled, target fraction of black-to-move samples")
     parser.add_argument("--distill-from", type=str, default=None,
                         help="Teacher checkpoint path for anti-forgetting distillation")
     parser.add_argument("--distill-value-weight", type=float, default=0.0,
@@ -552,6 +554,8 @@ def main():
         raise ValueError("--distill-temperature must be > 0")
     if (args.distill_value_weight > 0 or args.distill_policy_weight > 0) and not args.distill_from:
         raise ValueError("Distillation weights require --distill-from")
+    if not (0.0 < args.balanced_black_ratio < 1.0):
+        raise ValueError("--balanced-black-ratio must be in (0, 1)")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -659,6 +663,7 @@ def main():
         "use_se_blocks": bool(model.use_se_blocks),
         "se_reduction": int(model.se_reduction),
         "balanced_sides_train": bool(args.balanced_sides_train),
+        "balanced_black_ratio": float(args.balanced_black_ratio),
         "distillation": {
             "enabled": bool(distill_enabled),
             "teacher_path": args.distill_from,
@@ -713,6 +718,7 @@ def main():
         if args.balanced_sides_train:
             epoch_train_idx = _balanced_train_indices(
                 train_idx, positions, seed=args.seed + epoch * 17,
+                black_ratio=args.balanced_black_ratio,
             )
         else:
             epoch_train_idx = train_idx
@@ -747,7 +753,9 @@ def main():
         distill_str = ""
         if distill_enabled:
             distill_str = f"  distill(v={train_dv:.4f} p={train_dp:.4f})"
-        balance_str = " balanced" if args.balanced_sides_train else ""
+        balance_str = ""
+        if args.balanced_sides_train:
+            balance_str = f" balanced(b={args.balanced_black_ratio:.2f})"
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "

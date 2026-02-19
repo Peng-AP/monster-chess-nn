@@ -413,7 +413,14 @@ def main():
                         help="MCTS simulations for curriculum games (lower = faster)")
     parser.add_argument("--black-focus-simulations", type=int, default=120,
                         help="MCTS simulations for black-focused start games")
+    parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
+                        help="Multiplier on train-side simulations when training Black in alternating mode")
+    parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
+                        help="Multiplier on opponent simulations when training Black in alternating mode")
     parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--train-target", type=str, default="mcts_value",
+                        choices=["mcts_value", "game_result", "blend"],
+                        help="Training target passed to train.py")
     parser.add_argument("--warmup-epochs", type=int, default=None,
                         help="Warmup epochs when fine-tuning (default: from config)")
     parser.add_argument("--warmup-start-factor", type=float, default=None,
@@ -479,12 +486,18 @@ def main():
                         help="Batch size for consolidation phase")
     parser.add_argument("--consolidation-balance-sides", action=argparse.BooleanOptionalAction, default=True,
                         help="Use side-balanced sampling during consolidation phase")
+    parser.add_argument("--consolidation-balanced-black-ratio", type=float, default=0.5,
+                        help="Black-to-move fraction when consolidation side balancing is enabled")
     parser.add_argument("--consolidation-distill-value-weight", type=float, default=0.20,
                         help="Value distillation weight in consolidation phase")
     parser.add_argument("--consolidation-distill-policy-weight", type=float, default=0.60,
                         help="Policy distillation weight in consolidation phase")
     parser.add_argument("--consolidation-distill-temperature", type=float, default=1.0,
                         help="Distillation temperature in consolidation phase")
+    parser.add_argument("--primary-balance-sides", action=argparse.BooleanOptionalAction, default=False,
+                        help="Use side-balanced sampling during primary training phase")
+    parser.add_argument("--primary-balanced-black-ratio", type=float, default=0.5,
+                        help="Black-to-move fraction when primary side balancing is enabled")
     args = parser.parse_args()
 
     from config import (
@@ -521,6 +534,10 @@ def main():
         raise ValueError("--black-focus-games must be >= 0")
     if args.black_focus_simulations <= 0:
         raise ValueError("--black-focus-simulations must be > 0")
+    if args.black_train_sims_mult <= 0:
+        raise ValueError("--black-train-sims-mult must be > 0")
+    if args.black_opponent_sims_mult <= 0:
+        raise ValueError("--black-opponent-sims-mult must be > 0")
     if selfplay_sims_jitter_pct < 0.0 or selfplay_sims_jitter_pct >= 1.0:
         raise ValueError("--selfplay-sims-jitter-pct must be in [0.0, 1.0)")
     if args.adaptive_min_scale <= 0:
@@ -547,6 +564,10 @@ def main():
         raise ValueError("--consolidation-distill-policy-weight must be >= 0")
     if args.consolidation_distill_temperature <= 0:
         raise ValueError("--consolidation-distill-temperature must be > 0")
+    if not (0.0 < args.primary_balanced_black_ratio < 1.0):
+        raise ValueError("--primary-balanced-black-ratio must be in (0, 1)")
+    if not (0.0 < args.consolidation_balanced_black_ratio < 1.0):
+        raise ValueError("--consolidation-balanced-black-ratio must be in (0, 1)")
     if args.alternating and not args.no_gating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
     if args.keep_generations is not None and args.position_budget is not None:
@@ -621,6 +642,8 @@ def main():
         "arena_sims": args.arena_sims,
         "black_focus_games": args.black_focus_games,
         "black_focus_simulations": args.black_focus_simulations,
+        "black_train_sims_mult": float(args.black_train_sims_mult),
+        "black_opponent_sims_mult": float(args.black_opponent_sims_mult),
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
         "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
@@ -641,10 +664,13 @@ def main():
             "lr": float(consolidation_lr),
             "batch_size": int(args.consolidation_batch_size),
             "balance_sides": bool(args.consolidation_balance_sides),
+            "balanced_black_ratio": float(args.consolidation_balanced_black_ratio),
             "distill_value_weight": float(args.consolidation_distill_value_weight),
             "distill_policy_weight": float(args.consolidation_distill_policy_weight),
             "distill_temperature": float(args.consolidation_distill_temperature),
         },
+        "primary_balance_sides": bool(args.primary_balance_sides),
+        "primary_balanced_black_ratio": float(args.primary_balanced_black_ratio),
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
@@ -667,6 +693,7 @@ def main():
     print(f"  Iterations:  {args.iterations}")
     print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum + {args.black_focus_games} black-focus")
     print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, {args.black_focus_simulations} black-focus")
+    print(f"  Target:      {args.train_target}")
     if selfplay_sims_jitter_pct > 0:
         print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
     if args.adaptive_curriculum:
@@ -680,13 +707,22 @@ def main():
         print(
             f"  Consolidate: epochs={args.consolidation_epochs}, lr={consolidation_lr:.2e}, "
             f"batch={args.consolidation_batch_size}, balanced={args.consolidation_balance_sides}, "
+            f"black_ratio={args.consolidation_balanced_black_ratio:.2f}, "
             f"distill(v={args.consolidation_distill_value_weight}, "
             f"p={args.consolidation_distill_policy_weight}, t={args.consolidation_distill_temperature})"
         )
     else:
         print("  Consolidate: disabled")
+    print(
+        f"  Primary bal: {args.primary_balance_sides} "
+        f"(black_ratio={args.primary_balanced_black_ratio:.2f})"
+    )
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
+        print(
+            f"  Black tune:  train_sims x{args.black_train_sims_mult:.2f}, "
+            f"opp_sims x{args.black_opponent_sims_mult:.2f}"
+        )
         print(f"  Pool size:   {args.pool_size} archived models")
     if args.no_gating:
         print("  Gating:      disabled (auto-promote candidates)")
@@ -749,6 +785,17 @@ def main():
         effective_black_focus_games = mix["black_focus_games"]
         adaptive_scale_key = mix["scale_key"]
         adaptive_scale_value = mix["scale_value"]
+        effective_train_sims = args.simulations
+        effective_opponent_sims = opponent_sims
+        effective_black_focus_sims = args.black_focus_simulations
+        if args.alternating and train_side == "black":
+            effective_train_sims = max(1, int(round(args.simulations * args.black_train_sims_mult)))
+            effective_opponent_sims = max(
+                1, int(round(opponent_sims * args.black_opponent_sims_mult))
+            )
+            effective_black_focus_sims = max(
+                1, int(round(args.black_focus_simulations * args.black_train_sims_mult))
+            )
         print(
             f"  Mix:         normal={effective_normal_games}, curriculum={effective_curriculum_games}, "
             f"black-focus={effective_black_focus_games}"
@@ -768,12 +815,12 @@ def main():
         gen_cmd = [
             sys.executable, "data_generation.py",
             "--num-games", str(effective_normal_games),
-            "--simulations", str(args.simulations),
+            "--simulations", str(effective_train_sims),
             "--output-dir", gen_dir,
             "--use-model", model_path,
             "--seed", str(base_seed + gen * 10 + 1),
         ]
-        normal_sim_bounds = _sim_bounds(args.simulations)
+        normal_sim_bounds = _sim_bounds(effective_train_sims)
         if normal_sim_bounds is not None:
             gen_cmd.extend([
                 "--simulations-min", str(normal_sim_bounds[0]),
@@ -784,7 +831,7 @@ def main():
 
         if args.alternating:
             gen_cmd.extend(["--train-side", train_side])
-            gen_cmd.extend(["--opponent-sims", str(opponent_sims)])
+            gen_cmd.extend(["--opponent-sims", str(effective_opponent_sims)])
             archived_models = _list_archive_models(archive_dir)
             opponent_pool_count = min(len(archived_models), args.pool_size) if args.pool_size > 0 else 0
             if args.pool_size > 0 and archived_models:
@@ -809,16 +856,16 @@ def main():
             bf_cmd = [
                 sys.executable, "data_generation.py",
                 "--num-games", str(effective_black_focus_games),
-                "--simulations", str(args.black_focus_simulations),
+                "--simulations", str(effective_black_focus_sims),
                 "--output-dir", bf_dir,
                 "--use-model", model_path,
                 "--curriculum",
                 "--curriculum-live-results",
                 "--train-side", "black",
-                "--opponent-sims", str(opponent_sims),
+                "--opponent-sims", str(effective_opponent_sims),
                 "--seed", str(base_seed + gen * 10 + 5),
             ]
-            blackfocus_sim_bounds = _sim_bounds(args.black_focus_simulations)
+            blackfocus_sim_bounds = _sim_bounds(effective_black_focus_sims)
             if blackfocus_sim_bounds is not None:
                 bf_cmd.extend([
                     "--simulations-min", str(blackfocus_sim_bounds[0]),
@@ -835,7 +882,7 @@ def main():
             t_bf = run(
                 bf_cmd,
                 f"[{i+1}/{args.iterations}] Generating {effective_black_focus_games} black-focus games "
-                f"@ {args.black_focus_simulations} sims (gen {gen}, live outcomes)"
+                f"@ {effective_black_focus_sims} sims (gen {gen}, live outcomes)"
             )
             print(f"\n  --- Black-Focus Games ---")
             black_focus_summary = summarize_generation(bf_dir)
@@ -905,7 +952,7 @@ def main():
         os.makedirs(candidate_dir, exist_ok=True)
         train_cmd = [
             sys.executable, "train.py",
-            "--target", "mcts_value",
+            "--target", args.train_target,
             "--epochs", str(args.epochs),
             "--data-dir", processed_dir,
             "--model-dir", candidate_dir,
@@ -914,6 +961,10 @@ def main():
             "--warmup-start-factor", str(warmup_start_factor),
             "--se-reduction", str(se_reduction),
         ]
+        train_cmd.append(
+            "--balanced-sides-train" if args.primary_balance_sides else "--no-balanced-sides-train"
+        )
+        train_cmd.extend(["--balanced-black-ratio", str(args.primary_balanced_black_ratio)])
         train_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
         if os.path.exists(model_path):
             train_cmd.extend(["--resume-from", model_path])
@@ -926,7 +977,7 @@ def main():
                 )
             consolidation_cmd = [
                 sys.executable, "train.py",
-                "--target", "mcts_value",
+                "--target", args.train_target,
                 "--epochs", str(args.consolidation_epochs),
                 "--data-dir", processed_dir,
                 "--model-dir", candidate_dir,
@@ -943,6 +994,9 @@ def main():
             consolidation_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
             consolidation_cmd.append(
                 "--balanced-sides-train" if args.consolidation_balance_sides else "--no-balanced-sides-train"
+            )
+            consolidation_cmd.extend(
+                ["--balanced-black-ratio", str(args.consolidation_balanced_black_ratio)]
             )
             if (
                 args.consolidation_distill_value_weight > 0
@@ -1083,6 +1137,9 @@ def main():
                 "normal_games": int(effective_normal_games),
                 "curriculum_games": int(effective_curriculum_games),
                 "black_focus_games": int(effective_black_focus_games),
+                "normal_simulations": int(effective_train_sims),
+                "black_focus_simulations": int(effective_black_focus_sims),
+                "opponent_simulations": int(effective_opponent_sims),
                 "base_total_games": int(mix["base_total_games"]),
                 "effective_total_games": int(mix["effective_total_games"]),
                 "adaptive_scale_key": adaptive_scale_key,
