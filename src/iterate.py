@@ -311,6 +311,95 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
     }
 
 
+def _clamp(value, lo, hi):
+    return max(lo, min(hi, value))
+
+
+def _compute_adaptive_mix(base_normal_games, base_curriculum_games, base_black_focus_games,
+                          train_side, alternating, adaptive_enabled, side_scales,
+                          min_normal_games):
+    """Compute effective per-iteration game mix under adaptive curriculum scheduling."""
+    if not adaptive_enabled:
+        black_focus = base_black_focus_games if (alternating and train_side == "black") else 0
+        return {
+            "scale_key": None,
+            "scale_value": 1.0,
+            "normal_games": base_normal_games,
+            "curriculum_games": base_curriculum_games,
+            "black_focus_games": black_focus,
+            "base_total_games": base_normal_games + base_curriculum_games + black_focus,
+            "effective_total_games": base_normal_games + base_curriculum_games + black_focus,
+        }
+
+    scale_key = train_side if alternating else "both"
+    scale_value = side_scales.get(scale_key, 1.0)
+
+    curriculum_games = int(round(base_curriculum_games * scale_value))
+    black_focus_games = (
+        int(round(base_black_focus_games * scale_value))
+        if (alternating and train_side == "black")
+        else 0
+    )
+
+    base_total = base_normal_games + base_curriculum_games + (
+        base_black_focus_games if (alternating and train_side == "black") else 0
+    )
+    normal_games = max(0, base_total - curriculum_games - black_focus_games)
+
+    # Keep a floor of normal games to preserve opening/midgame diversity.
+    normal_floor = max(0, min_normal_games)
+    if base_total >= normal_floor and normal_games < normal_floor:
+        deficit = normal_floor - normal_games
+        normal_games = normal_floor
+        while deficit > 0 and (curriculum_games > 0 or black_focus_games > 0):
+            if black_focus_games >= curriculum_games and black_focus_games > 0:
+                black_focus_games -= 1
+            elif curriculum_games > 0:
+                curriculum_games -= 1
+            else:
+                break
+            deficit -= 1
+
+    return {
+        "scale_key": scale_key,
+        "scale_value": float(scale_value),
+        "normal_games": int(normal_games),
+        "curriculum_games": int(curriculum_games),
+        "black_focus_games": int(black_focus_games),
+        "base_total_games": int(base_total),
+        "effective_total_games": int(normal_games + curriculum_games + black_focus_games),
+    }
+
+
+def _update_adaptive_scale(current_scale, accepted, gate_info,
+                           up_factor, down_factor, min_scale, max_scale):
+    """Update side scale from gate outcome; returns (new_scale, reason)."""
+    if accepted:
+        proposed = current_scale * down_factor
+        reason = "accepted_reduce_aux"
+    else:
+        # If non-trained side collapsed, reduce aux emphasis; otherwise increase.
+        if gate_info.get("decision_mode") == "side_aware":
+            other_score = gate_info.get("other_score")
+            other_floor = gate_info.get("min_other_side")
+            if (
+                other_score is not None
+                and other_floor is not None
+                and other_score < other_floor
+            ):
+                proposed = current_scale * down_factor
+                reason = "other_side_under_floor_reduce_aux"
+            else:
+                proposed = current_scale * up_factor
+                reason = "trained_side_miss_increase_aux"
+        else:
+            proposed = current_scale * up_factor
+            reason = "rejected_increase_aux"
+
+    new_scale = _clamp(proposed, min_scale, max_scale)
+    return float(new_scale), reason
+
+
 def main():
     parser = argparse.ArgumentParser(description="Iterate self-play training loop")
     parser.add_argument("--iterations", type=int, default=10)
@@ -366,6 +455,18 @@ def main():
                         help="Keep in-check positions during self-play data generation")
     parser.add_argument("--selfplay-sims-jitter-pct", type=float, default=None,
                         help="Randomize self-play per-game simulations by +/- this fraction (e.g. 0.20)")
+    parser.add_argument("--adaptive-curriculum", action="store_true",
+                        help="Dynamically rebalance normal/curriculum/black-focus mix from recent gate outcomes")
+    parser.add_argument("--adaptive-min-scale", type=float, default=0.70,
+                        help="Lower bound for adaptive curriculum scaling")
+    parser.add_argument("--adaptive-max-scale", type=float, default=1.80,
+                        help="Upper bound for adaptive curriculum scaling")
+    parser.add_argument("--adaptive-up-factor", type=float, default=1.20,
+                        help="Scale multiplier after rejected candidate (increase aux focus)")
+    parser.add_argument("--adaptive-down-factor", type=float, default=0.92,
+                        help="Scale multiplier after accepted candidate (decrease aux focus)")
+    parser.add_argument("--adaptive-min-normal-games", type=int, default=80,
+                        help="Minimum normal games per iteration when adaptive curriculum is enabled")
     args = parser.parse_args()
 
     from config import (
@@ -400,6 +501,16 @@ def main():
         raise ValueError("--black-focus-simulations must be > 0")
     if selfplay_sims_jitter_pct < 0.0 or selfplay_sims_jitter_pct >= 1.0:
         raise ValueError("--selfplay-sims-jitter-pct must be in [0.0, 1.0)")
+    if args.adaptive_min_scale <= 0:
+        raise ValueError("--adaptive-min-scale must be > 0")
+    if args.adaptive_max_scale < args.adaptive_min_scale:
+        raise ValueError("--adaptive-max-scale must be >= --adaptive-min-scale")
+    if args.adaptive_up_factor <= 0:
+        raise ValueError("--adaptive-up-factor must be > 0")
+    if args.adaptive_down_factor <= 0:
+        raise ValueError("--adaptive-down-factor must be > 0")
+    if args.adaptive_min_normal_games < 0:
+        raise ValueError("--adaptive-min-normal-games must be >= 0")
     if args.alternating and not args.no_gating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
     if args.keep_generations is not None and args.position_budget is not None:
@@ -476,6 +587,14 @@ def main():
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
         "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
+        "adaptive_curriculum_enabled": bool(args.adaptive_curriculum),
+        "adaptive_settings": {
+            "min_scale": float(args.adaptive_min_scale),
+            "max_scale": float(args.adaptive_max_scale),
+            "up_factor": float(args.adaptive_up_factor),
+            "down_factor": float(args.adaptive_down_factor),
+            "min_normal_games": int(args.adaptive_min_normal_games),
+        },
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
@@ -487,6 +606,8 @@ def main():
         "model_path": model_path,
         "iterations": [],
     }
+    adaptive_scales = {"white": 1.0, "black": 1.0, "both": 1.0}
+    run_metadata["adaptive_scales_initial"] = {k: float(v) for k, v in adaptive_scales.items()}
 
     mode_str = "ALTERNATING" if args.alternating else "STANDARD"
 
@@ -498,6 +619,12 @@ def main():
     print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, {args.black_focus_simulations} black-focus")
     if selfplay_sims_jitter_pct > 0:
         print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
+    if args.adaptive_curriculum:
+        print(
+            f"  Adaptive:    enabled (scale range {args.adaptive_min_scale:.2f}..{args.adaptive_max_scale:.2f}, "
+            f"up={args.adaptive_up_factor:.2f}, down={args.adaptive_down_factor:.2f}, "
+            f"min normal={args.adaptive_min_normal_games})"
+        )
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
         print(f"  Pool size:   {args.pool_size} archived models")
@@ -547,6 +674,30 @@ def main():
 
         # Step 1a: Generate normal games
         opponent_pool_count = 0
+        mix = _compute_adaptive_mix(
+            base_normal_games=args.games,
+            base_curriculum_games=args.curriculum_games,
+            base_black_focus_games=args.black_focus_games,
+            train_side=train_side,
+            alternating=args.alternating,
+            adaptive_enabled=args.adaptive_curriculum,
+            side_scales=adaptive_scales,
+            min_normal_games=args.adaptive_min_normal_games,
+        )
+        effective_normal_games = mix["normal_games"]
+        effective_curriculum_games = mix["curriculum_games"]
+        effective_black_focus_games = mix["black_focus_games"]
+        adaptive_scale_key = mix["scale_key"]
+        adaptive_scale_value = mix["scale_value"]
+        print(
+            f"  Mix:         normal={effective_normal_games}, curriculum={effective_curriculum_games}, "
+            f"black-focus={effective_black_focus_games}"
+            + (
+                f" (adaptive {adaptive_scale_key} scale={adaptive_scale_value:.3f})"
+                if args.adaptive_curriculum else ""
+            )
+        )
+
         def _sim_bounds(base_sims):
             if selfplay_sims_jitter_pct <= 0:
                 return None
@@ -556,7 +707,7 @@ def main():
 
         gen_cmd = [
             sys.executable, "data_generation.py",
-            "--num-games", str(args.games),
+            "--num-games", str(effective_normal_games),
             "--simulations", str(args.simulations),
             "--output-dir", gen_dir,
             "--use-model", model_path,
@@ -584,7 +735,7 @@ def main():
                 gen_cmd.extend(["--opponent-model", frozen_path])
 
         t_gen = run(gen_cmd,
-            f"[{i+1}/{args.iterations}] Generating {args.games} normal games "
+            f"[{i+1}/{args.iterations}] Generating {effective_normal_games} normal games "
             f"(gen {gen}, training {side_label})")
 
         print(f"\n  --- Normal Games ---")
@@ -593,11 +744,11 @@ def main():
         # Step 1b: Generate extra black-focused games from black-advantage starts
         t_bf = 0.0
         black_focus_summary = None
-        if args.black_focus_games > 0 and args.alternating and train_side == "black":
+        if effective_black_focus_games > 0 and args.alternating and train_side == "black":
             bf_dir = os.path.join(raw_dir, f"nn_gen{gen}_blackfocus")
             bf_cmd = [
                 sys.executable, "data_generation.py",
-                "--num-games", str(args.black_focus_games),
+                "--num-games", str(effective_black_focus_games),
                 "--simulations", str(args.black_focus_simulations),
                 "--output-dir", bf_dir,
                 "--use-model", model_path,
@@ -623,7 +774,7 @@ def main():
 
             t_bf = run(
                 bf_cmd,
-                f"[{i+1}/{args.iterations}] Generating {args.black_focus_games} black-focus games "
+                f"[{i+1}/{args.iterations}] Generating {effective_black_focus_games} black-focus games "
                 f"@ {args.black_focus_simulations} sims (gen {gen}, live outcomes)"
             )
             print(f"\n  --- Black-Focus Games ---")
@@ -632,25 +783,30 @@ def main():
 
         # Step 1c: Generate curriculum endgame games
         t_cur = 0.0
-        if args.curriculum_games > 0:
+        if effective_curriculum_games > 0:
             cur_dir = os.path.join(raw_dir, f"nn_gen{gen}_curriculum")
-            t_cur = run([
+            curriculum_sim_bounds = _sim_bounds(args.curriculum_simulations)
+            cur_cmd = [
                 sys.executable, "data_generation.py",
-                "--num-games", str(args.curriculum_games),
+                "--num-games", str(effective_curriculum_games),
                 "--simulations", str(args.curriculum_simulations),
                 "--output-dir", cur_dir,
                 "--use-model", model_path,
                 "--curriculum",
                 "--scripted-black",
                 "--seed", str(base_seed + gen * 10 + 2),
-                *(
-                    [
-                        "--simulations-min", str(_sim_bounds(args.curriculum_simulations)[0]),
-                        "--simulations-max", str(_sim_bounds(args.curriculum_simulations)[1]),
-                    ] if _sim_bounds(args.curriculum_simulations) is not None else []
-                ),
-                *(["--keep-check-positions"] if args.keep_check_positions else []),
-            ], f"[{i+1}/{args.iterations}] Generating {args.curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, tiered values)")
+            ]
+            if curriculum_sim_bounds is not None:
+                cur_cmd.extend([
+                    "--simulations-min", str(curriculum_sim_bounds[0]),
+                    "--simulations-max", str(curriculum_sim_bounds[1]),
+                ])
+            if args.keep_check_positions:
+                cur_cmd.append("--keep-check-positions")
+            t_cur = run(
+                cur_cmd,
+                f"[{i+1}/{args.iterations}] Generating {effective_curriculum_games} curriculum games @ {args.curriculum_simulations} sims (gen {gen}, tiered values)"
+            )
 
             print(f"\n  --- Curriculum Games ---")
             curriculum_summary = summarize_generation(cur_dir)
@@ -784,6 +940,30 @@ def main():
             else:
                 print(f"\n  Candidate REJECTED (score={gate_info['score']:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
 
+        adaptive_update = None
+        if args.adaptive_curriculum and adaptive_scale_key is not None:
+            prev_scale = adaptive_scales.get(adaptive_scale_key, 1.0)
+            new_scale, reason = _update_adaptive_scale(
+                current_scale=prev_scale,
+                accepted=accepted,
+                gate_info=gate_info,
+                up_factor=args.adaptive_up_factor,
+                down_factor=args.adaptive_down_factor,
+                min_scale=args.adaptive_min_scale,
+                max_scale=args.adaptive_max_scale,
+            )
+            adaptive_scales[adaptive_scale_key] = new_scale
+            adaptive_update = {
+                "scale_key": adaptive_scale_key,
+                "previous_scale": float(prev_scale),
+                "new_scale": float(new_scale),
+                "reason": reason,
+            }
+            print(
+                f"  Adaptive:   {adaptive_scale_key} scale {prev_scale:.3f} -> {new_scale:.3f} "
+                f"({reason})"
+            )
+
         _append_jsonl(archive_manifest, {
             "event": "gate_result",
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -801,6 +981,16 @@ def main():
             "iteration": i + 1,
             "generation": gen,
             "train_side": train_side,
+            "effective_mix": {
+                "normal_games": int(effective_normal_games),
+                "curriculum_games": int(effective_curriculum_games),
+                "black_focus_games": int(effective_black_focus_games),
+                "base_total_games": int(mix["base_total_games"]),
+                "effective_total_games": int(mix["effective_total_games"]),
+                "adaptive_scale_key": adaptive_scale_key,
+                "adaptive_scale_value": float(adaptive_scale_value),
+            },
+            "adaptive_update": adaptive_update,
             "opponent_pool_count": opponent_pool_count,
             "normal_generation": normal_summary,
             "black_focus_generation": black_focus_summary,
@@ -843,6 +1033,7 @@ def main():
 
     run_metadata["end_timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     run_metadata["total_elapsed_seconds"] = float(total_elapsed)
+    run_metadata["adaptive_scales_final"] = {k: float(v) for k, v in adaptive_scales.items()}
     run_metadata["final_data_totals"] = {
         "games": int(total_games),
         "positions": int(total_pos),
