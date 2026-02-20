@@ -249,6 +249,7 @@ def load_all_games(
     position_budget_max=None,
     include_human=True,
     min_blackfocus_plies=0,
+    blackfocus_result_filter="any",
 ):
     """Load game files as game-level units.
 
@@ -309,6 +310,8 @@ def load_all_games(
     games = []
     skipped_blackfocus_short = 0
     skipped_blackfocus_short_positions = 0
+    skipped_blackfocus_result = 0
+    skipped_blackfocus_result_positions = 0
     for path in tqdm(paths, desc="Loading games"):
         rel = os.path.relpath(path, raw_dir).replace("\\", "/")
         is_human = "human_games/" in rel or rel.startswith("human_games")
@@ -323,13 +326,23 @@ def load_all_games(
             skipped_blackfocus_short_positions += len(records)
             continue
         result = records[-1].get("game_result", 0)
+        result_bucket = _result_bucket(result)
+        if (not is_human) and is_blackfocus:
+            if blackfocus_result_filter == "nonloss" and result_bucket > 0:
+                skipped_blackfocus_result += 1
+                skipped_blackfocus_result_positions += len(records)
+                continue
+            if blackfocus_result_filter == "win" and result_bucket >= 0:
+                skipped_blackfocus_result += 1
+                skipped_blackfocus_result_positions += len(records)
+                continue
         games.append({
             "game_id": rel,
             "records": records,
             "is_human": is_human,
             "is_humanseed": is_humanseed,
             "is_blackfocus": is_blackfocus,
-            "result_bucket": _result_bucket(result),
+            "result_bucket": result_bucket,
         })
 
     if min_blackfocus_plies > 0:
@@ -337,6 +350,12 @@ def load_all_games(
             f"  Black-focus short-game filter: min_plies={min_blackfocus_plies}, "
             f"skipped_games={skipped_blackfocus_short}, "
             f"skipped_positions={skipped_blackfocus_short_positions}"
+        )
+    if blackfocus_result_filter != "any":
+        print(
+            f"  Black-focus result filter: mode={blackfocus_result_filter}, "
+            f"skipped_games={skipped_blackfocus_result}, "
+            f"skipped_positions={skipped_blackfocus_result_positions}"
         )
 
     return games
@@ -451,7 +470,11 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      position_budget_max=None,
                      seed=RANDOM_SEED,
                      include_human=True,
-                     min_blackfocus_plies=0):
+                     min_blackfocus_plies=0,
+                     blackfocus_result_filter="any",
+                     human_repeat=HUMAN_DATA_WEIGHT,
+                     humanseed_repeat=HUMANSEED_DATA_WEIGHT,
+                     blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -470,6 +493,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         position_budget_max=position_budget_max,
         include_human=include_human,
         min_blackfocus_plies=min_blackfocus_plies,
+        blackfocus_result_filter=blackfocus_result_filter,
     )
     if not games:
         print("No data to process.")
@@ -493,18 +517,18 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  Processing positions (augment={augment})...")
     print(
         "  Train repetition weights: "
-        f"human={HUMAN_DATA_WEIGHT}, "
-        f"humanseed={HUMANSEED_DATA_WEIGHT}, "
-        f"blackfocus={BLACKFOCUS_DATA_WEIGHT}"
+        f"human={human_repeat}, "
+        f"humanseed={humanseed_repeat}, "
+        f"blackfocus={blackfocus_repeat}"
     )
 
     # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
     X_train, yv_train, yr_train, yp_train, train_game_ids = _convert_games_to_arrays(
         train_games,
         augment=augment,
-        human_repeat=HUMAN_DATA_WEIGHT,
-        blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
-        humanseed_repeat=HUMANSEED_DATA_WEIGHT,
+        human_repeat=human_repeat,
+        blackfocus_repeat=blackfocus_repeat,
+        humanseed_repeat=humanseed_repeat,
     )
     X_val, yv_val, yr_val, yp_val, val_game_ids = _convert_games_to_arrays(
         val_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
@@ -573,6 +597,15 @@ if __name__ == "__main__":
                         help="Exclude data/raw/human_games from processing")
     parser.add_argument("--min-blackfocus-plies", type=int, default=0,
                         help="Drop non-human _blackfocus games shorter than this many plies")
+    parser.add_argument("--blackfocus-result-filter", type=str, default="any",
+                        choices=["any", "nonloss", "win"],
+                        help="Keep _blackfocus games with any result, Black non-loss, or Black win only")
+    parser.add_argument("--human-data-weight", type=int, default=HUMAN_DATA_WEIGHT,
+                        help=f"Train repetition weight for human_games (default: {HUMAN_DATA_WEIGHT})")
+    parser.add_argument("--humanseed-data-weight", type=int, default=HUMANSEED_DATA_WEIGHT,
+                        help=f"Train repetition weight for _humanseed streams (default: {HUMANSEED_DATA_WEIGHT})")
+    parser.add_argument("--blackfocus-data-weight", type=int, default=BLACKFOCUS_DATA_WEIGHT,
+                        help=f"Train repetition weight for _blackfocus streams (default: {BLACKFOCUS_DATA_WEIGHT})")
     args = parser.parse_args()
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
@@ -586,6 +619,12 @@ if __name__ == "__main__":
         raise ValueError("--position-budget-max must be >= --position-budget")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
+    if args.human_data_weight < 1:
+        raise ValueError("--human-data-weight must be >= 1")
+    if args.humanseed_data_weight < 1:
+        raise ValueError("--humanseed-data-weight must be >= 1")
+    if args.blackfocus_data_weight < 1:
+        raise ValueError("--blackfocus-data-weight must be >= 1")
 
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
                      augment=not args.no_augment,
@@ -594,4 +633,8 @@ if __name__ == "__main__":
                      position_budget_max=args.position_budget_max,
                      seed=args.seed,
                      include_human=not args.exclude_human_games,
-                     min_blackfocus_plies=args.min_blackfocus_plies)
+                     min_blackfocus_plies=args.min_blackfocus_plies,
+                     blackfocus_result_filter=args.blackfocus_result_filter,
+                     human_repeat=args.human_data_weight,
+                     humanseed_repeat=args.humanseed_data_weight,
+                     blackfocus_repeat=args.blackfocus_data_weight)
