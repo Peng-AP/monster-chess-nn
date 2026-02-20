@@ -8,6 +8,7 @@ from config import (
     EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
     DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION,
 )
+from encoding import move_to_index
 from evaluation import evaluate
 
 
@@ -68,7 +69,15 @@ class MCTSNode:
         """AlphaZero-style PUCT: Q + c * P * sqrt(N_parent) / (1 + N)."""
         parent_visits = max(1, self.parent.visit_count) if self.parent else 1
         if self.visit_count == 0:
-            # FPU: start unvisited child Q slightly below parent Q.
+            # First-Play Urgency (FPU): unvisited children start with Q
+            # slightly below the parent's mean value, encouraging exploration
+            # of the parent's already-visited (and presumably better) children
+            # first, while still guaranteeing every child is eventually tried.
+            #
+            # The exploration term here intentionally omits the / (1 + N)
+            # divisor (since N=0, it would be / 1 anyway). This gives
+            # unvisited nodes a large initial bonus that drops sharply after
+            # the first visit, which is standard AlphaZero FPU behavior.
             if self.parent is None:
                 fpu_q = 0.0
             else:
@@ -346,8 +355,6 @@ class MCTS:
 
     def _expand_with_policy(self, node, policy_logits):
         """Expand all children of a node using policy logits for priors."""
-        from data_processor import move_to_index
-
         actions = node.state.get_legal_actions()
         if not actions:
             node._is_expanded = True
@@ -378,8 +385,6 @@ class MCTS:
         Uses P(m1) from the policy head, distributed uniformly across
         the m2 continuations for each m1:  P(m1, m2) = P(m1) / |m2s|.
         """
-        from data_processor import move_to_index
-
         # Group pairs by m1 index
         m1_groups = defaultdict(list)
         for m1, m2 in legal_actions:
@@ -400,8 +405,6 @@ class MCTS:
 
     def _black_priors(self, legal_actions, policy_logits):
         """Compute priors for Black's single moves from policy logits."""
-        from data_processor import move_to_index
-
         indices = [move_to_index(m) for m in legal_actions]
         probs = _softmax_masked(policy_logits, indices)
 

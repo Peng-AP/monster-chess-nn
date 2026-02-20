@@ -21,9 +21,18 @@ from monster_chess import MonsterChessGame
 from mcts import MCTS
 
 def _kill_workers(executor):
-    """Force-kill any lingering worker processes after shutdown."""
-    # ProcessPoolExecutor stores workers in _processes (dict of pid -> process)
-    procs = getattr(executor, '_processes', None)
+    """Force-kill any lingering worker processes after shutdown.
+
+    NOTE: Accesses executor._processes, which is a CPython implementation
+    detail (not part of the public ProcessPoolExecutor API). If this
+    attribute is removed in a future Python version, the try/except
+    will catch it gracefully and the pool will still shut down via
+    executor.shutdown().
+    """
+    try:
+        procs = getattr(executor, '_processes', None)
+    except Exception:
+        return
     if not procs:
         return
     for pid, proc in list(procs.items()):

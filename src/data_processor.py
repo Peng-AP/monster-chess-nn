@@ -13,6 +13,11 @@ from config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     HUMAN_DATA_WEIGHT, SLIDING_WINDOW, POSITION_BUDGET, RANDOM_SEED,
 )
+from encoding import move_to_index, mirror_move_index
+
+# Directories that are always included in processing regardless of
+# the sliding window / position budget filter.
+ALWAYS_INCLUDE_DIRS = {"curriculum_bootstrap"}
 
 # Piece -> layer index
 PIECE_TO_LAYER = {
@@ -81,22 +86,8 @@ def mirror_tensor(tensor):
 
 # ------------------------------------------------------------------
 # Policy encoding: flat from_sq * 64 + to_sq  (4096 indices)
+# move_to_index() and mirror_move_index() are imported from encoding.py
 # ------------------------------------------------------------------
-
-def move_to_index(move):
-    """Convert a chess.Move to a flat policy index."""
-    return move.from_square * 64 + move.to_square
-
-
-def mirror_move_index(idx):
-    """Mirror a flat policy index across the file axis (a<->h)."""
-    from_sq = idx // 64
-    to_sq = idx % 64
-    from_file, from_rank = from_sq % 8, from_sq // 8
-    to_file, to_rank = to_sq % 8, to_sq // 8
-    new_from = from_rank * 8 + (7 - from_file)
-    new_to = to_rank * 8 + (7 - to_file)
-    return new_from * 64 + new_to
 
 
 def policy_dict_to_target(policy_dict, is_white):
@@ -201,7 +192,7 @@ def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_h
             kept_gen_dirs.add(d)
 
     # Always-include dirs
-    always_include = {"curriculum_bootstrap"}
+    always_include = set(ALWAYS_INCLUDE_DIRS)
     if include_human:
         always_include.add("human_games")
 

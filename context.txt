@@ -44,12 +44,10 @@ Implemented in current code:
 4) KNOWN OPEN GAPS
 ================================================================================
 Not yet implemented or still partial:
-- Fixed-generation sliding window remains (`SLIDING_WINDOW=2`)
-  instead of position-budget policy
-- No FPU reduction in PUCT unvisited-node scoring path
-- Check-position filtering in data generation is still hardcoded
-  (not yet exposed as ablation flag)
-- Policy head bottleneck remains narrow (2 channels before FC)
+- Position-budget windowing min-budget works (`--position-budget`);
+  optional max-cap behavior is not yet implemented
+- WDL value head (pending)
+- Separate White/Black networks (pending)
 
 5) MOST IMPORTANT BEHAVIORAL ISSUE
 ================================================================================
