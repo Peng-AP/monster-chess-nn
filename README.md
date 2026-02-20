@@ -32,12 +32,11 @@ Important behavioral note:
 - Baseline snapshot tool (`src/baseline_snapshot.py`)
 - Human game evaluation tool (`src/human_eval.py`)
 
-## Remaining High-Priority Gaps
+## Remaining Gaps
 
-- Sliding window is still fixed-count generation based (`SLIDING_WINDOW=2`) instead of position-budget based (`src/config.py`)
-- No FPU reduction in PUCT path yet (`src/mcts.py`)
-- Tactical position filtering is not yet configurable (check positions are always filtered) (`src/data_generation.py`)
-- Policy head bottleneck remains (2 channels before FC projection) (`src/train.py`)
+- Position-budget windowing min-budget works (`--position-budget`); optional max-cap is not yet implemented (`src/config.py`, `src/data_processor.py`)
+- WDL value head experiment (pending)
+- Separate White/Black networks (pending)
 
 ## Repository Layout
 

@@ -303,6 +303,10 @@ class NNEvaluator:
     """
 
     def __init__(self, model_path):
+        # Delayed imports: train.py contains both the model class and the
+        # training loop, so importing it at module level would create a
+        # circular dependency (train imports evaluation for heuristic eval).
+        # A proper fix requires extracting DualHeadNet into a separate model.py.
         import torch
         from train import load_model_for_inference
         from data_processor import fen_to_tensor

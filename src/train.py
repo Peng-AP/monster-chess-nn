@@ -358,6 +358,10 @@ def load_state_dict_flexible(model, state_dict):
             compatible[k] = v
         else:
             skipped.append(k)
+    if skipped and len(skipped) > len(model_state) * 0.5:
+        print(f"WARNING: {len(skipped)}/{len(model_state)} model keys skipped "
+              f"during resume — possible architecture mismatch. "
+              f"First skipped: {skipped[:5]}")
     model_state.update(compatible)
     model.load_state_dict(model_state)
     return len(compatible), skipped
@@ -511,6 +515,12 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
                     policy_pred, teacher_policy, temperature=distill_temperature,
                 )
                 loss = loss + distill_policy_weight * loss_distill_pol
+
+        if not torch.isfinite(loss):
+            raise RuntimeError(
+                f"Non-finite loss detected: {loss.item():.6f} "
+                f"(value={loss_val.item():.6f}, policy={loss_pol.item():.6f})"
+            )
 
         optimizer.zero_grad()
         loss.backward()

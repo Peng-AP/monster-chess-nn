@@ -110,20 +110,38 @@ def format_eval(value):
 
 
 def parse_move(text, board):
-    """Parse user input into a chess.Move. Accepts UCI (e2e4) or SAN (Nf3)."""
+    """Parse user input into a chess.Move or an error string.
+
+    Returns chess.Move on success, or one of:
+      "ambiguous"      - SAN matches multiple legal moves
+      "not_legal"      - valid UCI syntax but not a legal move
+      "invalid_syntax" - could not parse as UCI or SAN
+    """
     text = text.strip()
     # Try UCI first
     try:
         move = chess.Move.from_uci(text)
         if move in board.pseudo_legal_moves or move in board.legal_moves:
             return move
+        return "not_legal"
     except (ValueError, chess.InvalidMoveError):
         pass
     # Try SAN
     try:
         return board.parse_san(text)
-    except (ValueError, chess.InvalidMoveError, chess.AmbiguousMoveError) as e:
-        return None
+    except chess.AmbiguousMoveError:
+        return "ambiguous"
+    except (ValueError, chess.InvalidMoveError):
+        return "invalid_syntax"
+
+
+def _move_error_msg(result):
+    """Return a user-friendly error message for a parse_move error string."""
+    if result == "ambiguous":
+        return "Ambiguous move — please be more specific (use UCI like e2e4)."
+    if result == "not_legal":
+        return "Not a legal move in this position."
+    return "Could not parse move. Use UCI (e2e4) or SAN (Nf3)."
 
 
 def get_human_white_action(game):
@@ -137,8 +155,8 @@ def get_human_white_action(game):
         if text.lower() in ("quit", "resign", "q"):
             return "resign"
         m1 = parse_move(text, board)
-        if m1 is None:
-            print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_first[:20])}")
+        if isinstance(m1, str):
+            print(f"  {_move_error_msg(m1)} Legal: {', '.join(m.uci() for m in legal_first[:20])}")
             if len(legal_first) > 20:
                 print(f"  ... and {len(legal_first) - 20} more")
             continue
@@ -163,8 +181,8 @@ def get_human_white_action(game):
             board.pop()
             return "resign"
         m2 = parse_move(text, board)
-        if m2 is None:
-            print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_second[:20])}")
+        if isinstance(m2, str):
+            print(f"  {_move_error_msg(m2)} Legal: {', '.join(m.uci() for m in legal_second[:20])}")
             if len(legal_second) > 20:
                 print(f"  ... and {len(legal_second) - 20} more")
             continue
@@ -218,8 +236,13 @@ def get_human_black_action(game):
         if text.lower() in ("quit", "resign", "q"):
             return "resign"
         move = parse_move(text, board)
-        if move is None or move not in legal:
-            print(f"  Invalid. Legal moves: {', '.join(m.uci() for m in legal[:20])}")
+        if isinstance(move, str):
+            print(f"  {_move_error_msg(move)} Legal: {', '.join(m.uci() for m in legal[:20])}")
+            if len(legal) > 20:
+                print(f"  ... and {len(legal) - 20} more")
+            continue
+        if move not in legal:
+            print(f"  Not a legal move. Legal: {', '.join(m.uci() for m in legal[:20])}")
             if len(legal) > 20:
                 print(f"  ... and {len(legal) - 20} more")
             continue
