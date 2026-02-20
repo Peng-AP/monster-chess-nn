@@ -473,6 +473,10 @@ def main():
                         help="Accept candidate if arena score >= threshold")
     parser.add_argument("--gate-min-other-side", type=float, default=0.45,
                         help="Alternating mode: minimum arena score on non-trained side")
+    parser.add_argument("--gate-min-other-side-white", type=float, default=None,
+                        help="Alternating White training: min non-trained-side score (default: --gate-min-other-side)")
+    parser.add_argument("--gate-min-other-side-black", type=float, default=None,
+                        help="Alternating Black training: min non-trained-side score (default: --gate-min-other-side)")
     parser.add_argument("--black-focus-arena-games", type=int, default=0,
                         help="Extra black-focus arena games (curriculum live starts) for Black-side gating")
     parser.add_argument("--black-focus-arena-sims", type=int, default=None,
@@ -581,10 +585,22 @@ def main():
         args.warmup_start_factor
         if args.warmup_start_factor is not None else WARMUP_START_FACTOR
     )
+    gate_min_other_side_white = (
+        args.gate_min_other_side_white
+        if args.gate_min_other_side_white is not None else args.gate_min_other_side
+    )
+    gate_min_other_side_black = (
+        args.gate_min_other_side_black
+        if args.gate_min_other_side_black is not None else args.gate_min_other_side
+    )
     if not (0.0 <= args.gate_threshold <= 1.0):
         raise ValueError("--gate-threshold must be in [0, 1]")
     if not (0.0 <= args.gate_min_other_side <= 1.0):
         raise ValueError("--gate-min-other-side must be in [0, 1]")
+    if not (0.0 <= gate_min_other_side_white <= 1.0):
+        raise ValueError("--gate-min-other-side-white must be in [0, 1]")
+    if not (0.0 <= gate_min_other_side_black <= 1.0):
+        raise ValueError("--gate-min-other-side-black must be in [0, 1]")
     if not (0.0 <= args.black_focus_gate_threshold <= 1.0):
         raise ValueError("--black-focus-gate-threshold must be in [0, 1]")
     if args.pool_size < 0:
@@ -723,6 +739,8 @@ def main():
         "gating_enabled": not args.no_gating,
         "gate_threshold": args.gate_threshold,
         "gate_min_other_side": args.gate_min_other_side,
+        "gate_min_other_side_white_effective": gate_min_other_side_white,
+        "gate_min_other_side_black_effective": gate_min_other_side_black,
         "arena_games": args.arena_games,
         "arena_sims": args.arena_sims,
         "black_focus_arena_games": args.black_focus_arena_games,
@@ -828,7 +846,11 @@ def main():
     else:
         print(f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, threshold={args.gate_threshold:.2f}")
         if args.alternating:
-            print(f"               alternating side floor={args.gate_min_other_side:.2f} on non-trained side")
+            print(
+                f"               alternating side floor non-trained: "
+                f"white-train->{gate_min_other_side_white:.2f}, "
+                f"black-train->{gate_min_other_side_black:.2f}"
+            )
             if args.black_focus_arena_games > 0:
                 print(
                     f"               black-focus arena {args.black_focus_arena_games} games @ "
@@ -1180,6 +1202,12 @@ def main():
             if args.alternating:
                 primary_side = train_side
                 other_side = "white" if train_side == "black" else "black"
+                min_other_side = (
+                    gate_min_other_side_black
+                    if train_side == "black"
+                    else gate_min_other_side_white
+                )
+                gate_info["min_other_side"] = min_other_side
                 primary_info = gate_info[f"candidate_{primary_side}"]
                 other_info = gate_info[f"candidate_{other_side}"]
                 black_focus_gate = None
@@ -1213,7 +1241,7 @@ def main():
                     and gate_info["primary_games"] > 0
                     and gate_info["other_games"] > 0
                     and gate_info["primary_score"] >= args.gate_threshold
-                    and gate_info["other_score"] >= args.gate_min_other_side
+                    and gate_info["other_score"] >= min_other_side
                 )
                 if black_focus_gate is None:
                     accepted = base_side_pass
@@ -1227,7 +1255,7 @@ def main():
                         gate_info["total_games"] > 0
                         and gate_info["primary_games"] > 0
                         and gate_info["other_games"] > 0
-                        and gate_info["other_score"] >= args.gate_min_other_side
+                        and gate_info["other_score"] >= min_other_side
                         and (
                             gate_info["primary_score"] >= args.gate_threshold
                             or (
@@ -1265,7 +1293,7 @@ def main():
                     f"(trained-{gate_info['primary_side']} opening score={gate_info['primary_score']:.3f} "
                     f"vs {args.gate_threshold:.3f}, black-focus score={gate_info.get('black_focus_primary_score', 0.0):.3f} "
                     f"vs {args.black_focus_gate_threshold:.3f}, other-{gate_info['other_side']} "
-                    f"score={gate_info['other_score']:.3f} vs {args.gate_min_other_side:.3f}); "
+                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}); "
                     f"keeping incumbent"
                 )
             elif gate_info.get("decision_mode") == "side_aware":
@@ -1273,7 +1301,7 @@ def main():
                     f"\n  Candidate REJECTED "
                     f"(trained-{gate_info['primary_side']} score={gate_info['primary_score']:.3f} "
                     f"vs {args.gate_threshold:.3f}, other-{gate_info['other_side']} "
-                    f"score={gate_info['other_score']:.3f} vs {args.gate_min_other_side:.3f}); "
+                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}); "
                     f"keeping incumbent"
                 )
             else:
@@ -1362,13 +1390,13 @@ def main():
                     f"  Gate:  trained-{gate_info['primary_side']} opening={gate_info['primary_score']:.3f} "
                     f"(>={args.gate_threshold:.3f})  black-focus={gate_info.get('black_focus_primary_score', 0.0):.3f} "
                     f"(>={args.black_focus_gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
-                    f"(>={args.gate_min_other_side:.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
                 )
             elif gate_info.get("decision_mode") == "side_aware":
                 print(
                     f"  Gate:  trained-{gate_info['primary_side']}={gate_info['primary_score']:.3f} "
                     f"(>={args.gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
-                    f"(>={args.gate_min_other_side:.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
                 )
             else:
                 print(f"  Gate:  score={gate_info['score']:.3f}  threshold={args.gate_threshold:.3f}  games={gate_info['total_games']}")

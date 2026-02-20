@@ -326,6 +326,11 @@ class NNEvaluator:
         val, _ = self.evaluate_with_policy(game_state)
         return val
 
+    @staticmethod
+    def _to_white_perspective(value_side_to_move, is_white_turn):
+        """Convert side-to-move value to White perspective."""
+        return value_side_to_move if is_white_turn else -value_side_to_move
+
     def evaluate_with_policy(self, game_state):
         """Return (value, policy_logits) for a single game state.
 
@@ -351,7 +356,9 @@ class NNEvaluator:
 
         with self.torch.no_grad():
             value_out, policy_out = self.model(inp)
-        return float(value_out[0, 0].item()), policy_out[0].cpu().float().numpy()
+        value_side = float(value_out[0, 0].item())
+        value_white = self._to_white_perspective(value_side, game_state.is_white_turn)
+        return value_white, policy_out[0].cpu().float().numpy()
 
     def batch_evaluate(self, game_states):
         """Evaluate multiple states, returning values only (list of float)."""
@@ -367,6 +374,7 @@ class NNEvaluator:
         policy_list = []
         indices_to_predict = []
         tensors = []
+        sides = []
 
         for i, gs in enumerate(game_states):
             board = gs.board
@@ -380,6 +388,7 @@ class NNEvaluator:
                 values.append(None)
                 policy_list.append(None)
                 indices_to_predict.append(i)
+                sides.append(gs.is_white_turn)
                 tensors.append(self.fen_to_tensor(
                     gs.fen(), is_white_turn=gs.is_white_turn,
                 ))
@@ -397,7 +406,7 @@ class NNEvaluator:
             val_np = val_out.cpu().float().numpy().flatten()
             pol_np = pol_out.cpu().float().numpy()
             for j, idx in enumerate(indices_to_predict):
-                values[idx] = float(val_np[j])
+                values[idx] = self._to_white_perspective(float(val_np[j]), sides[j])
                 policy_list[idx] = pol_np[j]
 
         return values, policy_list
