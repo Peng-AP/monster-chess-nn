@@ -147,6 +147,23 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 - Validated with a full iteration smoke run (`iterate_run_20260219_125036.json`)
   showing primary + consolidation timing and enabled distillation metadata.
 
+### 3.7 Human-seeded start-position self-play: `complete`
+
+- Implemented in `src/data_generation.py`:
+  - `--start-fen-file` / `--start-fen-dir`
+  - `--start-fen-side` filtering
+  - policy-aware white-to-black conversion via `--start-fen-convert-white-to-black`
+  - source metadata in generation summaries
+- Implemented in `src/iterate.py`:
+  - `--human-seed-games`
+  - `--human-seed-simulations`
+  - `--human-seed-dir`
+  - `--human-seed-side`
+  - `--human-seed-max-positions`
+  - per-iteration `human_seed_generation` and generation timing metadata
+- Current finding: improves black-result signal in black-focus/human-seed streams,
+  but gate thresholds are still not met in standard/opening arenas.
+
 ## Phase 4 - Advanced Additions
 
 ### 4.1 Auxiliary heads: `pending`

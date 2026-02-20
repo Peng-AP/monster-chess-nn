@@ -26,6 +26,7 @@ Important behavioral note:
 - True MSE/MAE reporting alongside value power loss (`src/train.py`)
 - Candidate vs incumbent arena gating with side-aware thresholds (`src/iterate.py`)
 - Alternating training mode with frozen/pool opponents (`src/iterate.py`, `src/data_generation.py`)
+- Human-seeded self-play starts from recorded human positions (`src/iterate.py`, `src/data_generation.py`)
 - AdamW with decoupled weight decay groups (`src/train.py`)
 - Gradient clipping (`src/train.py`)
 - Fine-tune from incumbent with LR warmup (`src/train.py`, `src/iterate.py`)
@@ -103,7 +104,7 @@ py -3 src/train.py --data-dir data/processed --model-dir models/candidates/manua
 ### 5) Run iterative training with gating
 
 ```bash
-py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 --black-focus-games 260 --simulations 120 --curriculum-simulations 50 --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 --warmup-start-factor 0.1 --keep-generations 3 --alternating --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 --seed 20260219 --human-eval
+py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 --black-focus-games 260 --human-seed-games 200 --simulations 120 --curriculum-simulations 50 --black-focus-simulations 100 --human-seed-simulations 120 --epochs 12 --warmup-epochs 3 --warmup-start-factor 0.1 --position-budget 220000 --position-budget-max 280000 --alternating --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 --human-seed-dir data/raw/human_games --human-seed-side auto --seed 20260219 --human-eval
 ```
 
 ### 6) Play against the model

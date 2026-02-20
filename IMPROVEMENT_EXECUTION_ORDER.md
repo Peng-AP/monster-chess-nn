@@ -172,6 +172,23 @@ Gate:
 
 - Stable training, non-regression on existing gate floors, and improved robustness.
 
+### Stage J - Human-Seeded Self-Play Expansion
+
+Files:
+
+- `src/data_generation.py`
+- `src/iterate.py`
+
+Tasks:
+
+1. Generate extra iteration games from recorded human positions.
+2. Convert white-only human records into black-to-move starts when needed.
+3. Track human-seed generation outcomes separately from normal/curriculum streams.
+
+Gate:
+
+- Black-side arena metrics improve beyond the previous zero-floor trend.
+
 ## Operational Rules
 
 1. One major change axis per stage.

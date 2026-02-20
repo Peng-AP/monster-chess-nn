@@ -425,11 +425,15 @@ def main():
                         help="Curriculum endgame games per iteration (0 to disable)")
     parser.add_argument("--black-focus-games", type=int, default=0,
                         help="Extra black-focused games from black-advantage starts (black training side only)")
+    parser.add_argument("--human-seed-games", type=int, default=0,
+                        help="Extra games from human-recorded start positions each iteration")
     parser.add_argument("--simulations", type=int, default=200)
     parser.add_argument("--curriculum-simulations", type=int, default=50,
                         help="MCTS simulations for curriculum games (lower = faster)")
     parser.add_argument("--black-focus-simulations", type=int, default=120,
                         help="MCTS simulations for black-focused start games")
+    parser.add_argument("--human-seed-simulations", type=int, default=None,
+                        help="MCTS simulations for human-seeded games (default: normal sims)")
     parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
                         help="Multiplier on train-side simulations when training Black in alternating mode")
     parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
@@ -492,6 +496,14 @@ def main():
     parser.add_argument("--human-eval-dir", type=str,
                         default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
                         help="Directory of human game JSONL files for post-run evaluation")
+    parser.add_argument("--human-seed-dir", type=str,
+                        default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
+                        help="Directory of human game JSONL files used as start-position source")
+    parser.add_argument("--human-seed-side", type=str, default="auto",
+                        choices=["auto", "any", "white", "black"],
+                        help="Human-seed start side filter (auto=training side in alternating mode)")
+    parser.add_argument("--human-seed-max-positions", type=int, default=2000,
+                        help="Cap loaded human start positions per generation (0 = no cap)")
     parser.add_argument("--human-eval-value-diagnostics", action="store_true",
                         help="Include model value diagnostics on human positions (slower)")
     parser.add_argument("--exclude-human-games", action="store_true",
@@ -609,6 +621,12 @@ def main():
         raise ValueError("--black-focus-games must be >= 0")
     if args.black_focus_simulations <= 0:
         raise ValueError("--black-focus-simulations must be > 0")
+    if args.human_seed_games < 0:
+        raise ValueError("--human-seed-games must be >= 0")
+    if args.human_seed_simulations is not None and args.human_seed_simulations <= 0:
+        raise ValueError("--human-seed-simulations must be > 0")
+    if args.human_seed_max_positions < 0:
+        raise ValueError("--human-seed-max-positions must be >= 0")
     if args.black_focus_arena_games < 0:
         raise ValueError("--black-focus-arena-games must be >= 0")
     if black_focus_arena_sims <= 0:
@@ -631,6 +649,8 @@ def main():
         raise ValueError("--adaptive-min-normal-games must be >= 0")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
+    if args.human_seed_games > 0 and not os.path.isdir(args.human_seed_dir):
+        raise FileNotFoundError(f"--human-seed-dir not found: {args.human_seed_dir}")
     if se_reduction <= 0:
         raise ValueError("--se-reduction must be > 0")
     if args.consolidation_epochs < 0:
@@ -748,6 +768,11 @@ def main():
         "black_focus_gate_threshold": args.black_focus_gate_threshold,
         "black_focus_games": args.black_focus_games,
         "black_focus_simulations": args.black_focus_simulations,
+        "human_seed_games": args.human_seed_games,
+        "human_seed_simulations": args.human_seed_simulations,
+        "human_seed_dir": args.human_seed_dir,
+        "human_seed_side": args.human_seed_side,
+        "human_seed_max_positions": args.human_seed_max_positions,
         "black_train_sims_mult": float(args.black_train_sims_mult),
         "black_opponent_sims_mult": float(args.black_opponent_sims_mult),
         "primary_no_resume": bool(args.primary_no_resume),
@@ -802,8 +827,17 @@ def main():
     print(f"  SELF-PLAY ITERATION LOOP ({mode_str})")
     print(f"{'#'*60}")
     print(f"  Iterations:  {args.iterations}")
-    print(f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum + {args.black_focus_games} black-focus")
-    print(f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, {args.black_focus_simulations} black-focus")
+    human_seed_sims_label = (
+        args.human_seed_simulations if args.human_seed_simulations is not None else args.simulations
+    )
+    print(
+        f"  Games/iter:  {args.games} normal + {args.curriculum_games} curriculum + "
+        f"{args.black_focus_games} black-focus + {args.human_seed_games} human-seed"
+    )
+    print(
+        f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, "
+        f"{args.black_focus_simulations} black-focus, {human_seed_sims_label} human-seed"
+    )
     print(f"  Target:      {args.train_target}")
     if selfplay_sims_jitter_pct > 0:
         print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
@@ -881,6 +915,11 @@ def main():
     if args.human_eval:
         diag_label = "on" if args.human_eval_value_diagnostics else "off"
         print(f"  Human eval:  enabled (dir={args.human_eval_dir}, value_diag={diag_label})")
+    if args.human_seed_games > 0:
+        print(
+            f"  Human seed:  enabled (dir={args.human_seed_dir}, side={args.human_seed_side}, "
+            f"max_positions={args.human_seed_max_positions})"
+        )
     print()
 
     for i in range(args.iterations):
@@ -932,6 +971,13 @@ def main():
         effective_train_sims = args.simulations
         effective_opponent_sims = opponent_sims
         effective_black_focus_sims = args.black_focus_simulations
+        effective_human_seed_games = args.human_seed_games
+        human_seed_base_sims = (
+            args.human_seed_simulations
+            if args.human_seed_simulations is not None
+            else args.simulations
+        )
+        effective_human_seed_sims = human_seed_base_sims
         if args.alternating and train_side == "black":
             effective_train_sims = max(1, int(round(args.simulations * args.black_train_sims_mult)))
             effective_opponent_sims = max(
@@ -940,9 +986,12 @@ def main():
             effective_black_focus_sims = max(
                 1, int(round(args.black_focus_simulations * args.black_train_sims_mult))
             )
+            effective_human_seed_sims = max(
+                1, int(round(human_seed_base_sims * args.black_train_sims_mult))
+            )
         print(
             f"  Mix:         normal={effective_normal_games}, curriculum={effective_curriculum_games}, "
-            f"black-focus={effective_black_focus_games}"
+            f"black-focus={effective_black_focus_games}, human-seed={effective_human_seed_games}"
             + (
                 f" (adaptive {adaptive_scale_key} scale={adaptive_scale_value:.3f})"
                 if args.adaptive_curriculum else ""
@@ -973,6 +1022,7 @@ def main():
         if args.keep_check_positions:
             gen_cmd.append("--keep-check-positions")
 
+        archived_models = []
         if args.alternating:
             gen_cmd.extend(["--train-side", train_side])
             gen_cmd.extend(["--opponent-sims", str(effective_opponent_sims)])
@@ -992,7 +1042,55 @@ def main():
         print(f"\n  --- Normal Games ---")
         normal_summary = summarize_generation(gen_dir)
 
-        # Step 1b: Generate extra black-focused games from black-advantage starts
+        # Step 1b: Generate extra games from human-recorded start positions
+        t_hs = 0.0
+        human_seed_summary = None
+        if effective_human_seed_games > 0:
+            hs_dir = os.path.join(raw_dir, f"nn_gen{gen}_humanseed")
+            start_side = args.human_seed_side
+            if start_side == "auto":
+                start_side = train_side if args.alternating else "any"
+            hs_cmd = [
+                sys.executable, "data_generation.py",
+                "--num-games", str(effective_human_seed_games),
+                "--simulations", str(effective_human_seed_sims),
+                "--output-dir", hs_dir,
+                "--use-model", model_path,
+                "--start-fen-dir", args.human_seed_dir,
+                "--start-fen-max-positions", str(args.human_seed_max_positions),
+                "--seed", str(base_seed + gen * 10 + 6),
+            ]
+            if start_side != "any":
+                hs_cmd.extend(["--start-fen-side", start_side])
+                if start_side == "black":
+                    hs_cmd.append("--start-fen-convert-white-to-black")
+            hs_sim_bounds = _sim_bounds(effective_human_seed_sims)
+            if hs_sim_bounds is not None:
+                hs_cmd.extend([
+                    "--simulations-min", str(hs_sim_bounds[0]),
+                    "--simulations-max", str(hs_sim_bounds[1]),
+                ])
+            if args.keep_check_positions:
+                hs_cmd.append("--keep-check-positions")
+            if args.alternating:
+                hs_cmd.extend(["--train-side", train_side])
+                hs_cmd.extend(["--opponent-sims", str(effective_opponent_sims)])
+                if args.pool_size > 0 and archived_models:
+                    hs_cmd.extend(["--opponent-pool-dir", archive_dir])
+                    hs_cmd.extend(["--opponent-pool-size", str(args.pool_size)])
+                elif os.path.exists(frozen_path):
+                    hs_cmd.extend(["--opponent-model", frozen_path])
+
+            t_hs = run(
+                hs_cmd,
+                f"[{i+1}/{args.iterations}] Generating {effective_human_seed_games} human-seed games "
+                f"@ {effective_human_seed_sims} sims (gen {gen}, start-side={start_side})"
+            )
+            print(f"\n  --- Human-Seed Games ---")
+            human_seed_summary = summarize_generation(hs_dir)
+            t_gen += t_hs
+
+        # Step 1c: Generate extra black-focused games from black-advantage starts
         t_bf = 0.0
         black_focus_summary = None
         if effective_black_focus_games > 0 and args.alternating and train_side == "black":
@@ -1032,7 +1130,7 @@ def main():
             black_focus_summary = summarize_generation(bf_dir)
             t_gen += t_bf
 
-        # Step 1c: Generate curriculum endgame games
+        # Step 1d: Generate curriculum endgame games
         t_cur = 0.0
         if effective_curriculum_games > 0:
             cur_dir = os.path.join(raw_dir, f"nn_gen{gen}_curriculum")
@@ -1354,17 +1452,20 @@ def main():
                 "normal_games": int(effective_normal_games),
                 "curriculum_games": int(effective_curriculum_games),
                 "black_focus_games": int(effective_black_focus_games),
+                "human_seed_games": int(effective_human_seed_games),
                 "normal_simulations": int(effective_train_sims),
                 "black_focus_simulations": int(effective_black_focus_sims),
+                "human_seed_simulations": int(effective_human_seed_sims),
                 "opponent_simulations": int(effective_opponent_sims),
                 "base_total_games": int(mix["base_total_games"]),
-                "effective_total_games": int(mix["effective_total_games"]),
+                "effective_total_games": int(mix["effective_total_games"] + effective_human_seed_games),
                 "adaptive_scale_key": adaptive_scale_key,
                 "adaptive_scale_value": float(adaptive_scale_value),
             },
             "adaptive_update": adaptive_update,
             "opponent_pool_count": opponent_pool_count,
             "normal_generation": normal_summary,
+            "human_seed_generation": human_seed_summary,
             "black_focus_generation": black_focus_summary,
             "curriculum_generation": curriculum_summary,
             "candidate_model_path": candidate_path,
@@ -1372,6 +1473,10 @@ def main():
             "gate": gate_info,
             "timings_seconds": {
                 "generate_total": float(t_gen),
+                "generate_normal": float(t_gen - t_hs - t_bf - t_cur),
+                "generate_human_seed": float(t_hs),
+                "generate_black_focus": float(t_bf),
+                "generate_curriculum": float(t_cur),
                 "process": float(t_proc),
                 "train_primary": float(t_train_primary),
                 "train_consolidation": float(t_train_consolidation),
