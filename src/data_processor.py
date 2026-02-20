@@ -11,7 +11,7 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
-    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, POSITION_BUDGET, RANDOM_SEED,
+    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, RANDOM_SEED,
 )
 
 # Piece -> layer index
@@ -161,7 +161,8 @@ def _count_positions_in_dir(raw_dir, dirname):
     return total
 
 
-def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_human=True):
+def _filter_dirs(raw_dir, keep_generations=None, position_budget=None,
+                 position_budget_max=None, include_human=True):
     """Decide which subdirectories to include based on sliding window.
 
     Always includes: curriculum_bootstrap/ and optionally human_games/
@@ -172,6 +173,14 @@ def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_h
     """
     if keep_generations is not None and position_budget is not None:
         raise ValueError("Use either keep_generations or position_budget, not both.")
+    if position_budget_max is not None and position_budget is None:
+        raise ValueError("position_budget_max requires position_budget.")
+    if (
+        position_budget is not None
+        and position_budget_max is not None
+        and position_budget_max < position_budget
+    ):
+        raise ValueError("position_budget_max must be >= position_budget.")
     subdirs = [d for d in os.listdir(raw_dir)
                if os.path.isdir(os.path.join(raw_dir, d))]
 
@@ -190,6 +199,15 @@ def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_h
             kept_gens.append(gen)
             position_total += gen_pos
             if position_total >= position_budget:
+                if position_budget_max is not None:
+                    # Trim oldest generations while preserving the lower bound.
+                    while len(kept_gens) > 1 and position_total > position_budget_max:
+                        oldest_gen = kept_gens[-1]
+                        oldest_pos = generation_position_counts.get(oldest_gen, 0)
+                        if position_total - oldest_pos < position_budget:
+                            break
+                        kept_gens.pop()
+                        position_total -= oldest_pos
                 break
         kept_gens.sort()
 
@@ -216,6 +234,7 @@ def _filter_dirs(raw_dir, keep_generations=None, position_budget=None, include_h
     summary = {
         "kept_generations": kept_gens,
         "position_budget": position_budget,
+        "position_budget_max": position_budget_max,
         "estimated_positions": position_total,
         "generation_position_counts": generation_position_counts,
     }
@@ -226,6 +245,7 @@ def load_all_games(
     raw_dir,
     keep_generations=None,
     position_budget=None,
+    position_budget_max=None,
     include_human=True,
     min_blackfocus_plies=0,
 ):
@@ -249,11 +269,15 @@ def load_all_games(
             raw_dir,
             keep_generations=keep_generations,
             position_budget=position_budget,
+            position_budget_max=position_budget_max,
             include_human=include_human,
         )
         if position_budget is not None:
+            budget_str = f"{position_budget}"
+            if position_budget_max is not None:
+                budget_str = f"{position_budget}..{position_budget_max}"
             print(
-                f"Position budget window: target={position_budget}, "
+                f"Position budget window: target={budget_str}, "
                 f"estimated={summary['estimated_positions']} raw positions"
             )
             print(f"  Generations kept: {summary['kept_generations']}")
@@ -413,6 +437,7 @@ def _convert_games_to_arrays(games, augment, human_repeat):
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      augment=True, keep_generations=None, position_budget=None,
+                     position_budget_max=None,
                      seed=RANDOM_SEED,
                      include_human=True,
                      min_blackfocus_plies=0):
@@ -431,6 +456,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         raw_dir,
         keep_generations=keep_generations,
         position_budget=position_budget,
+        position_budget_max=position_budget_max,
         include_human=include_human,
         min_blackfocus_plies=min_blackfocus_plies,
     )
@@ -518,6 +544,8 @@ if __name__ == "__main__":
                         help=f"Sliding window: keep last N generations (default: all)")
     parser.add_argument("--position-budget", type=int, default=None,
                         help=f"Position budget window: include enough recent generations to hit N raw positions (default: {POSITION_BUDGET})")
+    parser.add_argument("--position-budget-max", type=int, default=None,
+                        help=f"Optional max-cap for position budget window (default: {POSITION_BUDGET_MAX})")
     parser.add_argument("--seed", type=int, default=RANDOM_SEED,
                         help=f"Random seed for deterministic game-level splitting (default: {RANDOM_SEED})")
     parser.add_argument("--exclude-human-games", action="store_true",
@@ -527,6 +555,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
+    if args.position_budget_max is not None and args.position_budget is None:
+        raise ValueError("--position-budget-max requires --position-budget")
+    if (
+        args.position_budget is not None
+        and args.position_budget_max is not None
+        and args.position_budget_max < args.position_budget
+    ):
+        raise ValueError("--position-budget-max must be >= --position-budget")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
 
@@ -534,6 +570,7 @@ if __name__ == "__main__":
                      augment=not args.no_augment,
                      keep_generations=args.keep_generations,
                      position_budget=args.position_budget,
+                     position_budget_max=args.position_budget_max,
                      seed=args.seed,
                      include_human=not args.exclude_human_games,
                      min_blackfocus_plies=args.min_blackfocus_plies)

@@ -9,7 +9,7 @@ This is the practical next sequence given what is already implemented.
 
 - Stage 0 (baseline snapshot tooling): `complete` tooling, `refresh needed` baseline artifact
 - Stage 1 (evaluation hygiene): `complete`
-- Stage 2 (stability patch set): `partial` (position-budget max-cap still open)
+- Stage 2 (stability patch set): `complete`
 - Stage 3 (gating infrastructure): `complete`
 - Stage 4+ (architecture/research): `partial` (policy widening + backbone scaling implemented)
 
@@ -32,7 +32,7 @@ Gate:
 
 - Baseline JSON exists and matches current repository state.
 
-### Stage B - Position-Budget Windowing (Finish Remaining Gap)
+### Stage B - Position-Budget Windowing (Complete)
 
 Files:
 
@@ -48,7 +48,8 @@ Tasks:
 
 Gate:
 
-- Processing reports deterministic generation selection and budget hit within configured bounds.
+- Completed in code: processing reports deterministic generation selection and
+  supports budget banding with min/max caps.
 
 ### Stage C - Gated Validation Sweep (Current Priority)
 

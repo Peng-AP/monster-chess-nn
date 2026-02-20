@@ -448,6 +448,8 @@ def main():
                         help="Sliding window: keep last N generations (default: from config)")
     parser.add_argument("--position-budget", type=int, default=None,
                         help="Position budget window: include enough recent generations to hit N raw positions")
+    parser.add_argument("--position-budget-max", type=int, default=None,
+                        help="Optional max-cap for position budget window (requires --position-budget)")
     parser.add_argument("--alternating", action="store_true",
                         help="Use frozen-opponent alternating training")
     parser.add_argument(
@@ -543,7 +545,7 @@ def main():
     args = parser.parse_args()
 
     from config import (
-        SLIDING_WINDOW, POSITION_BUDGET, OPPONENT_SIMULATIONS, RANDOM_SEED,
+        SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, OPPONENT_SIMULATIONS, RANDOM_SEED,
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
         LEARNING_RATE,
         USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
@@ -552,6 +554,9 @@ def main():
     set_seed(base_seed)
     keep_gens = args.keep_generations if args.keep_generations is not None else SLIDING_WINDOW
     position_budget = args.position_budget if args.position_budget is not None else POSITION_BUDGET
+    position_budget_max = (
+        args.position_budget_max if args.position_budget_max is not None else POSITION_BUDGET_MAX
+    )
     selfplay_sims_jitter_pct = (
         args.selfplay_sims_jitter_pct
         if args.selfplay_sims_jitter_pct is not None else SELFPLAY_SIMS_JITTER_PCT
@@ -564,6 +569,8 @@ def main():
     )
     if position_budget is not None and position_budget <= 0:
         position_budget = None
+    if position_budget_max is not None and position_budget_max <= 0:
+        position_budget_max = None
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
     black_focus_arena_sims = (
         args.black_focus_arena_sims
@@ -632,6 +639,16 @@ def main():
         raise ValueError("--alternating-pattern requires --alternating")
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
+    if args.position_budget_max is not None and args.position_budget is None:
+        raise ValueError("--position-budget-max requires --position-budget")
+    if position_budget_max is not None and position_budget is None:
+        raise ValueError("position budget max-cap requires an active position budget")
+    if (
+        position_budget is not None
+        and position_budget_max is not None
+        and position_budget_max < position_budget
+    ):
+        raise ValueError("position budget max-cap must be >= position budget")
     consolidation_lr = LEARNING_RATE * args.consolidation_lr_factor
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
@@ -718,6 +735,7 @@ def main():
         "primary_no_resume": bool(args.primary_no_resume),
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
+        "position_budget_max_effective": position_budget_max,
         "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
         "adaptive_curriculum_enabled": bool(args.adaptive_curriculum),
         "adaptive_settings": {
@@ -820,7 +838,11 @@ def main():
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
         budget_human = "no human_games" if args.exclude_human_games else "with human_games"
-        print(f"  Window:      position budget {position_budget} raw positions (+ curriculum_bootstrap, {budget_human})")
+        if position_budget_max is not None:
+            budget_label = f"{position_budget}..{position_budget_max}"
+        else:
+            budget_label = f"{position_budget}"
+        print(f"  Window:      position budget {budget_label} raw positions (+ curriculum_bootstrap, {budget_human})")
     else:
         if args.exclude_human_games:
             print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap, no human_games)")
@@ -1033,9 +1055,13 @@ def main():
         ]
         if position_budget is not None:
             proc_cmd.extend(["--position-budget", str(position_budget)])
+            if position_budget_max is not None:
+                proc_cmd.extend(["--position-budget-max", str(position_budget_max)])
             proc_desc = (
                 f"[{i+1}/{args.iterations}] Reprocessing data "
-                f"(position_budget={position_budget}, total on disk: {total_games} games)"
+                f"(position_budget={position_budget}"
+                + (f", cap={position_budget_max}" if position_budget_max is not None else "")
+                + f", total on disk: {total_games} games)"
             )
         else:
             proc_cmd.extend(["--keep-generations", str(keep_gens)])

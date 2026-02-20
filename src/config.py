@@ -154,6 +154,7 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processing
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 POSITION_BUDGET = 0       # if >0, include enough recent generations to hit this many raw positions
+POSITION_BUDGET_MAX = 0   # optional upper cap for position-budget windowing (0 disables cap)
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction

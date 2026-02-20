@@ -60,11 +60,12 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 
 - Implemented with `--resume-from`, `--warmup-epochs`, `--warmup-start-factor`.
 
-### 1.4 Position-budget data window (replace fixed generation window): `partial`
+### 1.4 Position-budget data window (replace fixed generation window): `complete`
 
-- Implemented min-budget selection via `POSITION_BUDGET` and `--position-budget` in
-  `src/config.py`, `src/data_processor.py`, and `src/iterate.py`.
-- Remaining gap: optional max-cap behavior is not yet implemented.
+- Implemented min-budget selection via `POSITION_BUDGET` / `--position-budget`.
+- Implemented optional max-cap behavior via `POSITION_BUDGET_MAX` /
+  `--position-budget-max`.
+- Wired through `src/config.py`, `src/data_processor.py`, and `src/iterate.py`.
 
 ### 1.5 FPU reduction in PUCT path: `complete`
 
@@ -157,7 +158,7 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 ## Current Priority Queue
 
 1. Continue multi-iteration gated alternating validation with consolidation + SE + adaptive curriculum + playout randomization.
-2. Add optional max-cap behavior to position-budget windowing.
+2. Run bounded-window validation sweeps using `position_budget` + `position_budget_max`.
 3. WDL value head experiment.
 4. Separate White/Black network experiment.
 
