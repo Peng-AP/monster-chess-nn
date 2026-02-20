@@ -49,6 +49,7 @@ _train_side = "both"
 _opponent_sims = OPPONENT_SIMULATIONS
 _skip_check_positions = SKIP_CHECK_POSITIONS
 _start_fens = []
+_curriculum_indices = None
 
 
 def _is_training_side_position(is_white):
@@ -233,13 +234,46 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
     }
 
 
+def _tier_bounds():
+    starts = [0]
+    starts.extend(int(x) for x in CURRICULUM_TIER_BOUNDARIES)
+    ends = [int(x) for x in CURRICULUM_TIER_BOUNDARIES]
+    ends.append(len(CURRICULUM_FENS))
+    return starts, ends
+
+
+def _tier_for_index(idx):
+    tier = 1
+    for boundary in CURRICULUM_TIER_BOUNDARIES:
+        if idx < boundary:
+            return tier
+        tier += 1
+    return tier
+
+
+def _curriculum_indices_for_range(tier_min, tier_max):
+    starts, ends = _tier_bounds()
+    max_tier = len(starts)
+    tmin = max(1, int(tier_min))
+    tmax = min(max_tier, int(tier_max))
+    if tmin > tmax:
+        return []
+    indices = []
+    for tier in range(tmin, tmax + 1):
+        s = starts[tier - 1]
+        e = ends[tier - 1]
+        indices.extend(range(s, e))
+    return indices
+
+
 def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results, scripted_black,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
-                 skip_check_positions, start_fens):
+                 skip_check_positions, start_fens, curriculum_indices):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
+    global _curriculum_indices
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
@@ -248,6 +282,7 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _opponent_sims = opponent_sims
     _skip_check_positions = skip_check_positions
     _start_fens = list(start_fens) if start_fens else []
+    _curriculum_indices = list(curriculum_indices) if curriculum_indices else None
     if model_path:
         from evaluation import NNEvaluator
         _eval_fn = NNEvaluator(model_path)
@@ -308,7 +343,10 @@ def play_game(num_simulations):
         fen = rng.choice(_start_fens)
         game = MonsterChessGame(fen=fen)
     elif _curriculum:
-        chosen_fen_idx = rng.randrange(len(CURRICULUM_FENS))
+        if _curriculum_indices:
+            chosen_fen_idx = rng.choice(_curriculum_indices)
+        else:
+            chosen_fen_idx = rng.randrange(len(CURRICULUM_FENS))
         fen = CURRICULUM_FENS[chosen_fen_idx]
         game = MonsterChessGame(fen=fen)
     else:
@@ -367,11 +405,7 @@ def play_game(num_simulations):
         result = _force_result
     elif _curriculum and (not _curriculum_live_results) and chosen_fen_idx is not None:
         # Per-tier forced value: look up which tier this FEN belongs to
-        tier = 0
-        for boundary in CURRICULUM_TIER_BOUNDARIES:
-            if chosen_fen_idx < boundary:
-                break
-            tier += 1
+        tier = _tier_for_index(chosen_fen_idx) - 1
         result = CURRICULUM_TIER_VALUES[tier]
     else:
         result = game.get_result()
@@ -447,6 +481,10 @@ def main():
                         help="Use endgame curriculum starting positions")
     parser.add_argument("--curriculum-live-results", action="store_true",
                         help="For curriculum starts, use actual game_result instead of forced tier values")
+    parser.add_argument("--curriculum-tier-min", type=int, default=None,
+                        help="Curriculum tier lower bound (1-indexed)")
+    parser.add_argument("--curriculum-tier-max", type=int, default=None,
+                        help="Curriculum tier upper bound (1-indexed)")
     parser.add_argument("--scripted-black", action="store_true",
                         help="Use scripted endgame play for Black (curriculum only)")
     parser.add_argument("--force-result", type=int, default=None, choices=[-1, 0, 1],
@@ -497,6 +535,24 @@ def main():
         raise FileNotFoundError(f"--start-fen-file not found: {args.start_fen_file}")
     if args.start_fen_dir and not os.path.isdir(args.start_fen_dir):
         raise FileNotFoundError(f"--start-fen-dir not found: {args.start_fen_dir}")
+    if (args.curriculum_tier_min is not None or args.curriculum_tier_max is not None) and (not args.curriculum):
+        raise ValueError("--curriculum-tier-min/--curriculum-tier-max require --curriculum")
+
+    total_tiers = len(CURRICULUM_TIER_VALUES)
+    curriculum_tier_min = 1 if args.curriculum_tier_min is None else int(args.curriculum_tier_min)
+    curriculum_tier_max = total_tiers if args.curriculum_tier_max is None else int(args.curriculum_tier_max)
+    if args.curriculum:
+        if curriculum_tier_min < 1 or curriculum_tier_max < 1:
+            raise ValueError("curriculum tier bounds must be >= 1")
+        if curriculum_tier_min > total_tiers or curriculum_tier_max > total_tiers:
+            raise ValueError(f"curriculum tier bounds must be <= {total_tiers}")
+        if curriculum_tier_min > curriculum_tier_max:
+            raise ValueError("--curriculum-tier-min must be <= --curriculum-tier-max")
+        curriculum_indices = _curriculum_indices_for_range(curriculum_tier_min, curriculum_tier_max)
+        if not curriculum_indices:
+            raise ValueError("No curriculum positions available after tier filtering")
+    else:
+        curriculum_indices = None
 
     workers = args.workers or os.cpu_count()
     model_path = args.use_model
@@ -552,6 +608,7 @@ def main():
 
     if args.curriculum:
         print("Using curriculum endgame starting positions")
+        print(f"Curriculum tier range: {curriculum_tier_min}..{curriculum_tier_max}")
         if args.curriculum_live_results:
             print("Curriculum labels: using live game results")
         else:
@@ -607,7 +664,7 @@ def main():
         initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
                   args.scripted_black, args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
-                  not args.keep_check_positions, start_fens),
+                  not args.keep_check_positions, start_fens, curriculum_indices),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
@@ -699,6 +756,9 @@ def main():
             "train_side": args.train_side,
             "curriculum": bool(args.curriculum),
             "curriculum_live_results": bool(args.curriculum_live_results),
+            "curriculum_tier_min": int(curriculum_tier_min) if args.curriculum else None,
+            "curriculum_tier_max": int(curriculum_tier_max) if args.curriculum else None,
+            "curriculum_positions": int(len(curriculum_indices)) if curriculum_indices is not None else None,
             "scripted_black": bool(args.scripted_black),
             "keep_check_positions": bool(args.keep_check_positions),
             "seed": int(args.seed) if args.seed is not None else None,

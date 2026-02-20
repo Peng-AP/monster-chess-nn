@@ -250,7 +250,8 @@ def _seed_archive_if_empty(model_path, archive_dir, manifest_path):
 
 def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
                arena_sims, arena_workers, base_seed, arena_tag="standard",
-               curriculum=False, curriculum_live_results=False):
+               curriculum=False, curriculum_live_results=False,
+               curriculum_tier_min=None, curriculum_tier_max=None):
     """Evaluate candidate vs incumbent with color swap. Returns score dict."""
     arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", arena_tag)
     white_dir = os.path.join(arena_root, "candidate_white")
@@ -280,6 +281,10 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             white_cmd.append("--curriculum")
             if curriculum_live_results:
                 white_cmd.append("--curriculum-live-results")
+            if curriculum_tier_min is not None:
+                white_cmd.extend(["--curriculum-tier-min", str(curriculum_tier_min)])
+            if curriculum_tier_max is not None:
+                white_cmd.extend(["--curriculum-tier-max", str(curriculum_tier_max)])
         run(
             white_cmd,
             f"Arena[{arena_tag}] gen {gen}: candidate as White vs incumbent ({n_white} games)",
@@ -302,6 +307,10 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             black_cmd.append("--curriculum")
             if curriculum_live_results:
                 black_cmd.append("--curriculum-live-results")
+            if curriculum_tier_min is not None:
+                black_cmd.extend(["--curriculum-tier-min", str(curriculum_tier_min)])
+            if curriculum_tier_max is not None:
+                black_cmd.extend(["--curriculum-tier-max", str(curriculum_tier_max)])
         run(
             black_cmd,
             f"Arena[{arena_tag}] gen {gen}: candidate as Black vs incumbent ({n_black} games)",
@@ -432,6 +441,10 @@ def main():
                         help="MCTS simulations for curriculum games (lower = faster)")
     parser.add_argument("--black-focus-simulations", type=int, default=120,
                         help="MCTS simulations for black-focused start games")
+    parser.add_argument("--black-focus-tier-min", type=int, default=None,
+                        help="Curriculum tier lower bound for black-focus generation (1-indexed)")
+    parser.add_argument("--black-focus-tier-max", type=int, default=None,
+                        help="Curriculum tier upper bound for black-focus generation (1-indexed)")
     parser.add_argument("--human-seed-simulations", type=int, default=None,
                         help="MCTS simulations for human-seeded games (default: normal sims)")
     parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
@@ -487,6 +500,10 @@ def main():
                         help="MCTS simulations per move for black-focus arena games (default: --arena-sims)")
     parser.add_argument("--black-focus-gate-threshold", type=float, default=0.40,
                         help="Alternating Black mode: accept if black-focus arena score >= this threshold")
+    parser.add_argument("--black-focus-arena-tier-min", type=int, default=None,
+                        help="Curriculum tier lower bound for black-focus arena gating (1-indexed)")
+    parser.add_argument("--black-focus-arena-tier-max", type=int, default=None,
+                        help="Curriculum tier upper bound for black-focus arena gating (1-indexed)")
     parser.add_argument("--no-gating", action="store_true",
                         help="Disable arena gating and always promote candidate")
     parser.add_argument("--seed", type=int, default=None,
@@ -621,6 +638,16 @@ def main():
         raise ValueError("--black-focus-games must be >= 0")
     if args.black_focus_simulations <= 0:
         raise ValueError("--black-focus-simulations must be > 0")
+    if args.black_focus_tier_min is not None and args.black_focus_tier_min < 1:
+        raise ValueError("--black-focus-tier-min must be >= 1")
+    if args.black_focus_tier_max is not None and args.black_focus_tier_max < 1:
+        raise ValueError("--black-focus-tier-max must be >= 1")
+    if (
+        args.black_focus_tier_min is not None
+        and args.black_focus_tier_max is not None
+        and args.black_focus_tier_min > args.black_focus_tier_max
+    ):
+        raise ValueError("--black-focus-tier-min must be <= --black-focus-tier-max")
     if args.human_seed_games < 0:
         raise ValueError("--human-seed-games must be >= 0")
     if args.human_seed_simulations is not None and args.human_seed_simulations <= 0:
@@ -631,6 +658,16 @@ def main():
         raise ValueError("--black-focus-arena-games must be >= 0")
     if black_focus_arena_sims <= 0:
         raise ValueError("--black-focus-arena-sims must be > 0")
+    if args.black_focus_arena_tier_min is not None and args.black_focus_arena_tier_min < 1:
+        raise ValueError("--black-focus-arena-tier-min must be >= 1")
+    if args.black_focus_arena_tier_max is not None and args.black_focus_arena_tier_max < 1:
+        raise ValueError("--black-focus-arena-tier-max must be >= 1")
+    if (
+        args.black_focus_arena_tier_min is not None
+        and args.black_focus_arena_tier_max is not None
+        and args.black_focus_arena_tier_min > args.black_focus_arena_tier_max
+    ):
+        raise ValueError("--black-focus-arena-tier-min must be <= --black-focus-arena-tier-max")
     if args.black_train_sims_mult <= 0:
         raise ValueError("--black-train-sims-mult must be > 0")
     if args.black_opponent_sims_mult <= 0:
@@ -768,6 +805,10 @@ def main():
         "black_focus_gate_threshold": args.black_focus_gate_threshold,
         "black_focus_games": args.black_focus_games,
         "black_focus_simulations": args.black_focus_simulations,
+        "black_focus_tier_min": args.black_focus_tier_min,
+        "black_focus_tier_max": args.black_focus_tier_max,
+        "black_focus_arena_tier_min": args.black_focus_arena_tier_min,
+        "black_focus_arena_tier_max": args.black_focus_arena_tier_max,
         "human_seed_games": args.human_seed_games,
         "human_seed_simulations": args.human_seed_simulations,
         "human_seed_dir": args.human_seed_dir,
@@ -838,6 +879,10 @@ def main():
         f"  Simulations: {args.simulations} normal, {args.curriculum_simulations} curriculum, "
         f"{args.black_focus_simulations} black-focus, {human_seed_sims_label} human-seed"
     )
+    if args.black_focus_tier_min is not None or args.black_focus_tier_max is not None:
+        bf_tmin = args.black_focus_tier_min if args.black_focus_tier_min is not None else 1
+        bf_tmax = args.black_focus_tier_max if args.black_focus_tier_max is not None else "max"
+        print(f"  BF tiers:    generation {bf_tmin}..{bf_tmax}")
     print(f"  Target:      {args.train_target}")
     if selfplay_sims_jitter_pct > 0:
         print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
@@ -891,6 +936,16 @@ def main():
                     f"{black_focus_arena_sims} sims, threshold={args.black_focus_gate_threshold:.2f} "
                     f"(Black training side only)"
                 )
+                if args.black_focus_arena_tier_min is not None or args.black_focus_arena_tier_max is not None:
+                    bfa_tmin = (
+                        args.black_focus_arena_tier_min
+                        if args.black_focus_arena_tier_min is not None else 1
+                    )
+                    bfa_tmax = (
+                        args.black_focus_arena_tier_max
+                        if args.black_focus_arena_tier_max is not None else "max"
+                    )
+                    print(f"               black-focus arena tiers {bfa_tmin}..{bfa_tmax}")
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
         budget_human = "no human_games" if args.exclude_human_games else "with human_games"
@@ -1107,6 +1162,10 @@ def main():
                 "--opponent-sims", str(effective_opponent_sims),
                 "--seed", str(base_seed + gen * 10 + 5),
             ]
+            if args.black_focus_tier_min is not None:
+                bf_cmd.extend(["--curriculum-tier-min", str(args.black_focus_tier_min)])
+            if args.black_focus_tier_max is not None:
+                bf_cmd.extend(["--curriculum-tier-max", str(args.black_focus_tier_max)])
             blackfocus_sim_bounds = _sim_bounds(effective_black_focus_sims)
             if blackfocus_sim_bounds is not None:
                 bf_cmd.extend([
@@ -1322,6 +1381,8 @@ def main():
                         arena_tag="black_focus",
                         curriculum=True,
                         curriculum_live_results=True,
+                        curriculum_tier_min=args.black_focus_arena_tier_min,
+                        curriculum_tier_max=args.black_focus_arena_tier_max,
                     )
                     gate_info["black_focus_arena"] = black_focus_gate
                     gate_info["black_focus_threshold"] = args.black_focus_gate_threshold

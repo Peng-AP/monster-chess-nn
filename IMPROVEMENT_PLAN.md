@@ -153,6 +153,7 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
   - `--start-fen-file` / `--start-fen-dir`
   - `--start-fen-side` filtering
   - policy-aware white-to-black conversion via `--start-fen-convert-white-to-black`
+  - curriculum tier targeting via `--curriculum-tier-min` / `--curriculum-tier-max`
   - source metadata in generation summaries
 - Implemented in `src/iterate.py`:
   - `--human-seed-games`
@@ -160,6 +161,9 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
   - `--human-seed-dir`
   - `--human-seed-side`
   - `--human-seed-max-positions`
+  - black-focus tier targeting for generation and arena:
+    - `--black-focus-tier-min` / `--black-focus-tier-max`
+    - `--black-focus-arena-tier-min` / `--black-focus-arena-tier-max`
   - per-iteration `human_seed_generation` and generation timing metadata
 - Current finding: improves black-result signal in black-focus/human-seed streams,
   but gate thresholds are still not met in standard/opening arenas.
