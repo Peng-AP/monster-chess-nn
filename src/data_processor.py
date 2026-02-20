@@ -11,7 +11,8 @@ from config import (
     MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
-    HUMAN_DATA_WEIGHT, SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, RANDOM_SEED,
+    HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
+    SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, RANDOM_SEED,
 )
 
 # Piece -> layer index
@@ -311,6 +312,7 @@ def load_all_games(
     for path in tqdm(paths, desc="Loading games"):
         rel = os.path.relpath(path, raw_dir).replace("\\", "/")
         is_human = "human_games/" in rel or rel.startswith("human_games")
+        is_humanseed = "_humanseed/" in rel or rel.endswith("_humanseed")
         with open(path, "r") as f:
             records = [json.loads(line.strip()) for line in f if line.strip()]
         if not records:
@@ -325,6 +327,8 @@ def load_all_games(
             "game_id": rel,
             "records": records,
             "is_human": is_human,
+            "is_humanseed": is_humanseed,
+            "is_blackfocus": is_blackfocus,
             "result_bucket": _result_bucket(result),
         })
 
@@ -388,7 +392,8 @@ def _split_games_by_result(games, seed):
     return split
 
 
-def _convert_games_to_arrays(games, augment, human_repeat):
+def _convert_games_to_arrays(games, augment, human_repeat,
+                             blackfocus_repeat=1, humanseed_repeat=1):
     """Convert game records to tensors for one split."""
     tensors = []
     values = []
@@ -397,7 +402,13 @@ def _convert_games_to_arrays(games, augment, human_repeat):
     split_game_ids = []
 
     for game in tqdm(games, desc="Converting", leave=False):
-        repeat = human_repeat if game["is_human"] else 1
+        repeat = 1
+        if game.get("is_human"):
+            repeat = max(repeat, int(human_repeat))
+        if game.get("is_blackfocus"):
+            repeat = max(repeat, int(blackfocus_repeat))
+        if game.get("is_humanseed"):
+            repeat = max(repeat, int(humanseed_repeat))
         for _ in range(repeat):
             split_game_ids.append(game["game_id"])
             for rec in game["records"]:
@@ -480,16 +491,26 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print("Game split integrity: PASS (no overlap across train/val/test game IDs)")
     print(f"  Games: train={len(train_games)}, val={len(val_games)}, test={len(test_games)}")
     print(f"  Processing positions (augment={augment})...")
+    print(
+        "  Train repetition weights: "
+        f"human={HUMAN_DATA_WEIGHT}, "
+        f"humanseed={HUMANSEED_DATA_WEIGHT}, "
+        f"blackfocus={BLACKFOCUS_DATA_WEIGHT}"
+    )
 
-    # Upweight human games in TRAIN split only to avoid validation/test skew.
+    # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
     X_train, yv_train, yr_train, yp_train, train_game_ids = _convert_games_to_arrays(
-        train_games, augment=augment, human_repeat=HUMAN_DATA_WEIGHT,
+        train_games,
+        augment=augment,
+        human_repeat=HUMAN_DATA_WEIGHT,
+        blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
+        humanseed_repeat=HUMANSEED_DATA_WEIGHT,
     )
     X_val, yv_val, yr_val, yp_val, val_game_ids = _convert_games_to_arrays(
-        val_games, augment=augment, human_repeat=1,
+        val_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
     )
     X_test, yv_test, yr_test, yp_test, test_game_ids = _convert_games_to_arrays(
-        test_games, augment=augment, human_repeat=1,
+        test_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
     )
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)

@@ -152,6 +152,8 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 
 # Human data
 HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processing
+HUMANSEED_DATA_WEIGHT = 3  # repeat _humanseed game positions N times in TRAIN split
+BLACKFOCUS_DATA_WEIGHT = 3  # repeat _blackfocus game positions N times in TRAIN split
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 POSITION_BUDGET = 0       # if >0, include enough recent generations to hit this many raw positions
 POSITION_BUDGET_MAX = 0   # optional upper cap for position-budget windowing (0 disables cap)

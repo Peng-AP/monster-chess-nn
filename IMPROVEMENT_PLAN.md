@@ -164,6 +164,16 @@ The next bottlenecks are search/data quality and model capacity for Black-side p
 - Current finding: improves black-result signal in black-focus/human-seed streams,
   but gate thresholds are still not met in standard/opening arenas.
 
+### 3.8 Train-split weighting for targeted black streams: `complete`
+
+- Implemented in `src/config.py`:
+  - `HUMANSEED_DATA_WEIGHT`
+  - `BLACKFOCUS_DATA_WEIGHT`
+- Implemented in `src/data_processor.py`:
+  - game tagging for `_humanseed` and `_blackfocus` sources
+  - train-only repetition weighting for those sources
+  - explicit processing log of active repetition weights
+
 ## Phase 4 - Advanced Additions
 
 ### 4.1 Auxiliary heads: `pending`
