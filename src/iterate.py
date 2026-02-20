@@ -445,6 +445,8 @@ def main():
                         help="Curriculum tier lower bound for black-focus generation (1-indexed)")
     parser.add_argument("--black-focus-tier-max", type=int, default=None,
                         help="Curriculum tier upper bound for black-focus generation (1-indexed)")
+    parser.add_argument("--black-focus-live-results", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use live game outcomes for black-focus generation labels (disable to use forced tier labels)")
     parser.add_argument("--black-focus-scripted-black", action="store_true",
                         help="Use scripted Black play for black-focus curriculum generation")
     parser.add_argument("--human-seed-simulations", type=int, default=None,
@@ -454,6 +456,8 @@ def main():
     parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
                         help="Multiplier on opponent simulations when training Black in alternating mode")
     parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--primary-policy-loss-weight", type=float, default=1.0,
+                        help="Policy loss weight passed to primary training phase")
     parser.add_argument("--primary-no-resume", action="store_true",
                         help="Do not initialize primary training from incumbent checkpoint")
     parser.add_argument("--train-target", type=str, default="mcts_value",
@@ -508,6 +512,8 @@ def main():
                         help="Curriculum tier upper bound for black-focus arena gating (1-indexed)")
     parser.add_argument("--no-gating", action="store_true",
                         help="Disable arena gating and always promote candidate")
+    parser.add_argument("--explore-from-rejected", action=argparse.BooleanOptionalAction, default=False,
+                        help="If candidate is rejected, continue next iteration from that candidate instead of incumbent")
     parser.add_argument("--seed", type=int, default=None,
                         help="Base random seed (default: from config)")
     parser.add_argument("--human-eval", action="store_true",
@@ -585,6 +591,8 @@ def main():
                         help="Policy distillation weight in consolidation phase")
     parser.add_argument("--consolidation-distill-temperature", type=float, default=1.0,
                         help="Distillation temperature in consolidation phase")
+    parser.add_argument("--consolidation-policy-loss-weight", type=float, default=1.0,
+                        help="Policy loss weight passed to consolidation phase")
     parser.add_argument("--black-recovery-epochs", type=int, default=0,
                         help="Extra side-focused fine-tune epochs between primary and consolidation")
     parser.add_argument("--black-recovery-lr-factor", type=float, default=0.25,
@@ -604,6 +612,8 @@ def main():
                         help="Policy distillation weight in black-recovery phase")
     parser.add_argument("--black-recovery-distill-temperature", type=float, default=1.0,
                         help="Distillation temperature in black-recovery phase")
+    parser.add_argument("--black-recovery-policy-loss-weight", type=float, default=1.0,
+                        help="Policy loss weight passed to black-recovery phase")
     parser.add_argument("--black-recovery-only-on-black-iterations", action=argparse.BooleanOptionalAction, default=True,
                         help="Run black-recovery phase only when training side is Black in alternating mode")
     parser.add_argument("--primary-balance-sides", action=argparse.BooleanOptionalAction, default=False,
@@ -785,6 +795,10 @@ def main():
         raise ValueError("--consolidation-distill-policy-weight must be >= 0")
     if args.consolidation_distill_temperature <= 0:
         raise ValueError("--consolidation-distill-temperature must be > 0")
+    if args.primary_policy_loss_weight <= 0:
+        raise ValueError("--primary-policy-loss-weight must be > 0")
+    if args.consolidation_policy_loss_weight <= 0:
+        raise ValueError("--consolidation-policy-loss-weight must be > 0")
     if args.black_recovery_epochs < 0:
         raise ValueError("--black-recovery-epochs must be >= 0")
     if args.black_recovery_lr_factor <= 0:
@@ -799,6 +813,8 @@ def main():
         raise ValueError("--black-recovery-distill-policy-weight must be >= 0")
     if args.black_recovery_distill_temperature <= 0:
         raise ValueError("--black-recovery-distill-temperature must be > 0")
+    if args.black_recovery_policy_loss_weight <= 0:
+        raise ValueError("--black-recovery-policy-loss-weight must be > 0")
     if not (0.0 < args.primary_balanced_black_ratio < 1.0):
         raise ValueError("--primary-balanced-black-ratio must be in (0, 1)")
     if not (0.0 < args.consolidation_balanced_black_ratio < 1.0):
@@ -892,6 +908,7 @@ def main():
         "warmup_epochs_effective": warmup_epochs,
         "warmup_start_factor_effective": warmup_start_factor,
         "gating_enabled": not args.no_gating,
+        "explore_from_rejected": bool(args.explore_from_rejected),
         "gate_threshold": args.gate_threshold,
         "gate_min_other_side": args.gate_min_other_side,
         "gate_min_other_side_white_effective": gate_min_other_side_white,
@@ -905,6 +922,7 @@ def main():
         "black_focus_simulations": args.black_focus_simulations,
         "black_focus_tier_min": args.black_focus_tier_min,
         "black_focus_tier_max": args.black_focus_tier_max,
+        "black_focus_live_results": bool(args.black_focus_live_results),
         "black_focus_scripted_black": bool(args.black_focus_scripted_black),
         "black_focus_arena_tier_min": args.black_focus_arena_tier_min,
         "black_focus_arena_tier_max": args.black_focus_arena_tier_max,
@@ -949,6 +967,7 @@ def main():
             "lr_factor": float(args.consolidation_lr_factor),
             "lr": float(consolidation_lr),
             "batch_size": int(args.consolidation_batch_size),
+            "policy_loss_weight": float(args.consolidation_policy_loss_weight),
             "balance_sides": bool(args.consolidation_balance_sides),
             "balanced_black_ratio": float(args.consolidation_balanced_black_ratio),
             "distill_value_weight": float(args.consolidation_distill_value_weight),
@@ -962,6 +981,7 @@ def main():
             "lr_factor": float(args.black_recovery_lr_factor),
             "lr": float(black_recovery_lr),
             "batch_size": int(args.black_recovery_batch_size),
+            "policy_loss_weight": float(args.black_recovery_policy_loss_weight),
             "balance_sides": bool(args.black_recovery_balance_sides),
             "balanced_black_ratio": float(args.black_recovery_balanced_black_ratio),
             "train_only_side": args.black_recovery_train_only_side,
@@ -969,6 +989,7 @@ def main():
             "distill_policy_weight": float(args.black_recovery_distill_policy_weight),
             "distill_temperature": float(args.black_recovery_distill_temperature),
         },
+        "primary_policy_loss_weight": float(args.primary_policy_loss_weight),
         "primary_balance_sides": bool(args.primary_balance_sides),
         "primary_balanced_black_ratio": float(args.primary_balanced_black_ratio),
         "primary_train_only_side": args.primary_train_only_side,
@@ -986,6 +1007,7 @@ def main():
     }
     adaptive_scales = {"white": 1.0, "black": 1.0, "both": 1.0}
     run_metadata["adaptive_scales_initial"] = {k: float(v) for k, v in adaptive_scales.items()}
+    selfplay_model_path = model_path
 
     mode_str = "ALTERNATING" if args.alternating else "STANDARD"
 
@@ -1008,6 +1030,9 @@ def main():
         bf_tmin = args.black_focus_tier_min if args.black_focus_tier_min is not None else 1
         bf_tmax = args.black_focus_tier_max if args.black_focus_tier_max is not None else "max"
         print(f"  BF tiers:    generation {bf_tmin}..{bf_tmax}")
+    print(
+        f"  BF labels:   {'live outcomes' if args.black_focus_live_results else 'forced curriculum tiers'}"
+    )
     if args.black_focus_scripted_black:
         print("  BF script:   scripted Black enabled for black-focus generation")
     print(f"  Target:      {args.train_target}")
@@ -1038,6 +1063,11 @@ def main():
     print(
         f"  Side focus:  primary={args.primary_train_only_side}, "
         f"consolidation={args.consolidation_train_only_side}"
+    )
+    print(
+        f"  Pol weight:  primary={args.primary_policy_loss_weight}, "
+        f"recovery={args.black_recovery_policy_loss_weight}, "
+        f"consolidation={args.consolidation_policy_loss_weight}"
     )
     print(
         f"  Data wts:    base(h={human_data_weight}, hs={humanseed_data_weight}, bf={blackfocus_data_weight}) "
@@ -1093,6 +1123,7 @@ def main():
                         if args.black_focus_arena_tier_max is not None else "max"
                     )
                     print(f"               black-focus arena tiers {bfa_tmin}..{bfa_tmax}")
+    print(f"  Explore rej: {args.explore_from_rejected}")
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
         budget_human = "no human_games" if args.exclude_human_games else "with human_games"
@@ -1128,6 +1159,7 @@ def main():
         gen = start_gen + i
         gen_dir = os.path.join(raw_dir, f"nn_gen{gen}")
         iter_start = time.time()
+        source_model_path = selfplay_model_path
 
         # Determine training side for alternating mode
         if args.alternating:
@@ -1173,6 +1205,7 @@ def main():
         print(f"\n{'#'*60}")
         print(f"  ITERATION {i+1}/{args.iterations}  -  Generation {gen}  -  Training: {side_label}")
         print(f"{'#'*60}")
+        print(f"  Seed model:  {source_model_path}")
         print(
             f"  Proc wts:    human={effective_human_data_weight}, "
             f"humanseed={effective_humanseed_data_weight}, blackfocus={effective_blackfocus_data_weight}"
@@ -1238,7 +1271,7 @@ def main():
             "--num-games", str(effective_normal_games),
             "--simulations", str(effective_train_sims),
             "--output-dir", gen_dir,
-            "--use-model", model_path,
+            "--use-model", source_model_path,
             "--seed", str(base_seed + gen * 10 + 1),
         ]
         normal_sim_bounds = _sim_bounds(effective_train_sims)
@@ -1283,7 +1316,7 @@ def main():
                 "--num-games", str(effective_human_seed_games),
                 "--simulations", str(effective_human_seed_sims),
                 "--output-dir", hs_dir,
-                "--use-model", model_path,
+                "--use-model", source_model_path,
                 "--start-fen-dir", args.human_seed_dir,
                 "--start-fen-max-positions", str(args.human_seed_max_positions),
                 "--seed", str(base_seed + gen * 10 + 6),
@@ -1328,13 +1361,14 @@ def main():
                 "--num-games", str(effective_black_focus_games),
                 "--simulations", str(effective_black_focus_sims),
                 "--output-dir", bf_dir,
-                "--use-model", model_path,
+                "--use-model", source_model_path,
                 "--curriculum",
-                "--curriculum-live-results",
                 "--train-side", "black",
                 "--opponent-sims", str(effective_opponent_sims),
                 "--seed", str(base_seed + gen * 10 + 5),
             ]
+            if args.black_focus_live_results:
+                bf_cmd.append("--curriculum-live-results")
             if args.black_focus_tier_min is not None:
                 bf_cmd.extend(["--curriculum-tier-min", str(args.black_focus_tier_min)])
             if args.black_focus_tier_max is not None:
@@ -1374,7 +1408,7 @@ def main():
                 "--num-games", str(effective_curriculum_games),
                 "--simulations", str(args.curriculum_simulations),
                 "--output-dir", cur_dir,
-                "--use-model", model_path,
+                "--use-model", source_model_path,
                 "--curriculum",
                 "--scripted-black",
                 "--seed", str(base_seed + gen * 10 + 2),
@@ -1441,6 +1475,7 @@ def main():
             "--epochs", str(args.epochs),
             "--data-dir", processed_dir,
             "--model-dir", candidate_dir,
+            "--policy-loss-weight", str(args.primary_policy_loss_weight),
             "--seed", str(base_seed + gen * 10 + 4),
             "--warmup-epochs", str(warmup_epochs),
             "--warmup-start-factor", str(warmup_start_factor),
@@ -1457,8 +1492,8 @@ def main():
         )
         if primary_train_only_side != "none":
             train_cmd.extend(["--train-only-side", primary_train_only_side])
-        if os.path.exists(model_path) and not args.primary_no_resume:
-            train_cmd.extend(["--resume-from", model_path])
+        if os.path.exists(source_model_path) and not args.primary_no_resume:
+            train_cmd.extend(["--resume-from", source_model_path])
         t_train_primary = run(train_cmd, f"[{i+1}/{args.iterations}] Training candidate model")
         t_train_black_recovery = 0.0
         if run_black_recovery:
@@ -1475,6 +1510,7 @@ def main():
                 "--seed", str(base_seed + gen * 10 + 9),
                 "--batch-size", str(args.black_recovery_batch_size),
                 "--lr", str(black_recovery_lr),
+                "--policy-loss-weight", str(args.black_recovery_policy_loss_weight),
                 "--warmup-epochs", "0",
                 "--resume-from", candidate_path,
                 "--se-reduction", str(se_reduction),
@@ -1519,6 +1555,7 @@ def main():
                 "--seed", str(base_seed + gen * 10 + 5),
                 "--batch-size", str(args.consolidation_batch_size),
                 "--lr", str(consolidation_lr),
+                "--policy-loss-weight", str(args.consolidation_policy_loss_weight),
                 "--warmup-epochs", "0",
                 "--resume-from", candidate_path,
                 "--se-reduction", str(se_reduction),
@@ -1543,7 +1580,7 @@ def main():
                 args.consolidation_distill_value_weight > 0
                 or args.consolidation_distill_policy_weight > 0
             ):
-                consolidation_cmd.extend(["--distill-from", model_path])
+                consolidation_cmd.extend(["--distill-from", source_model_path])
             t_train_consolidation = run(
                 consolidation_cmd,
                 f"[{i+1}/{args.iterations}] Consolidation pass"
@@ -1668,6 +1705,7 @@ def main():
             if args.alternating:
                 shutil.copy2(model_path, frozen_path)
                 print(f"  Frozen fallback updated -> {frozen_path}")
+            selfplay_model_path = model_path
         else:
             if gate_info.get("decision_mode") == "side_aware_black_focus":
                 print(
@@ -1688,6 +1726,11 @@ def main():
                 )
             else:
                 print(f"\n  Candidate REJECTED (score={gate_info['score']:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
+            if args.explore_from_rejected:
+                selfplay_model_path = candidate_path
+                print(f"  Exploration: next iteration seed model -> {selfplay_model_path}")
+            else:
+                selfplay_model_path = model_path
 
         adaptive_update = None
         if args.adaptive_curriculum and adaptive_scale_key is not None:
@@ -1730,10 +1773,15 @@ def main():
             "iteration": i + 1,
             "generation": gen,
             "train_side": train_side,
+            "seed_model_path": source_model_path,
+            "next_seed_model_path": selfplay_model_path,
             "primary_train_only_side_effective": primary_train_only_side,
+            "primary_policy_loss_weight_effective": float(args.primary_policy_loss_weight),
             "black_recovery_train_only_side_effective": black_recovery_train_only_side,
             "black_recovery_enabled_effective": bool(run_black_recovery),
+            "black_recovery_policy_loss_weight_effective": float(args.black_recovery_policy_loss_weight),
             "consolidation_train_only_side_effective": consolidation_train_only_side,
+            "consolidation_policy_loss_weight_effective": float(args.consolidation_policy_loss_weight),
             "effective_processing_weights": {
                 "human": int(effective_human_data_weight),
                 "humanseed": int(effective_humanseed_data_weight),

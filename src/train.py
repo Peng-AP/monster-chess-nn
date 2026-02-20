@@ -573,6 +573,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
+    parser.add_argument("--policy-loss-weight", type=float, default=POLICY_LOSS_WEIGHT,
+                        help=f"Weight for policy CE term relative to value loss (default: {POLICY_LOSS_WEIGHT})")
     parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
     parser.add_argument("--grad-clip", type=float, default=GRAD_CLIP_NORM)
     parser.add_argument("--warmup-epochs", type=int, default=WARMUP_EPOCHS)
@@ -611,6 +613,8 @@ def main():
         raise ValueError("--warmup-start-factor must be in (0, 1]")
     if args.grad_clip < 0:
         raise ValueError("--grad-clip must be >= 0")
+    if args.policy_loss_weight <= 0:
+        raise ValueError("--policy-loss-weight must be > 0")
     if args.se_reduction <= 0:
         raise ValueError("--se-reduction must be > 0")
     if args.distill_value_weight < 0:
@@ -654,6 +658,7 @@ def main():
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
+    print(f"Policy loss weight: {args.policy_loss_weight}")
     if args.target == "blend":
         print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
 
@@ -753,6 +758,10 @@ def main():
             "decay_group_count": decay_count,
             "no_decay_group_count": no_decay_count,
         },
+        "loss_weights": {
+            "policy": float(args.policy_loss_weight),
+            "value": 1.0,
+        },
         "warmup": {
             "epochs": args.warmup_epochs,
             "start_factor": args.warmup_start_factor,
@@ -818,14 +827,14 @@ def main():
         )
 
         train_loss, train_v, train_p, train_dv, train_dp = _train_epoch(
-            model, train_loader, optimizer, device, POLICY_LOSS_WEIGHT, args.grad_clip,
+            model, train_loader, optimizer, device, args.policy_loss_weight, args.grad_clip,
             teacher_model=teacher_model,
             distill_value_weight=args.distill_value_weight,
             distill_policy_weight=args.distill_policy_weight,
             distill_temperature=args.distill_temperature,
         )
         val_loss, val_v, val_p, val_mae, val_mse = _eval_epoch(
-            model, val_loader, device, POLICY_LOSS_WEIGHT,
+            model, val_loader, device, args.policy_loss_weight,
         )
         if epoch > args.warmup_epochs:
             scheduler.step()
@@ -881,7 +890,7 @@ def main():
     test_loader = _make_loader(positions[test_idx], final_targets[test_idx],
                                policies[test_idx], args.batch_size, shuffle=False)
     test_loss, test_v, test_p, test_mae, test_mse = _eval_epoch(
-        model, test_loader, device, POLICY_LOSS_WEIGHT,
+        model, test_loader, device, args.policy_loss_weight,
     )
 
     print("\n--- Test set evaluation ---")
