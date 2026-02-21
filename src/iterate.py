@@ -473,6 +473,8 @@ def main():
                         help="Position budget window: include enough recent generations to hit N raw positions")
     parser.add_argument("--position-budget-max", type=int, default=None,
                         help="Optional max-cap for position budget window (requires --position-budget)")
+    parser.add_argument("--max-processed-positions", type=int, default=None,
+                        help="Hard cap on processed train+val+test positions (default: from config)")
     parser.add_argument("--alternating", action="store_true",
                         help="Use frozen-opponent alternating training")
     parser.add_argument(
@@ -512,6 +514,10 @@ def main():
                         help="Curriculum tier upper bound for black-focus arena gating (1-indexed)")
     parser.add_argument("--no-gating", action="store_true",
                         help="Disable arena gating and always promote candidate")
+    parser.add_argument("--min-accept-epochs", type=int, default=3,
+                        help="Promotion guard: reject promotion if --epochs is below this value (0 disables)")
+    parser.add_argument("--min-accept-black-score", type=float, default=0.05,
+                        help="Promotion guard: require candidate Black-side arena score >= this value (<=0 disables)")
     parser.add_argument("--explore-from-rejected", action=argparse.BooleanOptionalAction, default=False,
                         help="If candidate is rejected, continue next iteration from that candidate instead of incumbent")
     parser.add_argument("--seed", type=int, default=None,
@@ -629,7 +635,7 @@ def main():
     args = parser.parse_args()
 
     from config import (
-        SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, OPPONENT_SIMULATIONS, RANDOM_SEED,
+        SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, OPPONENT_SIMULATIONS, RANDOM_SEED,
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
         LEARNING_RATE,
         HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
@@ -641,6 +647,10 @@ def main():
     position_budget = args.position_budget if args.position_budget is not None else POSITION_BUDGET
     position_budget_max = (
         args.position_budget_max if args.position_budget_max is not None else POSITION_BUDGET_MAX
+    )
+    max_processed_positions = (
+        args.max_processed_positions
+        if args.max_processed_positions is not None else PROCESSED_POSITION_CAP
     )
     selfplay_sims_jitter_pct = (
         args.selfplay_sims_jitter_pct
@@ -685,6 +695,8 @@ def main():
         position_budget = None
     if position_budget_max is not None and position_budget_max <= 0:
         position_budget_max = None
+    if max_processed_positions is not None and max_processed_positions <= 0:
+        max_processed_positions = None
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
     black_focus_arena_sims = (
         args.black_focus_arena_sims
@@ -815,6 +827,10 @@ def main():
         raise ValueError("--black-recovery-distill-temperature must be > 0")
     if args.black_recovery_policy_loss_weight <= 0:
         raise ValueError("--black-recovery-policy-loss-weight must be > 0")
+    if args.min_accept_epochs < 0:
+        raise ValueError("--min-accept-epochs must be >= 0")
+    if not (0.0 <= args.min_accept_black_score <= 1.0):
+        raise ValueError("--min-accept-black-score must be in [0, 1]")
     if not (0.0 < args.primary_balanced_black_ratio < 1.0):
         raise ValueError("--primary-balanced-black-ratio must be in (0, 1)")
     if not (0.0 < args.consolidation_balanced_black_ratio < 1.0):
@@ -910,6 +926,8 @@ def main():
         "gating_enabled": not args.no_gating,
         "explore_from_rejected": bool(args.explore_from_rejected),
         "gate_threshold": args.gate_threshold,
+        "promotion_guard_min_accept_epochs": int(args.min_accept_epochs),
+        "promotion_guard_min_accept_black_score": float(args.min_accept_black_score),
         "gate_min_other_side": args.gate_min_other_side,
         "gate_min_other_side_white_effective": gate_min_other_side_white,
         "gate_min_other_side_black_effective": gate_min_other_side_black,
@@ -949,6 +967,7 @@ def main():
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
         "position_budget_max_effective": position_budget_max,
+        "max_processed_positions_effective": max_processed_positions,
         "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
         "adaptive_curriculum_enabled": bool(args.adaptive_curriculum),
         "adaptive_settings": {
@@ -1123,6 +1142,10 @@ def main():
                         if args.black_focus_arena_tier_max is not None else "max"
                     )
                     print(f"               black-focus arena tiers {bfa_tmin}..{bfa_tmax}")
+    print(
+        f"  Promote gd:  min_epochs={args.min_accept_epochs}, "
+        f"min_black_score={args.min_accept_black_score:.2f}"
+    )
     print(f"  Explore rej: {args.explore_from_rejected}")
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
@@ -1137,6 +1160,10 @@ def main():
             print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap, no human_games)")
         else:
             print(f"  Window:      last {keep_gens} generations (+ curriculum_bootstrap + human_games)")
+    if max_processed_positions is not None:
+        print(f"  Proc cap:    max {max_processed_positions} processed positions")
+    else:
+        print("  Proc cap:    disabled")
     print(f"  Check pos:   {'keep' if args.keep_check_positions else 'skip'}")
     print(f"  BF filter:   min_blackfocus_plies={args.min_blackfocus_plies}")
     print(f"  Starting at: generation {start_gen}")
@@ -1445,6 +1472,8 @@ def main():
             "--blackfocus-data-weight", str(effective_blackfocus_data_weight),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
+        if max_processed_positions is not None:
+            proc_cmd.extend(["--max-positions", str(max_processed_positions)])
         if position_budget is not None:
             proc_cmd.extend(["--position-budget", str(position_budget)])
             if position_budget_max is not None:
@@ -1453,13 +1482,16 @@ def main():
                 f"[{i+1}/{args.iterations}] Reprocessing data "
                 f"(position_budget={position_budget}"
                 + (f", cap={position_budget_max}" if position_budget_max is not None else "")
+                + (f", max_processed={max_processed_positions}" if max_processed_positions is not None else "")
                 + f", total on disk: {total_games} games)"
             )
         else:
             proc_cmd.extend(["--keep-generations", str(keep_gens)])
             proc_desc = (
                 f"[{i+1}/{args.iterations}] Reprocessing data "
-                f"(window={keep_gens}, total on disk: {total_games} games)"
+                f"(window={keep_gens}"
+                + (f", max_processed={max_processed_positions}" if max_processed_positions is not None else "")
+                + f", total on disk: {total_games} games)"
             )
         t_proc = run(proc_cmd, proc_desc)
 
@@ -1696,6 +1728,40 @@ def main():
                 accepted = gate_info["score"] >= args.gate_threshold and gate_info["total_games"] > 0
             gate_info["accepted"] = accepted
 
+        # Promotion guards: prevent accidental regressions from short/noisy runs.
+        guard_reasons = []
+        if accepted and args.min_accept_epochs > 0 and args.epochs < args.min_accept_epochs:
+            guard_reasons.append(
+                f"epochs={args.epochs} below min_accept_epochs={args.min_accept_epochs}"
+            )
+        if accepted and args.min_accept_black_score > 0:
+            black_info = gate_info.get("candidate_black")
+            black_score = black_info["score"] if black_info else None
+            black_games = black_info["games"] if black_info else 0
+            if black_info is None:
+                guard_reasons.append(
+                    "missing candidate_black arena score; disable --no-gating or lower min_accept_black_score"
+                )
+            elif black_games <= 0:
+                guard_reasons.append("candidate_black arena games=0")
+            elif black_score < args.min_accept_black_score:
+                guard_reasons.append(
+                    f"candidate_black score={black_score:.3f} below min_accept_black_score={args.min_accept_black_score:.3f}"
+                )
+            gate_info["promotion_guard_black_score"] = black_score
+            gate_info["promotion_guard_black_games"] = black_games
+        if guard_reasons:
+            accepted = False
+            gate_info["accepted"] = False
+            gate_info["promotion_guard_failed"] = True
+            gate_info["promotion_guard_reasons"] = guard_reasons
+            print("\n  Promotion guard blocked candidate:")
+            for reason in guard_reasons:
+                print(f"    - {reason}")
+        else:
+            gate_info["promotion_guard_failed"] = False
+            gate_info["promotion_guard_reasons"] = []
+
         if accepted:
             shutil.copy2(candidate_path, model_path)
             archive_path = os.path.join(archive_dir, f"gen_{gen:04d}.pt")
@@ -1725,7 +1791,11 @@ def main():
                     f"keeping incumbent"
                 )
             else:
-                print(f"\n  Candidate REJECTED (score={gate_info['score']:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
+                score = gate_info.get("score")
+                if score is None:
+                    print("\n  Candidate REJECTED (promotion guard failed; no-gating score unavailable); keeping incumbent")
+                else:
+                    print(f"\n  Candidate REJECTED (score={score:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
             if args.explore_from_rejected:
                 selfplay_model_path = candidate_path
                 print(f"  Exploration: next iteration seed model -> {selfplay_model_path}")

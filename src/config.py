@@ -151,12 +151,13 @@ BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Human data
-HUMAN_DATA_WEIGHT = 40    # repeat human game positions N times during processing
+HUMAN_DATA_WEIGHT = 60    # repeat human game positions N times during processing
 HUMANSEED_DATA_WEIGHT = 3  # repeat _humanseed game positions N times in TRAIN split
 BLACKFOCUS_DATA_WEIGHT = 3  # repeat _blackfocus game positions N times in TRAIN split
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
-POSITION_BUDGET = 0       # if >0, include enough recent generations to hit this many raw positions
-POSITION_BUDGET_MAX = 0   # optional upper cap for position-budget windowing (0 disables cap)
+POSITION_BUDGET = 250000  # include enough recent generations to hit this many raw positions
+POSITION_BUDGET_MAX = 250000   # upper cap for position-budget windowing (0 disables cap)
+PROCESSED_POSITION_CAP = 500000  # hard cap on processed train+val+test positions (0 disables)
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction

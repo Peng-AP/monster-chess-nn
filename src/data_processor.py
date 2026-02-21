@@ -12,7 +12,7 @@ from config import (
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
-    SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, RANDOM_SEED,
+    SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, RANDOM_SEED,
 )
 
 # Piece -> layer index
@@ -412,15 +412,20 @@ def _split_games_by_result(games, seed):
 
 
 def _convert_games_to_arrays(games, augment, human_repeat,
-                             blackfocus_repeat=1, humanseed_repeat=1):
+                             blackfocus_repeat=1, humanseed_repeat=1,
+                             max_positions=None):
     """Convert game records to tensors for one split."""
     tensors = []
     values = []
     game_results = []
     policy_targets = []
     split_game_ids = []
+    capped = False
 
     for game in tqdm(games, desc="Converting", leave=False):
+        if max_positions is not None and len(tensors) >= max_positions:
+            capped = True
+            break
         repeat = 1
         if game.get("is_human"):
             repeat = max(repeat, int(human_repeat))
@@ -429,8 +434,14 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         if game.get("is_humanseed"):
             repeat = max(repeat, int(humanseed_repeat))
         for _ in range(repeat):
+            if max_positions is not None and len(tensors) >= max_positions:
+                capped = True
+                break
             split_game_ids.append(game["game_id"])
             for rec in game["records"]:
+                if max_positions is not None and len(tensors) >= max_positions:
+                    capped = True
+                    break
                 is_white = rec["current_player"] == "white"
                 tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
                 # mcts_value from data_generation is already from the
@@ -445,11 +456,18 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 game_results.append(gr)
                 policy_targets.append(pol)
 
-                if augment:
+                if augment and (max_positions is None or len(tensors) < max_positions):
                     tensors.append(mirror_tensor(tensor))
                     values.append(val)
                     game_results.append(gr)
                     policy_targets.append(mirror_policy(pol))
+                elif augment and max_positions is not None and len(tensors) >= max_positions:
+                    capped = True
+                    break
+            if capped:
+                break
+        if capped:
+            break
 
     if tensors:
         X = np.array(tensors, dtype=np.float32)
@@ -462,7 +480,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
 
-    return X, y_value, y_result, y_policy, split_game_ids
+    return X, y_value, y_result, y_policy, split_game_ids, capped
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -474,7 +492,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      blackfocus_result_filter="any",
                      human_repeat=HUMAN_DATA_WEIGHT,
                      humanseed_repeat=HUMANSEED_DATA_WEIGHT,
-                     blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT):
+                     blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
+                     max_positions=PROCESSED_POSITION_CAP):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -498,6 +517,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     if not games:
         print("No data to process.")
         return
+    if max_positions is not None and max_positions <= 0:
+        max_positions = None
 
     split_games = _split_games_by_result(games, seed=seed)
     train_games = split_games["train"]
@@ -521,26 +542,51 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         f"humanseed={humanseed_repeat}, "
         f"blackfocus={blackfocus_repeat}"
     )
+    if max_positions is not None:
+        print(f"  Processed position cap: total<={max_positions}")
+
+    # Validation/test are never weighted.
+    X_val, yv_val, yr_val, yp_val, val_game_ids, _ = _convert_games_to_arrays(
+        val_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
+    )
+    X_test, yv_test, yr_test, yp_test, test_game_ids, _ = _convert_games_to_arrays(
+        test_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
+    )
+    eval_positions = len(X_val) + len(X_test)
+    train_position_cap = None
+    if max_positions is not None:
+        if eval_positions >= max_positions:
+            raise ValueError(
+                "Validation+test positions already exceed --max-positions "
+                f"({eval_positions} >= {max_positions}). Increase the cap."
+            )
+        train_position_cap = max_positions - eval_positions
+        print(
+            f"  Train position cap after val/test reservation: "
+            f"{train_position_cap} (val+test={eval_positions})"
+        )
 
     # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
-    X_train, yv_train, yr_train, yp_train, train_game_ids = _convert_games_to_arrays(
+    X_train, yv_train, yr_train, yp_train, train_game_ids, train_capped = _convert_games_to_arrays(
         train_games,
         augment=augment,
         human_repeat=human_repeat,
         blackfocus_repeat=blackfocus_repeat,
         humanseed_repeat=humanseed_repeat,
-    )
-    X_val, yv_val, yr_val, yp_val, val_game_ids = _convert_games_to_arrays(
-        val_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
-    )
-    X_test, yv_test, yr_test, yp_test, test_game_ids = _convert_games_to_arrays(
-        test_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
+        max_positions=train_position_cap,
     )
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
+    total_positions = len(X)
+    if max_positions is not None and total_positions > max_positions:
+        raise RuntimeError(
+            f"Processed position cap violated ({total_positions} > {max_positions})"
+        )
+    if train_capped:
+        print(f"  Train split capped at {len(X_train)} positions to honor max total size")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -566,6 +612,9 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "train_weighted_instances": len(train_game_ids),
         "val_weighted_instances": len(val_game_ids),
         "test_weighted_instances": len(test_game_ids),
+        "max_positions": max_positions,
+        "train_split_capped": bool(train_capped),
+        "total_positions": int(total_positions),
     }
     with open(os.path.join(output_dir, "split_game_ids.json"), "w") as f:
         json.dump(split_game_ids, f, indent=2)
@@ -591,6 +640,8 @@ if __name__ == "__main__":
                         help=f"Position budget window: include enough recent generations to hit N raw positions (default: {POSITION_BUDGET})")
     parser.add_argument("--position-budget-max", type=int, default=None,
                         help=f"Optional max-cap for position budget window (default: {POSITION_BUDGET_MAX})")
+    parser.add_argument("--max-positions", type=int, default=PROCESSED_POSITION_CAP,
+                        help=f"Hard cap on processed train+val+test positions (default: {PROCESSED_POSITION_CAP}, <=0 disables)")
     parser.add_argument("--seed", type=int, default=RANDOM_SEED,
                         help=f"Random seed for deterministic game-level splitting (default: {RANDOM_SEED})")
     parser.add_argument("--exclude-human-games", action="store_true",
@@ -625,6 +676,8 @@ if __name__ == "__main__":
         raise ValueError("--humanseed-data-weight must be >= 1")
     if args.blackfocus_data_weight < 1:
         raise ValueError("--blackfocus-data-weight must be >= 1")
+    if args.max_positions is not None and args.max_positions <= 0:
+        args.max_positions = None
 
     process_raw_data(raw_dir=args.raw_dir, output_dir=args.output_dir,
                      augment=not args.no_augment,
@@ -637,4 +690,5 @@ if __name__ == "__main__":
                      blackfocus_result_filter=args.blackfocus_result_filter,
                      human_repeat=args.human_data_weight,
                      humanseed_repeat=args.humanseed_data_weight,
-                     blackfocus_repeat=args.blackfocus_data_weight)
+                     blackfocus_repeat=args.blackfocus_data_weight,
+                     max_positions=args.max_positions)
