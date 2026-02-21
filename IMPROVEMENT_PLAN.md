@@ -108,6 +108,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 - `src/gate_sweep.py` now produces recommendation candidates with
   precision/recall/F1/mismatch metrics and sensitivity summaries.
 - Sweep artifacts include recommended defaults plus acceptance-top configs.
+- Arena and black-survival evaluations now run with deterministic low
+  temperature by default to reduce exploratory noise in promotion decisions.
 
 ## Phase 3 - Model and Optimization
 

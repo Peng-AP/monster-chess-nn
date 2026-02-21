@@ -50,6 +50,9 @@ _opponent_sims = OPPONENT_SIMULATIONS
 _skip_check_positions = SKIP_CHECK_POSITIONS
 _start_fens = []
 _curriculum_indices = None
+_temperature_high = TEMPERATURE_HIGH
+_temperature_low = TEMPERATURE_LOW
+_temperature_moves = TEMPERATURE_MOVES
 
 
 def _is_training_side_position(is_white):
@@ -273,12 +276,14 @@ def _curriculum_indices_for_range(tier_min, tier_max):
 
 def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results, scripted_black,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
-                 skip_check_positions, start_fens, curriculum_indices):
+                 skip_check_positions, start_fens, curriculum_indices,
+                 temperature_high, temperature_low, temperature_moves):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
     global _curriculum_indices
+    global _temperature_high, _temperature_low, _temperature_moves
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
@@ -288,6 +293,9 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _skip_check_positions = skip_check_positions
     _start_fens = list(start_fens) if start_fens else []
     _curriculum_indices = list(curriculum_indices) if curriculum_indices else None
+    _temperature_high = float(temperature_high)
+    _temperature_low = float(temperature_low)
+    _temperature_moves = int(temperature_moves)
     if model_path:
         from evaluation import NNEvaluator
         _eval_fn = NNEvaluator(model_path)
@@ -389,7 +397,7 @@ def play_game(num_simulations):
         else:
             # Pick the engine for the current side
             engine = white_engine if is_white else black_engine
-            temperature = TEMPERATURE_HIGH if move_number < TEMPERATURE_MOVES else TEMPERATURE_LOW
+            temperature = _temperature_high if move_number < _temperature_moves else _temperature_low
             action, action_probs, root_value = engine.get_best_action(
                 game, temperature=temperature,
             )
@@ -507,6 +515,12 @@ def main():
                         help=f"MCTS simulations for frozen opponent (default: {OPPONENT_SIMULATIONS})")
     parser.add_argument("--seed", type=int, default=None,
                         help="Base random seed (optional, enables deterministic game seeding)")
+    parser.add_argument("--temperature-high", type=float, default=TEMPERATURE_HIGH,
+                        help=f"Sampling temperature for first N plies (default: {TEMPERATURE_HIGH})")
+    parser.add_argument("--temperature-low", type=float, default=TEMPERATURE_LOW,
+                        help=f"Sampling temperature after opening phase (default: {TEMPERATURE_LOW})")
+    parser.add_argument("--temperature-moves", type=int, default=TEMPERATURE_MOVES,
+                        help=f"Number of opening plies using high temperature (default: {TEMPERATURE_MOVES})")
     parser.add_argument("--keep-check-positions", action="store_true",
                         help="Keep positions where side to move is in check (default: skip them)")
     parser.add_argument("--start-fen-file", type=str, default=None,
@@ -529,6 +543,12 @@ def main():
         raise ValueError("--simulations-max must be > 0")
     if args.start_fen_max_positions < 0:
         raise ValueError("--start-fen-max-positions must be >= 0")
+    if args.temperature_high <= 0:
+        raise ValueError("--temperature-high must be > 0")
+    if args.temperature_low <= 0:
+        raise ValueError("--temperature-low must be > 0")
+    if args.temperature_moves < 0:
+        raise ValueError("--temperature-moves must be >= 0")
 
     sim_min = args.simulations if args.simulations_min is None else args.simulations_min
     sim_max = args.simulations if args.simulations_max is None else args.simulations_max
@@ -633,6 +653,11 @@ def main():
         print(f"Simulation budget: fixed {sim_min} per game")
     else:
         print(f"Simulation budget: randomized uniformly in [{sim_min}, {sim_max}] per game")
+    print(
+        "Move temperature: "
+        f"high={args.temperature_high:.3f} for first {args.temperature_moves} plies, "
+        f"low={args.temperature_low:.3f} afterwards"
+    )
 
     total_positions = 0
     results = {1: 0, -1: 0, 0: 0}
@@ -669,7 +694,8 @@ def main():
         initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
                   args.scripted_black, args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
-                  not args.keep_check_positions, start_fens, curriculum_indices),
+                  not args.keep_check_positions, start_fens, curriculum_indices,
+                  args.temperature_high, args.temperature_low, args.temperature_moves),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
@@ -756,6 +782,11 @@ def main():
                 "configured_min": int(sim_min),
                 "configured_max": int(sim_max),
                 "sampled_stats": sim_stats,
+            },
+            "temperature": {
+                "high": float(args.temperature_high),
+                "low": float(args.temperature_low),
+                "moves": int(args.temperature_moves),
             },
             "workers": int(workers),
             "train_side": args.train_side,

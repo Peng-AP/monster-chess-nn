@@ -34,6 +34,8 @@ def _args(alternating=True):
         black_focus_arena_tier_min=1,
         black_focus_arena_tier_max=5,
         black_focus_gate_threshold=0.40,
+        arena_temperature=0.01,
+        arena_temperature_moves=0,
     )
 
 

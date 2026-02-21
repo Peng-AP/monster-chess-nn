@@ -314,6 +314,14 @@ def _append_distill_teacher_if_weighted(cmd, value_weight, policy_weight, teache
         cmd.extend(["--distill-from", teacher_path])
 
 
+def _append_eval_temperature_args(cmd, temperature, temperature_moves):
+    cmd.extend([
+        "--temperature-high", str(temperature),
+        "--temperature-low", str(temperature),
+        "--temperature-moves", str(temperature_moves),
+    ])
+
+
 def _seed_archive_if_empty(model_path, archive_dir, manifest_path):
     models = _list_archive_models(archive_dir)
     if models or not os.path.exists(model_path):
@@ -332,7 +340,8 @@ def _seed_archive_if_empty(model_path, archive_dir, manifest_path):
 def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
                arena_sims, arena_workers, base_seed, arena_tag="standard",
                curriculum=False, curriculum_live_results=False,
-               curriculum_tier_min=None, curriculum_tier_max=None):
+               curriculum_tier_min=None, curriculum_tier_max=None,
+               eval_temperature=0.01, eval_temperature_moves=0):
     """Evaluate candidate vs incumbent with color swap. Returns score dict."""
     arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", arena_tag)
     white_dir = os.path.join(arena_root, "candidate_white")
@@ -366,6 +375,9 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
                 white_cmd.extend(["--curriculum-tier-min", str(curriculum_tier_min)])
             if curriculum_tier_max is not None:
                 white_cmd.extend(["--curriculum-tier-max", str(curriculum_tier_max)])
+        _append_eval_temperature_args(
+            white_cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
+        )
         run(
             white_cmd,
             f"Arena[{arena_tag}] gen {gen}: candidate as White vs incumbent ({n_white} games)",
@@ -392,6 +404,9 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
                 black_cmd.extend(["--curriculum-tier-min", str(curriculum_tier_min)])
             if curriculum_tier_max is not None:
                 black_cmd.extend(["--curriculum-tier-max", str(curriculum_tier_max)])
+        _append_eval_temperature_args(
+            black_cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
+        )
         run(
             black_cmd,
             f"Arena[{arena_tag}] gen {gen}: candidate as Black vs incumbent ({n_black} games)",
@@ -420,7 +435,8 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
 
 def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
                         games, sims, workers, base_seed,
-                        human_start_dir=None, human_start_max_positions=0):
+                        human_start_dir=None, human_start_max_positions=0,
+                        eval_temperature=0.01, eval_temperature_moves=0):
     """Run a black-to-move survival sanity suite before promotion."""
     arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", "black_survival")
     if os.path.exists(arena_root):
@@ -453,6 +469,9 @@ def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
             ])
             if human_start_max_positions and human_start_max_positions > 0:
                 cmd.extend(["--start-fen-max-positions", str(human_start_max_positions)])
+    _append_eval_temperature_args(
+        cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
+    )
 
     run(
         cmd,
@@ -574,6 +593,8 @@ def _evaluate_candidate_gate(args, candidate_path, incumbent_model_path, gen, mo
         arena_workers=args.arena_workers,
         base_seed=base_seed,
         arena_tag="standard",
+        eval_temperature=args.arena_temperature,
+        eval_temperature_moves=args.arena_temperature_moves,
     )
     gate_info["enabled"] = True
     gate_info["threshold"] = args.gate_threshold
@@ -610,6 +631,8 @@ def _evaluate_candidate_gate(args, candidate_path, incumbent_model_path, gen, mo
                 curriculum_live_results=True,
                 curriculum_tier_min=args.black_focus_arena_tier_min,
                 curriculum_tier_max=args.black_focus_arena_tier_max,
+                eval_temperature=args.arena_temperature,
+                eval_temperature_moves=args.arena_temperature_moves,
             )
             gate_info["black_focus_arena"] = black_focus_gate
             gate_info["black_focus_threshold"] = args.black_focus_gate_threshold
@@ -1060,6 +1083,10 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--min-accept-epochs must be >= 0")
     if not (0.0 <= args.min_accept_black_score <= 1.0):
         raise ValueError("--min-accept-black-score must be in [0, 1]")
+    if args.arena_temperature <= 0:
+        raise ValueError("--arena-temperature must be > 0")
+    if args.arena_temperature_moves < 0:
+        raise ValueError("--arena-temperature-moves must be >= 0")
     if not (0.0 < args.primary_balanced_black_ratio < 1.0):
         raise ValueError("--primary-balanced-black-ratio must be in (0, 1)")
     if not (0.0 < args.consolidation_balanced_black_ratio < 1.0):
@@ -1157,6 +1184,10 @@ def main():
                         help="MCTS simulations per move in arena games")
     parser.add_argument("--arena-workers", type=int, default=2,
                         help="Workers for arena evaluation game generation")
+    parser.add_argument("--arena-temperature", type=float, default=0.01,
+                        help="Eval temperature used for arena and black-survival games")
+    parser.add_argument("--arena-temperature-moves", type=int, default=0,
+                        help="Opening plies using arena high-temperature phase (default: 0)")
     parser.add_argument("--gate-threshold", type=float, default=0.55,
                         help="Accept candidate if arena score >= threshold")
     parser.add_argument("--gate-min-side-score", type=float, default=0.45,
@@ -1431,6 +1462,8 @@ def main():
         "gating_enabled": True,
         "gate_threshold": args.gate_threshold,
         "gate_min_side_score": args.gate_min_side_score,
+        "arena_eval_temperature": float(args.arena_temperature),
+        "arena_eval_temperature_moves": int(args.arena_temperature_moves),
         "promotion_guard_min_accept_epochs": int(args.min_accept_epochs),
         "promotion_guard_min_accept_black_score": float(args.min_accept_black_score),
         "black_survival_games": int(args.black_survival_games),
@@ -1621,6 +1654,10 @@ def main():
     print(
         f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, "
         f"threshold={args.gate_threshold:.2f}, min_side={args.gate_min_side_score:.2f}"
+    )
+    print(
+        f"               eval temperature={args.arena_temperature:.3f} "
+        f"(opening plies={args.arena_temperature_moves})"
     )
     if args.alternating:
         print(
@@ -2160,6 +2197,8 @@ def main():
                 base_seed=base_seed + 900000,
                 human_start_dir=args.human_seed_dir,
                 human_start_max_positions=args.human_seed_max_positions,
+                eval_temperature=args.arena_temperature,
+                eval_temperature_moves=args.arena_temperature_moves,
             )
             gate_info["black_survival"] = black_survival_info
         else:

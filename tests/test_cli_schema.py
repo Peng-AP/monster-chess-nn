@@ -29,6 +29,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--wdl-loss-weight", out)
         self.assertIn("--primary-train-result-filter", out)
         self.assertIn("--consolidation-train-result-filter", out)
+        self.assertIn("--arena-temperature", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")
@@ -43,6 +44,13 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("--use-source-quotas", out)
         self.assertIn("--human-target-mcts-lambda", out)
+
+    def test_data_generation_help_contains_temperature_flags(self):
+        code, out = _run_help("data_generation.py")
+        self.assertEqual(code, 0)
+        self.assertIn("--temperature-high", out)
+        self.assertIn("--temperature-low", out)
+        self.assertIn("--temperature-moves", out)
 
     def test_gate_sweep_help_contains_new_calibration_flags(self):
         code, out = _run_help("gate_sweep.py")
