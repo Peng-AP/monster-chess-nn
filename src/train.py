@@ -512,6 +512,17 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None, y_wd
                       pin_memory=True, num_workers=0, generator=generator)
 
 
+def _unpack_loader_batch(batch):
+    """Normalize dataloader batches to (X, y_value, y_policy, y_wdl_or_none)."""
+    if len(batch) == 4:
+        X_b, yv_b, yp_b, yw_b = batch
+        return X_b, yv_b, yp_b, yw_b
+    if len(batch) == 3:
+        X_b, yv_b, yp_b = batch
+        return X_b, yv_b, yp_b, None
+    raise ValueError(f"Unexpected batch tuple length: {len(batch)}")
+
+
 def _side_labels_from_positions(positions):
     """Return bool array: True for white-to-move, False for black-to-move."""
     turn_plane = positions[:, 0, 0, TURN_LAYER]
@@ -591,11 +602,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
     n = 0
 
     for batch in loader:
-        if len(batch) == 4:
-            X_b, yv_b, yp_b, yw_b = batch
-        else:
-            X_b, yv_b, yp_b = batch
-            yw_b = None
+        X_b, yv_b, yp_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
@@ -673,11 +680,7 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False):
     n = 0
 
     for batch in loader:
-        if len(batch) == 4:
-            X_b, yv_b, yp_b, yw_b = batch
-        else:
-            X_b, yv_b, yp_b = batch
-            yw_b = None
+        X_b, yv_b, yp_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
@@ -1129,7 +1132,8 @@ def main():
     all_vpreds = []
     all_vtrue = []
     with torch.no_grad():
-        for X_b, yv_b, _ in test_loader:
+        for batch in test_loader:
+            X_b, yv_b, _, _ = _unpack_loader_batch(batch)
             vp, _ = model(X_b.to(device))
             all_vpreds.append(vp.cpu().numpy())
             all_vtrue.append(yv_b.numpy())

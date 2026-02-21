@@ -52,6 +52,25 @@ class TrainWdlContracts(unittest.TestCase):
         self.assertEqual(tuple(policy.shape), (2, train.POLICY_SIZE))
         self.assertIsNone(wdl)
 
+    def test_unpack_loader_batch_accepts_3_and_4_tuple_batches(self):
+        x = torch.zeros((1, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
+        yv = torch.zeros((1, 1), dtype=torch.float32)
+        yp = torch.zeros((1, train.POLICY_SIZE), dtype=torch.float32)
+        yw = torch.zeros((1,), dtype=torch.int64)
+
+        X3, yv3, yp3, yw3 = train._unpack_loader_batch((x, yv, yp))
+        self.assertIsNone(yw3)
+        self.assertEqual(tuple(X3.shape), tuple(x.shape))
+        self.assertEqual(tuple(yv3.shape), tuple(yv.shape))
+        self.assertEqual(tuple(yp3.shape), tuple(yp.shape))
+
+        X4, yv4, yp4, yw4 = train._unpack_loader_batch((x, yv, yp, yw))
+        self.assertIsNotNone(yw4)
+        self.assertEqual(tuple(X4.shape), tuple(x.shape))
+        self.assertEqual(tuple(yv4.shape), tuple(yv.shape))
+        self.assertEqual(tuple(yp4.shape), tuple(yp.shape))
+        self.assertEqual(tuple(yw4.shape), tuple(yw.shape))
+
 
 if __name__ == "__main__":
     unittest.main()
