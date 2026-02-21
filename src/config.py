@@ -182,7 +182,7 @@ HUMANSEED_TARGET_MCTS_LAMBDA = 0.85
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction
-BLACK_FOCUS_SCRIPTED_BLACK = True  # scripted Black by default for stronger black-focus trajectories
+BLACK_FOCUS_SCRIPTED_BLACK = False  # live MCTS Black outperforms scripted Black on current curriculum starts
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)
