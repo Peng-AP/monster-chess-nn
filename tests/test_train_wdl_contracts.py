@@ -114,6 +114,26 @@ class TrainWdlContracts(unittest.TestCase):
         out = train._select_human_source_black_indices(train_idx, source_ids, positions)
         self.assertEqual(out.tolist(), [1, 3])
 
+    def test_apply_result_filter_with_floor_keeps_filtered_when_ratio_ok(self):
+        idx = np.array([0, 1, 2, 3], dtype=np.int64)
+        game_results_side = np.array([-1.0, 0.0, 0.5, 1.0], dtype=np.float32)
+        out, ratio, fell_back = train._apply_result_filter_with_floor(
+            idx, game_results_side, "nonloss", min_keep_ratio=0.5
+        )
+        self.assertFalse(fell_back)
+        self.assertAlmostEqual(ratio, 0.75)
+        self.assertEqual(out.tolist(), [1, 2, 3])
+
+    def test_apply_result_filter_with_floor_falls_back_when_ratio_too_low(self):
+        idx = np.array([0, 1, 2, 3], dtype=np.int64)
+        game_results_side = np.array([-1.0, -0.5, -0.2, 0.1], dtype=np.float32)
+        out, ratio, fell_back = train._apply_result_filter_with_floor(
+            idx, game_results_side, "nonloss", min_keep_ratio=0.5
+        )
+        self.assertTrue(fell_back)
+        self.assertAlmostEqual(ratio, 0.25)
+        self.assertEqual(out.tolist(), [0, 1, 2, 3])
+
 
 if __name__ == "__main__":
     unittest.main()

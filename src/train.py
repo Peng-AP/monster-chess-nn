@@ -587,6 +587,28 @@ def _filter_human_indices_as_black_by_result(train_idx, game_results_white, mode
     raise ValueError(f"Unknown result filter mode: {mode}")
 
 
+def _apply_result_filter_with_floor(train_idx, game_results_side, mode, min_keep_ratio):
+    """Apply side-result filtering with a minimum retained-sample floor.
+
+    Returns (indices, kept_ratio, fell_back_to_unfiltered).
+    """
+    if len(train_idx) == 0:
+        return train_idx, 1.0, False
+    m = str(mode)
+    if m == "any":
+        return train_idx, 1.0, False
+    filtered = _filter_train_indices_by_result(train_idx, game_results_side, m)
+    kept_ratio = float(len(filtered)) / float(len(train_idx))
+    floor = float(min_keep_ratio)
+    if floor < 0.0:
+        floor = 0.0
+    if floor > 1.0:
+        floor = 1.0
+    if len(filtered) == 0 or kept_ratio < floor:
+        return train_idx, kept_ratio, True
+    return filtered, kept_ratio, False
+
+
 def _select_human_source_black_indices(train_idx, source_ids, positions):
     """Return human-source indices restricted to Black-to-move positions."""
     if source_ids is None or len(train_idx) == 0:
@@ -799,6 +821,8 @@ def main():
     parser.add_argument("--train-side-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="When training on one side, optionally keep only non-loss or win outcomes for that side")
+    parser.add_argument("--train-side-result-min-keep-ratio", type=float, default=0.35,
+                        help="If side-result filtering keeps less than this ratio, fall back to unfiltered side data")
     parser.add_argument("--black-include-human-source", action=argparse.BooleanOptionalAction, default=False,
                         help="When --train-only-side=black, include human source samples as black-side supervision")
     parser.add_argument("--distill-from", type=str, default=None,
@@ -848,6 +872,8 @@ def main():
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
     if args.train_only_side == "none" and args.train_side_result_filter != "any":
         print("Warning: --train-side-result-filter ignored because --train-only-side=none")
+    if not (0.0 <= args.train_side_result_min_keep_ratio <= 1.0):
+        raise ValueError("--train-side-result-min-keep-ratio must be in [0, 1]")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1071,15 +1097,20 @@ def main():
             if len(base_train_idx) == 0:
                 raise ValueError(f"--train-only-side={args.train_only_side} produced 0 samples")
             if args.train_side_result_filter != "any":
-                filtered_idx = _filter_train_indices_by_result(
-                    base_train_idx, game_results_side, args.train_side_result_filter
+                filtered_idx, kept_ratio, fell_back = _apply_result_filter_with_floor(
+                    base_train_idx,
+                    game_results_side,
+                    args.train_side_result_filter,
+                    args.train_side_result_min_keep_ratio,
                 )
-                if len(filtered_idx) > 0:
+                if not fell_back:
                     base_train_idx = filtered_idx
                 elif not result_filter_fallback_warned:
                     print(
                         "Warning: --train-side-result-filter="
-                        f"{args.train_side_result_filter} yielded 0 samples; using unfiltered side data"
+                        f"{args.train_side_result_filter} kept {kept_ratio:.1%} "
+                        f"(min_keep_ratio={args.train_side_result_min_keep_ratio:.1%}); "
+                        "using unfiltered side data"
                     )
                     result_filter_fallback_warned = True
             if (
