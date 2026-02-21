@@ -159,6 +159,7 @@ HUMANSEED_DATA_WEIGHT = 2  # repeat _humanseed game positions N times in TRAIN s
 BLACKFOCUS_DATA_WEIGHT = 2  # repeat _blackfocus game positions N times in TRAIN split
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)
 DATA_RETENTION_MIN_NONHUMAN_PLIES = 4   # drop non-human games shorter than this many plies (<=0 disables)
+DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY = 0.05  # drop human-seed games with near-deterministic policy targets (<=0 disables)
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 POSITION_BUDGET = 250000  # include enough recent generations to hit this many raw positions
 POSITION_BUDGET_MAX = 250000   # upper cap for position-budget windowing (0 disables cap)

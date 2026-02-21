@@ -83,7 +83,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 ### 1.5 Data pruning and retention policy formalization: `complete`
 
 - Implemented configurable retention controls in processing:
-  `--max-generation-age` and `--min-nonhuman-plies`.
+  `--max-generation-age`, `--min-nonhuman-plies`, and
+  `--min-humanseed-policy-entropy`.
 - Retention behavior is now wired through iterate bootstrap + per-generation
   processing commands and recorded in processing artifacts.
 - Retention diagnostics are persisted under `retention` in

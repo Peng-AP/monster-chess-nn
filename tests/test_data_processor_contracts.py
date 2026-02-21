@@ -23,7 +23,7 @@ def _record(current_player, game_result):
     }
 
 
-def _game(game_id, source_kind, result_bucket, records, generation=1):
+def _game(game_id, source_kind, result_bucket, records, generation=1, mean_policy_entropy=0.5):
     return {
         "game_id": game_id,
         "records": records,
@@ -32,6 +32,7 @@ def _game(game_id, source_kind, result_bucket, records, generation=1):
         "is_blackfocus": source_kind == "blackfocus",
         "result_bucket": result_bucket,
         "generation": generation,
+        "mean_policy_entropy": float(mean_policy_entropy),
         "source_kind": source_kind,
     }
 
@@ -64,6 +65,35 @@ class DataProcessorContracts(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(kept[0]["source_kind"], "human")
         self.assertEqual(int(summary["dropped"]["short_nonhuman"]["games"]), 1)
+
+    def test_apply_game_retention_policy_drops_low_entropy_humanseed(self):
+        games = [
+            _game(
+                "nn_gen5_humanseed/g1.jsonl",
+                "humanseed",
+                1,
+                [_record("white", 1)] * 8,
+                generation=5,
+                mean_policy_entropy=0.0,
+            ),
+            _game(
+                "nn_gen5_humanseed/g2.jsonl",
+                "humanseed",
+                1,
+                [_record("white", 1)] * 8,
+                generation=5,
+                mean_policy_entropy=0.2,
+            ),
+        ]
+        kept, summary = dp._apply_game_retention_policy(
+            games,
+            max_generation_age=0,
+            min_nonhuman_plies=0,
+            min_humanseed_policy_entropy=0.05,
+        )
+        self.assertEqual(len(kept), 1)
+        self.assertGreaterEqual(float(kept[0]["mean_policy_entropy"]), 0.05)
+        self.assertEqual(int(summary["dropped"]["low_entropy_humanseed"]["games"]), 1)
 
     def test_split_games_has_no_overlap(self):
         games = []
@@ -185,6 +215,7 @@ class DataProcessorContracts(unittest.TestCase):
                 blackfocus_result_filter="any",
                 max_generation_age=0,
                 min_nonhuman_plies=0,
+                min_humanseed_policy_entropy=0.0,
                 human_repeat=1,
                 humanseed_repeat=1,
                 blackfocus_repeat=1,

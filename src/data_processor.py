@@ -13,6 +13,7 @@ from config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
     DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
+    DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
     SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, RANDOM_SEED,
     SOURCE_QUOTA_ENABLED, SOURCE_QUOTA_SELFPLAY, SOURCE_QUOTA_HUMAN,
     SOURCE_QUOTA_BLACKFOCUS, SOURCE_QUOTA_HUMANSEED,
@@ -278,10 +279,35 @@ def _generation_from_game_id(game_id):
     return int(m.group(1))
 
 
-def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies=0):
+def _sparse_policy_entropy(policy_dict):
+    """Shannon entropy (nats) for sparse policy dicts."""
+    if not isinstance(policy_dict, dict) or not policy_dict:
+        return 0.0
+    probs = np.array([float(v) for v in policy_dict.values() if float(v) > 0.0], dtype=np.float64)
+    if probs.size == 0:
+        return 0.0
+    probs_sum = float(probs.sum())
+    if probs_sum <= 0.0:
+        return 0.0
+    probs = probs / probs_sum
+    return float(-np.sum(probs * np.log(probs)))
+
+
+def _mean_record_policy_entropy(records):
+    if not records:
+        return 0.0
+    vals = [_sparse_policy_entropy(rec.get("policy")) for rec in records]
+    if not vals:
+        return 0.0
+    return float(np.mean(vals))
+
+
+def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies=0,
+                                 min_humanseed_policy_entropy=0.0):
     """Apply bounded retention filters and return kept games + summary."""
     max_generation_age = int(max_generation_age or 0)
     min_nonhuman_plies = int(min_nonhuman_plies or 0)
+    min_humanseed_policy_entropy = float(min_humanseed_policy_entropy or 0.0)
 
     generations = [
         int(g["generation"]) for g in games
@@ -293,6 +319,7 @@ def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies
     dropped = {
         "age": {"games": 0, "positions": 0, "by_source": {}},
         "short_nonhuman": {"games": 0, "positions": 0, "by_source": {}},
+        "low_entropy_humanseed": {"games": 0, "positions": 0, "by_source": {}},
     }
     for game in games:
         source_kind = game.get("source_kind") or _source_kind(game)
@@ -319,12 +346,25 @@ def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies
                 int(dropped["short_nonhuman"]["by_source"].get(source_kind, 0)) + 1
             )
             continue
+        game_entropy = float(game.get("mean_policy_entropy", 0.0))
+        if (
+            source_kind == "humanseed"
+            and min_humanseed_policy_entropy > 0.0
+            and game_entropy < min_humanseed_policy_entropy
+        ):
+            dropped["low_entropy_humanseed"]["games"] += 1
+            dropped["low_entropy_humanseed"]["positions"] += positions
+            dropped["low_entropy_humanseed"]["by_source"][source_kind] = (
+                int(dropped["low_entropy_humanseed"]["by_source"].get(source_kind, 0)) + 1
+            )
+            continue
 
         kept.append(game)
 
     return kept, {
         "max_generation_age": max_generation_age,
         "min_nonhuman_plies": min_nonhuman_plies,
+        "min_humanseed_policy_entropy": min_humanseed_policy_entropy,
         "latest_generation": latest_generation,
         "input_games": int(len(games)),
         "input_positions": int(sum(len(g.get("records", [])) for g in games)),
@@ -424,6 +464,7 @@ def load_all_games(
     blackfocus_result_filter="any",
     max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
     min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
+    min_humanseed_policy_entropy=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
     return_summary=False,
 ):
     """Load game files as game-level units.
@@ -483,6 +524,7 @@ def load_all_games(
         empty_summary = {
             "max_generation_age": int(max_generation_age or 0),
             "min_nonhuman_plies": int(min_nonhuman_plies or 0),
+            "min_humanseed_policy_entropy": float(min_humanseed_policy_entropy or 0.0),
             "latest_generation": None,
             "input_games": 0,
             "input_positions": 0,
@@ -491,6 +533,7 @@ def load_all_games(
             "dropped": {
                 "age": {"games": 0, "positions": 0, "by_source": {}},
                 "short_nonhuman": {"games": 0, "positions": 0, "by_source": {}},
+                "low_entropy_humanseed": {"games": 0, "positions": 0, "by_source": {}},
             },
         }
         return ([], empty_summary) if return_summary else []
@@ -533,6 +576,7 @@ def load_all_games(
             "is_blackfocus": is_blackfocus,
             "result_bucket": result_bucket,
             "generation": generation,
+            "mean_policy_entropy": _mean_record_policy_entropy(records),
             "source_kind": (
                 "human" if is_human
                 else "humanseed" if is_humanseed
@@ -558,16 +602,20 @@ def load_all_games(
         games,
         max_generation_age=max_generation_age,
         min_nonhuman_plies=min_nonhuman_plies,
+        min_humanseed_policy_entropy=min_humanseed_policy_entropy,
     )
     dropped_age = int(retention_summary["dropped"]["age"]["games"])
     dropped_short = int(retention_summary["dropped"]["short_nonhuman"]["games"])
-    if dropped_age or dropped_short:
+    dropped_low_entropy = int(retention_summary["dropped"]["low_entropy_humanseed"]["games"])
+    if dropped_age or dropped_short or dropped_low_entropy:
         print(
             "  Retention policy: "
             f"max_generation_age={retention_summary['max_generation_age']}, "
             f"min_nonhuman_plies={retention_summary['min_nonhuman_plies']}, "
+            f"min_humanseed_policy_entropy={retention_summary['min_humanseed_policy_entropy']:.3f}, "
             f"dropped_age_games={dropped_age}, "
-            f"dropped_short_nonhuman_games={dropped_short}"
+            f"dropped_short_nonhuman_games={dropped_short}, "
+            f"dropped_low_entropy_humanseed_games={dropped_low_entropy}"
         )
 
     return (games, retention_summary) if return_summary else games
@@ -907,6 +955,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      blackfocus_result_filter="any",
                      max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
                      min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
+                     min_humanseed_policy_entropy=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
                      human_repeat=HUMAN_DATA_WEIGHT,
                      humanseed_repeat=HUMANSEED_DATA_WEIGHT,
                      blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
@@ -943,6 +992,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         blackfocus_result_filter=blackfocus_result_filter,
         max_generation_age=max_generation_age,
         min_nonhuman_plies=min_nonhuman_plies,
+        min_humanseed_policy_entropy=min_humanseed_policy_entropy,
         return_summary=True,
     )
     if not games:
@@ -1209,6 +1259,8 @@ if __name__ == "__main__":
                         help=f"Drop nn_gen* games older than this many generations behind latest (default: {DATA_RETENTION_MAX_GENERATION_AGE}, <=0 disables)")
     parser.add_argument("--min-nonhuman-plies", type=int, default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                         help=f"Drop non-human games shorter than this many plies (default: {DATA_RETENTION_MIN_NONHUMAN_PLIES}, <=0 disables)")
+    parser.add_argument("--min-humanseed-policy-entropy", type=float, default=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
+                        help=f"Drop human-seed games with mean policy entropy below this threshold (default: {DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY}, <=0 disables)")
     parser.add_argument("--human-data-weight", type=int, default=HUMAN_DATA_WEIGHT,
                         help=f"Train repetition weight for human_games (default: {HUMAN_DATA_WEIGHT})")
     parser.add_argument("--humanseed-data-weight", type=int, default=HUMANSEED_DATA_WEIGHT,
@@ -1251,6 +1303,8 @@ if __name__ == "__main__":
         raise ValueError("--max-generation-age must be >= 0")
     if args.min_nonhuman_plies < 0:
         raise ValueError("--min-nonhuman-plies must be >= 0")
+    if args.min_humanseed_policy_entropy < 0.0:
+        raise ValueError("--min-humanseed-policy-entropy must be >= 0")
     if args.human_data_weight < 1:
         raise ValueError("--human-data-weight must be >= 1")
     if args.humanseed_data_weight < 1:
@@ -1286,6 +1340,7 @@ if __name__ == "__main__":
                      blackfocus_result_filter=args.blackfocus_result_filter,
                      max_generation_age=args.max_generation_age,
                      min_nonhuman_plies=args.min_nonhuman_plies,
+                     min_humanseed_policy_entropy=args.min_humanseed_policy_entropy,
                      human_repeat=args.human_data_weight,
                      humanseed_repeat=args.humanseed_data_weight,
                      blackfocus_repeat=args.blackfocus_data_weight,
