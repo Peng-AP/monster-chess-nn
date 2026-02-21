@@ -131,6 +131,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 ### 3.5 Stronger side-balance training curriculum: `partial`
 
 - Side-balancing exists, but no automated schedule tied to failure modes.
+- Added side-result filtering controls in train/iterate, with automatic
+  `nonloss` filtering for alternating Black-side training phases.
 
 ## Phase 4 - Code Health and Experiment Velocity
 
