@@ -71,6 +71,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 ### 1.3 Human/humanseed/blackfocus stream weighting: `complete`
 
 - Implemented with stream-specific train weighting.
+- Side-aware data retention now preserves in-check positions for the active
+  training side (while still skipping many non-training-side check positions).
 
 ### 1.4 Per-source quality audit artifact: `complete`
 

@@ -92,7 +92,12 @@ def _should_skip_record(move_number, is_white, board_is_check, rng):
         early_skip = move_number < early_cutoff
 
     random_skip = rng.random() < subsample_p
-    check_skip = _skip_check_positions and board_is_check
+    # Keep tactical-defense samples for the training side even when global
+    # check-position skipping is enabled.
+    if _skip_check_positions and board_is_check:
+        check_skip = not _is_training_side_position(is_white)
+    else:
+        check_skip = False
     return early_skip or check_skip or random_skip
 
 
