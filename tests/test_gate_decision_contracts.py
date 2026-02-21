@@ -40,6 +40,37 @@ def _args(alternating=True):
 
 
 class GateDecisionContracts(unittest.TestCase):
+    def test_black_training_uses_effective_black_floor_with_focus_arena(self):
+        args = _args(alternating=True)
+
+        def _fake_run_arena(**kwargs):
+            if kwargs.get("arena_tag") == "black_focus":
+                return {
+                    "score": 0.70,
+                    "total_games": 8,
+                    "candidate_white": {"score": 0.45, "games": 4},
+                    "candidate_black": {"score": 0.70, "games": 4},
+                }
+            return _std_gate(score=0.58, white_score=0.62, black_score=0.20)
+
+        with patch("iterate._run_arena", side_effect=_fake_run_arena):
+            gate_info, accepted = it._evaluate_candidate_gate(
+                args=args,
+                candidate_path="cand.pt",
+                incumbent_model_path="inc.pt",
+                gen=1,
+                model_dir="models",
+                base_seed=42,
+                train_side="black",
+                gate_min_other_side_white=0.42,
+                gate_min_other_side_black=0.42,
+                black_focus_arena_sims=24,
+            )
+        self.assertTrue(accepted)
+        self.assertAlmostEqual(float(gate_info["primary_score"]), 0.70, places=6)
+        self.assertAlmostEqual(float(gate_info["black_side_floor_score"]), 0.70, places=6)
+        self.assertEqual(gate_info.get("effective_black_gate_source"), "black_focus")
+
     def test_black_focus_required_for_black_training(self):
         args = _args(alternating=True)
 

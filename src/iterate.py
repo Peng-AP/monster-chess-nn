@@ -674,6 +674,7 @@ def _evaluate_candidate_gate(args, candidate_path, incumbent_model_path, gen, mo
             "primary_games": primary_info["games"],
             "other_games": other_info["games"],
         })
+        black_floor_score = black_std["score"]
         accepted = (
             gate_info["total_games"] > 0
             and gate_info["primary_games"] > 0
@@ -683,17 +684,38 @@ def _evaluate_candidate_gate(args, candidate_path, incumbent_model_path, gen, mo
             and white_std["games"] > 0
             and black_std["games"] > 0
             and white_std["score"] >= args.gate_min_side_score
-            and black_std["score"] >= args.gate_min_side_score
+            and black_floor_score >= args.gate_min_side_score
         )
         if black_focus_gate is not None:
             focus_primary = black_focus_gate["candidate_black"]["score"]
             focus_games = black_focus_gate["candidate_black"]["games"]
             gate_info["black_focus_primary_score"] = focus_primary
             gate_info["black_focus_primary_games"] = focus_games
+            effective_black_score = max(float(black_std["score"]), float(focus_primary))
+            gate_info["effective_black_gate_score"] = effective_black_score
+            gate_info["effective_black_gate_source"] = (
+                "black_focus" if focus_primary >= black_std["score"] else "standard"
+            )
+            if train_side == "black":
+                gate_info["primary_score"] = effective_black_score
+                gate_info["primary_games"] = max(int(black_std["games"]), int(focus_games))
+                black_floor_score = effective_black_score
             gate_info["black_focus_pass"] = (
                 focus_games > 0 and focus_primary >= args.black_focus_gate_threshold
             )
+            accepted = (
+                gate_info["total_games"] > 0
+                and gate_info["primary_games"] > 0
+                and gate_info["other_games"] > 0
+                and gate_info["primary_score"] >= args.gate_threshold
+                and gate_info["other_score"] >= min_other_side
+                and white_std["games"] > 0
+                and black_std["games"] > 0
+                and white_std["score"] >= args.gate_min_side_score
+                and black_floor_score >= args.gate_min_side_score
+            )
             accepted = accepted and gate_info["black_focus_pass"]
+        gate_info["black_side_floor_score"] = black_floor_score
     else:
         gate_info.update({
             "decision_mode": "overall_strict_sides",
@@ -785,6 +807,7 @@ def _print_rejection_reason(args, gate_info):
             f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}, "
             f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
             f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
+            f"black_floor={gate_info.get('black_side_floor_score', gate_info.get('candidate_black', {}).get('score', 0.0)):.3f}, "
             f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}"
             f"{black_focus_part}); "
             f"keeping incumbent"
@@ -828,6 +851,7 @@ def _print_gate_line(args, gate_info):
             f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  "
             f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
             f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
+            f"black_floor={gate_info.get('black_side_floor_score', gate_info.get('candidate_black', {}).get('score', 0.0)):.3f}  "
             f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
             f"overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
             f"{black_focus_part}"
