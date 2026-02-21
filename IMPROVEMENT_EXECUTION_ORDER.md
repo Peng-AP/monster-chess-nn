@@ -16,8 +16,12 @@ This is the practical next sequence from the current cleaned pipeline.
 Recent runtime policy defaults updated:
 
 - Black-iteration blackfocus filter default: `any`
-- Black-focus generation default: non-scripted Black
+- Black-focus generation default: scripted Black
 - MCTS policy-target smoothing enabled via visit pseudocount
+- Black-iteration source quota profile now favors humanseed over human
+  (`human=0.0`, `humanseed=0.2`)
+- Black iterations now process with strict source quotas (no zero-ratio backfill)
+- Black-iteration sims defaults now bias train side (`train x1.5`, `opp x0.8`)
 
 ## Immediate Sprint (Recommended)
 

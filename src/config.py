@@ -171,9 +171,9 @@ SOURCE_QUOTA_HUMAN = 0.25
 SOURCE_QUOTA_BLACKFOCUS = 0.15
 SOURCE_QUOTA_HUMANSEED = 0.10
 BLACK_ITER_SOURCE_QUOTA_SELFPLAY = 0.45
-BLACK_ITER_SOURCE_QUOTA_HUMAN = 0.20
+BLACK_ITER_SOURCE_QUOTA_HUMAN = 0.00
 BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS = 0.35
-BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.00
+BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.20
 # Source-aware value labels: lambda = weight on mcts_value; (1-lambda) on game_result.
 SELFPLAY_TARGET_MCTS_LAMBDA = 1.00
 HUMAN_TARGET_MCTS_LAMBDA = 0.20
@@ -182,7 +182,7 @@ HUMANSEED_TARGET_MCTS_LAMBDA = 0.85
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction
-BLACK_FOCUS_SCRIPTED_BLACK = False  # use MCTS Black in black-focus generation by default
+BLACK_FOCUS_SCRIPTED_BLACK = True  # scripted Black by default for stronger black-focus trajectories
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)

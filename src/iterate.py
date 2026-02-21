@@ -1257,9 +1257,9 @@ def main():
                         help="Use scripted Black play for black-focus curriculum generation (default: from config)")
     parser.add_argument("--human-seed-simulations", type=int, default=None,
                         help="MCTS simulations for human-seeded games (default: normal sims)")
-    parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
+    parser.add_argument("--black-train-sims-mult", type=float, default=1.5,
                         help="Multiplier on train-side simulations when training Black in alternating mode")
-    parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
+    parser.add_argument("--black-opponent-sims-mult", type=float, default=0.8,
                         help="Multiplier on opponent simulations when training Black in alternating mode")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--primary-policy-loss-weight", type=float, default=1.0,
@@ -2244,6 +2244,8 @@ def main():
             ),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
+        if args.alternating and train_side == "black":
+            proc_cmd.append("--strict-source-quotas")
         if max_processed_positions is not None:
             proc_cmd.extend(["--max-positions", str(max_processed_positions)])
         if position_budget is not None:

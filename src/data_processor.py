@@ -294,7 +294,8 @@ def _estimate_train_source_capacity(train_games, augment, human_repeat,
     return cap
 
 
-def _rebalance_source_quotas(train_cap, quotas, source_capacity, ratios):
+def _rebalance_source_quotas(train_cap, quotas, source_capacity, ratios,
+                             allow_zero_ratio_backfill=True):
     """Clamp quotas to source capacity, then backfill remaining slots."""
     if quotas is None or train_cap is None:
         return quotas
@@ -314,6 +315,8 @@ def _rebalance_source_quotas(train_cap, quotas, source_capacity, ratios):
         if weighted:
             pick = max(weighted, key=lambda s: (float(ratios.get(s, 0.0)), int(source_capacity.get(s, 0)) - int(out.get(s, 0))))
         else:
+            if not allow_zero_ratio_backfill:
+                break
             pick = max(candidates, key=lambda s: int(source_capacity.get(s, 0)) - int(out.get(s, 0)))
         out[pick] = int(out.get(pick, 0)) + 1
         remaining -= 1
@@ -1041,6 +1044,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      quota_human=SOURCE_QUOTA_HUMAN,
                      quota_blackfocus=SOURCE_QUOTA_BLACKFOCUS,
                      quota_humanseed=SOURCE_QUOTA_HUMANSEED,
+                     strict_source_quotas=False,
                      human_target_mcts_lambda=HUMAN_TARGET_MCTS_LAMBDA,
                      humanseed_target_mcts_lambda=HUMANSEED_TARGET_MCTS_LAMBDA,
                      blackfocus_target_mcts_lambda=BLACKFOCUS_TARGET_MCTS_LAMBDA,
@@ -1189,6 +1193,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                 requested_train_source_quotas,
                 train_source_capacity,
                 source_quota_ratios,
+                allow_zero_ratio_backfill=not bool(strict_source_quotas),
             )
             print(
                 "  Train source quotas: "
@@ -1201,8 +1206,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                 )
             print(
                 "  Train source capacity estimate: "
-                + ", ".join(f"{k}={int(train_source_capacity.get(k, 0))}" for k in SOURCE_ORDER)
+                    + ", ".join(f"{k}={int(train_source_capacity.get(k, 0))}" for k in SOURCE_ORDER)
             )
+            if strict_source_quotas:
+                print("  Train source quotas: strict mode enabled (no zero-ratio backfill)")
         else:
             print("  Train source quotas: disabled (no active sources/ratios)")
     elif use_source_quotas and train_position_cap is None:
@@ -1309,6 +1316,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             "test": test_source_stats,
         },
         "source_quota_ratios": source_quota_ratios,
+        "strict_source_quotas": bool(strict_source_quotas),
         "source_quotas": train_source_quotas,
         "requested_source_quotas": requested_train_source_quotas,
         "source_capacity_estimate": train_source_capacity,
@@ -1383,6 +1391,8 @@ if __name__ == "__main__":
                         help=f"Source quota ratio for _blackfocus streams (default: {SOURCE_QUOTA_BLACKFOCUS})")
     parser.add_argument("--quota-humanseed", type=float, default=SOURCE_QUOTA_HUMANSEED,
                         help=f"Source quota ratio for _humanseed streams (default: {SOURCE_QUOTA_HUMANSEED})")
+    parser.add_argument("--strict-source-quotas", action=argparse.BooleanOptionalAction, default=False,
+                        help="Do not backfill train source quotas from zero-ratio sources when active sources underfill")
     parser.add_argument("--human-target-mcts-lambda", type=float, default=HUMAN_TARGET_MCTS_LAMBDA,
                         help=f"Human source mcts target weight lambda (default: {HUMAN_TARGET_MCTS_LAMBDA})")
     parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=HUMANSEED_TARGET_MCTS_LAMBDA,
@@ -1455,6 +1465,7 @@ if __name__ == "__main__":
                      quota_human=args.quota_human,
                      quota_blackfocus=args.quota_blackfocus,
                      quota_humanseed=args.quota_humanseed,
+                     strict_source_quotas=args.strict_source_quotas,
                      human_target_mcts_lambda=args.human_target_mcts_lambda,
                      humanseed_target_mcts_lambda=args.humanseed_target_mcts_lambda,
                      blackfocus_target_mcts_lambda=args.blackfocus_target_mcts_lambda,

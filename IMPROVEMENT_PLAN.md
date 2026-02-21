@@ -26,6 +26,10 @@ Recent code-review fix applied:
 - Black-iteration blackfocus result-filter default is now `any` (instead of strict nonloss) to avoid starving Black-side signal.
 - Black-focus generation default now uses MCTS Black (non-scripted) for richer policy supervision.
 - MCTS policy targets now apply Laplace-style visit smoothing (`POLICY_TARGET_PSEUDOCOUNT`) to prevent zero-entropy collapse.
+- Black-iteration source quotas now default to `human=0.0`, `humanseed=0.2` (swapped from prior settings) because local human games are white-to-move only and were starving Black-side train signal.
+- Black iterations now run data processing with strict source quotas (no zero-ratio backfill), preventing `human` stream reintroduction when Black-side quotas underfill.
+- Black-iteration simulation defaults were increased for train side and reduced for opponent (`black_train_sims_mult=1.5`, `black_opponent_sims_mult=0.8`) to improve Black data quality.
+- Black-focus generation default restored to scripted Black (`BLACK_FOCUS_SCRIPTED_BLACK=True`) after repeated live-MCTS black-focus collapse.
 
 ## Recent Cleanup (2026-02-21)
 
@@ -83,6 +87,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
   training side (while still skipping many non-training-side check positions).
 - Black-focus generation now defaults to non-scripted Black policy in iterate
   runtime settings (override-able by CLI), improving policy diversity.
+- Updated again: black-focus generation default is now scripted Black in
+  config/runtime defaults after repeated black-focus live-play collapse.
 
 ### 1.4 Per-source quality audit artifact: `complete`
 
@@ -99,6 +105,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
   processing commands and recorded in processing artifacts.
 - Retention diagnostics are persisted under `retention` in
   `processing_summary.json` and `split_game_ids.json`.
+- Added strict quota behavior in processing (`strict_source_quotas`) so
+  zero-ratio sources are not backfilled during underfill conditions.
 
 ## Phase 2 - Search and Gating Robustness
 
@@ -190,6 +198,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 4. Investigate persistent Black-side arena collapse after entropy fixes
    (focus on evaluation robustness, search calibration, and side-specific
    curriculum quality).
+5. Investigate why black-focus scripted/live runs still fail to produce
+   Black wins from black-advantage starts under current rules/search.
 
 ## Validation Protocol (Required Per Major Change)
 

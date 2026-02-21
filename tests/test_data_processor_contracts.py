@@ -147,6 +147,20 @@ class DataProcessorContracts(unittest.TestCase):
         self.assertEqual(int(rebalanced["human"]), 2)
         self.assertEqual(int(rebalanced["selfplay"]), 8)
 
+    def test_rebalance_source_quotas_strict_does_not_backfill_zero_ratio(self):
+        quotas = {"selfplay": 5, "human": 0, "blackfocus": 0, "humanseed": 0}
+        capacities = {"selfplay": 5, "human": 20, "blackfocus": 0, "humanseed": 0}
+        rebalanced = dp._rebalance_source_quotas(
+            train_cap=10,
+            quotas=quotas,
+            source_capacity=capacities,
+            ratios={"selfplay": 1.0, "human": 0.0, "blackfocus": 0.0, "humanseed": 0.0},
+            allow_zero_ratio_backfill=False,
+        )
+        self.assertEqual(int(rebalanced["selfplay"]), 5)
+        self.assertEqual(int(rebalanced["human"]), 0)
+        self.assertLess(sum(int(v) for v in rebalanced.values()), 10)
+
     def test_estimate_source_capacity_dedupes_humanseed_only(self):
         rec_w = _record("white", 1)
         rec_b = _record("black", -1)
