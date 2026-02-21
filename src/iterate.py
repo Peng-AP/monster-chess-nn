@@ -872,12 +872,12 @@ def _print_gate_line(args, gate_info):
 def _resolve_blackfocus_filters(base_filter, black_iter_override):
     """Resolve base/black-iteration blackfocus result filters.
 
-    Default behavior is intentionally stricter for black-training iterations
-    because blackfocus data is meant to reinforce Black survivability.
+    Default black-iteration behavior keeps all blackfocus outcomes. In practice,
+    strict non-loss filtering can starve trainable blackfocus signal.
     """
     base = str(base_filter)
     if black_iter_override is None:
-        return base, "nonloss"
+        return base, "any"
     return base, str(black_iter_override)
 
 

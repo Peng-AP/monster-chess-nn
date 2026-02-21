@@ -124,6 +124,7 @@ C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
 FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
 DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
+POLICY_TARGET_PSEUDOCOUNT = 0.25  # Laplace-style smoothing for policy targets (0 disables)
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 POLICY_HEAD_CHANNELS = 16  # policy head bottleneck channels (was 2)
 STEM_CHANNELS = 64
@@ -181,7 +182,7 @@ HUMANSEED_TARGET_MCTS_LAMBDA = 0.85
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction
-BLACK_FOCUS_SCRIPTED_BLACK = True  # use scripted Black in black-focus generation by default
+BLACK_FOCUS_SCRIPTED_BLACK = False  # use MCTS Black in black-focus generation by default
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)

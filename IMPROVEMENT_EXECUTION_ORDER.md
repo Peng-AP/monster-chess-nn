@@ -13,6 +13,12 @@ This is the practical next sequence from the current cleaned pipeline.
 - Stage 3 (model work): `complete` core architecture options, `pending` next experiments
 - Stage 4 (code quality): `partial`
 
+Recent runtime policy defaults updated:
+
+- Black-iteration blackfocus filter default: `any`
+- Black-focus generation default: non-scripted Black
+- MCTS policy-target smoothing enabled via visit pseudocount
+
 ## Immediate Sprint (Recommended)
 
 ### Stage A - Gate Correctness Fix (Black-Focus Enforcement): `complete`
@@ -126,6 +132,24 @@ Tasks:
 Gate:
 
 - No regression on side-aware gating with improved value calibration signals.
+
+### Stage H - Black-Side Collapse Mitigation (Current)
+
+Files:
+
+- `src/mcts.py`
+- `src/iterate.py`
+- `src/config.py`
+
+Tasks:
+
+1. Keep blackfocus policy entropy healthy in processed train data.
+2. Validate black-side gate trajectory after entropy and quota fixes.
+3. If black-side gate remains pinned at zero, calibrate search/eval settings before larger architecture changes.
+
+Gate:
+
+- Black-side primary score and black-focus gate score trend upward across smoke/daily batches.
 
 ### Stage G - Iteration Module Decomposition
 

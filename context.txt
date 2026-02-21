@@ -37,12 +37,18 @@ Loop in `src/iterate.py`:
 - Black-survival promotion guard
 - Position-budget windowing + processed cap
 - Source quota controls + source-aware target lambdas
+- Source quotas now rebalance to available per-source train capacity
+  (prevents large train-cap underfill when minority sources are scarce)
 - Black-iteration source-quota profile controls (separate quota ratios for
   alternating Black passes)
-- Black-focus generation now defaults to scripted Black play in iterate
+- Black-focus generation now defaults to non-scripted Black play in iterate
   runtime settings (override-able by CLI)
+- Black-iteration blackfocus result-filter default is now `any` (override-able),
+  reducing strict-filter starvation of Black-side data
 - Per-source processing diagnostics (counts + value/policy entropy stats)
   with warning signals, persisted in `processing_summary.json`
+- MCTS policy targets now use a small visit pseudocount for smoothing, which
+  prevents zero-entropy one-hot policy collapse in low-simulation settings
 - Gate sweep calibration tool now reports recommendation candidates with
   precision/recall/F1/mismatch and threshold sensitivity summaries
 - AdamW decoupled decay groups + grad clipping + warmup

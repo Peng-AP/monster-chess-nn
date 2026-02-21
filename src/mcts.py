@@ -6,7 +6,7 @@ import numpy as np
 
 from config import (
     EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
-    DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION,
+    DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION, POLICY_TARGET_PSEUDOCOUNT,
 )
 from evaluation import evaluate
 
@@ -176,10 +176,14 @@ class MCTS:
             children_info.append((child, key, child.visit_count))
 
         # Build action_probs from visit distribution
+        pseudo = max(0.0, float(POLICY_TARGET_PSEUDOCOUNT))
         total_visits = sum(info[2] for info in children_info)
-        if total_visits == 0:
-            total_visits = 1
-        action_probs = {info[1]: info[2] / total_visits for info in children_info}
+        denom = total_visits + pseudo * len(children_info)
+        if denom <= 0:
+            uniform = 1.0 / len(children_info)
+            action_probs = {info[1]: uniform for info in children_info}
+        else:
+            action_probs = {info[1]: (info[2] + pseudo) / denom for info in children_info}
 
         # Temperature-based selection
         if temperature < 0.01:

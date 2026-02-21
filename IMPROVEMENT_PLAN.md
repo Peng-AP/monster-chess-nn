@@ -22,6 +22,10 @@ The primary bottleneck is no longer basic plumbing. It is now training signal qu
 Recent code-review fix applied:
 
 - `black_focus_pass` is now enforced in `accepted` gating logic for alternating Black-side runs with black-focus arena enabled.
+- Source-quota processing now rebalances quotas against estimated source capacity to avoid train-cap underfill.
+- Black-iteration blackfocus result-filter default is now `any` (instead of strict nonloss) to avoid starving Black-side signal.
+- Black-focus generation default now uses MCTS Black (non-scripted) for richer policy supervision.
+- MCTS policy targets now apply Laplace-style visit smoothing (`POLICY_TARGET_PSEUDOCOUNT`) to prevent zero-entropy collapse.
 
 ## Recent Cleanup (2026-02-21)
 
@@ -75,8 +79,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 - Implemented with stream-specific train weighting.
 - Side-aware data retention now preserves in-check positions for the active
   training side (while still skipping many non-training-side check positions).
-- Black-focus generation defaults to scripted Black policy in iterate runtime
-  settings (override-able by CLI), improving targeted Black-side signal.
+- Black-focus generation now defaults to non-scripted Black policy in iterate
+  runtime settings (override-able by CLI), improving policy diversity.
 
 ### 1.4 Per-source quality audit artifact: `complete`
 
@@ -180,6 +184,9 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 2. Calibrate WDL-mode defaults (`wdl_loss_weight`, `wdl_draw_epsilon`) against
    side-aware gate outcomes after retention-policy stabilization.
 3. Continue modularization of `src/iterate.py` high-complexity orchestration.
+4. Investigate persistent Black-side arena collapse after entropy fixes
+   (focus on evaluation robustness, search calibration, and side-specific
+   curriculum quality).
 
 ## Validation Protocol (Required Per Major Change)
 
