@@ -121,9 +121,12 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 
 - Implemented as post-primary optional phase.
 
-### 3.4 WDL-style value head experiment: `pending`
+### 3.4 WDL-style value head experiment: `partial`
 
-- Not implemented; candidate for more stable value calibration.
+- Implemented optional WDL value-head mode in `src/train.py` and `src/iterate.py`
+  with CLI/config wiring, metadata logging, and contract tests.
+- Pending: run calibration experiments and tune `wdl_loss_weight` /
+  `wdl_draw_epsilon` against gate outcomes.
 
 ### 3.5 Stronger side-balance training curriculum: `partial`
 
@@ -139,9 +142,10 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 
 - Added `tests/` suite for:
   - data processor split/quota contract checks
-  - iterate promotion-guard/path contract checks
+  - iterate promotion-guard/path and gate-decision invariant checks
   - CLI schema smoke checks (`iterate`, `data_processor`, `gate_sweep`,
-    `iterate_presets`)
+    `iterate_presets`, `train`)
+  - processing summary schema and WDL head contracts
 - Current local test command:
   `py -3 -m unittest discover -s tests -v`
 - Added CI workflow:
@@ -156,9 +160,11 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 
 ## Current Priority Queue
 
-1. Expand contract coverage to include full gate-decision invariants and
-   `processing_summary` schema expectations.
-2. Start WDL head experiment only after contract coverage is broadened.
+1. Execute WDL-mode smoke/daily runs and compare acceptance behavior vs scalar
+   value head baselines.
+2. Complete data pruning/retention policy implementation (generation-age and
+   source-quality aware) while keeping throughput stable under 500k positions.
+3. Continue modularization of `src/iterate.py` high-complexity orchestration.
 
 ## Validation Protocol (Required Per Major Change)
 

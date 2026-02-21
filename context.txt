@@ -43,6 +43,7 @@ Loop in `src/iterate.py`:
   precision/recall/F1/mismatch and threshold sensitivity summaries
 - AdamW decoupled decay groups + grad clipping + warmup
 - Configurable backbone/policy width + optional SE + side heads
+- Optional WDL value-head mode with configurable draw band and auxiliary CE loss
 - Consolidation distillation phase
 - Human-seeded game generation and human-eval utility
 
@@ -60,7 +61,9 @@ High-level findings:
 - `src/iterate.py` remains large/complex despite debloat work.
 - Core reliability controls are strong; per-source data diagnostics and warnings
   are now available in processing artifacts and iterate logs.
-- No automated test suite currently protects split/gate/CLI contracts.
+- Contract tests now cover split/quota integrity, promotion guards, gate
+  decision invariants, processing summary schema, CLI flags, and WDL model
+  contracts.
 - `black_focus_pass` is now enforced in acceptance when black-focus arena is enabled.
 - Relative `--human-seed-dir` / `--human-eval-dir` inputs are normalized to
   project-root absolute paths before subprocess usage.
