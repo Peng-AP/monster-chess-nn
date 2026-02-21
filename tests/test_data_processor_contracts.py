@@ -1,3 +1,5 @@
+import json
+import tempfile
 import sys
 import unittest
 from pathlib import Path
@@ -119,6 +121,63 @@ class DataProcessorContracts(unittest.TestCase):
         )
         self.assertTrue(warnings)
         self.assertTrue(any("underfilled" in w for w in warnings))
+
+    def test_process_raw_data_emits_processing_summary_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "raw"
+            out = root / "processed"
+            nn1 = raw / "nn_gen1"
+            nn1.mkdir(parents=True, exist_ok=True)
+
+            # Create a few tiny games with mixed outcomes so split fallback can
+            # populate train/val/test without overlap.
+            for i in range(6):
+                recs = []
+                outcome = (-1.0, 0.0, 1.0)[i % 3]
+                for p in range(2):
+                    player = "white" if p % 2 == 0 else "black"
+                    recs.append(_record(player, outcome))
+                (nn1 / f"g{i}.jsonl").write_text(
+                    "\n".join(json.dumps(r) for r in recs) + "\n",
+                    encoding="utf-8",
+                )
+
+            dp.process_raw_data(
+                raw_dir=str(raw),
+                output_dir=str(out),
+                augment=False,
+                keep_generations=None,
+                position_budget=None,
+                position_budget_max=None,
+                seed=7,
+                include_human=False,
+                min_blackfocus_plies=0,
+                blackfocus_result_filter="any",
+                human_repeat=1,
+                humanseed_repeat=1,
+                blackfocus_repeat=1,
+                max_positions=None,
+                use_source_quotas=True,
+                quota_selfplay=1.0,
+                quota_human=0.0,
+                quota_blackfocus=0.0,
+                quota_humanseed=0.0,
+                human_target_mcts_lambda=0.2,
+                humanseed_target_mcts_lambda=0.85,
+                blackfocus_target_mcts_lambda=0.9,
+                selfplay_target_mcts_lambda=1.0,
+            )
+
+            summary_path = out / "processing_summary.json"
+            self.assertTrue(summary_path.exists())
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertIn("source_stats", summary)
+            self.assertIn("warnings", summary)
+            self.assertIn("split_sizes", summary)
+            self.assertIn("source_counts", summary)
+            self.assertIn("train", summary["source_stats"])
+            self.assertIsInstance(summary["warnings"], list)
 
 
 if __name__ == "__main__":
