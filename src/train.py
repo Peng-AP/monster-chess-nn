@@ -16,6 +16,7 @@ from config import (
     TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET, BLEND_WEIGHT, BLEND_START, BLEND_END,
+    VALUE_HEAD_MODE, WDL_LOSS_WEIGHT, WDL_DRAW_EPSILON,
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
@@ -80,6 +81,13 @@ def build_optimizer(model, lr, weight_decay):
     return optimizer, len(decay_params), len(no_decay_params)
 
 
+def _wdl_expectation_from_logits(logits):
+    """Convert WDL logits [loss, draw, win] to scalar expectation in [-1, 1]."""
+    probs = torch.softmax(logits, dim=1)
+    # expected value from side-to-move perspective: P(win) - P(loss)
+    return (probs[:, 2:3] - probs[:, 0:1])
+
+
 class SqueezeExcite(nn.Module):
     def __init__(self, channels, reduction=SE_REDUCTION):
         super().__init__()
@@ -139,6 +147,8 @@ class DualHeadNet(nn.Module):
         use_se_blocks=USE_SE_BLOCKS,
         se_reduction=SE_REDUCTION,
         use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
+        use_wdl_head=False,
+        value_head_mode=VALUE_HEAD_MODE,
     ):
         super().__init__()
         self.policy_head_channels = int(policy_head_channels)
@@ -147,10 +157,16 @@ class DualHeadNet(nn.Module):
         self.use_se_blocks = bool(use_se_blocks)
         self.se_reduction = int(se_reduction)
         self.use_side_specialized_heads = bool(use_side_specialized_heads)
+        self.use_wdl_head = bool(use_wdl_head)
+        self.value_head_mode = str(value_head_mode)
         if not self.residual_block_channels:
             raise ValueError("residual_block_channels must contain at least one block")
         if self.se_reduction <= 0:
             raise ValueError("se_reduction must be > 0")
+        if self.value_head_mode not in ("scalar", "wdl"):
+            raise ValueError("value_head_mode must be 'scalar' or 'wdl'")
+        if self.value_head_mode == "wdl" and not self.use_wdl_head:
+            raise ValueError("value_head_mode='wdl' requires use_wdl_head=True")
 
         # Stem
         self.stem = nn.Sequential(
@@ -179,6 +195,11 @@ class DualHeadNet(nn.Module):
         if self.use_side_specialized_heads:
             self.value_head_white = self._make_value_head()
             self.value_head_black = self._make_value_head()
+        if self.use_wdl_head:
+            self.wdl_head = self._make_wdl_head()
+            if self.use_side_specialized_heads:
+                self.wdl_head_white = self._make_wdl_head()
+                self.wdl_head_black = self._make_wdl_head()
 
         # Policy head(s)
         self.policy_conv, self.policy_fc = self._make_policy_head()
@@ -192,6 +213,9 @@ class DualHeadNet(nn.Module):
             self.policy_conv_black.load_state_dict(self.policy_conv.state_dict())
             self.policy_fc_white.load_state_dict(self.policy_fc.state_dict())
             self.policy_fc_black.load_state_dict(self.policy_fc.state_dict())
+            if self.use_wdl_head:
+                self.wdl_head_white.load_state_dict(self.wdl_head.state_dict())
+                self.wdl_head_black.load_state_dict(self.wdl_head.state_dict())
 
     def _make_value_head(self):
         return nn.Sequential(
@@ -205,6 +229,16 @@ class DualHeadNet(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(64, 1),
             nn.Tanh(),
+        )
+
+    def _make_wdl_head(self):
+        return nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(self.backbone_out_channels, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 3),  # [loss, draw, win]
         )
 
     def _make_policy_head(self):
@@ -222,29 +256,52 @@ class DualHeadNet(nn.Module):
         p = p.flatten(1)
         return policy_fc(p)
 
-    def forward(self, x):
+    def _forward_backbone(self, x):
         # x: (N, C, 8, 8)  — PyTorch uses channels-first
         side_turn = x[:, TURN_LAYER, 0, 0]
         x = self.stem(x)
         for i in range(1, self.residual_block_count + 1):
             x = getattr(self, f"res{i}")(x)
+        return x, side_turn
 
-        value = self.value_head(x)
-        policy = self._policy_logits(x, self.policy_conv, self.policy_fc)
+    def _compute_heads(self, backbone, side_turn):
+        value = self.value_head(backbone)
+        policy = self._policy_logits(backbone, self.policy_conv, self.policy_fc)
+        wdl_logits = self.wdl_head(backbone) if self.use_wdl_head else None
         if self.use_side_specialized_heads:
             white_mask = (side_turn > 0).unsqueeze(1)
-            value_white = self.value_head_white(x)
-            value_black = self.value_head_black(x)
-            policy_white = self._policy_logits(x, self.policy_conv_white, self.policy_fc_white)
-            policy_black = self._policy_logits(x, self.policy_conv_black, self.policy_fc_black)
+            value_white = self.value_head_white(backbone)
+            value_black = self.value_head_black(backbone)
+            policy_white = self._policy_logits(backbone, self.policy_conv_white, self.policy_fc_white)
+            policy_black = self._policy_logits(backbone, self.policy_conv_black, self.policy_fc_black)
             value = torch.where(white_mask, value_white, value_black)
             policy = torch.where(
                 white_mask.expand(-1, POLICY_SIZE),
                 policy_white,
                 policy_black,
             )
+            if self.use_wdl_head:
+                wdl_white = self.wdl_head_white(backbone)
+                wdl_black = self.wdl_head_black(backbone)
+                wdl_logits = torch.where(
+                    white_mask.expand(-1, 3),
+                    wdl_white,
+                    wdl_black,
+                )
 
+        if self.use_wdl_head and self.value_head_mode == "wdl":
+            value = _wdl_expectation_from_logits(wdl_logits)
+
+        return value, policy, wdl_logits
+
+    def forward(self, x):
+        backbone, side_turn = self._forward_backbone(x)
+        value, policy, _ = self._compute_heads(backbone, side_turn)
         return value, policy
+
+    def forward_with_wdl(self, x):
+        backbone, side_turn = self._forward_backbone(x)
+        return self._compute_heads(backbone, side_turn)
 
 
 def infer_policy_head_channels(state_dict):
@@ -265,6 +322,18 @@ def infer_side_head_config(state_dict):
         "value_head_white.2.weight" in state_dict
         or "policy_conv_white.0.weight" in state_dict
     )
+
+
+def infer_wdl_head_config(state_dict):
+    """Infer whether WDL head exists in checkpoint."""
+    has_wdl = any(
+        k.startswith("wdl_head.") or k.startswith("wdl_head_white.") or k.startswith("wdl_head_black.")
+        for k in state_dict.keys()
+    )
+    if not has_wdl:
+        return False, "scalar"
+    # If WDL head tensors exist, treat this checkpoint as WDL mode.
+    return True, "wdl"
 
 
 def infer_backbone_architecture(state_dict):
@@ -317,6 +386,8 @@ def build_model(
     use_se_blocks=USE_SE_BLOCKS,
     se_reduction=SE_REDUCTION,
     use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
+    use_wdl_head=False,
+    value_head_mode=VALUE_HEAD_MODE,
 ):
     return DualHeadNet(
         policy_head_channels=policy_head_channels,
@@ -325,6 +396,8 @@ def build_model(
         use_se_blocks=use_se_blocks,
         se_reduction=se_reduction,
         use_side_specialized_heads=use_side_specialized_heads,
+        use_wdl_head=use_wdl_head,
+        value_head_mode=value_head_mode,
     )
 
 
@@ -335,6 +408,7 @@ def load_model_for_inference(checkpoint_path, device):
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
     use_se_blocks, se_reduction = infer_se_config(state_dict)
     use_side_specialized_heads = infer_side_head_config(state_dict)
+    use_wdl_head, value_head_mode = infer_wdl_head_config(state_dict)
     model = build_model(
         policy_head_channels=pol_ch,
         stem_channels=stem_ch,
@@ -342,6 +416,8 @@ def load_model_for_inference(checkpoint_path, device):
         use_se_blocks=use_se_blocks,
         se_reduction=se_reduction,
         use_side_specialized_heads=use_side_specialized_heads,
+        use_wdl_head=use_wdl_head,
+        value_head_mode=value_head_mode,
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -400,6 +476,17 @@ def get_targets(mcts_values, game_results, target_type, blend_weight, target_lam
         raise ValueError(f"Unknown target type: {target_type}")
 
 
+def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
+    """Build class labels [loss=0, draw=1, win=2] from scalar targets."""
+    eps = float(draw_epsilon)
+    if eps < 0:
+        raise ValueError("draw_epsilon must be >= 0")
+    labels = np.ones((len(values),), dtype=np.int64)
+    labels[values > eps] = 2
+    labels[values < -eps] = 0
+    return labels
+
+
 def get_blend_lambda(epoch, max_epochs):
     """Anneal blend weight from BLEND_START to BLEND_END over training."""
     if max_epochs <= 1:
@@ -408,7 +495,7 @@ def get_blend_lambda(epoch, max_epochs):
     return BLEND_START + (BLEND_END - BLEND_START) * t
 
 
-def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None):
+def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None, y_wdl=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
@@ -416,7 +503,11 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None):
     X_t = torch.from_numpy(X.transpose(0, 3, 1, 2))  # channels-first
     y_v = torch.from_numpy(y_val).unsqueeze(1)         # (N, 1)
     y_p = torch.from_numpy(y_pol)                      # (N, 4096)
-    ds = TensorDataset(X_t, y_v, y_p)
+    if y_wdl is None:
+        ds = TensorDataset(X_t, y_v, y_p)
+    else:
+        y_w = torch.from_numpy(y_wdl).long()
+        ds = TensorDataset(X_t, y_v, y_p, y_w)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
                       pin_memory=True, num_workers=0, generator=generator)
 
@@ -488,24 +579,46 @@ def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor)
 
 def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm,
                  teacher_model=None, distill_value_weight=0.0,
-                 distill_policy_weight=0.0, distill_temperature=1.0):
+                 distill_policy_weight=0.0, distill_temperature=1.0,
+                 use_wdl_head=False, wdl_loss_weight=0.0):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
+    total_wdl_loss = 0.0
     total_distill_value = 0.0
     total_distill_policy = 0.0
     n = 0
 
-    for X_b, yv_b, yp_b in loader:
+    for batch in loader:
+        if len(batch) == 4:
+            X_b, yv_b, yp_b, yw_b = batch
+        else:
+            X_b, yv_b, yp_b = batch
+            yw_b = None
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
+        if yw_b is not None:
+            yw_b = yw_b.to(device)
 
-        value_pred, policy_pred = model(X_b)
+        if use_wdl_head:
+            value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
+        else:
+            value_pred, policy_pred = model(X_b)
+            wdl_logits = None
         loss_val = _power_loss(value_pred, yv_b)
         loss_pol = F.cross_entropy(policy_pred, yp_b)
         loss = loss_val + policy_weight * loss_pol
+        loss_wdl = torch.zeros((), device=device)
+        if (
+            use_wdl_head
+            and wdl_logits is not None
+            and yw_b is not None
+            and wdl_loss_weight > 0
+        ):
+            loss_wdl = F.cross_entropy(wdl_logits, yw_b)
+            loss = loss + wdl_loss_weight * loss_wdl
 
         loss_distill_val = torch.zeros((), device=device)
         loss_distill_pol = torch.zeros((), device=device)
@@ -531,6 +644,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_loss += loss.item() * bs
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
+        total_wdl_loss += loss_wdl.item() * bs
         total_distill_value += loss_distill_val.item() * bs
         total_distill_policy += loss_distill_pol.item() * bs
         n += bs
@@ -539,40 +653,73 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_loss / n,
         total_val_loss / n,
         total_pol_loss / n,
+        total_wdl_loss / n,
         total_distill_value / n,
         total_distill_policy / n,
     )
 
 
 @torch.no_grad()
-def _eval_epoch(model, loader, device, policy_weight):
+def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False):
     model.eval()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
+    total_wdl_loss = 0.0
+    total_wdl_correct = 0.0
+    total_wdl_count = 0
     total_mae = 0.0
     total_mse = 0.0
     n = 0
 
-    for X_b, yv_b, yp_b in loader:
+    for batch in loader:
+        if len(batch) == 4:
+            X_b, yv_b, yp_b, yw_b = batch
+        else:
+            X_b, yv_b, yp_b = batch
+            yw_b = None
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
+        if yw_b is not None:
+            yw_b = yw_b.to(device)
 
-        value_pred, policy_pred = model(X_b)
+        if use_wdl_head:
+            value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
+        else:
+            value_pred, policy_pred = model(X_b)
+            wdl_logits = None
         loss_val = _power_loss(value_pred, yv_b)
         loss_pol = F.cross_entropy(policy_pred, yp_b)
         loss = loss_val + policy_weight * loss_pol
+        loss_wdl = torch.zeros((), device=device)
+        if use_wdl_head and wdl_logits is not None and yw_b is not None:
+            loss_wdl = F.cross_entropy(wdl_logits, yw_b)
+            preds = torch.argmax(wdl_logits, dim=1)
+            total_wdl_correct += (preds == yw_b).sum().item()
+            total_wdl_count += int(yw_b.numel())
 
         bs = X_b.size(0)
         total_loss += loss.item() * bs
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
+        total_wdl_loss += loss_wdl.item() * bs
         total_mae += (value_pred - yv_b).abs().sum().item()
         total_mse += F.mse_loss(value_pred, yv_b, reduction="sum").item()
         n += bs
 
-    return total_loss / n, total_val_loss / n, total_pol_loss / n, total_mae / n, total_mse / n
+    wdl_acc = None
+    if total_wdl_count > 0:
+        wdl_acc = total_wdl_correct / total_wdl_count
+    return (
+        total_loss / n,
+        total_val_loss / n,
+        total_pol_loss / n,
+        total_mae / n,
+        total_mse / n,
+        total_wdl_loss / n,
+        wdl_acc,
+    )
 
 
 def main():
@@ -614,6 +761,13 @@ def main():
                         help="Temperature for policy distillation")
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
                         choices=["game_result", "mcts_value", "blend", "source_aware"])
+    parser.add_argument("--value-head", type=str, default=VALUE_HEAD_MODE,
+                        choices=["scalar", "wdl"],
+                        help=f"Value head mode (default: {VALUE_HEAD_MODE})")
+    parser.add_argument("--wdl-loss-weight", type=float, default=WDL_LOSS_WEIGHT,
+                        help=f"WDL CE auxiliary loss weight (default: {WDL_LOSS_WEIGHT})")
+    parser.add_argument("--wdl-draw-epsilon", type=float, default=WDL_DRAW_EPSILON,
+                        help=f"Draw band for WDL labels, |target|<=eps (default: {WDL_DRAW_EPSILON})")
     args = parser.parse_args()
 
     if args.warmup_epochs < 0:
@@ -636,6 +790,12 @@ def main():
         raise ValueError("Distillation weights require --distill-from")
     if not (0.0 < args.balanced_black_ratio < 1.0):
         raise ValueError("--balanced-black-ratio must be in (0, 1)")
+    if args.wdl_loss_weight < 0:
+        raise ValueError("--wdl-loss-weight must be >= 0")
+    if args.wdl_draw_epsilon < 0:
+        raise ValueError("--wdl-draw-epsilon must be >= 0")
+    if args.value_head == "scalar" and args.wdl_loss_weight > 0:
+        print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -658,6 +818,7 @@ def main():
         )
 
     game_results_side = to_side_perspective(game_results, positions)
+    wdl_targets = build_wdl_targets(game_results_side, draw_epsilon=args.wdl_draw_epsilon)
 
     # For non-blend targets, compute once. For blend, recompute per epoch.
     if args.target != "blend":
@@ -670,6 +831,15 @@ def main():
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
+    if args.value_head == "wdl":
+        losses = int((wdl_targets == 0).sum())
+        draws = int((wdl_targets == 1).sum())
+        wins = int((wdl_targets == 2).sum())
+        print(
+            "WDL targets: "
+            f"loss={losses} draw={draws} win={wins} "
+            f"(draw_epsilon={args.wdl_draw_epsilon:.3f}, ce_w={args.wdl_loss_weight:.3f})"
+        )
     if args.target == "source_aware":
         print(
             "Source-aware lambda stats: "
@@ -686,6 +856,8 @@ def main():
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
         use_side_specialized_heads=args.use_side_specialized_heads,
+        use_wdl_head=(args.value_head == "wdl"),
+        value_head_mode=args.value_head,
     ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
@@ -694,6 +866,7 @@ def main():
     print(f"Residual blocks: {list(model.residual_block_channels)}")
     print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
     print(f"Side-specialized heads: {model.use_side_specialized_heads}")
+    print(f"Value head mode: {model.value_head_mode} (wdl_head={model.use_wdl_head})")
     resume_loaded_count = None
     resume_skipped = None
     if args.resume_from:
@@ -758,6 +931,10 @@ def main():
         "use_se_blocks": bool(model.use_se_blocks),
         "se_reduction": int(model.se_reduction),
         "use_side_specialized_heads": bool(model.use_side_specialized_heads),
+        "value_head_mode": str(model.value_head_mode),
+        "use_wdl_head": bool(model.use_wdl_head),
+        "wdl_draw_epsilon": float(args.wdl_draw_epsilon),
+        "wdl_loss_weight": float(args.wdl_loss_weight),
         "balanced_sides_train": bool(args.balanced_sides_train),
         "balanced_black_ratio": float(args.balanced_black_ratio),
         "train_only_side": args.train_only_side,
@@ -832,8 +1009,14 @@ def main():
             )
         else:
             epoch_train_idx = base_train_idx
-        val_loader = _make_loader(positions[val_idx], epoch_targets[val_idx],
-                                  policies[val_idx], args.batch_size, shuffle=False)
+        val_loader = _make_loader(
+            positions[val_idx],
+            epoch_targets[val_idx],
+            policies[val_idx],
+            args.batch_size,
+            shuffle=False,
+            y_wdl=wdl_targets[val_idx] if args.value_head == "wdl" else None,
+        )
 
         # Keep policy labels aligned with selected train indices.
         train_loader = _make_loader(
@@ -843,17 +1026,21 @@ def main():
             args.batch_size,
             shuffle=True,
             generator=train_gen,
+            y_wdl=wdl_targets[epoch_train_idx] if args.value_head == "wdl" else None,
         )
 
-        train_loss, train_v, train_p, train_dv, train_dp = _train_epoch(
+        train_loss, train_v, train_p, train_wdl, train_dv, train_dp = _train_epoch(
             model, train_loader, optimizer, device, args.policy_loss_weight, args.grad_clip,
             teacher_model=teacher_model,
             distill_value_weight=args.distill_value_weight,
             distill_policy_weight=args.distill_policy_weight,
             distill_temperature=args.distill_temperature,
+            use_wdl_head=(args.value_head == "wdl"),
+            wdl_loss_weight=args.wdl_loss_weight if args.value_head == "wdl" else 0.0,
         )
-        val_loss, val_v, val_p, val_mae, val_mse = _eval_epoch(
+        val_loss, val_v, val_p, val_mae, val_mse, val_wdl, val_wdl_acc = _eval_epoch(
             model, val_loader, device, args.policy_loss_weight,
+            use_wdl_head=(args.value_head == "wdl"),
         )
         if epoch > args.warmup_epochs:
             scheduler.step()
@@ -863,6 +1050,10 @@ def main():
         distill_str = ""
         if distill_enabled:
             distill_str = f"  distill(v={train_dv:.4f} p={train_dp:.4f})"
+        wdl_str = ""
+        if args.value_head == "wdl":
+            acc_str = f"{val_wdl_acc:.1%}" if val_wdl_acc is not None else "n/a"
+            wdl_str = f"  wdl(train_ce={train_wdl:.4f} val_ce={val_wdl:.4f} val_acc={acc_str})"
         balance_str = ""
         if args.balanced_sides_train:
             balance_str = f" balanced(b={args.balanced_black_ratio:.2f})"
@@ -872,13 +1063,14 @@ def main():
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{lam_str}{distill_str}{balance_str}{side_str}")
+              f"lr={lr:.1e}{lam_str}{distill_str}{wdl_str}{balance_str}{side_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
             "train_samples": int(len(epoch_train_idx)),
             "train_total_loss": float(train_loss),
             "train_value_power_loss": float(train_v),
             "train_policy_ce": float(train_p),
+            "train_wdl_ce": float(train_wdl),
             "train_distill_value_mse": float(train_dv),
             "train_distill_policy_kl": float(train_dp),
             "val_total_loss": float(val_loss),
@@ -886,6 +1078,8 @@ def main():
             "val_value_mse": float(val_mse),
             "val_policy_ce": float(val_p),
             "val_value_mae": float(val_mae),
+            "val_wdl_ce": float(val_wdl),
+            "val_wdl_accuracy": float(val_wdl_acc) if val_wdl_acc is not None else None,
             "lr": float(lr),
             "blend_lambda": float(lam) if lam is not None else None,
         })
@@ -906,10 +1100,17 @@ def main():
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
     # Use final epoch targets for test eval
     final_targets = epoch_targets if args.target == "blend" else value_targets
-    test_loader = _make_loader(positions[test_idx], final_targets[test_idx],
-                               policies[test_idx], args.batch_size, shuffle=False)
-    test_loss, test_v, test_p, test_mae, test_mse = _eval_epoch(
+    test_loader = _make_loader(
+        positions[test_idx],
+        final_targets[test_idx],
+        policies[test_idx],
+        args.batch_size,
+        shuffle=False,
+        y_wdl=wdl_targets[test_idx] if args.value_head == "wdl" else None,
+    )
+    test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc = _eval_epoch(
         model, test_loader, device, args.policy_loss_weight,
+        use_wdl_head=(args.value_head == "wdl"),
     )
 
     print("\n--- Test set evaluation ---")
@@ -918,6 +1119,10 @@ def main():
     print(f"Value true MSE:   {test_mse:.4f}")
     print(f"Policy CE:  {test_p:.4f}")
     print(f"Value MAE:  {test_mae:.4f}")
+    if args.value_head == "wdl":
+        acc_str = f"{test_wdl_acc:.1%}" if test_wdl_acc is not None else "n/a"
+        print(f"WDL CE:     {test_wdl:.4f}")
+        print(f"WDL Acc:    {acc_str}")
 
     # Value sign-accuracy
     model.eval()
@@ -941,6 +1146,8 @@ def main():
         "value_true_mse": float(test_mse),
         "policy_ce": float(test_p),
         "value_mae": float(test_mae),
+        "wdl_ce": float(test_wdl),
+        "wdl_accuracy": float(test_wdl_acc) if test_wdl_acc is not None else None,
         "winner_sign_accuracy_non_draw": float(acc) if non_draw.sum() > 0 else None,
     }
     run_metadata["best_val_loss"] = float(best_val_loss)

@@ -274,7 +274,8 @@ def _bool_optional_flag(flag_name, enabled):
 
 
 def _build_train_cmd_base(train_target, epochs, data_dir, model_dir, seed,
-                          se_reduction, use_se_blocks, use_side_specialized_heads):
+                          se_reduction, use_se_blocks, use_side_specialized_heads,
+                          value_head, wdl_loss_weight, wdl_draw_epsilon):
     return [
         sys.executable, "train.py",
         "--target", train_target,
@@ -285,6 +286,9 @@ def _build_train_cmd_base(train_target, epochs, data_dir, model_dir, seed,
         "--se-reduction", str(se_reduction),
         _bool_optional_flag("use-se-blocks", use_se_blocks),
         _bool_optional_flag("use-side-specialized-heads", use_side_specialized_heads),
+        "--value-head", str(value_head),
+        "--wdl-loss-weight", str(wdl_loss_weight),
+        "--wdl-draw-epsilon", str(wdl_draw_epsilon),
     ]
 
 
@@ -979,6 +983,10 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--adaptive-min-normal-games must be >= 0")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
+    if args.wdl_loss_weight < 0:
+        raise ValueError("--wdl-loss-weight must be >= 0")
+    if args.wdl_draw_epsilon < 0:
+        raise ValueError("--wdl-draw-epsilon must be >= 0")
     if human_data_weight < 1:
         raise ValueError("--human-data-weight must be >= 1")
     if humanseed_data_weight < 1:
@@ -1090,6 +1098,13 @@ def main():
     parser.add_argument("--train-target", type=str, default="source_aware",
                         choices=["mcts_value", "game_result", "blend", "source_aware"],
                         help="Training target passed to train.py")
+    parser.add_argument("--value-head", type=str, default="scalar",
+                        choices=["scalar", "wdl"],
+                        help="Value head mode passed to train.py")
+    parser.add_argument("--wdl-loss-weight", type=float, default=0.5,
+                        help="WDL CE auxiliary loss weight passed to train.py")
+    parser.add_argument("--wdl-draw-epsilon", type=float, default=0.05,
+                        help="Draw band epsilon for WDL labels passed to train.py")
     parser.add_argument("--warmup-epochs", type=int, default=None,
                         help="Warmup epochs when fine-tuning (default: from config)")
     parser.add_argument("--warmup-start-factor", type=float, default=None,
@@ -1364,6 +1379,9 @@ def main():
                 se_reduction=se_reduction,
                 use_se_blocks=use_se_blocks,
                 use_side_specialized_heads=use_side_specialized_heads,
+                value_head=args.value_head,
+                wdl_loss_weight=args.wdl_loss_weight,
+                wdl_draw_epsilon=args.wdl_draw_epsilon,
             ),
             "Bootstrap: training initial model",
         )
@@ -1518,6 +1536,13 @@ def main():
     if args.black_focus_scripted_black:
         print("  BF script:   scripted Black enabled for black-focus generation")
     print(f"  Target:      {args.train_target}")
+    print(
+        f"  Value head:  {args.value_head}"
+        + (
+            f" (wdl_ce={args.wdl_loss_weight:.2f}, draw_eps={args.wdl_draw_epsilon:.3f})"
+            if args.value_head == "wdl" else ""
+        )
+    )
     if selfplay_sims_jitter_pct > 0:
         print(f"  Sim jitter:  +/- {100 * selfplay_sims_jitter_pct:.0f}% (self-play generation only)")
     if args.adaptive_curriculum:
@@ -2002,6 +2027,9 @@ def main():
             se_reduction=se_reduction,
             use_se_blocks=use_se_blocks,
             use_side_specialized_heads=use_side_specialized_heads,
+            value_head=args.value_head,
+            wdl_loss_weight=args.wdl_loss_weight,
+            wdl_draw_epsilon=args.wdl_draw_epsilon,
         )
         train_cmd.extend([
             "--policy-loss-weight", str(args.primary_policy_loss_weight),
@@ -2032,6 +2060,9 @@ def main():
                 se_reduction=se_reduction,
                 use_se_blocks=use_se_blocks,
                 use_side_specialized_heads=use_side_specialized_heads,
+                value_head=args.value_head,
+                wdl_loss_weight=args.wdl_loss_weight,
+                wdl_draw_epsilon=args.wdl_draw_epsilon,
             )
             consolidation_cmd.extend([
                 "--batch-size", str(args.consolidation_batch_size),

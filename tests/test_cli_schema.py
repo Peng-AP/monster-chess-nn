@@ -25,6 +25,15 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("--black-focus-gate-threshold", out)
         self.assertIn("--human-seed-dir", out)
+        self.assertIn("--value-head", out)
+        self.assertIn("--wdl-loss-weight", out)
+
+    def test_train_help_contains_wdl_flags(self):
+        code, out = _run_help("train.py")
+        self.assertEqual(code, 0)
+        self.assertIn("--value-head", out)
+        self.assertIn("--wdl-loss-weight", out)
+        self.assertIn("--wdl-draw-epsilon", out)
 
     def test_data_processor_help_contains_expected_flags(self):
         code, out = _run_help("data_processor.py")
