@@ -75,6 +75,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 - Implemented with stream-specific train weighting.
 - Side-aware data retention now preserves in-check positions for the active
   training side (while still skipping many non-training-side check positions).
+- Black-focus generation defaults to scripted Black policy in iterate runtime
+  settings (override-able by CLI), improving targeted Black-side signal.
 
 ### 1.4 Per-source quality audit artifact: `complete`
 

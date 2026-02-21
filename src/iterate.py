@@ -867,6 +867,7 @@ def _derive_runtime_settings(args, *,
                              humanseed_data_weight_default, blackfocus_data_weight_default,
                              black_iter_quota_selfplay_default, black_iter_quota_human_default,
                              black_iter_quota_blackfocus_default, black_iter_quota_humanseed_default,
+                             black_focus_scripted_black_default,
                              max_generation_age_default, min_nonhuman_plies_default,
                              min_humanseed_policy_entropy_default):
     base_seed = args.seed if args.seed is not None else random_seed
@@ -912,6 +913,10 @@ def _derive_runtime_settings(args, *,
     black_iter_blackfocus_data_weight = (
         args.black_iter_blackfocus_data_weight
         if args.black_iter_blackfocus_data_weight is not None else blackfocus_data_weight
+    )
+    black_focus_scripted_black = (
+        args.black_focus_scripted_black
+        if args.black_focus_scripted_black is not None else black_focus_scripted_black_default
     )
     black_iter_quota_selfplay = (
         args.black_iter_quota_selfplay
@@ -995,6 +1000,7 @@ def _derive_runtime_settings(args, *,
         "black_iter_human_data_weight": black_iter_human_data_weight,
         "black_iter_humanseed_data_weight": black_iter_humanseed_data_weight,
         "black_iter_blackfocus_data_weight": black_iter_blackfocus_data_weight,
+        "black_focus_scripted_black": bool(black_focus_scripted_black),
         "black_iter_quota_selfplay": black_iter_quota_selfplay,
         "black_iter_quota_human": black_iter_quota_human,
         "black_iter_quota_blackfocus": black_iter_quota_blackfocus,
@@ -1024,6 +1030,7 @@ def _validate_runtime_settings(args, settings):
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    black_focus_scripted_black = settings["black_focus_scripted_black"]
     black_iter_quota_selfplay = settings["black_iter_quota_selfplay"]
     black_iter_quota_human = settings["black_iter_quota_human"]
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
@@ -1224,8 +1231,8 @@ def main():
                         help="Curriculum tier upper bound for black-focus generation (1-indexed)")
     parser.add_argument("--black-focus-live-results", action=argparse.BooleanOptionalAction, default=True,
                         help="Use live game outcomes for black-focus generation labels (disable to use forced tier labels)")
-    parser.add_argument("--black-focus-scripted-black", action="store_true",
-                        help="Use scripted Black play for black-focus curriculum generation")
+    parser.add_argument("--black-focus-scripted-black", action=argparse.BooleanOptionalAction, default=None,
+                        help="Use scripted Black play for black-focus curriculum generation (default: from config)")
     parser.add_argument("--human-seed-simulations", type=int, default=None,
                         help="MCTS simulations for human-seeded games (default: normal sims)")
     parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
@@ -1452,6 +1459,7 @@ def main():
         BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS, BLACK_ITER_SOURCE_QUOTA_HUMANSEED,
         DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
         DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
+        BLACK_FOCUS_SCRIPTED_BLACK,
         USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
     )
     settings = _derive_runtime_settings(
@@ -1475,6 +1483,7 @@ def main():
         black_iter_quota_human_default=BLACK_ITER_SOURCE_QUOTA_HUMAN,
         black_iter_quota_blackfocus_default=BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS,
         black_iter_quota_humanseed_default=BLACK_ITER_SOURCE_QUOTA_HUMANSEED,
+        black_focus_scripted_black_default=BLACK_FOCUS_SCRIPTED_BLACK,
         max_generation_age_default=DATA_RETENTION_MAX_GENERATION_AGE,
         min_nonhuman_plies_default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
         min_humanseed_policy_entropy_default=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
@@ -1613,7 +1622,7 @@ def main():
         "black_focus_tier_min": args.black_focus_tier_min,
         "black_focus_tier_max": args.black_focus_tier_max,
         "black_focus_live_results": bool(args.black_focus_live_results),
-        "black_focus_scripted_black": bool(args.black_focus_scripted_black),
+        "black_focus_scripted_black": bool(black_focus_scripted_black),
         "black_focus_arena_tier_min": args.black_focus_arena_tier_min,
         "black_focus_arena_tier_max": args.black_focus_arena_tier_max,
         "human_seed_games": args.human_seed_games,
@@ -1735,7 +1744,7 @@ def main():
     print(
         f"  BF labels:   {'live outcomes' if args.black_focus_live_results else 'forced curriculum tiers'}"
     )
-    if args.black_focus_scripted_black:
+    if black_focus_scripted_black:
         print("  BF script:   scripted Black enabled for black-focus generation")
     print(f"  Target:      {args.train_target}")
     print(
@@ -2124,7 +2133,7 @@ def main():
                 bf_cmd.extend(["--curriculum-tier-min", str(args.black_focus_tier_min)])
             if args.black_focus_tier_max is not None:
                 bf_cmd.extend(["--curriculum-tier-max", str(args.black_focus_tier_max)])
-            if args.black_focus_scripted_black:
+            if black_focus_scripted_black:
                 bf_cmd.append("--scripted-black")
             blackfocus_sim_bounds = _sim_bounds(effective_black_focus_sims)
             if blackfocus_sim_bounds is not None:
