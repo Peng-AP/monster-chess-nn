@@ -334,6 +334,8 @@ def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only
 def _resolve_train_result_filter(mode, alternating, train_side):
     m = str(mode)
     if m == "auto":
+        if alternating and str(train_side) == "black":
+            return "nonloss"
         return "any"
     return m
 
@@ -882,10 +884,53 @@ def _resolve_blackfocus_filters(base_filter, black_iter_override):
     return base, str(black_iter_override)
 
 
+def _count_human_record_sides(dir_path):
+    """Count current_player side labels in JSONL records under dir_path."""
+    counts = {"white": 0, "black": 0, "unknown": 0, "files": 0}
+    if not dir_path or not os.path.isdir(dir_path):
+        return counts
+    for name in sorted(os.listdir(dir_path)):
+        if not name.endswith(".jsonl"):
+            continue
+        path = os.path.join(dir_path, name)
+        counts["files"] += 1
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        counts["unknown"] += 1
+                        continue
+                    if not isinstance(obj, dict):
+                        counts["unknown"] += 1
+                        continue
+                    cp = str(obj.get("current_player", "")).strip().lower()
+                    if cp in ("white", "black"):
+                        counts[cp] += 1
+                    else:
+                        counts["unknown"] += 1
+        except Exception:
+            continue
+    return counts
+
+
 def _apply_black_human_quota_adjustment(args, *, black_iter_quota_selfplay,
                                         black_iter_quota_human, black_iter_quota_blackfocus,
-                                        black_iter_quota_humanseed):
+                                        black_iter_quota_humanseed,
+                                        allow_auto_adjust=True):
     """Auto-enable human quota in black iterations when human-as-black mode is on."""
+    if not bool(allow_auto_adjust):
+        return (
+            black_iter_quota_selfplay,
+            black_iter_quota_human,
+            black_iter_quota_blackfocus,
+            black_iter_quota_humanseed,
+            False,
+        )
     if not bool(args.black_human_as_ai):
         return (
             black_iter_quota_selfplay,
@@ -1022,6 +1067,12 @@ def _derive_runtime_settings(args, *,
         args.black_iter_quota_humanseed
         if args.black_iter_quota_humanseed is not None else black_iter_quota_humanseed_default
     )
+    human_record_side_counts = (
+        _count_human_record_sides(args.human_seed_dir)
+        if bool(args.black_human_as_ai)
+        else {"white": 0, "black": 0, "unknown": 0, "files": 0}
+    )
+    black_human_quota_auto_allowed = int(human_record_side_counts.get("black", 0)) > 0
     (
         black_iter_quota_selfplay,
         black_iter_quota_human,
@@ -1034,6 +1085,7 @@ def _derive_runtime_settings(args, *,
         black_iter_quota_human=black_iter_quota_human,
         black_iter_quota_blackfocus=black_iter_quota_blackfocus,
         black_iter_quota_humanseed=black_iter_quota_humanseed,
+        allow_auto_adjust=black_human_quota_auto_allowed,
     )
     max_generation_age = (
         args.max_generation_age
@@ -1107,6 +1159,8 @@ def _derive_runtime_settings(args, *,
         "black_iter_quota_blackfocus": black_iter_quota_blackfocus,
         "black_iter_quota_humanseed": black_iter_quota_humanseed,
         "black_human_quota_auto_adjusted": black_human_quota_auto_adjusted,
+        "black_human_quota_auto_allowed": black_human_quota_auto_allowed,
+        "human_record_side_counts": human_record_side_counts,
         "max_generation_age": max_generation_age,
         "min_nonhuman_plies": min_nonhuman_plies,
         "min_humanseed_policy_entropy": min_humanseed_policy_entropy,
@@ -1138,6 +1192,8 @@ def _validate_runtime_settings(args, settings):
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
     black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
     black_human_quota_auto_adjusted = settings["black_human_quota_auto_adjusted"]
+    black_human_quota_auto_allowed = settings["black_human_quota_auto_allowed"]
+    human_record_side_counts = settings["human_record_side_counts"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1615,6 +1671,8 @@ def main():
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
     black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
     black_human_quota_auto_adjusted = settings["black_human_quota_auto_adjusted"]
+    black_human_quota_auto_allowed = settings["black_human_quota_auto_allowed"]
+    human_record_side_counts = settings["human_record_side_counts"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1751,6 +1809,8 @@ def main():
         "source_quotas": {
             "enabled": bool(args.use_source_quotas),
             "black_human_auto_adjusted": bool(black_human_quota_auto_adjusted),
+            "black_human_auto_allowed": bool(black_human_quota_auto_allowed),
+            "human_record_side_counts": human_record_side_counts,
             "ratios": {
                 "selfplay": float(args.quota_selfplay),
                 "human": float(args.quota_human),
@@ -1892,6 +1952,14 @@ def main():
         f"consolidation={args.consolidation_train_only_side}"
     )
     print(f"  Human->Black:{'on' if args.black_human_as_ai else 'off'}")
+    if args.black_human_as_ai:
+        print(
+            "               human records: "
+            f"white={int(human_record_side_counts.get('white', 0))}, "
+            f"black={int(human_record_side_counts.get('black', 0))}"
+        )
+        if not black_human_quota_auto_allowed:
+            print("               no black-to-move human records; black-iter human quota auto-adjust disabled")
     print(
         f"  Pol weight:  primary={args.primary_policy_loss_weight}, "
         f"consolidation={args.consolidation_policy_loss_weight}"

@@ -587,6 +587,15 @@ def _filter_human_indices_as_black_by_result(train_idx, game_results_white, mode
     raise ValueError(f"Unknown result filter mode: {mode}")
 
 
+def _select_human_source_black_indices(train_idx, source_ids, positions):
+    """Return human-source indices restricted to Black-to-move positions."""
+    if source_ids is None or len(train_idx) == 0:
+        return train_idx[:0]
+    sides = _side_labels_from_positions(positions[train_idx])  # True=white, False=black
+    mask = (source_ids[train_idx] == SOURCE_ID_HUMAN) & (~sides)
+    return train_idx[mask]
+
+
 def _policy_distill_kl(student_logits, teacher_logits, temperature):
     """KL(teacher || student) distillation loss with temperature scaling."""
     t = float(temperature)
@@ -892,7 +901,16 @@ def main():
         )
     if source_ids is not None:
         human_count = int((source_ids == SOURCE_ID_HUMAN).sum())
-        print(f"Source IDs loaded: yes (human samples={human_count})")
+        human_black_count = int(
+            (
+                (source_ids == SOURCE_ID_HUMAN)
+                & (~_side_labels_from_positions(positions))
+            ).sum()
+        )
+        print(
+            "Source IDs loaded: yes "
+            f"(human samples={human_count}, human black-to-move={human_black_count})"
+        )
     else:
         print("Source IDs loaded: no (legacy processed data format)")
     print(f"Policy loss weight: {args.policy_loss_weight}")
@@ -1069,7 +1087,9 @@ def main():
                 and args.black_include_human_source
                 and source_ids is not None
             ):
-                human_idx = train_idx[source_ids[train_idx] == SOURCE_ID_HUMAN]
+                human_idx = _select_human_source_black_indices(
+                    train_idx, source_ids, positions
+                )
                 if args.train_side_result_filter != "any":
                     human_idx = _filter_human_indices_as_black_by_result(
                         human_idx, game_results, args.train_side_result_filter
@@ -1080,13 +1100,13 @@ def main():
                     )
                     if not black_human_include_logged:
                         print(
-                            "Including human source samples while training black: "
+                            "Including human source black-to-move samples while training black: "
                             f"{len(human_idx)} positions"
                         )
                         black_human_include_logged = True
                 elif not black_human_include_logged:
                     print(
-                        "Warning: --black-include-human-source enabled but no eligible human samples "
+                        "Warning: --black-include-human-source enabled but no eligible human black-to-move samples "
                         "matched current filters"
                     )
                     black_human_include_logged = True

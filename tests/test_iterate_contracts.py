@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,6 +74,39 @@ class IterateContracts(unittest.TestCase):
         self.assertAlmostEqual(q_blackfocus, 0.35)
         self.assertAlmostEqual(q_humanseed, 0.20)
 
+    def test_black_human_quota_auto_adjustment_requires_allow_flag(self):
+        args = SimpleNamespace(
+            black_human_as_ai=True,
+            use_source_quotas=True,
+            black_iter_quota_human=None,
+            quota_human=0.25,
+        )
+        q_selfplay, q_human, q_blackfocus, q_humanseed, adjusted = it._apply_black_human_quota_adjustment(
+            args,
+            black_iter_quota_selfplay=0.45,
+            black_iter_quota_human=0.0,
+            black_iter_quota_blackfocus=0.35,
+            black_iter_quota_humanseed=0.20,
+            allow_auto_adjust=False,
+        )
+        self.assertFalse(adjusted)
+        self.assertAlmostEqual(q_human, 0.0)
+        self.assertAlmostEqual(q_selfplay, 0.45)
+        self.assertAlmostEqual(q_blackfocus, 0.35)
+        self.assertAlmostEqual(q_humanseed, 0.20)
+
+    def test_count_human_record_sides_counts_white_and_black(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "sample.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write('{"current_player":"white"}\n')
+                f.write('{"current_player":"black"}\n')
+                f.write('{"current_player":"white"}\n')
+            counts = it._count_human_record_sides(td)
+            self.assertEqual(counts["files"], 1)
+            self.assertEqual(counts["white"], 2)
+            self.assertEqual(counts["black"], 1)
+
     def test_resolve_blackfocus_filters_defaults_black_iter_to_nonloss(self):
         base, black_iter = it._resolve_blackfocus_filters("any", None)
         self.assertEqual(base, "any")
@@ -84,7 +118,7 @@ class IterateContracts(unittest.TestCase):
         self.assertEqual(black_iter, "win")
 
     def test_resolve_train_result_filter_auto(self):
-        self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="black"), "any")
+        self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="black"), "nonloss")
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="white"), "any")
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=False, train_side="both"), "any")
         self.assertEqual(it._resolve_train_result_filter("win", alternating=True, train_side="black"), "win")

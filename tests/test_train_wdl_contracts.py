@@ -87,6 +87,33 @@ class TrainWdlContracts(unittest.TestCase):
             [3, 4],
         )
 
+    def test_filter_human_indices_as_black_by_result_modes(self):
+        idx = np.array([0, 1, 2, 3, 4], dtype=np.int64)
+        game_results_white = np.array([1.0, 0.2, 0.0, -0.3, -1.0], dtype=np.float32)
+        self.assertEqual(
+            train._filter_human_indices_as_black_by_result(idx, game_results_white, "any").tolist(),
+            [0, 1, 2, 3, 4],
+        )
+        self.assertEqual(
+            train._filter_human_indices_as_black_by_result(idx, game_results_white, "nonloss").tolist(),
+            [2, 3, 4],
+        )
+        self.assertEqual(
+            train._filter_human_indices_as_black_by_result(idx, game_results_white, "win").tolist(),
+            [3, 4],
+        )
+
+    def test_select_human_source_black_indices(self):
+        train_idx = np.array([0, 1, 2, 3], dtype=np.int64)
+        source_ids = np.array([1, 1, 0, 1], dtype=np.int8)  # 1=human
+        positions = np.zeros((4, 8, 8, train.IN_CHANNELS), dtype=np.float32)
+        positions[0, :, :, train.TURN_LAYER] = 1.0   # white to move (human)
+        positions[1, :, :, train.TURN_LAYER] = -1.0  # black to move (human)
+        positions[2, :, :, train.TURN_LAYER] = -1.0  # black to move (non-human)
+        positions[3, :, :, train.TURN_LAYER] = -1.0  # black to move (human)
+        out = train._select_human_source_black_indices(train_idx, source_ids, positions)
+        self.assertEqual(out.tolist(), [1, 3])
+
 
 if __name__ == "__main__":
     unittest.main()
