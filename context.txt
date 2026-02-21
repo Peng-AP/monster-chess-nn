@@ -39,6 +39,8 @@ Loop in `src/iterate.py`:
 - Source quota controls + source-aware target lambdas
 - Source quotas now rebalance to available per-source train capacity
   (prevents large train-cap underfill when minority sources are scarce)
+- Human source dedupe under quotas is removed, so human stream weighting now
+  truly oversamples the available human games; humanseed dedupe remains on
 - Black-iteration source-quota profile controls (separate quota ratios for
   alternating Black passes)
 - Black-focus generation now defaults to non-scripted Black play in iterate

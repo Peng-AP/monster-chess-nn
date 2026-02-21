@@ -260,7 +260,7 @@ def _estimate_train_source_capacity(train_games, augment, human_repeat,
                                     dedupe_positions):
     """Estimate max train positions available per source before quota limits."""
     cap = {s: 0 for s in SOURCE_ORDER}
-    dedupe_sets = {"human": set(), "humanseed": set()}
+    dedupe_sets = {"humanseed": set()}
     aug_mult = 2 if augment else 1
 
     for game in train_games:
@@ -955,7 +955,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                     break
                 is_white = rec["current_player"] == "white"
                 pos_key = None
-                dedupe_active = dedupe_positions and source_kind in ("human", "humanseed")
+                dedupe_active = dedupe_positions and source_kind == "humanseed"
                 if dedupe_active:
                     pos_key = f"{rec['fen']}|{rec['current_player']}"
                     if pos_key in seen_positions:

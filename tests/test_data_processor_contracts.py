@@ -147,12 +147,13 @@ class DataProcessorContracts(unittest.TestCase):
         self.assertEqual(int(rebalanced["human"]), 2)
         self.assertEqual(int(rebalanced["selfplay"]), 8)
 
-    def test_estimate_source_capacity_respects_dedupe_for_human(self):
+    def test_estimate_source_capacity_dedupes_humanseed_only(self):
         rec_w = _record("white", 1)
         rec_b = _record("black", -1)
         games = [
             _game("h1", "human", 1, [rec_w, rec_w, rec_b], generation=None),
-            _game("h2", "human", 1, [rec_w], generation=None),
+            _game("h2", "humanseed", 1, [rec_w, rec_w, rec_b], generation=1),
+            _game("h3", "humanseed", 1, [rec_w], generation=1),
             _game("s1", "selfplay", 1, [rec_w, rec_b], generation=1),
         ]
         cap = dp._estimate_train_source_capacity(
@@ -163,7 +164,8 @@ class DataProcessorContracts(unittest.TestCase):
             humanseed_repeat=1,
             dedupe_positions=True,
         )
-        self.assertEqual(int(cap["human"]), 2)
+        self.assertEqual(int(cap["human"]), 24)  # repeats now apply to human source
+        self.assertEqual(int(cap["humanseed"]), 2)  # deduped by position for humanseed
         self.assertEqual(int(cap["selfplay"]), 2)
 
     def test_convert_games_respects_source_quotas(self):
