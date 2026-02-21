@@ -55,7 +55,8 @@ Loop in `src/iterate.py`:
 - Configurable backbone/policy width + optional SE + side heads
 - Optional WDL value-head mode with configurable draw band and auxiliary CE loss
 - Side-result filtering for side-focused training (auto nonloss filter on
-  alternating Black iterations)
+  alternating Black iterations is now relaxed to default `any` with explicit
+  override flags retained
 - Side-aware check-position retention (keep in-check samples for active
   training side)
 - Processor retention policy with explicit thresholds:

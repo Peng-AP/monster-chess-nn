@@ -331,8 +331,6 @@ def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only
 def _resolve_train_result_filter(mode, alternating, train_side):
     m = str(mode)
     if m == "auto":
-        if alternating and train_side == "black":
-            return "nonloss"
         return "any"
     return m
 

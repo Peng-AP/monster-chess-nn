@@ -24,7 +24,7 @@ class IterateContracts(unittest.TestCase):
         self.assertEqual(black_iter, "win")
 
     def test_resolve_train_result_filter_auto(self):
-        self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="black"), "nonloss")
+        self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="black"), "any")
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="white"), "any")
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=False, train_side="both"), "any")
         self.assertEqual(it._resolve_train_result_filter("win", alternating=True, train_side="black"), "win")
