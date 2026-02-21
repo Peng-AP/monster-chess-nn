@@ -784,6 +784,18 @@ def _print_gate_line(args, gate_info):
     print(f"  Gate:  score={gate_info['score']:.3f}  threshold={args.gate_threshold:.3f}  games={gate_info['total_games']}")
 
 
+def _resolve_blackfocus_filters(base_filter, black_iter_override):
+    """Resolve base/black-iteration blackfocus result filters.
+
+    Default behavior is intentionally stricter for black-training iterations
+    because blackfocus data is meant to reinforce Black survivability.
+    """
+    base = str(base_filter)
+    if black_iter_override is None:
+        return base, "nonloss"
+    return base, str(black_iter_override)
+
+
 def _derive_runtime_settings(args, *,
                              random_seed, sliding_window, position_budget_default,
                              position_budget_max_default, processed_position_cap,
@@ -836,10 +848,9 @@ def _derive_runtime_settings(args, *,
         args.black_iter_blackfocus_data_weight
         if args.black_iter_blackfocus_data_weight is not None else blackfocus_data_weight
     )
-    blackfocus_result_filter = args.blackfocus_result_filter
-    black_iter_blackfocus_result_filter = (
-        args.black_iter_blackfocus_result_filter
-        if args.black_iter_blackfocus_result_filter is not None else blackfocus_result_filter
+    blackfocus_result_filter, black_iter_blackfocus_result_filter = _resolve_blackfocus_filters(
+        args.blackfocus_result_filter,
+        args.black_iter_blackfocus_result_filter,
     )
     if position_budget is not None and position_budget <= 0:
         position_budget = None

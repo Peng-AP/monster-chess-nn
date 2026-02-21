@@ -13,6 +13,16 @@ import iterate as it
 
 
 class IterateContracts(unittest.TestCase):
+    def test_resolve_blackfocus_filters_defaults_black_iter_to_nonloss(self):
+        base, black_iter = it._resolve_blackfocus_filters("any", None)
+        self.assertEqual(base, "any")
+        self.assertEqual(black_iter, "nonloss")
+
+    def test_resolve_blackfocus_filters_honors_explicit_override(self):
+        base, black_iter = it._resolve_blackfocus_filters("any", "win")
+        self.assertEqual(base, "any")
+        self.assertEqual(black_iter, "win")
+
     def test_apply_promotion_guards_rejects_low_black_score(self):
         args = SimpleNamespace(
             epochs=4,
