@@ -882,6 +882,69 @@ def _resolve_blackfocus_filters(base_filter, black_iter_override):
     return base, str(black_iter_override)
 
 
+def _apply_black_human_quota_adjustment(args, *, black_iter_quota_selfplay,
+                                        black_iter_quota_human, black_iter_quota_blackfocus,
+                                        black_iter_quota_humanseed):
+    """Auto-enable human quota in black iterations when human-as-black mode is on."""
+    if not bool(args.black_human_as_ai):
+        return (
+            black_iter_quota_selfplay,
+            black_iter_quota_human,
+            black_iter_quota_blackfocus,
+            black_iter_quota_humanseed,
+            False,
+        )
+    if not bool(args.use_source_quotas):
+        return (
+            black_iter_quota_selfplay,
+            black_iter_quota_human,
+            black_iter_quota_blackfocus,
+            black_iter_quota_humanseed,
+            False,
+        )
+    if args.black_iter_quota_human is not None:
+        return (
+            black_iter_quota_selfplay,
+            black_iter_quota_human,
+            black_iter_quota_blackfocus,
+            black_iter_quota_humanseed,
+            False,
+        )
+    base_human_quota = float(args.quota_human)
+    if black_iter_quota_human > 0 or base_human_quota <= 0:
+        return (
+            black_iter_quota_selfplay,
+            black_iter_quota_human,
+            black_iter_quota_blackfocus,
+            black_iter_quota_humanseed,
+            False,
+        )
+    black_iter_quota_human = base_human_quota
+    remaining = base_human_quota
+    reducible = [
+        ("selfplay", float(black_iter_quota_selfplay)),
+        ("humanseed", float(black_iter_quota_humanseed)),
+        ("blackfocus", float(black_iter_quota_blackfocus)),
+    ]
+    reduced = {}
+    for source, value in reducible:
+        take = min(value, remaining)
+        reduced[source] = take
+        remaining -= take
+        if remaining <= 0:
+            break
+    black_iter_quota_selfplay = max(0.0, float(black_iter_quota_selfplay) - reduced.get("selfplay", 0.0))
+    black_iter_quota_humanseed = max(0.0, float(black_iter_quota_humanseed) - reduced.get("humanseed", 0.0))
+    black_iter_quota_blackfocus = max(0.0, float(black_iter_quota_blackfocus) - reduced.get("blackfocus", 0.0))
+    return (
+        black_iter_quota_selfplay,
+        black_iter_quota_human,
+        black_iter_quota_blackfocus,
+        black_iter_quota_humanseed,
+        True,
+    )
+
+
 def _derive_runtime_settings(args, *,
                              random_seed, sliding_window, position_budget_default,
                              position_budget_max_default, processed_position_cap,
@@ -959,6 +1022,19 @@ def _derive_runtime_settings(args, *,
         args.black_iter_quota_humanseed
         if args.black_iter_quota_humanseed is not None else black_iter_quota_humanseed_default
     )
+    (
+        black_iter_quota_selfplay,
+        black_iter_quota_human,
+        black_iter_quota_blackfocus,
+        black_iter_quota_humanseed,
+        black_human_quota_auto_adjusted,
+    ) = _apply_black_human_quota_adjustment(
+        args,
+        black_iter_quota_selfplay=black_iter_quota_selfplay,
+        black_iter_quota_human=black_iter_quota_human,
+        black_iter_quota_blackfocus=black_iter_quota_blackfocus,
+        black_iter_quota_humanseed=black_iter_quota_humanseed,
+    )
     max_generation_age = (
         args.max_generation_age
         if args.max_generation_age is not None else max_generation_age_default
@@ -1030,6 +1106,7 @@ def _derive_runtime_settings(args, *,
         "black_iter_quota_human": black_iter_quota_human,
         "black_iter_quota_blackfocus": black_iter_quota_blackfocus,
         "black_iter_quota_humanseed": black_iter_quota_humanseed,
+        "black_human_quota_auto_adjusted": black_human_quota_auto_adjusted,
         "max_generation_age": max_generation_age,
         "min_nonhuman_plies": min_nonhuman_plies,
         "min_humanseed_policy_entropy": min_humanseed_policy_entropy,
@@ -1060,6 +1137,7 @@ def _validate_runtime_settings(args, settings):
     black_iter_quota_human = settings["black_iter_quota_human"]
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
     black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
+    black_human_quota_auto_adjusted = settings["black_human_quota_auto_adjusted"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1536,6 +1614,7 @@ def main():
     black_iter_quota_human = settings["black_iter_quota_human"]
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
     black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
+    black_human_quota_auto_adjusted = settings["black_human_quota_auto_adjusted"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1671,6 +1750,7 @@ def main():
         },
         "source_quotas": {
             "enabled": bool(args.use_source_quotas),
+            "black_human_auto_adjusted": bool(black_human_quota_auto_adjusted),
             "ratios": {
                 "selfplay": float(args.quota_selfplay),
                 "human": float(args.quota_human),
@@ -1902,6 +1982,8 @@ def main():
                 f"selfplay={black_iter_quota_selfplay:.2f}, human={black_iter_quota_human:.2f}, "
                 f"blackfocus={black_iter_quota_blackfocus:.2f}, humanseed={black_iter_quota_humanseed:.2f}"
             )
+            if black_human_quota_auto_adjusted:
+                print("               black-iter human quota auto-enabled from base human quota")
     else:
         print("  Src quotas:  disabled")
     print(

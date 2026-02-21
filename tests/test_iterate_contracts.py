@@ -13,6 +13,66 @@ import iterate as it
 
 
 class IterateContracts(unittest.TestCase):
+    def test_black_human_quota_auto_adjustment_enables_human_quota(self):
+        args = SimpleNamespace(
+            black_human_as_ai=True,
+            use_source_quotas=True,
+            black_iter_quota_human=None,
+            quota_human=0.25,
+        )
+        q_selfplay, q_human, q_blackfocus, q_humanseed, adjusted = it._apply_black_human_quota_adjustment(
+            args,
+            black_iter_quota_selfplay=0.45,
+            black_iter_quota_human=0.0,
+            black_iter_quota_blackfocus=0.35,
+            black_iter_quota_humanseed=0.20,
+        )
+        self.assertTrue(adjusted)
+        self.assertAlmostEqual(q_human, 0.25)
+        self.assertAlmostEqual(q_selfplay, 0.20)
+        self.assertAlmostEqual(q_blackfocus, 0.35)
+        self.assertAlmostEqual(q_humanseed, 0.20)
+
+    def test_black_human_quota_auto_adjustment_skips_explicit_override(self):
+        args = SimpleNamespace(
+            black_human_as_ai=True,
+            use_source_quotas=True,
+            black_iter_quota_human=0.05,
+            quota_human=0.25,
+        )
+        q_selfplay, q_human, q_blackfocus, q_humanseed, adjusted = it._apply_black_human_quota_adjustment(
+            args,
+            black_iter_quota_selfplay=0.45,
+            black_iter_quota_human=0.05,
+            black_iter_quota_blackfocus=0.35,
+            black_iter_quota_humanseed=0.20,
+        )
+        self.assertFalse(adjusted)
+        self.assertAlmostEqual(q_human, 0.05)
+        self.assertAlmostEqual(q_selfplay, 0.45)
+        self.assertAlmostEqual(q_blackfocus, 0.35)
+        self.assertAlmostEqual(q_humanseed, 0.20)
+
+    def test_black_human_quota_auto_adjustment_disabled(self):
+        args = SimpleNamespace(
+            black_human_as_ai=False,
+            use_source_quotas=True,
+            black_iter_quota_human=None,
+            quota_human=0.25,
+        )
+        q_selfplay, q_human, q_blackfocus, q_humanseed, adjusted = it._apply_black_human_quota_adjustment(
+            args,
+            black_iter_quota_selfplay=0.45,
+            black_iter_quota_human=0.0,
+            black_iter_quota_blackfocus=0.35,
+            black_iter_quota_humanseed=0.20,
+        )
+        self.assertFalse(adjusted)
+        self.assertAlmostEqual(q_human, 0.0)
+        self.assertAlmostEqual(q_selfplay, 0.45)
+        self.assertAlmostEqual(q_blackfocus, 0.35)
+        self.assertAlmostEqual(q_humanseed, 0.20)
+
     def test_resolve_blackfocus_filters_defaults_black_iter_to_nonloss(self):
         base, black_iter = it._resolve_blackfocus_filters("any", None)
         self.assertEqual(base, "any")
