@@ -48,6 +48,9 @@ Loop in `src/iterate.py`:
   alternating Black iterations)
 - Side-aware check-position retention (keep in-check samples for active
   training side)
+- Processor retention policy with explicit thresholds:
+  `--max-generation-age` and `--min-nonhuman-plies`, with dropped-game
+  accounting persisted in processing artifacts
 - Deterministic low-temperature arena/black-survival evaluation defaults
   (reduces gate noise from exploratory openings)
 - Consolidation distillation phase

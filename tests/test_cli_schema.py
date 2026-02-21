@@ -30,6 +30,8 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--primary-train-result-filter", out)
         self.assertIn("--consolidation-train-result-filter", out)
         self.assertIn("--arena-temperature", out)
+        self.assertIn("--max-generation-age", out)
+        self.assertIn("--min-nonhuman-plies", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")
@@ -44,6 +46,8 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("--use-source-quotas", out)
         self.assertIn("--human-target-mcts-lambda", out)
+        self.assertIn("--max-generation-age", out)
+        self.assertIn("--min-nonhuman-plies", out)
 
     def test_data_generation_help_contains_temperature_flags(self):
         code, out = _run_help("data_generation.py")

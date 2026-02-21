@@ -23,7 +23,7 @@ def _record(current_player, game_result):
     }
 
 
-def _game(game_id, source_kind, result_bucket, records):
+def _game(game_id, source_kind, result_bucket, records, generation=1):
     return {
         "game_id": game_id,
         "records": records,
@@ -31,11 +31,40 @@ def _game(game_id, source_kind, result_bucket, records):
         "is_humanseed": source_kind == "humanseed",
         "is_blackfocus": source_kind == "blackfocus",
         "result_bucket": result_bucket,
+        "generation": generation,
         "source_kind": source_kind,
     }
 
 
 class DataProcessorContracts(unittest.TestCase):
+    def test_apply_game_retention_policy_drops_old_generations(self):
+        games = [
+            _game("nn_gen10/g1.jsonl", "selfplay", 0, [_record("white", 0)] * 8, generation=10),
+            _game("nn_gen42/g2.jsonl", "selfplay", 0, [_record("white", 0)] * 8, generation=42),
+        ]
+        kept, summary = dp._apply_game_retention_policy(
+            games,
+            max_generation_age=4,
+            min_nonhuman_plies=0,
+        )
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["generation"], 42)
+        self.assertEqual(int(summary["dropped"]["age"]["games"]), 1)
+
+    def test_apply_game_retention_policy_drops_short_nonhuman_keeps_human(self):
+        games = [
+            _game("nn_gen5/self_short.jsonl", "selfplay", 0, [_record("white", 0)] * 2, generation=5),
+            _game("human_games/h1.jsonl", "human", 0, [_record("white", 0)] * 2, generation=None),
+        ]
+        kept, summary = dp._apply_game_retention_policy(
+            games,
+            max_generation_age=0,
+            min_nonhuman_plies=4,
+        )
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["source_kind"], "human")
+        self.assertEqual(int(summary["dropped"]["short_nonhuman"]["games"]), 1)
+
     def test_split_games_has_no_overlap(self):
         games = []
         for i in range(36):
@@ -154,6 +183,8 @@ class DataProcessorContracts(unittest.TestCase):
                 include_human=False,
                 min_blackfocus_plies=0,
                 blackfocus_result_filter="any",
+                max_generation_age=0,
+                min_nonhuman_plies=0,
                 human_repeat=1,
                 humanseed_repeat=1,
                 blackfocus_repeat=1,
@@ -176,6 +207,7 @@ class DataProcessorContracts(unittest.TestCase):
             self.assertIn("warnings", summary)
             self.assertIn("split_sizes", summary)
             self.assertIn("source_counts", summary)
+            self.assertIn("retention", summary)
             self.assertIn("train", summary["source_stats"])
             self.assertIsInstance(summary["warnings"], list)
 

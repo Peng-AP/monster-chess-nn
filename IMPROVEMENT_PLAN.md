@@ -80,10 +80,14 @@ Rationale: these paths either bypassed quality control, continued from rejected 
   policy entropy summaries, and warning signals.
 - Embedded and printed by iterate per generation via `processed_data_summary`.
 
-### 1.5 Data pruning and retention policy formalization: `pending`
+### 1.5 Data pruning and retention policy formalization: `complete`
 
-- Codify retention thresholds by generation age and contribution quality.
-- Keep processed sample count bounded for throughput stability.
+- Implemented configurable retention controls in processing:
+  `--max-generation-age` and `--min-nonhuman-plies`.
+- Retention behavior is now wired through iterate bootstrap + per-generation
+  processing commands and recorded in processing artifacts.
+- Retention diagnostics are persisted under `retention` in
+  `processing_summary.json` and `split_game_ids.json`.
 
 ## Phase 2 - Search and Gating Robustness
 
@@ -168,8 +172,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 
 1. Execute WDL-mode smoke/daily runs and compare acceptance behavior vs scalar
    value head baselines.
-2. Complete data pruning/retention policy implementation (generation-age and
-   source-quality aware) while keeping throughput stable under 500k positions.
+2. Calibrate WDL-mode defaults (`wdl_loss_weight`, `wdl_draw_epsilon`) against
+   side-aware gate outcomes after retention-policy stabilization.
 3. Continue modularization of `src/iterate.py` high-complexity orchestration.
 
 ## Validation Protocol (Required Per Major Change)

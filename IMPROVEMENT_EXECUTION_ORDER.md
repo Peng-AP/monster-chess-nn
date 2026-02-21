@@ -8,7 +8,7 @@ This is the practical next sequence from the current cleaned pipeline.
 ## Stage Status Snapshot
 
 - Stage 0 (pipeline reliability): `complete`
-- Stage 1 (data controls): `complete` core + audit diagnostics
+- Stage 1 (data controls): `complete` core + audit diagnostics + retention policy
 - Stage 2 (search/gating): `complete` core + calibration tooling
 - Stage 3 (model work): `complete` core architecture options, `pending` next experiments
 - Stage 4 (code quality): `partial`

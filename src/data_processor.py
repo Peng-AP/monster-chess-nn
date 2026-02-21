@@ -12,6 +12,7 @@ from config import (
     POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
+    DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
     SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, RANDOM_SEED,
     SOURCE_QUOTA_ENABLED, SOURCE_QUOTA_SELFPLAY, SOURCE_QUOTA_HUMAN,
     SOURCE_QUOTA_BLACKFOCUS, SOURCE_QUOTA_HUMANSEED,
@@ -268,6 +269,71 @@ def _count_positions_in_dir(raw_dir, dirname):
     return total
 
 
+def _generation_from_game_id(game_id):
+    """Extract nn_gen number from a relative game path, else None."""
+    top = str(game_id).replace("\\", "/").split("/", 1)[0]
+    m = re.match(r'^nn_gen(\d+)(?:_.*)?$', top)
+    if not m:
+        return None
+    return int(m.group(1))
+
+
+def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies=0):
+    """Apply bounded retention filters and return kept games + summary."""
+    max_generation_age = int(max_generation_age or 0)
+    min_nonhuman_plies = int(min_nonhuman_plies or 0)
+
+    generations = [
+        int(g["generation"]) for g in games
+        if g.get("generation") is not None
+    ]
+    latest_generation = max(generations) if generations else None
+
+    kept = []
+    dropped = {
+        "age": {"games": 0, "positions": 0, "by_source": {}},
+        "short_nonhuman": {"games": 0, "positions": 0, "by_source": {}},
+    }
+    for game in games:
+        source_kind = game.get("source_kind") or _source_kind(game)
+        positions = int(len(game.get("records", [])))
+        generation = game.get("generation")
+
+        if (
+            latest_generation is not None
+            and generation is not None
+            and max_generation_age > 0
+            and (latest_generation - int(generation)) > max_generation_age
+        ):
+            dropped["age"]["games"] += 1
+            dropped["age"]["positions"] += positions
+            dropped["age"]["by_source"][source_kind] = (
+                int(dropped["age"]["by_source"].get(source_kind, 0)) + 1
+            )
+            continue
+
+        if source_kind != "human" and min_nonhuman_plies > 0 and positions < min_nonhuman_plies:
+            dropped["short_nonhuman"]["games"] += 1
+            dropped["short_nonhuman"]["positions"] += positions
+            dropped["short_nonhuman"]["by_source"][source_kind] = (
+                int(dropped["short_nonhuman"]["by_source"].get(source_kind, 0)) + 1
+            )
+            continue
+
+        kept.append(game)
+
+    return kept, {
+        "max_generation_age": max_generation_age,
+        "min_nonhuman_plies": min_nonhuman_plies,
+        "latest_generation": latest_generation,
+        "input_games": int(len(games)),
+        "input_positions": int(sum(len(g.get("records", [])) for g in games)),
+        "kept_games": int(len(kept)),
+        "kept_positions": int(sum(len(g.get("records", [])) for g in kept)),
+        "dropped": dropped,
+    }
+
+
 def _filter_dirs(raw_dir, keep_generations=None, position_budget=None,
                  position_budget_max=None, include_human=True):
     """Decide which subdirectories to include based on sliding window.
@@ -356,10 +422,13 @@ def load_all_games(
     include_human=True,
     min_blackfocus_plies=0,
     blackfocus_result_filter="any",
+    max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
+    min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
+    return_summary=False,
 ):
     """Load game files as game-level units.
 
-    Returns a list of dicts:
+    Returns a list of dicts (or list + retention summary when return_summary=True):
       {
         "game_id": relative path,
         "records": [position records...],
@@ -411,7 +480,20 @@ def load_all_games(
 
     if not paths:
         print(f"No .jsonl files found in {raw_dir}")
-        return []
+        empty_summary = {
+            "max_generation_age": int(max_generation_age or 0),
+            "min_nonhuman_plies": int(min_nonhuman_plies or 0),
+            "latest_generation": None,
+            "input_games": 0,
+            "input_positions": 0,
+            "kept_games": 0,
+            "kept_positions": 0,
+            "dropped": {
+                "age": {"games": 0, "positions": 0, "by_source": {}},
+                "short_nonhuman": {"games": 0, "positions": 0, "by_source": {}},
+            },
+        }
+        return ([], empty_summary) if return_summary else []
 
     games = []
     skipped_blackfocus_short = 0
@@ -422,6 +504,7 @@ def load_all_games(
         rel = os.path.relpath(path, raw_dir).replace("\\", "/")
         is_human = "human_games/" in rel or rel.startswith("human_games")
         is_humanseed = "_humanseed/" in rel or rel.endswith("_humanseed")
+        generation = _generation_from_game_id(rel)
         with open(path, "r") as f:
             records = [json.loads(line.strip()) for line in f if line.strip()]
         if not records:
@@ -449,6 +532,7 @@ def load_all_games(
             "is_humanseed": is_humanseed,
             "is_blackfocus": is_blackfocus,
             "result_bucket": result_bucket,
+            "generation": generation,
             "source_kind": (
                 "human" if is_human
                 else "humanseed" if is_humanseed
@@ -470,7 +554,23 @@ def load_all_games(
             f"skipped_positions={skipped_blackfocus_result_positions}"
         )
 
-    return games
+    games, retention_summary = _apply_game_retention_policy(
+        games,
+        max_generation_age=max_generation_age,
+        min_nonhuman_plies=min_nonhuman_plies,
+    )
+    dropped_age = int(retention_summary["dropped"]["age"]["games"])
+    dropped_short = int(retention_summary["dropped"]["short_nonhuman"]["games"])
+    if dropped_age or dropped_short:
+        print(
+            "  Retention policy: "
+            f"max_generation_age={retention_summary['max_generation_age']}, "
+            f"min_nonhuman_plies={retention_summary['min_nonhuman_plies']}, "
+            f"dropped_age_games={dropped_age}, "
+            f"dropped_short_nonhuman_games={dropped_short}"
+        )
+
+    return (games, retention_summary) if return_summary else games
 
 
 def _result_bucket(result):
@@ -805,6 +905,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      include_human=True,
                      min_blackfocus_plies=0,
                      blackfocus_result_filter="any",
+                     max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
+                     min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                      human_repeat=HUMAN_DATA_WEIGHT,
                      humanseed_repeat=HUMANSEED_DATA_WEIGHT,
                      blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
@@ -828,8 +930,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     When keep_generations is set, only the last N NN generations are loaded.
     When position_budget is set, enough recent generations are loaded to hit
     at least that many raw positions.
+    Retention controls can also drop very old generations and ultra-short
+    non-human games before train/val/test splitting.
     """
-    games = load_all_games(
+    games, retention_summary = load_all_games(
         raw_dir,
         keep_generations=keep_generations,
         position_budget=position_budget,
@@ -837,10 +941,21 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         include_human=include_human,
         min_blackfocus_plies=min_blackfocus_plies,
         blackfocus_result_filter=blackfocus_result_filter,
+        max_generation_age=max_generation_age,
+        min_nonhuman_plies=min_nonhuman_plies,
+        return_summary=True,
     )
     if not games:
         print("No data to process.")
         return
+    if isinstance(retention_summary, dict):
+        print(
+            "Retention summary: "
+            f"kept_games={int(retention_summary.get('kept_games', 0))}/"
+            f"{int(retention_summary.get('input_games', 0))}, "
+            f"kept_positions={int(retention_summary.get('kept_positions', 0))}/"
+            f"{int(retention_summary.get('input_positions', 0))}"
+        )
     if max_positions is not None and max_positions <= 0:
         max_positions = None
     source_quota_ratios = _build_source_quota_ratios(
@@ -1016,6 +1131,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "train_source_quotas": train_source_quotas,
         "source_quota_ratios": source_quota_ratios,
         "source_target_lambdas": source_target_lambdas,
+        "retention": retention_summary,
         "max_positions": max_positions,
         "train_split_capped": bool(train_capped),
         "total_positions": int(total_positions),
@@ -1042,6 +1158,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "source_quota_ratios": source_quota_ratios,
         "source_quotas": train_source_quotas,
         "source_target_lambdas": source_target_lambdas,
+        "retention": retention_summary,
         "train_split_capped": bool(train_capped),
         "total_positions": int(total_positions),
         "weights": {
@@ -1088,6 +1205,10 @@ if __name__ == "__main__":
     parser.add_argument("--blackfocus-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="Keep _blackfocus games with any result, Black non-loss, or Black win only")
+    parser.add_argument("--max-generation-age", type=int, default=DATA_RETENTION_MAX_GENERATION_AGE,
+                        help=f"Drop nn_gen* games older than this many generations behind latest (default: {DATA_RETENTION_MAX_GENERATION_AGE}, <=0 disables)")
+    parser.add_argument("--min-nonhuman-plies", type=int, default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
+                        help=f"Drop non-human games shorter than this many plies (default: {DATA_RETENTION_MIN_NONHUMAN_PLIES}, <=0 disables)")
     parser.add_argument("--human-data-weight", type=int, default=HUMAN_DATA_WEIGHT,
                         help=f"Train repetition weight for human_games (default: {HUMAN_DATA_WEIGHT})")
     parser.add_argument("--humanseed-data-weight", type=int, default=HUMANSEED_DATA_WEIGHT,
@@ -1126,6 +1247,10 @@ if __name__ == "__main__":
         raise ValueError("--position-budget-max must be >= --position-budget")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
+    if args.max_generation_age is not None and args.max_generation_age < 0:
+        raise ValueError("--max-generation-age must be >= 0")
+    if args.min_nonhuman_plies < 0:
+        raise ValueError("--min-nonhuman-plies must be >= 0")
     if args.human_data_weight < 1:
         raise ValueError("--human-data-weight must be >= 1")
     if args.humanseed_data_weight < 1:
@@ -1159,6 +1284,8 @@ if __name__ == "__main__":
                      include_human=not args.exclude_human_games,
                      min_blackfocus_plies=args.min_blackfocus_plies,
                      blackfocus_result_filter=args.blackfocus_result_filter,
+                     max_generation_age=args.max_generation_age,
+                     min_nonhuman_plies=args.min_nonhuman_plies,
                      human_repeat=args.human_data_weight,
                      humanseed_repeat=args.humanseed_data_weight,
                      blackfocus_repeat=args.blackfocus_data_weight,

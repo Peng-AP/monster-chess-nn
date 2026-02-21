@@ -269,6 +269,15 @@ def _data_processor_source_args(args):
     ]
 
 
+def _data_processor_retention_args(max_generation_age, min_nonhuman_plies):
+    max_generation_age = int(max_generation_age or 0)
+    min_nonhuman_plies = int(min_nonhuman_plies or 0)
+    return [
+        "--max-generation-age", str(max_generation_age),
+        "--min-nonhuman-plies", str(min_nonhuman_plies),
+    ]
+
+
 def _bool_optional_flag(flag_name, enabled):
     return f"--{flag_name}" if enabled else f"--no-{flag_name}"
 
@@ -836,7 +845,8 @@ def _derive_runtime_settings(args, *,
                              warmup_epochs_default, warmup_start_factor_default,
                              use_se_blocks_default, se_reduction_default,
                              use_side_specialized_heads_default, human_data_weight_default,
-                             humanseed_data_weight_default, blackfocus_data_weight_default):
+                             humanseed_data_weight_default, blackfocus_data_weight_default,
+                             max_generation_age_default, min_nonhuman_plies_default):
     base_seed = args.seed if args.seed is not None else random_seed
     keep_gens = args.keep_generations if args.keep_generations is not None else sliding_window
     position_budget = args.position_budget if args.position_budget is not None else position_budget_default
@@ -881,6 +891,14 @@ def _derive_runtime_settings(args, *,
         args.black_iter_blackfocus_data_weight
         if args.black_iter_blackfocus_data_weight is not None else blackfocus_data_weight
     )
+    max_generation_age = (
+        args.max_generation_age
+        if args.max_generation_age is not None else max_generation_age_default
+    )
+    min_nonhuman_plies = (
+        args.min_nonhuman_plies
+        if args.min_nonhuman_plies is not None else min_nonhuman_plies_default
+    )
     blackfocus_result_filter, black_iter_blackfocus_result_filter = _resolve_blackfocus_filters(
         args.blackfocus_result_filter,
         args.black_iter_blackfocus_result_filter,
@@ -891,6 +909,10 @@ def _derive_runtime_settings(args, *,
         position_budget_max = None
     if max_processed_positions is not None and max_processed_positions <= 0:
         max_processed_positions = None
+    if max_generation_age is not None and max_generation_age <= 0:
+        max_generation_age = 0
+    if min_nonhuman_plies is not None and min_nonhuman_plies <= 0:
+        min_nonhuman_plies = 0
     opponent_sims = args.opponent_sims if args.opponent_sims is not None else opponent_simulations
     black_focus_arena_sims = (
         args.black_focus_arena_sims
@@ -929,6 +951,8 @@ def _derive_runtime_settings(args, *,
         "black_iter_human_data_weight": black_iter_human_data_weight,
         "black_iter_humanseed_data_weight": black_iter_humanseed_data_weight,
         "black_iter_blackfocus_data_weight": black_iter_blackfocus_data_weight,
+        "max_generation_age": max_generation_age,
+        "min_nonhuman_plies": min_nonhuman_plies,
         "blackfocus_result_filter": blackfocus_result_filter,
         "black_iter_blackfocus_result_filter": black_iter_blackfocus_result_filter,
         "opponent_sims": opponent_sims,
@@ -951,6 +975,8 @@ def _validate_runtime_settings(args, settings):
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    max_generation_age = settings["max_generation_age"]
+    min_nonhuman_plies = settings["min_nonhuman_plies"]
     black_focus_arena_sims = settings["black_focus_arena_sims"]
     gate_min_other_side_white = settings["gate_min_other_side_white"]
     gate_min_other_side_black = settings["gate_min_other_side_black"]
@@ -999,6 +1025,10 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--black-survival-threshold must be in [0, 1]")
     if black_focus_arena_sims <= 0:
         raise ValueError("--black-focus-arena-sims must be > 0")
+    if max_generation_age is not None and max_generation_age < 0:
+        raise ValueError("--max-generation-age must be >= 0")
+    if min_nonhuman_plies is not None and min_nonhuman_plies < 0:
+        raise ValueError("--min-nonhuman-plies must be >= 0")
     if args.black_focus_arena_tier_min is not None and args.black_focus_arena_tier_min < 1:
         raise ValueError("--black-focus-arena-tier-min must be >= 1")
     if args.black_focus_arena_tier_max is not None and args.black_focus_arena_tier_max < 1:
@@ -1239,6 +1269,10 @@ def main():
                         help="Exclude data/raw/human_games from training data processing")
     parser.add_argument("--min-blackfocus-plies", type=int, default=0,
                         help="Drop non-human _blackfocus games shorter than this many plies during processing")
+    parser.add_argument("--max-generation-age", type=int, default=None,
+                        help="Drop nn_gen* data older than this many generations behind latest during processing (default: from config)")
+    parser.add_argument("--min-nonhuman-plies", type=int, default=None,
+                        help="Drop non-human games shorter than this many plies during processing (default: from config)")
     parser.add_argument("--blackfocus-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="Filter _blackfocus games during processing: any, Black non-loss, or Black win only")
@@ -1340,6 +1374,7 @@ def main():
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
         LEARNING_RATE,
         HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
+        DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
         USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
     )
     settings = _derive_runtime_settings(
@@ -1359,6 +1394,8 @@ def main():
         human_data_weight_default=HUMAN_DATA_WEIGHT,
         humanseed_data_weight_default=HUMANSEED_DATA_WEIGHT,
         blackfocus_data_weight_default=BLACKFOCUS_DATA_WEIGHT,
+        max_generation_age_default=DATA_RETENTION_MAX_GENERATION_AGE,
+        min_nonhuman_plies_default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
     )
     base_seed = settings["base_seed"]
     set_seed(base_seed)
@@ -1376,6 +1413,8 @@ def main():
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    max_generation_age = settings["max_generation_age"]
+    min_nonhuman_plies = settings["min_nonhuman_plies"]
     blackfocus_result_filter = settings["blackfocus_result_filter"]
     black_iter_blackfocus_result_filter = settings["black_iter_blackfocus_result_filter"]
     opponent_sims = settings["opponent_sims"]
@@ -1423,6 +1462,7 @@ def main():
             "--output-dir", processed_dir,
             "--seed", str(base_seed),
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
+            *_data_processor_retention_args(max_generation_age, min_nonhuman_plies),
             *_data_processor_source_args(args),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ], "Bootstrap: processing all data")
@@ -1519,6 +1559,10 @@ def main():
         "blackfocus_result_filter": {
             "base": blackfocus_result_filter,
             "black_iteration": black_iter_blackfocus_result_filter,
+        },
+        "data_retention": {
+            "max_generation_age": int(max_generation_age or 0),
+            "min_nonhuman_plies": int(min_nonhuman_plies or 0),
         },
         "opponent_pool_size": args.pool_size,
         "position_budget_effective": position_budget,
@@ -1723,7 +1767,11 @@ def main():
         f"blackfocus={args.blackfocus_target_mcts_lambda:.2f}, humanseed={args.humanseed_target_mcts_lambda:.2f}"
     )
     print(f"  Check pos:   {'keep' if args.keep_check_positions else 'skip'}")
-    print(f"  BF filter:   min_blackfocus_plies={args.min_blackfocus_plies}")
+    print(
+        f"  Retention:   min_blackfocus_plies={args.min_blackfocus_plies}, "
+        f"max_generation_age={int(max_generation_age or 0)}, "
+        f"min_nonhuman_plies={int(min_nonhuman_plies or 0)}"
+    )
     print(f"  Starting at: generation {start_gen}")
     print(f"  Existing:    {total_games_existing} games, {total_pos_existing} positions")
     print(f"  Model:       {model_path}")
@@ -2024,6 +2072,7 @@ def main():
             "--seed", str(base_seed + gen * 10 + 3),
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
             "--blackfocus-result-filter", effective_blackfocus_result_filter,
+            *_data_processor_retention_args(max_generation_age, min_nonhuman_plies),
             "--human-data-weight", str(effective_human_data_weight),
             "--humanseed-data-weight", str(effective_humanseed_data_weight),
             "--blackfocus-data-weight", str(effective_blackfocus_data_weight),
