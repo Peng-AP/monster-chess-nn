@@ -1601,10 +1601,10 @@ def main():
                         help="Primary train result filter (auto=nonloss for alternating black, else any)")
     parser.add_argument("--consolidation-train-only-side", type=str, default="auto",
                         choices=["auto", "none", "white", "black"],
-                        help="Restrict consolidation training data to one side-to-move (auto=training side in alternating)")
+                        help="Restrict consolidation training data to one side-to-move (auto=none in alternating)")
     parser.add_argument("--consolidation-train-result-filter", type=str, default="auto",
                         choices=["auto", "any", "nonloss", "win"],
-                        help="Consolidation train result filter (auto=nonloss for alternating black, else any)")
+                        help="Consolidation train result filter (auto=any when side=none, else nonloss for alternating black)")
     parser.add_argument("--black-human-as-ai", action=argparse.BooleanOptionalAction, default=True,
                         help="When training black side, include human source positions as black-side supervision")
     args = parser.parse_args()
@@ -2109,10 +2109,13 @@ def main():
         )
         consolidation_train_only_side = args.consolidation_train_only_side
         if consolidation_train_only_side == "auto":
-            consolidation_train_only_side = train_side if args.alternating else "none"
-        consolidation_train_result_filter = _resolve_train_result_filter(
-            args.consolidation_train_result_filter, args.alternating, train_side
-        )
+            consolidation_train_only_side = "none"
+        if consolidation_train_only_side == "none":
+            consolidation_train_result_filter = "any"
+        else:
+            consolidation_train_result_filter = _resolve_train_result_filter(
+                args.consolidation_train_result_filter, args.alternating, train_side
+            )
         if args.alternating and train_side == "black":
             effective_human_data_weight = black_iter_human_data_weight
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
