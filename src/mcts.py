@@ -68,11 +68,16 @@ class MCTSNode:
         """AlphaZero-style PUCT: Q + c * P * sqrt(N_parent) / (1 + N)."""
         parent_visits = max(1, self.parent.visit_count) if self.parent else 1
         if self.visit_count == 0:
-            # FPU: start unvisited child Q slightly below parent Q.
+            # FPU: start unvisited child Q slightly below parent's value in
+            # the *current selector's* perspective. For non-root parents,
+            # parent.q_value is stored from grandparent perspective, so flip.
             if self.parent is None:
                 fpu_q = 0.0
             else:
-                fpu_q = max(-1.0, min(1.0, self.parent.q_value - fpu_reduction))
+                parent_q = self.parent.q_value
+                if self.parent.parent is not None:
+                    parent_q = -parent_q
+                fpu_q = max(-1.0, min(1.0, parent_q - fpu_reduction))
             return fpu_q + c_puct * self.prior * math.sqrt(parent_visits)
         return self.q_value + c_puct * self.prior * math.sqrt(parent_visits) / (1 + self.visit_count)
 
