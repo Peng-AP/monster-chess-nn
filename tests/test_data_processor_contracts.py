@@ -197,7 +197,7 @@ class DataProcessorContracts(unittest.TestCase):
                 [_record("black", -1), _record("black", -1), _record("black", -1)],
             ),
         ]
-        X, _yv, _yr, _yp, _yl, _ids, _capped, source_counts, _stats = dp._convert_games_to_arrays(
+        X, _yv, _yr, _yp, _yl, _ys, _ids, _capped, source_counts, _stats = dp._convert_games_to_arrays(
             games=games,
             augment=False,
             human_repeat=3,

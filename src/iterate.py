@@ -320,11 +320,14 @@ def _build_train_cmd_base(train_target, epochs, data_dir, model_dir, seed,
     ]
 
 
-def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only_side, train_result_filter):
+def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only_side, train_result_filter,
+                            black_include_human_source=False):
     cmd.append(_bool_optional_flag("balanced-sides-train", balance_sides))
     cmd.extend(["--balanced-black-ratio", str(balanced_black_ratio)])
     if train_only_side != "none":
         cmd.extend(["--train-only-side", train_only_side])
+        if train_only_side == "black" and black_include_human_source:
+            cmd.append("--black-include-human-source")
     cmd.extend(["--train-side-result-filter", train_result_filter])
 
 
@@ -1468,6 +1471,8 @@ def main():
     parser.add_argument("--consolidation-train-result-filter", type=str, default="auto",
                         choices=["auto", "any", "nonloss", "win"],
                         help="Consolidation train result filter (auto=nonloss for alternating black, else any)")
+    parser.add_argument("--black-human-as-ai", action=argparse.BooleanOptionalAction, default=True,
+                        help="When training black side, include human source positions as black-side supervision")
     args = parser.parse_args()
     args.human_seed_dir = _resolve_project_path(args.human_seed_dir)
     args.human_eval_dir = _resolve_project_path(args.human_eval_dir)
@@ -1728,6 +1733,7 @@ def main():
         "primary_balanced_black_ratio": float(args.primary_balanced_black_ratio),
         "primary_train_only_side": args.primary_train_only_side,
         "consolidation_train_only_side": args.consolidation_train_only_side,
+        "black_human_as_ai": bool(args.black_human_as_ai),
         "archive_dir": archive_dir,
         "human_eval_enabled": args.human_eval,
         "human_eval_dir": args.human_eval_dir,
@@ -1805,6 +1811,7 @@ def main():
         f"  Side focus:  primary={args.primary_train_only_side}, "
         f"consolidation={args.consolidation_train_only_side}"
     )
+    print(f"  Human->Black:{'on' if args.black_human_as_ai else 'off'}")
     print(
         f"  Pol weight:  primary={args.primary_policy_loss_weight}, "
         f"consolidation={args.consolidation_policy_loss_weight}"
@@ -2332,6 +2339,11 @@ def main():
             balanced_black_ratio=args.primary_balanced_black_ratio,
             train_only_side=primary_train_only_side,
             train_result_filter=primary_train_result_filter,
+            black_include_human_source=(
+                bool(args.black_human_as_ai)
+                and args.alternating
+                and train_side == "black"
+            ),
         )
         if os.path.exists(source_model_path) and not args.primary_no_resume:
             train_cmd.extend(["--resume-from", source_model_path])
@@ -2371,6 +2383,11 @@ def main():
                 balanced_black_ratio=args.consolidation_balanced_black_ratio,
                 train_only_side=consolidation_train_only_side,
                 train_result_filter=consolidation_train_result_filter,
+                black_include_human_source=(
+                    bool(args.black_human_as_ai)
+                    and args.alternating
+                    and train_side == "black"
+                ),
             )
             _append_distill_teacher_if_weighted(
                 consolidation_cmd,

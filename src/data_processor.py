@@ -22,6 +22,7 @@ from config import (
 )
 
 SOURCE_ORDER = ("selfplay", "human", "blackfocus", "humanseed")
+SOURCE_ID_BY_KIND = {kind: idx for idx, kind in enumerate(SOURCE_ORDER)}
 
 # Piece -> layer index
 PIECE_TO_LAYER = {
@@ -183,6 +184,10 @@ def _source_kind(game):
     if game.get("is_blackfocus"):
         return "blackfocus"
     return "selfplay"
+
+
+def _source_id(source_kind):
+    return int(SOURCE_ID_BY_KIND.get(str(source_kind), -1))
 
 
 def _interleave_games_by_source(games, seed):
@@ -920,6 +925,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
     game_results = []
     policy_targets = []
     target_lambdas = []
+    source_ids = []
     split_game_ids = []
     source_counts = {s: 0 for s in SOURCE_ORDER}
     source_stats = _init_source_stats()
@@ -978,6 +984,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 game_results.append(gr)
                 policy_targets.append(pol)
                 target_lambdas.append(lam)
+                source_ids.append(_source_id(source_kind))
                 source_counts[source_kind] += 1
                 _record_source_stat(
                     source_stats, source_kind, val, gr, lam, pol_entropy
@@ -994,6 +1001,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                     game_results.append(gr)
                     policy_targets.append(mirror_policy(pol))
                     target_lambdas.append(lam)
+                    source_ids.append(_source_id(source_kind))
                     source_counts[source_kind] += 1
                     _record_source_stat(
                         source_stats, source_kind, val, gr, lam, pol_entropy
@@ -1012,15 +1020,17 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         y_result = np.array(game_results, dtype=np.float32)
         y_policy = np.array(policy_targets, dtype=np.float32)
         y_target_lambda = np.array(target_lambdas, dtype=np.float32)
+        y_source_id = np.array(source_ids, dtype=np.int8)
     else:
         X = np.zeros((0,) + TENSOR_SHAPE, dtype=np.float32)
         y_value = np.zeros((0,), dtype=np.float32)
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
         y_target_lambda = np.zeros((0,), dtype=np.float32)
+        y_source_id = np.zeros((0,), dtype=np.int8)
 
     return (
-        X, y_value, y_result, y_policy, y_target_lambda,
+        X, y_value, y_result, y_policy, y_target_lambda, y_source_id,
         split_game_ids, capped, source_counts, _finalize_source_stats(source_stats),
     )
 
@@ -1135,7 +1145,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
 
     # Validation/test are never weighted.
     (
-        X_val, yv_val, yr_val, yp_val, yl_val,
+        X_val, yv_val, yr_val, yp_val, yl_val, ys_val,
         val_game_ids, _, val_source_counts, val_source_stats,
     ) = _convert_games_to_arrays(
         val_games,
@@ -1146,7 +1156,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         source_target_lambdas=source_target_lambdas,
     )
     (
-        X_test, yv_test, yr_test, yp_test, yl_test,
+        X_test, yv_test, yr_test, yp_test, yl_test, ys_test,
         test_game_ids, _, test_source_counts, test_source_stats,
     ) = _convert_games_to_arrays(
         test_games,
@@ -1223,7 +1233,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
 
     # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
     (
-        X_train, yv_train, yr_train, yp_train, yl_train,
+        X_train, yv_train, yr_train, yp_train, yl_train, ys_train,
         train_game_ids, train_capped, train_source_counts, train_source_stats,
     ) = _convert_games_to_arrays(
         train_games_ordered,
@@ -1242,6 +1252,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
     y_target_lambda = np.concatenate([yl_train, yl_val, yl_test], axis=0)
+    y_source_id = np.concatenate([ys_train, ys_val, ys_test], axis=0)
     total_positions = len(X)
     if max_positions is not None and total_positions > max_positions:
         raise RuntimeError(
@@ -1265,6 +1276,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
     np.save(os.path.join(output_dir, "target_lambdas.npy"), y_target_lambda)
+    np.save(os.path.join(output_dir, "source_ids.npy"), y_source_id)
 
     n_train = len(X_train)
     n_val = len(X_val)
@@ -1291,6 +1303,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "train_source_capacity_estimate": train_source_capacity,
         "source_quota_ratios": source_quota_ratios,
         "source_target_lambdas": source_target_lambdas,
+        "source_id_mapping": SOURCE_ID_BY_KIND,
         "retention": retention_summary,
         "max_positions": max_positions,
         "train_split_capped": bool(train_capped),
@@ -1321,6 +1334,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "requested_source_quotas": requested_train_source_quotas,
         "source_capacity_estimate": train_source_capacity,
         "source_target_lambdas": source_target_lambdas,
+        "source_id_mapping": SOURCE_ID_BY_KIND,
         "retention": retention_summary,
         "train_split_capped": bool(train_capped),
         "total_positions": int(total_positions),
@@ -1341,6 +1355,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  game_results.npy: {y_result.shape}")
     print(f"  policies.npy:     {y_policy.shape}")
     print(f"  target_lambdas.npy: {y_target_lambda.shape}")
+    print(f"  source_ids.npy:   {y_source_id.shape}")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 

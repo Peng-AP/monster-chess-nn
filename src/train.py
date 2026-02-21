@@ -26,6 +26,7 @@ from config import (
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
 IN_CHANNELS = TENSOR_SHAPE[2]
+SOURCE_ID_HUMAN = 1  # SOURCE_ORDER index in data_processor.py
 
 
 def set_seed(seed):
@@ -450,8 +451,12 @@ def load_data(data_dir):
         target_lambdas = np.load(target_lambdas_path)
     else:
         target_lambdas = np.ones((len(positions),), dtype=np.float32)
+    source_ids_path = os.path.join(data_dir, "source_ids.npy")
+    source_ids = None
+    if os.path.exists(source_ids_path):
+        source_ids = np.load(source_ids_path)
     splits = np.load(os.path.join(data_dir, "splits.npz"))
-    return positions, mcts_values, game_results, policies, target_lambdas, splits
+    return positions, mcts_values, game_results, policies, target_lambdas, source_ids, splits
 
 
 def to_side_perspective(values_white_perspective, positions):
@@ -564,6 +569,20 @@ def _filter_train_indices_by_result(train_idx, game_results_side, mode):
         return train_idx[keep]
     if m == "win":
         keep = game_results_side[train_idx] > 0
+        return train_idx[keep]
+    raise ValueError(f"Unknown result filter mode: {mode}")
+
+
+def _filter_human_indices_as_black_by_result(train_idx, game_results_white, mode):
+    """Filter human-source indices while treating Black as the training side."""
+    m = str(mode)
+    if m == "any":
+        return train_idx
+    if m == "nonloss":
+        keep = game_results_white[train_idx] <= 0
+        return train_idx[keep]
+    if m == "win":
+        keep = game_results_white[train_idx] < 0
         return train_idx[keep]
     raise ValueError(f"Unknown result filter mode: {mode}")
 
@@ -771,6 +790,8 @@ def main():
     parser.add_argument("--train-side-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="When training on one side, optionally keep only non-loss or win outcomes for that side")
+    parser.add_argument("--black-include-human-source", action=argparse.BooleanOptionalAction, default=False,
+                        help="When --train-only-side=black, include human source samples as black-side supervision")
     parser.add_argument("--distill-from", type=str, default=None,
                         help="Teacher checkpoint path for anti-forgetting distillation")
     parser.add_argument("--distill-value-weight", type=float, default=0.0,
@@ -828,7 +849,7 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
-    positions, mcts_values, game_results, policies, target_lambdas, splits = load_data(args.data_dir)
+    positions, mcts_values, game_results, policies, target_lambdas, source_ids, splits = load_data(args.data_dir)
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -869,6 +890,11 @@ def main():
             f"max={target_lambdas.max():.2f} "
             f"mean={target_lambdas.mean():.2f}"
         )
+    if source_ids is not None:
+        human_count = int((source_ids == SOURCE_ID_HUMAN).sum())
+        print(f"Source IDs loaded: yes (human samples={human_count})")
+    else:
+        print("Source IDs loaded: no (legacy processed data format)")
     print(f"Policy loss weight: {args.policy_loss_weight}")
     if args.target == "blend":
         print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
@@ -997,6 +1023,7 @@ def main():
 
     # Training loop
     result_filter_fallback_warned = False
+    black_human_include_logged = False
     for epoch in range(1, args.epochs + 1):
         # Recompute blend targets with annealed lambda each epoch
         if args.target == "blend":
@@ -1037,6 +1064,32 @@ def main():
                         f"{args.train_side_result_filter} yielded 0 samples; using unfiltered side data"
                     )
                     result_filter_fallback_warned = True
+            if (
+                args.train_only_side == "black"
+                and args.black_include_human_source
+                and source_ids is not None
+            ):
+                human_idx = train_idx[source_ids[train_idx] == SOURCE_ID_HUMAN]
+                if args.train_side_result_filter != "any":
+                    human_idx = _filter_human_indices_as_black_by_result(
+                        human_idx, game_results, args.train_side_result_filter
+                    )
+                if len(human_idx) > 0:
+                    base_train_idx = np.unique(
+                        np.concatenate([base_train_idx, human_idx]).astype(np.int64, copy=False)
+                    )
+                    if not black_human_include_logged:
+                        print(
+                            "Including human source samples while training black: "
+                            f"{len(human_idx)} positions"
+                        )
+                        black_human_include_logged = True
+                elif not black_human_include_logged:
+                    print(
+                        "Warning: --black-include-human-source enabled but no eligible human samples "
+                        "matched current filters"
+                    )
+                    black_human_include_logged = True
         if args.balanced_sides_train:
             epoch_train_idx = _balanced_train_indices(
                 base_train_idx, positions, seed=args.seed + epoch * 17,
