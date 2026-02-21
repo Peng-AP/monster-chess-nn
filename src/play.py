@@ -318,6 +318,30 @@ def main():
                     rec["game_result"] = 0
                 break
 
+            if args.save_data:
+                from evaluation import evaluate
+                eval_white = evaluate(game) if eval_fn is None else eval_fn(game)
+                side_value = eval_white if is_white else -eval_white
+                if is_white:
+                    m1, m2 = action
+                    policy = {f"{m1.uci()},{m2.uci()}": 1.0}
+                else:
+                    policy = {action.uci(): 1.0}
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(side_value, 4),
+                    "policy": policy,
+                    "current_player": "white" if is_white else "black",
+                    "source": "human_game",
+                    "actor": "human",
+                    "session_id": session_id,
+                    "human_color": args.color,
+                    "ai_color": ai_color,
+                    "ai_simulations": args.sims,
+                    "ai_eval_type": "heuristic" if eval_fn is None else "nn",
+                    "ai_model_path": None if eval_fn is None else model_used,
+                })
+
             game.apply_action(action)
             last_action = action
             render_board(game.board, last_move=action, flip=human_is_white)
@@ -339,14 +363,13 @@ def main():
 
             # Record AI's position for training data
             if args.save_data:
-                from evaluation import evaluate
-                hval = evaluate(game) if eval_fn is None else eval_fn(game)
                 records.append({
                     "fen": game.fen(),
                     "mcts_value": round(root_value, 4),
                     "policy": action_probs,
                     "current_player": "white" if is_white else "black",
                     "source": "human_game",
+                    "actor": "ai",
                     "session_id": session_id,
                     "human_color": args.color,
                     "ai_color": ai_color,

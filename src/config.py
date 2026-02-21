@@ -144,20 +144,30 @@ WARMUP_START_FACTOR = 0.1
 VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
 LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
-VALUE_TARGET = "mcts_value"  # "game_result" or "mcts_value" or "blend"
+VALUE_TARGET = "source_aware"  # "game_result" or "mcts_value" or "blend" or "source_aware"
 BLEND_WEIGHT = 0.7      # weight for mcts_value when VALUE_TARGET="blend"
 BLEND_START = 0.8       # lambda at epoch 1 (trust MCTS more early)
 BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Human data
-HUMAN_DATA_WEIGHT = 60    # repeat human game positions N times during processing
-HUMANSEED_DATA_WEIGHT = 3  # repeat _humanseed game positions N times in TRAIN split
-BLACKFOCUS_DATA_WEIGHT = 3  # repeat _blackfocus game positions N times in TRAIN split
+HUMAN_DATA_WEIGHT = 8     # repeat human game positions N times during processing
+HUMANSEED_DATA_WEIGHT = 2  # repeat _humanseed game positions N times in TRAIN split
+BLACKFOCUS_DATA_WEIGHT = 2  # repeat _blackfocus game positions N times in TRAIN split
 SLIDING_WINDOW = 2        # keep only the last N NN generations for training
 POSITION_BUDGET = 250000  # include enough recent generations to hit this many raw positions
 POSITION_BUDGET_MAX = 250000   # upper cap for position-budget windowing (0 disables cap)
 PROCESSED_POSITION_CAP = 500000  # hard cap on processed train+val+test positions (0 disables)
+SOURCE_QUOTA_ENABLED = True
+SOURCE_QUOTA_SELFPLAY = 0.50
+SOURCE_QUOTA_HUMAN = 0.25
+SOURCE_QUOTA_BLACKFOCUS = 0.15
+SOURCE_QUOTA_HUMANSEED = 0.10
+# Source-aware value labels: lambda = weight on mcts_value; (1-lambda) on game_result.
+SELFPLAY_TARGET_MCTS_LAMBDA = 1.00
+HUMAN_TARGET_MCTS_LAMBDA = 0.20
+BLACKFOCUS_TARGET_MCTS_LAMBDA = 0.90
+HUMANSEED_TARGET_MCTS_LAMBDA = 0.85
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction

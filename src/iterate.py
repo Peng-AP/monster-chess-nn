@@ -337,6 +337,60 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
     }
 
 
+def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
+                        games, sims, workers, base_seed,
+                        human_start_dir=None, human_start_max_positions=0):
+    """Run a black-to-move survival sanity suite before promotion."""
+    arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", "black_survival")
+    if os.path.exists(arena_root):
+        shutil.rmtree(arena_root)
+    os.makedirs(arena_root, exist_ok=True)
+
+    cmd = [
+        sys.executable, "data_generation.py",
+        "--num-games", str(games),
+        "--simulations", str(sims),
+        "--workers", str(workers),
+        "--output-dir", arena_root,
+        "--use-model", candidate_model,
+        "--train-side", "black",
+        "--opponent-model", incumbent_model,
+        "--opponent-sims", str(sims),
+        "--seed", str(base_seed + gen * 100 + 33),
+    ]
+
+    used_human_starts = False
+    human_start_dir_abs = os.path.abspath(human_start_dir) if human_start_dir else None
+    if human_start_dir_abs and os.path.isdir(human_start_dir_abs):
+        has_jsonl = bool(glob.glob(os.path.join(human_start_dir_abs, "*.jsonl")))
+        if has_jsonl:
+            used_human_starts = True
+            cmd.extend([
+                "--start-fen-dir", human_start_dir_abs,
+                "--start-fen-side", "black",
+                "--start-fen-convert-white-to-black",
+            ])
+            if human_start_max_positions and human_start_max_positions > 0:
+                cmd.extend(["--start-fen-max-positions", str(human_start_max_positions)])
+
+    run(
+        cmd,
+        f"Black survival sanity gen {gen}: candidate as Black vs incumbent ({games} games)",
+    )
+
+    summary = _scan_result_dir(arena_root)
+    candidate_black = _candidate_score(summary, candidate_is_white=False)
+    return {
+        "arena_root": arena_root,
+        "enabled": True,
+        "ran": True,
+        "used_human_starts": used_human_starts,
+        "candidate_black": candidate_black,
+        "total_games": candidate_black["games"],
+        "score": candidate_black["score"],
+    }
+
+
 def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
@@ -405,7 +459,7 @@ def _update_adaptive_scale(current_scale, accepted, gate_info,
         reason = "accepted_reduce_aux"
     else:
         # If non-trained side collapsed, reduce aux emphasis; otherwise increase.
-        if gate_info.get("decision_mode") in ("side_aware", "side_aware_black_focus"):
+        if gate_info.get("decision_mode") in ("side_aware", "side_aware_black_focus", "side_aware_strict"):
             other_score = gate_info.get("other_score")
             other_floor = gate_info.get("min_other_side")
             if (
@@ -460,8 +514,8 @@ def main():
                         help="Policy loss weight passed to primary training phase")
     parser.add_argument("--primary-no-resume", action="store_true",
                         help="Do not initialize primary training from incumbent checkpoint")
-    parser.add_argument("--train-target", type=str, default="mcts_value",
-                        choices=["mcts_value", "game_result", "blend"],
+    parser.add_argument("--train-target", type=str, default="source_aware",
+                        choices=["mcts_value", "game_result", "blend", "source_aware"],
                         help="Training target passed to train.py")
     parser.add_argument("--warmup-epochs", type=int, default=None,
                         help="Warmup epochs when fine-tuning (default: from config)")
@@ -496,6 +550,8 @@ def main():
                         help="Workers for arena evaluation game generation")
     parser.add_argument("--gate-threshold", type=float, default=0.55,
                         help="Accept candidate if arena score >= threshold")
+    parser.add_argument("--gate-min-side-score", type=float, default=0.45,
+                        help="Require both candidate White and Black standard arena scores >= this floor")
     parser.add_argument("--gate-min-other-side", type=float, default=0.45,
                         help="Alternating mode: minimum arena score on non-trained side")
     parser.add_argument("--gate-min-other-side-white", type=float, default=None,
@@ -518,6 +574,12 @@ def main():
                         help="Promotion guard: reject promotion if --epochs is below this value (0 disables)")
     parser.add_argument("--min-accept-black-score", type=float, default=0.05,
                         help="Promotion guard: require candidate Black-side arena score >= this value (<=0 disables)")
+    parser.add_argument("--black-survival-games", type=int, default=12,
+                        help="Pre-promotion black survival sanity games from human openings (0 disables)")
+    parser.add_argument("--black-survival-sims", type=int, default=None,
+                        help="MCTS simulations for black survival sanity games (default: --arena-sims)")
+    parser.add_argument("--black-survival-threshold", type=float, default=0.35,
+                        help="Reject promotion if black survival score falls below this threshold")
     parser.add_argument("--explore-from-rejected", action=argparse.BooleanOptionalAction, default=False,
                         help="If candidate is rejected, continue next iteration from that candidate instead of incumbent")
     parser.add_argument("--seed", type=int, default=None,
@@ -553,6 +615,24 @@ def main():
                         help="Train repetition weight for _humanseed streams (default: from config)")
     parser.add_argument("--blackfocus-data-weight", type=int, default=None,
                         help="Train repetition weight for _blackfocus streams (default: from config)")
+    parser.add_argument("--use-source-quotas", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use source quota capping when processing train data")
+    parser.add_argument("--quota-selfplay", type=float, default=0.50,
+                        help="Source quota ratio for selfplay/curriculum streams")
+    parser.add_argument("--quota-human", type=float, default=0.25,
+                        help="Source quota ratio for human_games stream")
+    parser.add_argument("--quota-blackfocus", type=float, default=0.15,
+                        help="Source quota ratio for _blackfocus streams")
+    parser.add_argument("--quota-humanseed", type=float, default=0.10,
+                        help="Source quota ratio for _humanseed streams")
+    parser.add_argument("--human-target-mcts-lambda", type=float, default=0.20,
+                        help="Human source mcts target weight lambda")
+    parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=0.85,
+                        help="Human-seed source mcts target weight lambda")
+    parser.add_argument("--blackfocus-target-mcts-lambda", type=float, default=0.90,
+                        help="Black-focus source mcts target weight lambda")
+    parser.add_argument("--selfplay-target-mcts-lambda", type=float, default=1.00,
+                        help="Self-play source mcts target weight lambda")
     parser.add_argument("--black-iter-human-data-weight", type=int, default=None,
                         help="Override human_games train repetition weight on Black training iterations")
     parser.add_argument("--black-iter-humanseed-data-weight", type=int, default=None,
@@ -702,6 +782,10 @@ def main():
         args.black_focus_arena_sims
         if args.black_focus_arena_sims is not None else args.arena_sims
     )
+    black_survival_sims = (
+        args.black_survival_sims
+        if args.black_survival_sims is not None else args.arena_sims
+    )
     warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else WARMUP_EPOCHS
     warmup_start_factor = (
         args.warmup_start_factor
@@ -717,6 +801,8 @@ def main():
     )
     if not (0.0 <= args.gate_threshold <= 1.0):
         raise ValueError("--gate-threshold must be in [0, 1]")
+    if not (0.0 <= args.gate_min_side_score <= 1.0):
+        raise ValueError("--gate-min-side-score must be in [0, 1]")
     if not (0.0 <= args.gate_min_other_side <= 1.0):
         raise ValueError("--gate-min-other-side must be in [0, 1]")
     if not (0.0 <= gate_min_other_side_white <= 1.0):
@@ -749,6 +835,12 @@ def main():
         raise ValueError("--human-seed-max-positions must be >= 0")
     if args.black_focus_arena_games < 0:
         raise ValueError("--black-focus-arena-games must be >= 0")
+    if args.black_survival_games < 0:
+        raise ValueError("--black-survival-games must be >= 0")
+    if args.black_survival_sims is not None and args.black_survival_sims <= 0:
+        raise ValueError("--black-survival-sims must be > 0")
+    if not (0.0 <= args.black_survival_threshold <= 1.0):
+        raise ValueError("--black-survival-threshold must be in [0, 1]")
     if black_focus_arena_sims <= 0:
         raise ValueError("--black-focus-arena-sims must be > 0")
     if args.black_focus_arena_tier_min is not None and args.black_focus_arena_tier_min < 1:
@@ -791,6 +883,22 @@ def main():
         raise ValueError("--black-iter-humanseed-data-weight must be >= 1")
     if black_iter_blackfocus_data_weight < 1:
         raise ValueError("--black-iter-blackfocus-data-weight must be >= 1")
+    for quota_name in ("quota_selfplay", "quota_human", "quota_blackfocus", "quota_humanseed"):
+        if getattr(args, quota_name) < 0:
+            raise ValueError(f"--{quota_name.replace('_', '-')} must be >= 0")
+    if args.use_source_quotas:
+        quota_sum = args.quota_selfplay + args.quota_human + args.quota_blackfocus + args.quota_humanseed
+        if quota_sum <= 0:
+            raise ValueError("Source quotas enabled but all source ratios are zero")
+    for lam_name in (
+        "human_target_mcts_lambda",
+        "humanseed_target_mcts_lambda",
+        "blackfocus_target_mcts_lambda",
+        "selfplay_target_mcts_lambda",
+    ):
+        lam = getattr(args, lam_name)
+        if not (0.0 <= lam <= 1.0):
+            raise ValueError(f"--{lam_name.replace('_', '-')} must be in [0, 1]")
     if args.human_seed_games > 0 and not os.path.isdir(args.human_seed_dir):
         raise FileNotFoundError(f"--human-seed-dir not found: {args.human_seed_dir}")
     if se_reduction <= 0:
@@ -889,12 +997,21 @@ def main():
             "--output-dir", processed_dir,
             "--seed", str(base_seed),
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
+            *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
+            "--quota-selfplay", str(args.quota_selfplay),
+            "--quota-human", str(args.quota_human),
+            "--quota-blackfocus", str(args.quota_blackfocus),
+            "--quota-humanseed", str(args.quota_humanseed),
+            "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
+            "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
+            "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
+            "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ], "Bootstrap: processing all data")
         # Train initial model
         run([
             sys.executable, "train.py",
-            "--target", "mcts_value",
+            "--target", args.train_target,
             "--epochs", str(args.epochs),
             "--data-dir", processed_dir,
             "--model-dir", model_dir,
@@ -926,8 +1043,12 @@ def main():
         "gating_enabled": not args.no_gating,
         "explore_from_rejected": bool(args.explore_from_rejected),
         "gate_threshold": args.gate_threshold,
+        "gate_min_side_score": args.gate_min_side_score,
         "promotion_guard_min_accept_epochs": int(args.min_accept_epochs),
         "promotion_guard_min_accept_black_score": float(args.min_accept_black_score),
+        "black_survival_games": int(args.black_survival_games),
+        "black_survival_sims": int(black_survival_sims),
+        "black_survival_threshold": float(args.black_survival_threshold),
         "gate_min_other_side": args.gate_min_other_side,
         "gate_min_other_side_white_effective": gate_min_other_side_white,
         "gate_min_other_side_black_effective": gate_min_other_side_black,
@@ -959,6 +1080,21 @@ def main():
             "black_iteration_human": int(black_iter_human_data_weight),
             "black_iteration_humanseed": int(black_iter_humanseed_data_weight),
             "black_iteration_blackfocus": int(black_iter_blackfocus_data_weight),
+        },
+        "source_quotas": {
+            "enabled": bool(args.use_source_quotas),
+            "ratios": {
+                "selfplay": float(args.quota_selfplay),
+                "human": float(args.quota_human),
+                "blackfocus": float(args.quota_blackfocus),
+                "humanseed": float(args.quota_humanseed),
+            },
+            "target_lambdas": {
+                "selfplay": float(args.selfplay_target_mcts_lambda),
+                "human": float(args.human_target_mcts_lambda),
+                "blackfocus": float(args.blackfocus_target_mcts_lambda),
+                "humanseed": float(args.humanseed_target_mcts_lambda),
+            },
         },
         "blackfocus_result_filter": {
             "base": blackfocus_result_filter,
@@ -1119,7 +1255,10 @@ def main():
     if args.no_gating:
         print("  Gating:      disabled (auto-promote candidates)")
     else:
-        print(f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, threshold={args.gate_threshold:.2f}")
+        print(
+            f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, "
+            f"threshold={args.gate_threshold:.2f}, min_side={args.gate_min_side_score:.2f}"
+        )
         if args.alternating:
             print(
                 f"               alternating side floor non-trained: "
@@ -1146,6 +1285,13 @@ def main():
         f"  Promote gd:  min_epochs={args.min_accept_epochs}, "
         f"min_black_score={args.min_accept_black_score:.2f}"
     )
+    if args.black_survival_games > 0:
+        print(
+            f"  Black chk:   {args.black_survival_games} games @ {black_survival_sims} sims, "
+            f"threshold={args.black_survival_threshold:.2f}"
+        )
+    else:
+        print("  Black chk:   disabled")
     print(f"  Explore rej: {args.explore_from_rejected}")
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
@@ -1164,6 +1310,19 @@ def main():
         print(f"  Proc cap:    max {max_processed_positions} processed positions")
     else:
         print("  Proc cap:    disabled")
+    if args.use_source_quotas:
+        print(
+            "  Src quotas:  "
+            f"selfplay={args.quota_selfplay:.2f}, human={args.quota_human:.2f}, "
+            f"blackfocus={args.quota_blackfocus:.2f}, humanseed={args.quota_humanseed:.2f}"
+        )
+    else:
+        print("  Src quotas:  disabled")
+    print(
+        "  Src target:  "
+        f"selfplay={args.selfplay_target_mcts_lambda:.2f}, human={args.human_target_mcts_lambda:.2f}, "
+        f"blackfocus={args.blackfocus_target_mcts_lambda:.2f}, humanseed={args.humanseed_target_mcts_lambda:.2f}"
+    )
     print(f"  Check pos:   {'keep' if args.keep_check_positions else 'skip'}")
     print(f"  BF filter:   min_blackfocus_plies={args.min_blackfocus_plies}")
     print(f"  Starting at: generation {start_gen}")
@@ -1470,6 +1629,15 @@ def main():
             "--human-data-weight", str(effective_human_data_weight),
             "--humanseed-data-weight", str(effective_humanseed_data_weight),
             "--blackfocus-data-weight", str(effective_blackfocus_data_weight),
+            *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
+            "--quota-selfplay", str(args.quota_selfplay),
+            "--quota-human", str(args.quota_human),
+            "--quota-blackfocus", str(args.quota_blackfocus),
+            "--quota-humanseed", str(args.quota_humanseed),
+            "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
+            "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
+            "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
+            "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
         if max_processed_positions is not None:
@@ -1628,6 +1796,7 @@ def main():
                 "accepted": True,
                 "score": None,
                 "threshold": args.gate_threshold,
+                "min_side_score": args.gate_min_side_score,
                 "min_other_side": args.gate_min_other_side,
                 "total_games": 0,
                 "decision_mode": "disabled",
@@ -1647,7 +1816,10 @@ def main():
             )
             gate_info["enabled"] = True
             gate_info["threshold"] = args.gate_threshold
+            gate_info["min_side_score"] = args.gate_min_side_score
             gate_info["min_other_side"] = args.gate_min_other_side
+            white_std = gate_info["candidate_white"]
+            black_std = gate_info["candidate_black"]
             if args.alternating:
                 primary_side = train_side
                 other_side = "white" if train_side == "black" else "black"
@@ -1679,7 +1851,7 @@ def main():
                     gate_info["black_focus_arena"] = black_focus_gate
                     gate_info["black_focus_threshold"] = args.black_focus_gate_threshold
                 gate_info.update({
-                    "decision_mode": "side_aware",
+                    "decision_mode": "side_aware_strict",
                     "primary_side": primary_side,
                     "other_side": other_side,
                     "primary_score": primary_info["score"],
@@ -1687,37 +1859,28 @@ def main():
                     "primary_games": primary_info["games"],
                     "other_games": other_info["games"],
                 })
-                base_side_pass = (
+                accepted = (
                     gate_info["total_games"] > 0
                     and gate_info["primary_games"] > 0
                     and gate_info["other_games"] > 0
                     and gate_info["primary_score"] >= args.gate_threshold
                     and gate_info["other_score"] >= min_other_side
+                    and white_std["games"] > 0
+                    and black_std["games"] > 0
+                    and white_std["score"] >= args.gate_min_side_score
+                    and black_std["score"] >= args.gate_min_side_score
                 )
-                if black_focus_gate is None:
-                    accepted = base_side_pass
-                else:
+                if black_focus_gate is not None:
                     focus_primary = black_focus_gate["candidate_black"]["score"]
                     focus_games = black_focus_gate["candidate_black"]["games"]
                     gate_info["black_focus_primary_score"] = focus_primary
                     gate_info["black_focus_primary_games"] = focus_games
-                    gate_info["decision_mode"] = "side_aware_black_focus"
-                    accepted = (
-                        gate_info["total_games"] > 0
-                        and gate_info["primary_games"] > 0
-                        and gate_info["other_games"] > 0
-                        and gate_info["other_score"] >= min_other_side
-                        and (
-                            gate_info["primary_score"] >= args.gate_threshold
-                            or (
-                                focus_games > 0
-                                and focus_primary >= args.black_focus_gate_threshold
-                            )
-                        )
+                    gate_info["black_focus_pass"] = (
+                        focus_games > 0 and focus_primary >= args.black_focus_gate_threshold
                     )
             else:
                 gate_info.update({
-                    "decision_mode": "overall",
+                    "decision_mode": "overall_strict_sides",
                     "primary_side": "overall",
                     "other_side": None,
                     "primary_score": gate_info["score"],
@@ -1725,8 +1888,38 @@ def main():
                     "primary_games": gate_info["total_games"],
                     "other_games": 0,
                 })
-                accepted = gate_info["score"] >= args.gate_threshold and gate_info["total_games"] > 0
+                accepted = (
+                    gate_info["score"] >= args.gate_threshold
+                    and gate_info["total_games"] > 0
+                    and white_std["games"] > 0
+                    and black_std["games"] > 0
+                    and white_std["score"] >= args.gate_min_side_score
+                    and black_std["score"] >= args.gate_min_side_score
+                )
             gate_info["accepted"] = accepted
+
+        # Pre-promotion sanity: verify candidate Black survives from opening-like starts.
+        if accepted and args.black_survival_games > 0:
+            black_survival_info = _run_black_survival(
+                candidate_model=candidate_path,
+                incumbent_model=model_path,
+                gen=gen,
+                model_dir=model_dir,
+                games=args.black_survival_games,
+                sims=black_survival_sims,
+                workers=args.arena_workers,
+                base_seed=base_seed + 900000,
+                human_start_dir=args.human_seed_dir,
+                human_start_max_positions=args.human_seed_max_positions,
+            )
+            gate_info["black_survival"] = black_survival_info
+        else:
+            gate_info["black_survival"] = {
+                "enabled": bool(args.black_survival_games > 0),
+                "ran": False,
+                "score": None,
+                "total_games": 0,
+            }
 
         # Promotion guards: prevent accidental regressions from short/noisy runs.
         guard_reasons = []
@@ -1750,6 +1943,18 @@ def main():
                 )
             gate_info["promotion_guard_black_score"] = black_score
             gate_info["promotion_guard_black_games"] = black_games
+        if accepted and args.black_survival_games > 0:
+            survival = gate_info.get("black_survival", {})
+            survival_score = survival.get("score")
+            survival_games = survival.get("total_games", 0)
+            if survival_score is None:
+                guard_reasons.append("missing black survival score")
+            elif survival_games <= 0:
+                guard_reasons.append("black survival games=0")
+            elif survival_score < args.black_survival_threshold:
+                guard_reasons.append(
+                    f"black_survival score={survival_score:.3f} below black_survival_threshold={args.black_survival_threshold:.3f}"
+                )
         if guard_reasons:
             accepted = False
             gate_info["accepted"] = False
@@ -1773,21 +1978,24 @@ def main():
                 print(f"  Frozen fallback updated -> {frozen_path}")
             selfplay_model_path = model_path
         else:
-            if gate_info.get("decision_mode") == "side_aware_black_focus":
-                print(
-                    f"\n  Candidate REJECTED "
-                    f"(trained-{gate_info['primary_side']} opening score={gate_info['primary_score']:.3f} "
-                    f"vs {args.gate_threshold:.3f}, black-focus score={gate_info.get('black_focus_primary_score', 0.0):.3f} "
-                    f"vs {args.black_focus_gate_threshold:.3f}, other-{gate_info['other_side']} "
-                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}); "
-                    f"keeping incumbent"
-                )
-            elif gate_info.get("decision_mode") == "side_aware":
+            if gate_info.get("decision_mode") == "side_aware_strict":
                 print(
                     f"\n  Candidate REJECTED "
                     f"(trained-{gate_info['primary_side']} score={gate_info['primary_score']:.3f} "
                     f"vs {args.gate_threshold:.3f}, other-{gate_info['other_side']} "
-                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}); "
+                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}, "
+                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
+                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
+                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}); "
+                    f"keeping incumbent"
+                )
+            elif gate_info.get("decision_mode") == "overall_strict_sides":
+                print(
+                    f"\n  Candidate REJECTED "
+                    f"(overall={gate_info.get('score', 0.0):.3f} vs {args.gate_threshold:.3f}, "
+                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
+                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
+                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}); "
                     f"keeping incumbent"
                 )
             else:
@@ -1901,21 +2109,34 @@ def main():
         print(f"  Iteration {i+1}/{args.iterations} complete (trained {side_label}, candidate {gate_label})")
         print(f"  Time:  generate {format_time(t_gen)}  |  process {format_time(t_proc)}  |  train {format_time(t_train)}  |  total {format_time(iter_elapsed)}")
         if gate_info.get("enabled"):
-            if gate_info.get("decision_mode") == "side_aware_black_focus":
-                print(
-                    f"  Gate:  trained-{gate_info['primary_side']} opening={gate_info['primary_score']:.3f} "
-                    f"(>={args.gate_threshold:.3f})  black-focus={gate_info.get('black_focus_primary_score', 0.0):.3f} "
-                    f"(>={args.black_focus_gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
-                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
-                )
-            elif gate_info.get("decision_mode") == "side_aware":
+            if gate_info.get("decision_mode") == "side_aware_strict":
                 print(
                     f"  Gate:  trained-{gate_info['primary_side']}={gate_info['primary_score']:.3f} "
                     f"(>={args.gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
-                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  "
+                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
+                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
+                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
+                    f"overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+                )
+            elif gate_info.get("decision_mode") == "overall_strict_sides":
+                print(
+                    f"  Gate:  overall={gate_info['score']:.3f} (>= {args.gate_threshold:.3f})  "
+                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
+                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
+                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
+                    f"games={gate_info['total_games']}"
                 )
             else:
                 print(f"  Gate:  score={gate_info['score']:.3f}  threshold={args.gate_threshold:.3f}  games={gate_info['total_games']}")
+        if gate_info.get("black_survival", {}).get("ran"):
+            bsv = gate_info["black_survival"]
+            print(
+                f"  BSurv: score={bsv.get('score', 0.0):.3f}  "
+                f"threshold={args.black_survival_threshold:.3f}  "
+                f"games={bsv.get('total_games', 0)}  "
+                f"human_starts={bsv.get('used_human_starts', False)}"
+            )
         print(f"  Clock: {format_time(total_elapsed)} elapsed  |  ~{format_time(remaining)} remaining")
         print(f"{'-'*60}")
 

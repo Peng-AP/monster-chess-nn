@@ -13,7 +13,13 @@ from config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
     SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, RANDOM_SEED,
+    SOURCE_QUOTA_ENABLED, SOURCE_QUOTA_SELFPLAY, SOURCE_QUOTA_HUMAN,
+    SOURCE_QUOTA_BLACKFOCUS, SOURCE_QUOTA_HUMANSEED,
+    SELFPLAY_TARGET_MCTS_LAMBDA, HUMAN_TARGET_MCTS_LAMBDA,
+    BLACKFOCUS_TARGET_MCTS_LAMBDA, HUMANSEED_TARGET_MCTS_LAMBDA,
 )
+
+SOURCE_ORDER = ("selfplay", "human", "blackfocus", "humanseed")
 
 # Piece -> layer index
 PIECE_TO_LAYER = {
@@ -134,6 +140,76 @@ def mirror_policy(policy_vec):
         if policy_vec[idx] > 0:
             mirrored[mirror_move_index(idx)] = policy_vec[idx]
     return mirrored
+
+
+def _source_kind(game):
+    """Normalize game source to one of SOURCE_ORDER."""
+    if game.get("is_human"):
+        return "human"
+    if game.get("is_humanseed"):
+        return "humanseed"
+    if game.get("is_blackfocus"):
+        return "blackfocus"
+    return "selfplay"
+
+
+def _interleave_games_by_source(games, seed):
+    """Round-robin games by source to avoid long contiguous source runs."""
+    rng = np.random.default_rng(seed)
+    by_source = {}
+    for g in games:
+        src = _source_kind(g)
+        by_source.setdefault(src, []).append(g)
+    for src_games in by_source.values():
+        rng.shuffle(src_games)
+
+    source_cycle = [s for s in SOURCE_ORDER if s in by_source]
+    # Preserve any future source buckets in deterministic order.
+    source_cycle.extend(sorted(s for s in by_source if s not in SOURCE_ORDER))
+    if not source_cycle:
+        return []
+
+    out = []
+    idx = {s: 0 for s in source_cycle}
+    while True:
+        added_any = False
+        for s in source_cycle:
+            src_games = by_source[s]
+            i = idx[s]
+            if i < len(src_games):
+                out.append(src_games[i])
+                idx[s] = i + 1
+                added_any = True
+        if not added_any:
+            break
+    return out
+
+
+def _allocate_source_quotas(train_cap, ratios, train_games):
+    """Allocate integer source quotas that sum to train_cap."""
+    present = {_source_kind(g) for g in train_games}
+    active = [s for s in SOURCE_ORDER if s in present and ratios.get(s, 0.0) > 0.0]
+    if train_cap is None or train_cap <= 0 or not active:
+        return None
+
+    denom = sum(float(ratios[s]) for s in active)
+    if denom <= 0:
+        return None
+
+    raw = {s: train_cap * (float(ratios[s]) / denom) for s in active}
+    quota = {s: int(np.floor(raw[s])) for s in active}
+    remaining = int(train_cap - sum(quota.values()))
+    if remaining > 0:
+        order = sorted(active, key=lambda s: (raw[s] - quota[s]), reverse=True)
+        for s in order:
+            if remaining <= 0:
+                break
+            quota[s] += 1
+            remaining -= 1
+
+    for s in SOURCE_ORDER:
+        quota.setdefault(s, 0)
+    return quota
 
 
 def _collect_generation_dirs(subdirs):
@@ -343,6 +419,12 @@ def load_all_games(
             "is_humanseed": is_humanseed,
             "is_blackfocus": is_blackfocus,
             "result_bucket": result_bucket,
+            "source_kind": (
+                "human" if is_human
+                else "humanseed" if is_humanseed
+                else "blackfocus" if is_blackfocus
+                else "selfplay"
+            ),
         })
 
     if min_blackfocus_plies > 0:
@@ -413,19 +495,37 @@ def _split_games_by_result(games, seed):
 
 def _convert_games_to_arrays(games, augment, human_repeat,
                              blackfocus_repeat=1, humanseed_repeat=1,
-                             max_positions=None):
+                             max_positions=None, source_quotas=None,
+                             source_target_lambdas=None,
+                             dedupe_positions=False):
     """Convert game records to tensors for one split."""
+    if source_target_lambdas is None:
+        source_target_lambdas = {
+            "selfplay": float(SELFPLAY_TARGET_MCTS_LAMBDA),
+            "human": float(HUMAN_TARGET_MCTS_LAMBDA),
+            "blackfocus": float(BLACKFOCUS_TARGET_MCTS_LAMBDA),
+            "humanseed": float(HUMANSEED_TARGET_MCTS_LAMBDA),
+        }
     tensors = []
     values = []
     game_results = []
     policy_targets = []
+    target_lambdas = []
     split_game_ids = []
+    source_counts = {s: 0 for s in SOURCE_ORDER}
     capped = False
+    seen_positions = set()
 
     for game in tqdm(games, desc="Converting", leave=False):
         if max_positions is not None and len(tensors) >= max_positions:
             capped = True
             break
+        source_kind = game.get("source_kind") or _source_kind(game)
+        if source_kind not in source_counts:
+            source_counts[source_kind] = 0
+        source_quota = None if source_quotas is None else source_quotas.get(source_kind)
+        if source_quota is not None and source_counts[source_kind] >= source_quota:
+            continue
         repeat = 1
         if game.get("is_human"):
             repeat = max(repeat, int(human_repeat))
@@ -437,12 +537,22 @@ def _convert_games_to_arrays(games, augment, human_repeat,
             if max_positions is not None and len(tensors) >= max_positions:
                 capped = True
                 break
+            if source_quota is not None and source_counts[source_kind] >= source_quota:
+                break
             split_game_ids.append(game["game_id"])
             for rec in game["records"]:
                 if max_positions is not None and len(tensors) >= max_positions:
                     capped = True
                     break
+                if source_quota is not None and source_counts[source_kind] >= source_quota:
+                    break
                 is_white = rec["current_player"] == "white"
+                pos_key = None
+                dedupe_active = dedupe_positions and source_kind in ("human", "humanseed")
+                if dedupe_active:
+                    pos_key = f"{rec['fen']}|{rec['current_player']}"
+                    if pos_key in seen_positions:
+                        continue
                 tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
                 # mcts_value from data_generation is already from the
                 # side-to-move perspective for both White and Black.
@@ -450,17 +560,27 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 val = mv
                 gr = rec["game_result"]
                 pol = policy_dict_to_target(rec["policy"], is_white)
+                lam = float(source_target_lambdas.get(source_kind, 1.0))
 
                 tensors.append(tensor)
                 values.append(val)
                 game_results.append(gr)
                 policy_targets.append(pol)
+                target_lambdas.append(lam)
+                source_counts[source_kind] += 1
+                if dedupe_active and pos_key is not None:
+                    seen_positions.add(pos_key)
 
-                if augment and (max_positions is None or len(tensors) < max_positions):
+                can_augment = augment and (max_positions is None or len(tensors) < max_positions)
+                if source_quota is not None and source_counts[source_kind] >= source_quota:
+                    can_augment = False
+                if can_augment:
                     tensors.append(mirror_tensor(tensor))
                     values.append(val)
                     game_results.append(gr)
                     policy_targets.append(mirror_policy(pol))
+                    target_lambdas.append(lam)
+                    source_counts[source_kind] += 1
                 elif augment and max_positions is not None and len(tensors) >= max_positions:
                     capped = True
                     break
@@ -474,13 +594,18 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         y_value = np.array(values, dtype=np.float32)
         y_result = np.array(game_results, dtype=np.float32)
         y_policy = np.array(policy_targets, dtype=np.float32)
+        y_target_lambda = np.array(target_lambdas, dtype=np.float32)
     else:
         X = np.zeros((0,) + TENSOR_SHAPE, dtype=np.float32)
         y_value = np.zeros((0,), dtype=np.float32)
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
+        y_target_lambda = np.zeros((0,), dtype=np.float32)
 
-    return X, y_value, y_result, y_policy, split_game_ids, capped
+    return (
+        X, y_value, y_result, y_policy, y_target_lambda,
+        split_game_ids, capped, source_counts,
+    )
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -493,7 +618,16 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      human_repeat=HUMAN_DATA_WEIGHT,
                      humanseed_repeat=HUMANSEED_DATA_WEIGHT,
                      blackfocus_repeat=BLACKFOCUS_DATA_WEIGHT,
-                     max_positions=PROCESSED_POSITION_CAP):
+                     max_positions=PROCESSED_POSITION_CAP,
+                     use_source_quotas=SOURCE_QUOTA_ENABLED,
+                     quota_selfplay=SOURCE_QUOTA_SELFPLAY,
+                     quota_human=SOURCE_QUOTA_HUMAN,
+                     quota_blackfocus=SOURCE_QUOTA_BLACKFOCUS,
+                     quota_humanseed=SOURCE_QUOTA_HUMANSEED,
+                     human_target_mcts_lambda=HUMAN_TARGET_MCTS_LAMBDA,
+                     humanseed_target_mcts_lambda=HUMANSEED_TARGET_MCTS_LAMBDA,
+                     blackfocus_target_mcts_lambda=BLACKFOCUS_TARGET_MCTS_LAMBDA,
+                     selfplay_target_mcts_lambda=SELFPLAY_TARGET_MCTS_LAMBDA):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -519,6 +653,18 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         return
     if max_positions is not None and max_positions <= 0:
         max_positions = None
+    source_quota_ratios = {
+        "selfplay": float(quota_selfplay),
+        "human": float(quota_human),
+        "blackfocus": float(quota_blackfocus),
+        "humanseed": float(quota_humanseed),
+    }
+    source_target_lambdas = {
+        "selfplay": float(selfplay_target_mcts_lambda),
+        "human": float(human_target_mcts_lambda),
+        "blackfocus": float(blackfocus_target_mcts_lambda),
+        "humanseed": float(humanseed_target_mcts_lambda),
+    }
 
     split_games = _split_games_by_result(games, seed=seed)
     train_games = split_games["train"]
@@ -542,15 +688,32 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         f"humanseed={humanseed_repeat}, "
         f"blackfocus={blackfocus_repeat}"
     )
+    print(
+        "  Source-aware value lambdas (mcts weight): "
+        f"selfplay={source_target_lambdas['selfplay']:.2f}, "
+        f"human={source_target_lambdas['human']:.2f}, "
+        f"blackfocus={source_target_lambdas['blackfocus']:.2f}, "
+        f"humanseed={source_target_lambdas['humanseed']:.2f}"
+    )
     if max_positions is not None:
         print(f"  Processed position cap: total<={max_positions}")
 
     # Validation/test are never weighted.
-    X_val, yv_val, yr_val, yp_val, val_game_ids, _ = _convert_games_to_arrays(
-        val_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
+    X_val, yv_val, yr_val, yp_val, yl_val, val_game_ids, _, val_source_counts = _convert_games_to_arrays(
+        val_games,
+        augment=augment,
+        human_repeat=1,
+        blackfocus_repeat=1,
+        humanseed_repeat=1,
+        source_target_lambdas=source_target_lambdas,
     )
-    X_test, yv_test, yr_test, yp_test, test_game_ids, _ = _convert_games_to_arrays(
-        test_games, augment=augment, human_repeat=1, blackfocus_repeat=1, humanseed_repeat=1,
+    X_test, yv_test, yr_test, yp_test, yl_test, test_game_ids, _, test_source_counts = _convert_games_to_arrays(
+        test_games,
+        augment=augment,
+        human_repeat=1,
+        blackfocus_repeat=1,
+        humanseed_repeat=1,
+        source_target_lambdas=source_target_lambdas,
     )
     eval_positions = len(X_val) + len(X_test)
     train_position_cap = None
@@ -566,20 +729,47 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             f"{train_position_cap} (val+test={eval_positions})"
         )
 
+    train_source_quotas = None
+    if use_source_quotas and train_position_cap is not None:
+        train_source_quotas = _allocate_source_quotas(
+            train_position_cap,
+            source_quota_ratios,
+            train_games,
+        )
+        if train_source_quotas:
+            print(
+                "  Train source quotas: "
+                + ", ".join(f"{k}={train_source_quotas.get(k, 0)}" for k in SOURCE_ORDER)
+            )
+        else:
+            print("  Train source quotas: disabled (no active sources/ratios)")
+    elif use_source_quotas and train_position_cap is None:
+        print("  Train source quotas: skipped (no max position cap)")
+    else:
+        print("  Train source quotas: disabled")
+
+    train_games_ordered = train_games
+    if use_source_quotas:
+        train_games_ordered = _interleave_games_by_source(train_games, seed=seed + 17)
+
     # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
-    X_train, yv_train, yr_train, yp_train, train_game_ids, train_capped = _convert_games_to_arrays(
-        train_games,
+    X_train, yv_train, yr_train, yp_train, yl_train, train_game_ids, train_capped, train_source_counts = _convert_games_to_arrays(
+        train_games_ordered,
         augment=augment,
         human_repeat=human_repeat,
         blackfocus_repeat=blackfocus_repeat,
         humanseed_repeat=humanseed_repeat,
         max_positions=train_position_cap,
+        source_quotas=train_source_quotas,
+        source_target_lambdas=source_target_lambdas,
+        dedupe_positions=bool(use_source_quotas),
     )
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
+    y_target_lambda = np.concatenate([yl_train, yl_val, yl_test], axis=0)
     total_positions = len(X)
     if max_positions is not None and total_positions > max_positions:
         raise RuntimeError(
@@ -594,6 +784,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "mcts_values.npy"), y_value)
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
+    np.save(os.path.join(output_dir, "target_lambdas.npy"), y_target_lambda)
 
     n_train = len(X_train)
     n_val = len(X_val)
@@ -612,6 +803,12 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "train_weighted_instances": len(train_game_ids),
         "val_weighted_instances": len(val_game_ids),
         "test_weighted_instances": len(test_game_ids),
+        "train_source_position_counts": train_source_counts,
+        "val_source_position_counts": val_source_counts,
+        "test_source_position_counts": test_source_counts,
+        "train_source_quotas": train_source_quotas,
+        "source_quota_ratios": source_quota_ratios,
+        "source_target_lambdas": source_target_lambdas,
         "max_positions": max_positions,
         "train_split_capped": bool(train_capped),
         "total_positions": int(total_positions),
@@ -624,6 +821,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  mcts_values.npy:  {y_value.shape}")
     print(f"  game_results.npy: {y_result.shape}")
     print(f"  policies.npy:     {y_policy.shape}")
+    print(f"  target_lambdas.npy: {y_target_lambda.shape}")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 
@@ -657,6 +855,25 @@ if __name__ == "__main__":
                         help=f"Train repetition weight for _humanseed streams (default: {HUMANSEED_DATA_WEIGHT})")
     parser.add_argument("--blackfocus-data-weight", type=int, default=BLACKFOCUS_DATA_WEIGHT,
                         help=f"Train repetition weight for _blackfocus streams (default: {BLACKFOCUS_DATA_WEIGHT})")
+    parser.add_argument("--use-source-quotas", action=argparse.BooleanOptionalAction,
+                        default=SOURCE_QUOTA_ENABLED,
+                        help="Cap train positions by source ratio within --max-positions")
+    parser.add_argument("--quota-selfplay", type=float, default=SOURCE_QUOTA_SELFPLAY,
+                        help=f"Source quota ratio for selfplay/curriculum streams (default: {SOURCE_QUOTA_SELFPLAY})")
+    parser.add_argument("--quota-human", type=float, default=SOURCE_QUOTA_HUMAN,
+                        help=f"Source quota ratio for human_games stream (default: {SOURCE_QUOTA_HUMAN})")
+    parser.add_argument("--quota-blackfocus", type=float, default=SOURCE_QUOTA_BLACKFOCUS,
+                        help=f"Source quota ratio for _blackfocus streams (default: {SOURCE_QUOTA_BLACKFOCUS})")
+    parser.add_argument("--quota-humanseed", type=float, default=SOURCE_QUOTA_HUMANSEED,
+                        help=f"Source quota ratio for _humanseed streams (default: {SOURCE_QUOTA_HUMANSEED})")
+    parser.add_argument("--human-target-mcts-lambda", type=float, default=HUMAN_TARGET_MCTS_LAMBDA,
+                        help=f"Human source mcts target weight lambda (default: {HUMAN_TARGET_MCTS_LAMBDA})")
+    parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=HUMANSEED_TARGET_MCTS_LAMBDA,
+                        help=f"Human-seed source mcts target weight lambda (default: {HUMANSEED_TARGET_MCTS_LAMBDA})")
+    parser.add_argument("--blackfocus-target-mcts-lambda", type=float, default=BLACKFOCUS_TARGET_MCTS_LAMBDA,
+                        help=f"Black-focus source mcts target weight lambda (default: {BLACKFOCUS_TARGET_MCTS_LAMBDA})")
+    parser.add_argument("--selfplay-target-mcts-lambda", type=float, default=SELFPLAY_TARGET_MCTS_LAMBDA,
+                        help=f"Self-play source mcts target weight lambda (default: {SELFPLAY_TARGET_MCTS_LAMBDA})")
     args = parser.parse_args()
     if args.keep_generations is not None and args.position_budget is not None:
         raise ValueError("Specify only one of --keep-generations or --position-budget")
@@ -676,6 +893,22 @@ if __name__ == "__main__":
         raise ValueError("--humanseed-data-weight must be >= 1")
     if args.blackfocus_data_weight < 1:
         raise ValueError("--blackfocus-data-weight must be >= 1")
+    for quota_name in ("quota_selfplay", "quota_human", "quota_blackfocus", "quota_humanseed"):
+        if getattr(args, quota_name) < 0:
+            raise ValueError(f"--{quota_name.replace('_', '-')} must be >= 0")
+    if args.use_source_quotas:
+        quota_sum = args.quota_selfplay + args.quota_human + args.quota_blackfocus + args.quota_humanseed
+        if quota_sum <= 0:
+            raise ValueError("Source quotas enabled but all source ratios are zero")
+    for lam_name in (
+        "human_target_mcts_lambda",
+        "humanseed_target_mcts_lambda",
+        "blackfocus_target_mcts_lambda",
+        "selfplay_target_mcts_lambda",
+    ):
+        lam = getattr(args, lam_name)
+        if not (0.0 <= lam <= 1.0):
+            raise ValueError(f"--{lam_name.replace('_', '-')} must be in [0, 1]")
     if args.max_positions is not None and args.max_positions <= 0:
         args.max_positions = None
 
@@ -691,4 +924,13 @@ if __name__ == "__main__":
                      human_repeat=args.human_data_weight,
                      humanseed_repeat=args.humanseed_data_weight,
                      blackfocus_repeat=args.blackfocus_data_weight,
-                     max_positions=args.max_positions)
+                     max_positions=args.max_positions,
+                     use_source_quotas=args.use_source_quotas,
+                     quota_selfplay=args.quota_selfplay,
+                     quota_human=args.quota_human,
+                     quota_blackfocus=args.quota_blackfocus,
+                     quota_humanseed=args.quota_humanseed,
+                     human_target_mcts_lambda=args.human_target_mcts_lambda,
+                     humanseed_target_mcts_lambda=args.humanseed_target_mcts_lambda,
+                     blackfocus_target_mcts_lambda=args.blackfocus_target_mcts_lambda,
+                     selfplay_target_mcts_lambda=args.selfplay_target_mcts_lambda)

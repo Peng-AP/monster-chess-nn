@@ -369,8 +369,13 @@ def load_data(data_dir):
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
     policies = np.load(os.path.join(data_dir, "policies.npy"))
+    target_lambdas_path = os.path.join(data_dir, "target_lambdas.npy")
+    if os.path.exists(target_lambdas_path):
+        target_lambdas = np.load(target_lambdas_path)
+    else:
+        target_lambdas = np.ones((len(positions),), dtype=np.float32)
     splits = np.load(os.path.join(data_dir, "splits.npz"))
-    return positions, mcts_values, game_results, policies, splits
+    return positions, mcts_values, game_results, policies, target_lambdas, splits
 
 
 def to_side_perspective(values_white_perspective, positions):
@@ -379,7 +384,7 @@ def to_side_perspective(values_white_perspective, positions):
     return values_white_perspective * side_sign
 
 
-def get_targets(mcts_values, game_results, target_type, blend_weight):
+def get_targets(mcts_values, game_results, target_type, blend_weight, target_lambdas=None):
     """Build value training targets based on the chosen strategy."""
     if target_type == "game_result":
         return game_results
@@ -387,6 +392,10 @@ def get_targets(mcts_values, game_results, target_type, blend_weight):
         return mcts_values
     elif target_type == "blend":
         return blend_weight * mcts_values + (1 - blend_weight) * game_results
+    elif target_type == "source_aware":
+        if target_lambdas is None:
+            raise ValueError("source_aware target requires per-sample target_lambdas")
+        return target_lambdas * mcts_values + (1 - target_lambdas) * game_results
     else:
         raise ValueError(f"Unknown target type: {target_type}")
 
@@ -604,7 +613,7 @@ def main():
     parser.add_argument("--distill-temperature", type=float, default=1.0,
                         help="Temperature for policy distillation")
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
-                        choices=["game_result", "mcts_value", "blend"])
+                        choices=["game_result", "mcts_value", "blend", "source_aware"])
     args = parser.parse_args()
 
     if args.warmup_epochs < 0:
@@ -637,7 +646,7 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
-    positions, mcts_values, game_results, policies, splits = load_data(args.data_dir)
+    positions, mcts_values, game_results, policies, target_lambdas, splits = load_data(args.data_dir)
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -652,12 +661,22 @@ def main():
 
     # For non-blend targets, compute once. For blend, recompute per epoch.
     if args.target != "blend":
-        value_targets = get_targets(mcts_values, game_results_side, args.target, BLEND_WEIGHT)
+        value_targets = get_targets(
+            mcts_values, game_results_side, args.target, BLEND_WEIGHT,
+            target_lambdas=target_lambdas,
+        )
     else:
         value_targets = None  # computed per epoch with annealing
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
+    if args.target == "source_aware":
+        print(
+            "Source-aware lambda stats: "
+            f"min={target_lambdas.min():.2f} "
+            f"max={target_lambdas.max():.2f} "
+            f"mean={target_lambdas.mean():.2f}"
+        )
     print(f"Policy loss weight: {args.policy_loss_weight}")
     if args.target == "blend":
         print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
@@ -785,7 +804,7 @@ def main():
             epoch_targets = lam * mcts_values + (1 - lam) * game_results_side
         else:
             epoch_targets = value_targets
-            lam = BLEND_WEIGHT
+            lam = None
 
         lr_used = _set_epoch_lr(
             optimizer,
@@ -840,7 +859,7 @@ def main():
             scheduler.step()
 
         lr = lr_used
-        lam_str = f"  λ={lam:.2f}" if args.target == "blend" else ""
+        lam_str = f"  λ={lam:.2f}" if (args.target == "blend" and lam is not None) else ""
         distill_str = ""
         if distill_enabled:
             distill_str = f"  distill(v={train_dv:.4f} p={train_dp:.4f})"
@@ -868,7 +887,7 @@ def main():
             "val_policy_ce": float(val_p),
             "val_value_mae": float(val_mae),
             "lr": float(lr),
-            "blend_lambda": float(lam),
+            "blend_lambda": float(lam) if lam is not None else None,
         })
 
         # Checkpoint
