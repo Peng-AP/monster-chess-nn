@@ -870,12 +870,12 @@ def _print_gate_line(args, gate_info):
 def _resolve_blackfocus_filters(base_filter, black_iter_override):
     """Resolve base/black-iteration blackfocus result filters.
 
-    Default black-iteration behavior keeps all blackfocus outcomes. In practice,
-    strict non-loss filtering can starve trainable blackfocus signal.
+    Default black-iteration behavior keeps non-loss blackfocus outcomes.
+    This avoids reinforcing collapse trajectories while still admitting draws.
     """
     base = str(base_filter)
     if black_iter_override is None:
-        return base, "any"
+        return base, "nonloss"
     return base, str(black_iter_override)
 
 

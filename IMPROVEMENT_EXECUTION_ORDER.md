@@ -15,7 +15,7 @@ This is the practical next sequence from the current cleaned pipeline.
 
 Recent runtime policy defaults updated:
 
-- Black-iteration blackfocus filter default: `any`
+- Black-iteration blackfocus filter default: `nonloss`
 - Black-focus generation default: scripted Black
 - MCTS policy-target smoothing enabled via visit pseudocount
 - Black-iteration source quota profile now favors humanseed over human

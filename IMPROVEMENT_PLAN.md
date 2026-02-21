@@ -23,7 +23,7 @@ Recent code-review fix applied:
 
 - `black_focus_pass` is now enforced in `accepted` gating logic for alternating Black-side runs with black-focus arena enabled.
 - Source-quota processing now rebalances quotas against estimated source capacity to avoid train-cap underfill.
-- Black-iteration blackfocus result-filter default is now `any` (instead of strict nonloss) to avoid starving Black-side signal.
+- Black-iteration blackfocus result-filter default is now `nonloss` (override-able) to avoid reinforcing Black-focus losses while still keeping draw signal.
 - Black-focus generation default now uses MCTS Black (non-scripted) for richer policy supervision.
 - MCTS policy targets now apply Laplace-style visit smoothing (`POLICY_TARGET_PSEUDOCOUNT`) to prevent zero-entropy collapse.
 - Black-iteration source quotas now default to `human=0.0`, `humanseed=0.2` (swapped from prior settings) because local human games are white-to-move only and were starving Black-side train signal.

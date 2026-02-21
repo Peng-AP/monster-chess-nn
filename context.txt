@@ -50,8 +50,8 @@ Loop in `src/iterate.py`:
   `selfplay=0.45, human=0.00, blackfocus=0.35, humanseed=0.20`
 - Black-focus generation now defaults to scripted Black play in iterate
   runtime settings (override-able by CLI)
-- Black-iteration blackfocus result-filter default is now `any` (override-able),
-  reducing strict-filter starvation of Black-side data
+- Black-iteration blackfocus result-filter default is now `nonloss`
+  (override-able), reducing direct reinforcement of Black-focus losses
 - Black-iteration simulation multipliers now default to
   `black_train_sims_mult=1.5` and `black_opponent_sims_mult=0.8`
 - Per-source processing diagnostics (counts + value/policy entropy stats)
