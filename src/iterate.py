@@ -48,6 +48,17 @@ def format_time(seconds):
     return f"{m}m {s}s"
 
 
+def _resolve_project_path(path):
+    if not path:
+        return path
+    if os.path.isabs(path):
+        return os.path.normpath(path)
+    project_candidate = os.path.normpath(os.path.join(PROJECT_ROOT, path))
+    if os.path.exists(project_candidate):
+        return project_candidate
+    return os.path.abspath(path)
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -231,6 +242,62 @@ def _append_jsonl(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(obj) + "\n")
+
+
+def _load_processing_summary(processed_dir):
+    path = os.path.join(processed_dir, "processing_summary.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        return {"error": str(e), "path": path}
+
+
+def _data_processor_source_args(args):
+    return [
+        *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
+        "--quota-selfplay", str(args.quota_selfplay),
+        "--quota-human", str(args.quota_human),
+        "--quota-blackfocus", str(args.quota_blackfocus),
+        "--quota-humanseed", str(args.quota_humanseed),
+        "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
+        "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
+        "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
+        "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
+    ]
+
+
+def _bool_optional_flag(flag_name, enabled):
+    return f"--{flag_name}" if enabled else f"--no-{flag_name}"
+
+
+def _build_train_cmd_base(train_target, epochs, data_dir, model_dir, seed,
+                          se_reduction, use_se_blocks, use_side_specialized_heads):
+    return [
+        sys.executable, "train.py",
+        "--target", train_target,
+        "--epochs", str(epochs),
+        "--data-dir", data_dir,
+        "--model-dir", model_dir,
+        "--seed", str(seed),
+        "--se-reduction", str(se_reduction),
+        _bool_optional_flag("use-se-blocks", use_se_blocks),
+        _bool_optional_flag("use-side-specialized-heads", use_side_specialized_heads),
+    ]
+
+
+def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only_side):
+    cmd.append(_bool_optional_flag("balanced-sides-train", balance_sides))
+    cmd.extend(["--balanced-black-ratio", str(balanced_black_ratio)])
+    if train_only_side != "none":
+        cmd.extend(["--train-only-side", train_only_side])
+
+
+def _append_distill_teacher_if_weighted(cmd, value_weight, policy_weight, teacher_path):
+    if value_weight > 0 or policy_weight > 0:
+        cmd.extend(["--distill-from", teacher_path])
 
 
 def _seed_archive_if_empty(model_path, archive_dir, manifest_path):
@@ -480,279 +547,278 @@ def _update_adaptive_scale(current_scale, accepted, gate_info,
     return float(new_scale), reason
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Iterate self-play training loop")
-    parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--games", type=int, default=200)
-    parser.add_argument("--curriculum-games", type=int, default=200,
-                        help="Curriculum endgame games per iteration (0 to disable)")
-    parser.add_argument("--black-focus-games", type=int, default=0,
-                        help="Extra black-focused games from black-advantage starts (black training side only)")
-    parser.add_argument("--human-seed-games", type=int, default=0,
-                        help="Extra games from human-recorded start positions each iteration")
-    parser.add_argument("--simulations", type=int, default=200)
-    parser.add_argument("--curriculum-simulations", type=int, default=50,
-                        help="MCTS simulations for curriculum games (lower = faster)")
-    parser.add_argument("--black-focus-simulations", type=int, default=120,
-                        help="MCTS simulations for black-focused start games")
-    parser.add_argument("--black-focus-tier-min", type=int, default=None,
-                        help="Curriculum tier lower bound for black-focus generation (1-indexed)")
-    parser.add_argument("--black-focus-tier-max", type=int, default=None,
-                        help="Curriculum tier upper bound for black-focus generation (1-indexed)")
-    parser.add_argument("--black-focus-live-results", action=argparse.BooleanOptionalAction, default=True,
-                        help="Use live game outcomes for black-focus generation labels (disable to use forced tier labels)")
-    parser.add_argument("--black-focus-scripted-black", action="store_true",
-                        help="Use scripted Black play for black-focus curriculum generation")
-    parser.add_argument("--human-seed-simulations", type=int, default=None,
-                        help="MCTS simulations for human-seeded games (default: normal sims)")
-    parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
-                        help="Multiplier on train-side simulations when training Black in alternating mode")
-    parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
-                        help="Multiplier on opponent simulations when training Black in alternating mode")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--primary-policy-loss-weight", type=float, default=1.0,
-                        help="Policy loss weight passed to primary training phase")
-    parser.add_argument("--primary-no-resume", action="store_true",
-                        help="Do not initialize primary training from incumbent checkpoint")
-    parser.add_argument("--train-target", type=str, default="source_aware",
-                        choices=["mcts_value", "game_result", "blend", "source_aware"],
-                        help="Training target passed to train.py")
-    parser.add_argument("--warmup-epochs", type=int, default=None,
-                        help="Warmup epochs when fine-tuning (default: from config)")
-    parser.add_argument("--warmup-start-factor", type=float, default=None,
-                        help="Warmup start LR factor when fine-tuning (default: from config)")
-    parser.add_argument("--keep-generations", type=int, default=None,
-                        help="Sliding window: keep last N generations (default: from config)")
-    parser.add_argument("--position-budget", type=int, default=None,
-                        help="Position budget window: include enough recent generations to hit N raw positions")
-    parser.add_argument("--position-budget-max", type=int, default=None,
-                        help="Optional max-cap for position budget window (requires --position-budget)")
-    parser.add_argument("--max-processed-positions", type=int, default=None,
-                        help="Hard cap on processed train+val+test positions (default: from config)")
-    parser.add_argument("--alternating", action="store_true",
-                        help="Use frozen-opponent alternating training")
-    parser.add_argument(
-        "--alternating-pattern",
-        type=str,
-        default="alternate",
-        choices=["alternate", "black_only", "white_only"],
-        help="Alternating mode side schedule: alternate each iteration, or lock to one side",
+def _evaluate_candidate_gate(args, candidate_path, incumbent_model_path, gen, model_dir,
+                             base_seed, train_side, gate_min_other_side_white,
+                             gate_min_other_side_black, black_focus_arena_sims):
+    gate_info = _run_arena(
+        candidate_model=candidate_path,
+        incumbent_model=incumbent_model_path,
+        gen=gen,
+        model_dir=model_dir,
+        arena_games=args.arena_games,
+        arena_sims=args.arena_sims,
+        arena_workers=args.arena_workers,
+        base_seed=base_seed,
+        arena_tag="standard",
     )
-    parser.add_argument("--opponent-sims", type=int, default=None,
-                        help="MCTS sims for frozen opponent (default: from config)")
-    parser.add_argument("--pool-size", type=int, default=5,
-                        help="Number of archived models to sample for opponent pool")
-    parser.add_argument("--arena-games", type=int, default=50,
-                        help="Candidate-vs-incumbent arena games for gating")
-    parser.add_argument("--arena-sims", type=int, default=100,
-                        help="MCTS simulations per move in arena games")
-    parser.add_argument("--arena-workers", type=int, default=2,
-                        help="Workers for arena evaluation game generation")
-    parser.add_argument("--gate-threshold", type=float, default=0.55,
-                        help="Accept candidate if arena score >= threshold")
-    parser.add_argument("--gate-min-side-score", type=float, default=0.45,
-                        help="Require both candidate White and Black standard arena scores >= this floor")
-    parser.add_argument("--gate-min-other-side", type=float, default=0.45,
-                        help="Alternating mode: minimum arena score on non-trained side")
-    parser.add_argument("--gate-min-other-side-white", type=float, default=None,
-                        help="Alternating White training: min non-trained-side score (default: --gate-min-other-side)")
-    parser.add_argument("--gate-min-other-side-black", type=float, default=None,
-                        help="Alternating Black training: min non-trained-side score (default: --gate-min-other-side)")
-    parser.add_argument("--black-focus-arena-games", type=int, default=0,
-                        help="Extra black-focus arena games (curriculum live starts) for Black-side gating")
-    parser.add_argument("--black-focus-arena-sims", type=int, default=None,
-                        help="MCTS simulations per move for black-focus arena games (default: --arena-sims)")
-    parser.add_argument("--black-focus-gate-threshold", type=float, default=0.40,
-                        help="Alternating Black mode: accept if black-focus arena score >= this threshold")
-    parser.add_argument("--black-focus-arena-tier-min", type=int, default=None,
-                        help="Curriculum tier lower bound for black-focus arena gating (1-indexed)")
-    parser.add_argument("--black-focus-arena-tier-max", type=int, default=None,
-                        help="Curriculum tier upper bound for black-focus arena gating (1-indexed)")
-    parser.add_argument("--no-gating", action="store_true",
-                        help="Disable arena gating and always promote candidate")
-    parser.add_argument("--min-accept-epochs", type=int, default=3,
-                        help="Promotion guard: reject promotion if --epochs is below this value (0 disables)")
-    parser.add_argument("--min-accept-black-score", type=float, default=0.05,
-                        help="Promotion guard: require candidate Black-side arena score >= this value (<=0 disables)")
-    parser.add_argument("--black-survival-games", type=int, default=12,
-                        help="Pre-promotion black survival sanity games from human openings (0 disables)")
-    parser.add_argument("--black-survival-sims", type=int, default=None,
-                        help="MCTS simulations for black survival sanity games (default: --arena-sims)")
-    parser.add_argument("--black-survival-threshold", type=float, default=0.35,
-                        help="Reject promotion if black survival score falls below this threshold")
-    parser.add_argument("--explore-from-rejected", action=argparse.BooleanOptionalAction, default=False,
-                        help="If candidate is rejected, continue next iteration from that candidate instead of incumbent")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="Base random seed (default: from config)")
-    parser.add_argument("--human-eval", action="store_true",
-                        help="Evaluate final incumbent on recorded human games")
-    parser.add_argument("--human-eval-dir", type=str,
-                        default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
-                        help="Directory of human game JSONL files for post-run evaluation")
-    parser.add_argument("--human-seed-dir", type=str,
-                        default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
-                        help="Directory of human game JSONL files used as start-position source")
-    parser.add_argument("--human-seed-side", type=str, default="auto",
-                        choices=["auto", "any", "white", "black"],
-                        help="Human-seed start side filter (auto=training side in alternating mode)")
-    parser.add_argument("--human-seed-max-positions", type=int, default=2000,
-                        help="Cap loaded human start positions per generation (0 = no cap)")
-    parser.add_argument("--human-eval-value-diagnostics", action="store_true",
-                        help="Include model value diagnostics on human positions (slower)")
-    parser.add_argument("--exclude-human-games", action="store_true",
-                        help="Exclude data/raw/human_games from training data processing")
-    parser.add_argument("--min-blackfocus-plies", type=int, default=0,
-                        help="Drop non-human _blackfocus games shorter than this many plies during processing")
-    parser.add_argument("--blackfocus-result-filter", type=str, default="any",
-                        choices=["any", "nonloss", "win"],
-                        help="Filter _blackfocus games during processing: any, Black non-loss, or Black win only")
-    parser.add_argument("--black-iter-blackfocus-result-filter", type=str, default=None,
-                        choices=["any", "nonloss", "win"],
-                        help="Override --blackfocus-result-filter on Black training iterations")
-    parser.add_argument("--human-data-weight", type=int, default=None,
-                        help="Train repetition weight for human_games stream (default: from config)")
-    parser.add_argument("--humanseed-data-weight", type=int, default=None,
-                        help="Train repetition weight for _humanseed streams (default: from config)")
-    parser.add_argument("--blackfocus-data-weight", type=int, default=None,
-                        help="Train repetition weight for _blackfocus streams (default: from config)")
-    parser.add_argument("--use-source-quotas", action=argparse.BooleanOptionalAction, default=True,
-                        help="Use source quota capping when processing train data")
-    parser.add_argument("--quota-selfplay", type=float, default=0.50,
-                        help="Source quota ratio for selfplay/curriculum streams")
-    parser.add_argument("--quota-human", type=float, default=0.25,
-                        help="Source quota ratio for human_games stream")
-    parser.add_argument("--quota-blackfocus", type=float, default=0.15,
-                        help="Source quota ratio for _blackfocus streams")
-    parser.add_argument("--quota-humanseed", type=float, default=0.10,
-                        help="Source quota ratio for _humanseed streams")
-    parser.add_argument("--human-target-mcts-lambda", type=float, default=0.20,
-                        help="Human source mcts target weight lambda")
-    parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=0.85,
-                        help="Human-seed source mcts target weight lambda")
-    parser.add_argument("--blackfocus-target-mcts-lambda", type=float, default=0.90,
-                        help="Black-focus source mcts target weight lambda")
-    parser.add_argument("--selfplay-target-mcts-lambda", type=float, default=1.00,
-                        help="Self-play source mcts target weight lambda")
-    parser.add_argument("--black-iter-human-data-weight", type=int, default=None,
-                        help="Override human_games train repetition weight on Black training iterations")
-    parser.add_argument("--black-iter-humanseed-data-weight", type=int, default=None,
-                        help="Override _humanseed train repetition weight on Black training iterations")
-    parser.add_argument("--black-iter-blackfocus-data-weight", type=int, default=None,
-                        help="Override _blackfocus train repetition weight on Black training iterations")
-    parser.add_argument("--keep-check-positions", action="store_true",
-                        help="Keep in-check positions during self-play data generation")
-    parser.add_argument("--selfplay-sims-jitter-pct", type=float, default=None,
-                        help="Randomize self-play per-game simulations by +/- this fraction (e.g. 0.20)")
-    parser.add_argument("--adaptive-curriculum", action="store_true",
-                        help="Dynamically rebalance normal/curriculum/black-focus mix from recent gate outcomes")
-    parser.add_argument("--adaptive-min-scale", type=float, default=0.70,
-                        help="Lower bound for adaptive curriculum scaling")
-    parser.add_argument("--adaptive-max-scale", type=float, default=1.80,
-                        help="Upper bound for adaptive curriculum scaling")
-    parser.add_argument("--adaptive-up-factor", type=float, default=1.20,
-                        help="Scale multiplier after rejected candidate (increase aux focus)")
-    parser.add_argument("--adaptive-down-factor", type=float, default=0.92,
-                        help="Scale multiplier after accepted candidate (decrease aux focus)")
-    parser.add_argument("--adaptive-min-normal-games", type=int, default=80,
-                        help="Minimum normal games per iteration when adaptive curriculum is enabled")
-    parser.add_argument("--use-se-blocks", action=argparse.BooleanOptionalAction, default=None,
-                        help="Enable SE modules in training backbone (default: from config)")
-    parser.add_argument("--se-reduction", type=int, default=None,
-                        help="SE channel reduction ratio for training backbone (default: from config)")
-    parser.add_argument("--use-side-specialized-heads", action=argparse.BooleanOptionalAction, default=None,
-                        help="Use side-specialized value/policy heads in training model (default: from config)")
-    parser.add_argument("--consolidation-epochs", type=int, default=2,
-                        help="Post-train consolidation epochs on balanced mixed-side data (0 to disable)")
-    parser.add_argument("--consolidation-lr-factor", type=float, default=0.35,
-                        help="Multiplier on base LR for consolidation phase")
-    parser.add_argument("--consolidation-batch-size", type=int, default=192,
-                        help="Batch size for consolidation phase")
-    parser.add_argument("--consolidation-balance-sides", action=argparse.BooleanOptionalAction, default=True,
-                        help="Use side-balanced sampling during consolidation phase")
-    parser.add_argument("--consolidation-balanced-black-ratio", type=float, default=0.5,
-                        help="Black-to-move fraction when consolidation side balancing is enabled")
-    parser.add_argument("--consolidation-distill-value-weight", type=float, default=0.20,
-                        help="Value distillation weight in consolidation phase")
-    parser.add_argument("--consolidation-distill-policy-weight", type=float, default=0.60,
-                        help="Policy distillation weight in consolidation phase")
-    parser.add_argument("--consolidation-distill-temperature", type=float, default=1.0,
-                        help="Distillation temperature in consolidation phase")
-    parser.add_argument("--consolidation-policy-loss-weight", type=float, default=1.0,
-                        help="Policy loss weight passed to consolidation phase")
-    parser.add_argument("--black-recovery-epochs", type=int, default=0,
-                        help="Extra side-focused fine-tune epochs between primary and consolidation")
-    parser.add_argument("--black-recovery-lr-factor", type=float, default=0.25,
-                        help="Multiplier on base LR for black-recovery phase")
-    parser.add_argument("--black-recovery-batch-size", type=int, default=192,
-                        help="Batch size for black-recovery phase")
-    parser.add_argument("--black-recovery-balance-sides", action=argparse.BooleanOptionalAction, default=False,
-                        help="Use side-balanced sampling during black-recovery phase")
-    parser.add_argument("--black-recovery-balanced-black-ratio", type=float, default=0.8,
-                        help="Black-to-move fraction when black-recovery side balancing is enabled")
-    parser.add_argument("--black-recovery-train-only-side", type=str, default="auto",
-                        choices=["auto", "none", "white", "black"],
-                        help="Restrict black-recovery data to one side-to-move (auto=training side in alternating)")
-    parser.add_argument("--black-recovery-distill-value-weight", type=float, default=0.05,
-                        help="Value distillation weight in black-recovery phase")
-    parser.add_argument("--black-recovery-distill-policy-weight", type=float, default=0.20,
-                        help="Policy distillation weight in black-recovery phase")
-    parser.add_argument("--black-recovery-distill-temperature", type=float, default=1.0,
-                        help="Distillation temperature in black-recovery phase")
-    parser.add_argument("--black-recovery-policy-loss-weight", type=float, default=1.0,
-                        help="Policy loss weight passed to black-recovery phase")
-    parser.add_argument("--black-recovery-only-on-black-iterations", action=argparse.BooleanOptionalAction, default=True,
-                        help="Run black-recovery phase only when training side is Black in alternating mode")
-    parser.add_argument("--primary-balance-sides", action=argparse.BooleanOptionalAction, default=False,
-                        help="Use side-balanced sampling during primary training phase")
-    parser.add_argument("--primary-balanced-black-ratio", type=float, default=0.5,
-                        help="Black-to-move fraction when primary side balancing is enabled")
-    parser.add_argument("--primary-train-only-side", type=str, default="auto",
-                        choices=["auto", "none", "white", "black"],
-                        help="Restrict primary training data to one side-to-move (auto=training side in alternating)")
-    parser.add_argument("--consolidation-train-only-side", type=str, default="auto",
-                        choices=["auto", "none", "white", "black"],
-                        help="Restrict consolidation training data to one side-to-move (auto=training side in alternating)")
-    args = parser.parse_args()
+    gate_info["enabled"] = True
+    gate_info["threshold"] = args.gate_threshold
+    gate_info["min_side_score"] = args.gate_min_side_score
+    gate_info["min_other_side"] = args.gate_min_other_side
+    white_std = gate_info["candidate_white"]
+    black_std = gate_info["candidate_black"]
 
-    from config import (
-        SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, OPPONENT_SIMULATIONS, RANDOM_SEED,
-        WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
-        LEARNING_RATE,
-        HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
-        USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
-    )
-    base_seed = args.seed if args.seed is not None else RANDOM_SEED
-    set_seed(base_seed)
-    keep_gens = args.keep_generations if args.keep_generations is not None else SLIDING_WINDOW
-    position_budget = args.position_budget if args.position_budget is not None else POSITION_BUDGET
+    if args.alternating:
+        primary_side = train_side
+        other_side = "white" if train_side == "black" else "black"
+        min_other_side = (
+            gate_min_other_side_black
+            if train_side == "black"
+            else gate_min_other_side_white
+        )
+        gate_info["min_other_side"] = min_other_side
+        primary_info = gate_info[f"candidate_{primary_side}"]
+        other_info = gate_info[f"candidate_{other_side}"]
+        black_focus_gate = None
+        gate_info["black_focus_required"] = False
+        if train_side == "black" and args.black_focus_arena_games > 0:
+            black_focus_gate = _run_arena(
+                candidate_model=candidate_path,
+                incumbent_model=incumbent_model_path,
+                gen=gen,
+                model_dir=model_dir,
+                arena_games=args.black_focus_arena_games,
+                arena_sims=black_focus_arena_sims,
+                arena_workers=args.arena_workers,
+                base_seed=base_seed + 700000,
+                arena_tag="black_focus",
+                curriculum=True,
+                curriculum_live_results=True,
+                curriculum_tier_min=args.black_focus_arena_tier_min,
+                curriculum_tier_max=args.black_focus_arena_tier_max,
+            )
+            gate_info["black_focus_arena"] = black_focus_gate
+            gate_info["black_focus_threshold"] = args.black_focus_gate_threshold
+            gate_info["black_focus_required"] = True
+        gate_info.update({
+            "decision_mode": "side_aware_strict",
+            "primary_side": primary_side,
+            "other_side": other_side,
+            "primary_score": primary_info["score"],
+            "other_score": other_info["score"],
+            "primary_games": primary_info["games"],
+            "other_games": other_info["games"],
+        })
+        accepted = (
+            gate_info["total_games"] > 0
+            and gate_info["primary_games"] > 0
+            and gate_info["other_games"] > 0
+            and gate_info["primary_score"] >= args.gate_threshold
+            and gate_info["other_score"] >= min_other_side
+            and white_std["games"] > 0
+            and black_std["games"] > 0
+            and white_std["score"] >= args.gate_min_side_score
+            and black_std["score"] >= args.gate_min_side_score
+        )
+        if black_focus_gate is not None:
+            focus_primary = black_focus_gate["candidate_black"]["score"]
+            focus_games = black_focus_gate["candidate_black"]["games"]
+            gate_info["black_focus_primary_score"] = focus_primary
+            gate_info["black_focus_primary_games"] = focus_games
+            gate_info["black_focus_pass"] = (
+                focus_games > 0 and focus_primary >= args.black_focus_gate_threshold
+            )
+            accepted = accepted and gate_info["black_focus_pass"]
+    else:
+        gate_info.update({
+            "decision_mode": "overall_strict_sides",
+            "primary_side": "overall",
+            "other_side": None,
+            "primary_score": gate_info["score"],
+            "other_score": None,
+            "primary_games": gate_info["total_games"],
+            "other_games": 0,
+        })
+        accepted = (
+            gate_info["score"] >= args.gate_threshold
+            and gate_info["total_games"] > 0
+            and white_std["games"] > 0
+            and black_std["games"] > 0
+            and white_std["score"] >= args.gate_min_side_score
+            and black_std["score"] >= args.gate_min_side_score
+        )
+    gate_info["accepted"] = accepted
+    return gate_info, accepted
+
+
+def _apply_promotion_guards(args, gate_info, accepted):
+    guard_reasons = []
+    if accepted and args.min_accept_epochs > 0 and args.epochs < args.min_accept_epochs:
+        guard_reasons.append(
+            f"epochs={args.epochs} below min_accept_epochs={args.min_accept_epochs}"
+        )
+    if accepted and args.min_accept_black_score > 0:
+        black_info = gate_info.get("candidate_black")
+        black_score = black_info["score"] if black_info else None
+        black_games = black_info["games"] if black_info else 0
+        if black_info is None:
+            guard_reasons.append(
+                "missing candidate_black arena score; lower min_accept_black_score"
+            )
+        elif black_games <= 0:
+            guard_reasons.append("candidate_black arena games=0")
+        elif black_score < args.min_accept_black_score:
+            guard_reasons.append(
+                f"candidate_black score={black_score:.3f} below min_accept_black_score={args.min_accept_black_score:.3f}"
+            )
+        gate_info["promotion_guard_black_score"] = black_score
+        gate_info["promotion_guard_black_games"] = black_games
+    if accepted and args.black_survival_games > 0:
+        survival = gate_info.get("black_survival", {})
+        survival_score = survival.get("score")
+        survival_games = survival.get("total_games", 0)
+        if survival_score is None:
+            guard_reasons.append("missing black survival score")
+        elif survival_games <= 0:
+            guard_reasons.append("black survival games=0")
+        elif survival_score < args.black_survival_threshold:
+            guard_reasons.append(
+                f"black_survival score={survival_score:.3f} below black_survival_threshold={args.black_survival_threshold:.3f}"
+            )
+    if guard_reasons:
+        accepted = False
+        gate_info["accepted"] = False
+        gate_info["promotion_guard_failed"] = True
+        gate_info["promotion_guard_reasons"] = guard_reasons
+        print("\n  Promotion guard blocked candidate:")
+        for reason in guard_reasons:
+            print(f"    - {reason}")
+    else:
+        gate_info["promotion_guard_failed"] = False
+        gate_info["promotion_guard_reasons"] = []
+    return accepted, gate_info
+
+
+def _print_rejection_reason(args, gate_info):
+    if gate_info.get("decision_mode") == "side_aware_strict":
+        black_focus_part = ""
+        if gate_info.get("black_focus_required"):
+            focus_score = gate_info.get("black_focus_primary_score")
+            focus_threshold = gate_info.get("black_focus_threshold", args.black_focus_gate_threshold)
+            focus_games = gate_info.get("black_focus_primary_games", 0)
+            if focus_score is None:
+                black_focus_part = ", black_focus=missing"
+            else:
+                black_focus_part = (
+                    f", black_focus={focus_score:.3f} vs {focus_threshold:.3f}"
+                    f" (games={focus_games})"
+                )
+        print(
+            f"\n  Candidate REJECTED "
+            f"(trained-{gate_info['primary_side']} score={gate_info['primary_score']:.3f} "
+            f"vs {args.gate_threshold:.3f}, other-{gate_info['other_side']} "
+            f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}, "
+            f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
+            f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
+            f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}"
+            f"{black_focus_part}); "
+            f"keeping incumbent"
+        )
+        return
+    if gate_info.get("decision_mode") == "overall_strict_sides":
+        print(
+            f"\n  Candidate REJECTED "
+            f"(overall={gate_info.get('score', 0.0):.3f} vs {args.gate_threshold:.3f}, "
+            f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
+            f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
+            f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}); "
+            f"keeping incumbent"
+        )
+        return
+    score = gate_info.get("score")
+    if score is None:
+        print("\n  Candidate REJECTED (promotion guard failed; gate score unavailable); keeping incumbent")
+    else:
+        print(f"\n  Candidate REJECTED (score={score:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
+
+
+def _print_gate_line(args, gate_info):
+    if gate_info.get("decision_mode") == "side_aware_strict":
+        black_focus_part = ""
+        if gate_info.get("black_focus_required"):
+            focus_score = gate_info.get("black_focus_primary_score")
+            focus_threshold = gate_info.get("black_focus_threshold", args.black_focus_gate_threshold)
+            focus_games = gate_info.get("black_focus_primary_games", 0)
+            if focus_score is None:
+                black_focus_part = "  black_focus=missing"
+            else:
+                black_focus_part = (
+                    f"  black_focus={focus_score:.3f}"
+                    f" (>= {focus_threshold:.3f})"
+                    f" games={focus_games}"
+                )
+        print(
+            f"  Gate:  trained-{gate_info['primary_side']}={gate_info['primary_score']:.3f} "
+            f"(>={args.gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
+            f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  "
+            f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
+            f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
+            f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
+            f"overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
+            f"{black_focus_part}"
+        )
+        return
+    if gate_info.get("decision_mode") == "overall_strict_sides":
+        print(
+            f"  Gate:  overall={gate_info['score']:.3f} (>= {args.gate_threshold:.3f})  "
+            f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
+            f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
+            f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
+            f"games={gate_info['total_games']}"
+        )
+        return
+    print(f"  Gate:  score={gate_info['score']:.3f}  threshold={args.gate_threshold:.3f}  games={gate_info['total_games']}")
+
+
+def _derive_runtime_settings(args, *,
+                             random_seed, sliding_window, position_budget_default,
+                             position_budget_max_default, processed_position_cap,
+                             selfplay_sims_jitter_pct_default, opponent_simulations,
+                             warmup_epochs_default, warmup_start_factor_default,
+                             use_se_blocks_default, se_reduction_default,
+                             use_side_specialized_heads_default, human_data_weight_default,
+                             humanseed_data_weight_default, blackfocus_data_weight_default):
+    base_seed = args.seed if args.seed is not None else random_seed
+    keep_gens = args.keep_generations if args.keep_generations is not None else sliding_window
+    position_budget = args.position_budget if args.position_budget is not None else position_budget_default
     position_budget_max = (
-        args.position_budget_max if args.position_budget_max is not None else POSITION_BUDGET_MAX
+        args.position_budget_max if args.position_budget_max is not None else position_budget_max_default
     )
     max_processed_positions = (
         args.max_processed_positions
-        if args.max_processed_positions is not None else PROCESSED_POSITION_CAP
+        if args.max_processed_positions is not None else processed_position_cap
     )
     selfplay_sims_jitter_pct = (
         args.selfplay_sims_jitter_pct
-        if args.selfplay_sims_jitter_pct is not None else SELFPLAY_SIMS_JITTER_PCT
+        if args.selfplay_sims_jitter_pct is not None else selfplay_sims_jitter_pct_default
     )
-    use_se_blocks = args.use_se_blocks if args.use_se_blocks is not None else USE_SE_BLOCKS
-    se_reduction = args.se_reduction if args.se_reduction is not None else SE_REDUCTION
+    use_se_blocks = args.use_se_blocks if args.use_se_blocks is not None else use_se_blocks_default
+    se_reduction = args.se_reduction if args.se_reduction is not None else se_reduction_default
     use_side_specialized_heads = (
         args.use_side_specialized_heads
-        if args.use_side_specialized_heads is not None else USE_SIDE_SPECIALIZED_HEADS
+        if args.use_side_specialized_heads is not None else use_side_specialized_heads_default
     )
     human_data_weight = (
         args.human_data_weight
-        if args.human_data_weight is not None else HUMAN_DATA_WEIGHT
+        if args.human_data_weight is not None else human_data_weight_default
     )
     humanseed_data_weight = (
         args.humanseed_data_weight
-        if args.humanseed_data_weight is not None else HUMANSEED_DATA_WEIGHT
+        if args.humanseed_data_weight is not None else humanseed_data_weight_default
     )
     blackfocus_data_weight = (
         args.blackfocus_data_weight
-        if args.blackfocus_data_weight is not None else BLACKFOCUS_DATA_WEIGHT
+        if args.blackfocus_data_weight is not None else blackfocus_data_weight_default
     )
     black_iter_human_data_weight = (
         args.black_iter_human_data_weight
@@ -777,7 +843,7 @@ def main():
         position_budget_max = None
     if max_processed_positions is not None and max_processed_positions <= 0:
         max_processed_positions = None
-    opponent_sims = args.opponent_sims if args.opponent_sims is not None else OPPONENT_SIMULATIONS
+    opponent_sims = args.opponent_sims if args.opponent_sims is not None else opponent_simulations
     black_focus_arena_sims = (
         args.black_focus_arena_sims
         if args.black_focus_arena_sims is not None else args.arena_sims
@@ -786,10 +852,10 @@ def main():
         args.black_survival_sims
         if args.black_survival_sims is not None else args.arena_sims
     )
-    warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else WARMUP_EPOCHS
+    warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else warmup_epochs_default
     warmup_start_factor = (
         args.warmup_start_factor
-        if args.warmup_start_factor is not None else WARMUP_START_FACTOR
+        if args.warmup_start_factor is not None else warmup_start_factor_default
     )
     gate_min_other_side_white = (
         args.gate_min_other_side_white
@@ -799,6 +865,48 @@ def main():
         args.gate_min_other_side_black
         if args.gate_min_other_side_black is not None else args.gate_min_other_side
     )
+    return {
+        "base_seed": base_seed,
+        "keep_gens": keep_gens,
+        "position_budget": position_budget,
+        "position_budget_max": position_budget_max,
+        "max_processed_positions": max_processed_positions,
+        "selfplay_sims_jitter_pct": selfplay_sims_jitter_pct,
+        "use_se_blocks": use_se_blocks,
+        "se_reduction": se_reduction,
+        "use_side_specialized_heads": use_side_specialized_heads,
+        "human_data_weight": human_data_weight,
+        "humanseed_data_weight": humanseed_data_weight,
+        "blackfocus_data_weight": blackfocus_data_weight,
+        "black_iter_human_data_weight": black_iter_human_data_weight,
+        "black_iter_humanseed_data_weight": black_iter_humanseed_data_weight,
+        "black_iter_blackfocus_data_weight": black_iter_blackfocus_data_weight,
+        "blackfocus_result_filter": blackfocus_result_filter,
+        "black_iter_blackfocus_result_filter": black_iter_blackfocus_result_filter,
+        "opponent_sims": opponent_sims,
+        "black_focus_arena_sims": black_focus_arena_sims,
+        "black_survival_sims": black_survival_sims,
+        "warmup_epochs": warmup_epochs,
+        "warmup_start_factor": warmup_start_factor,
+        "gate_min_other_side_white": gate_min_other_side_white,
+        "gate_min_other_side_black": gate_min_other_side_black,
+    }
+
+
+def _validate_runtime_settings(args, settings):
+    position_budget = settings["position_budget"]
+    position_budget_max = settings["position_budget_max"]
+    selfplay_sims_jitter_pct = settings["selfplay_sims_jitter_pct"]
+    human_data_weight = settings["human_data_weight"]
+    humanseed_data_weight = settings["humanseed_data_weight"]
+    blackfocus_data_weight = settings["blackfocus_data_weight"]
+    black_iter_human_data_weight = settings["black_iter_human_data_weight"]
+    black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
+    black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    black_focus_arena_sims = settings["black_focus_arena_sims"]
+    gate_min_other_side_white = settings["gate_min_other_side_white"]
+    gate_min_other_side_black = settings["gate_min_other_side_black"]
+    se_reduction = settings["se_reduction"]
     if not (0.0 <= args.gate_threshold <= 1.0):
         raise ValueError("--gate-threshold must be in [0, 1]")
     if not (0.0 <= args.gate_min_side_score <= 1.0):
@@ -919,22 +1027,6 @@ def main():
         raise ValueError("--primary-policy-loss-weight must be > 0")
     if args.consolidation_policy_loss_weight <= 0:
         raise ValueError("--consolidation-policy-loss-weight must be > 0")
-    if args.black_recovery_epochs < 0:
-        raise ValueError("--black-recovery-epochs must be >= 0")
-    if args.black_recovery_lr_factor <= 0:
-        raise ValueError("--black-recovery-lr-factor must be > 0")
-    if args.black_recovery_batch_size <= 0:
-        raise ValueError("--black-recovery-batch-size must be > 0")
-    if not (0.0 < args.black_recovery_balanced_black_ratio < 1.0):
-        raise ValueError("--black-recovery-balanced-black-ratio must be in (0, 1)")
-    if args.black_recovery_distill_value_weight < 0:
-        raise ValueError("--black-recovery-distill-value-weight must be >= 0")
-    if args.black_recovery_distill_policy_weight < 0:
-        raise ValueError("--black-recovery-distill-policy-weight must be >= 0")
-    if args.black_recovery_distill_temperature <= 0:
-        raise ValueError("--black-recovery-distill-temperature must be > 0")
-    if args.black_recovery_policy_loss_weight <= 0:
-        raise ValueError("--black-recovery-policy-loss-weight must be > 0")
     if args.min_accept_epochs < 0:
         raise ValueError("--min-accept-epochs must be >= 0")
     if not (0.0 <= args.min_accept_black_score <= 1.0):
@@ -943,7 +1035,7 @@ def main():
         raise ValueError("--primary-balanced-black-ratio must be in (0, 1)")
     if not (0.0 < args.consolidation_balanced_black_ratio < 1.0):
         raise ValueError("--consolidation-balanced-black-ratio must be in (0, 1)")
-    if args.alternating and not args.no_gating and args.arena_games < 2:
+    if args.alternating and args.arena_games < 2:
         raise ValueError("--arena-games must be >= 2 for alternating side-aware gating")
     if (not args.alternating) and args.alternating_pattern != "alternate":
         raise ValueError("--alternating-pattern requires --alternating")
@@ -959,8 +1051,269 @@ def main():
         and position_budget_max < position_budget
     ):
         raise ValueError("position budget max-cap must be >= position budget")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Iterate self-play training loop")
+    parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--games", type=int, default=200)
+    parser.add_argument("--curriculum-games", type=int, default=200,
+                        help="Curriculum endgame games per iteration (0 to disable)")
+    parser.add_argument("--black-focus-games", type=int, default=0,
+                        help="Extra black-focused games from black-advantage starts (black training side only)")
+    parser.add_argument("--human-seed-games", type=int, default=0,
+                        help="Extra games from human-recorded start positions each iteration")
+    parser.add_argument("--simulations", type=int, default=200)
+    parser.add_argument("--curriculum-simulations", type=int, default=50,
+                        help="MCTS simulations for curriculum games (lower = faster)")
+    parser.add_argument("--black-focus-simulations", type=int, default=120,
+                        help="MCTS simulations for black-focused start games")
+    parser.add_argument("--black-focus-tier-min", type=int, default=None,
+                        help="Curriculum tier lower bound for black-focus generation (1-indexed)")
+    parser.add_argument("--black-focus-tier-max", type=int, default=None,
+                        help="Curriculum tier upper bound for black-focus generation (1-indexed)")
+    parser.add_argument("--black-focus-live-results", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use live game outcomes for black-focus generation labels (disable to use forced tier labels)")
+    parser.add_argument("--black-focus-scripted-black", action="store_true",
+                        help="Use scripted Black play for black-focus curriculum generation")
+    parser.add_argument("--human-seed-simulations", type=int, default=None,
+                        help="MCTS simulations for human-seeded games (default: normal sims)")
+    parser.add_argument("--black-train-sims-mult", type=float, default=1.0,
+                        help="Multiplier on train-side simulations when training Black in alternating mode")
+    parser.add_argument("--black-opponent-sims-mult", type=float, default=1.0,
+                        help="Multiplier on opponent simulations when training Black in alternating mode")
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--primary-policy-loss-weight", type=float, default=1.0,
+                        help="Policy loss weight passed to primary training phase")
+    parser.add_argument("--primary-no-resume", action="store_true",
+                        help="Do not initialize primary training from incumbent checkpoint")
+    parser.add_argument("--train-target", type=str, default="source_aware",
+                        choices=["mcts_value", "game_result", "blend", "source_aware"],
+                        help="Training target passed to train.py")
+    parser.add_argument("--warmup-epochs", type=int, default=None,
+                        help="Warmup epochs when fine-tuning (default: from config)")
+    parser.add_argument("--warmup-start-factor", type=float, default=None,
+                        help="Warmup start LR factor when fine-tuning (default: from config)")
+    parser.add_argument("--keep-generations", type=int, default=None,
+                        help="Sliding window: keep last N generations (default: from config)")
+    parser.add_argument("--position-budget", type=int, default=None,
+                        help="Position budget window: include enough recent generations to hit N raw positions")
+    parser.add_argument("--position-budget-max", type=int, default=None,
+                        help="Optional max-cap for position budget window (requires --position-budget)")
+    parser.add_argument("--max-processed-positions", type=int, default=None,
+                        help="Hard cap on processed train+val+test positions (default: from config)")
+    parser.add_argument("--alternating", action="store_true",
+                        help="Use frozen-opponent alternating training")
+    parser.add_argument(
+        "--alternating-pattern",
+        type=str,
+        default="alternate",
+        choices=["alternate", "black_only", "white_only"],
+        help="Alternating mode side schedule: alternate each iteration, or lock to one side",
+    )
+    parser.add_argument("--opponent-sims", type=int, default=None,
+                        help="MCTS sims for frozen opponent (default: from config)")
+    parser.add_argument("--pool-size", type=int, default=5,
+                        help="Number of archived models to sample for opponent pool")
+    parser.add_argument("--arena-games", type=int, default=50,
+                        help="Candidate-vs-incumbent arena games for gating")
+    parser.add_argument("--arena-sims", type=int, default=100,
+                        help="MCTS simulations per move in arena games")
+    parser.add_argument("--arena-workers", type=int, default=2,
+                        help="Workers for arena evaluation game generation")
+    parser.add_argument("--gate-threshold", type=float, default=0.55,
+                        help="Accept candidate if arena score >= threshold")
+    parser.add_argument("--gate-min-side-score", type=float, default=0.45,
+                        help="Require both candidate White and Black standard arena scores >= this floor")
+    parser.add_argument("--gate-min-other-side", type=float, default=0.45,
+                        help="Alternating mode: minimum arena score on non-trained side")
+    parser.add_argument("--gate-min-other-side-white", type=float, default=None,
+                        help="Alternating White training: min non-trained-side score (default: --gate-min-other-side)")
+    parser.add_argument("--gate-min-other-side-black", type=float, default=None,
+                        help="Alternating Black training: min non-trained-side score (default: --gate-min-other-side)")
+    parser.add_argument("--black-focus-arena-games", type=int, default=0,
+                        help="Extra black-focus arena games (curriculum live starts) for Black-side gating")
+    parser.add_argument("--black-focus-arena-sims", type=int, default=None,
+                        help="MCTS simulations per move for black-focus arena games (default: --arena-sims)")
+    parser.add_argument("--black-focus-gate-threshold", type=float, default=0.40,
+                        help="Alternating Black mode: accept if black-focus arena score >= this threshold")
+    parser.add_argument("--black-focus-arena-tier-min", type=int, default=None,
+                        help="Curriculum tier lower bound for black-focus arena gating (1-indexed)")
+    parser.add_argument("--black-focus-arena-tier-max", type=int, default=None,
+                        help="Curriculum tier upper bound for black-focus arena gating (1-indexed)")
+    parser.add_argument("--min-accept-epochs", type=int, default=3,
+                        help="Promotion guard: reject promotion if --epochs is below this value (0 disables)")
+    parser.add_argument("--min-accept-black-score", type=float, default=0.05,
+                        help="Promotion guard: require candidate Black-side arena score >= this value (<=0 disables)")
+    parser.add_argument("--black-survival-games", type=int, default=12,
+                        help="Pre-promotion black survival sanity games from human openings (0 disables)")
+    parser.add_argument("--black-survival-sims", type=int, default=None,
+                        help="MCTS simulations for black survival sanity games (default: --arena-sims)")
+    parser.add_argument("--black-survival-threshold", type=float, default=0.35,
+                        help="Reject promotion if black survival score falls below this threshold")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Base random seed (default: from config)")
+    parser.add_argument("--human-eval", action="store_true",
+                        help="Evaluate final incumbent on recorded human games")
+    parser.add_argument("--human-eval-dir", type=str,
+                        default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
+                        help="Directory of human game JSONL files for post-run evaluation")
+    parser.add_argument("--human-seed-dir", type=str,
+                        default=os.path.join(PROJECT_ROOT, "data", "raw", "human_games"),
+                        help="Directory of human game JSONL files used as start-position source")
+    parser.add_argument("--human-seed-side", type=str, default="auto",
+                        choices=["auto", "any", "white", "black"],
+                        help="Human-seed start side filter (auto=training side in alternating mode)")
+    parser.add_argument("--human-seed-max-positions", type=int, default=2000,
+                        help="Cap loaded human start positions per generation (0 = no cap)")
+    parser.add_argument("--human-eval-value-diagnostics", action="store_true",
+                        help="Include model value diagnostics on human positions (slower)")
+    parser.add_argument("--exclude-human-games", action="store_true",
+                        help="Exclude data/raw/human_games from training data processing")
+    parser.add_argument("--min-blackfocus-plies", type=int, default=0,
+                        help="Drop non-human _blackfocus games shorter than this many plies during processing")
+    parser.add_argument("--blackfocus-result-filter", type=str, default="any",
+                        choices=["any", "nonloss", "win"],
+                        help="Filter _blackfocus games during processing: any, Black non-loss, or Black win only")
+    parser.add_argument("--black-iter-blackfocus-result-filter", type=str, default=None,
+                        choices=["any", "nonloss", "win"],
+                        help="Override --blackfocus-result-filter on Black training iterations")
+    parser.add_argument("--human-data-weight", type=int, default=None,
+                        help="Train repetition weight for human_games stream (default: from config)")
+    parser.add_argument("--humanseed-data-weight", type=int, default=None,
+                        help="Train repetition weight for _humanseed streams (default: from config)")
+    parser.add_argument("--blackfocus-data-weight", type=int, default=None,
+                        help="Train repetition weight for _blackfocus streams (default: from config)")
+    parser.add_argument("--use-source-quotas", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use source quota capping when processing train data")
+    parser.add_argument("--quota-selfplay", type=float, default=0.50,
+                        help="Source quota ratio for selfplay/curriculum streams")
+    parser.add_argument("--quota-human", type=float, default=0.25,
+                        help="Source quota ratio for human_games stream")
+    parser.add_argument("--quota-blackfocus", type=float, default=0.15,
+                        help="Source quota ratio for _blackfocus streams")
+    parser.add_argument("--quota-humanseed", type=float, default=0.10,
+                        help="Source quota ratio for _humanseed streams")
+    parser.add_argument("--human-target-mcts-lambda", type=float, default=0.20,
+                        help="Human source mcts target weight lambda")
+    parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=0.85,
+                        help="Human-seed source mcts target weight lambda")
+    parser.add_argument("--blackfocus-target-mcts-lambda", type=float, default=0.90,
+                        help="Black-focus source mcts target weight lambda")
+    parser.add_argument("--selfplay-target-mcts-lambda", type=float, default=1.00,
+                        help="Self-play source mcts target weight lambda")
+    parser.add_argument("--black-iter-human-data-weight", type=int, default=None,
+                        help="Override human_games train repetition weight on Black training iterations")
+    parser.add_argument("--black-iter-humanseed-data-weight", type=int, default=None,
+                        help="Override _humanseed train repetition weight on Black training iterations")
+    parser.add_argument("--black-iter-blackfocus-data-weight", type=int, default=None,
+                        help="Override _blackfocus train repetition weight on Black training iterations")
+    parser.add_argument("--keep-check-positions", action="store_true",
+                        help="Keep in-check positions during self-play data generation")
+    parser.add_argument("--selfplay-sims-jitter-pct", type=float, default=None,
+                        help="Randomize self-play per-game simulations by +/- this fraction (e.g. 0.20)")
+    parser.add_argument("--adaptive-curriculum", action="store_true",
+                        help="Dynamically rebalance normal/curriculum/black-focus mix from recent gate outcomes")
+    parser.add_argument("--adaptive-min-scale", type=float, default=0.70,
+                        help="Lower bound for adaptive curriculum scaling")
+    parser.add_argument("--adaptive-max-scale", type=float, default=1.80,
+                        help="Upper bound for adaptive curriculum scaling")
+    parser.add_argument("--adaptive-up-factor", type=float, default=1.20,
+                        help="Scale multiplier after rejected candidate (increase aux focus)")
+    parser.add_argument("--adaptive-down-factor", type=float, default=0.92,
+                        help="Scale multiplier after accepted candidate (decrease aux focus)")
+    parser.add_argument("--adaptive-min-normal-games", type=int, default=80,
+                        help="Minimum normal games per iteration when adaptive curriculum is enabled")
+    parser.add_argument("--use-se-blocks", action=argparse.BooleanOptionalAction, default=None,
+                        help="Enable SE modules in training backbone (default: from config)")
+    parser.add_argument("--se-reduction", type=int, default=None,
+                        help="SE channel reduction ratio for training backbone (default: from config)")
+    parser.add_argument("--use-side-specialized-heads", action=argparse.BooleanOptionalAction, default=None,
+                        help="Use side-specialized value/policy heads in training model (default: from config)")
+    parser.add_argument("--consolidation-epochs", type=int, default=2,
+                        help="Post-train consolidation epochs on balanced mixed-side data (0 to disable)")
+    parser.add_argument("--consolidation-lr-factor", type=float, default=0.35,
+                        help="Multiplier on base LR for consolidation phase")
+    parser.add_argument("--consolidation-batch-size", type=int, default=192,
+                        help="Batch size for consolidation phase")
+    parser.add_argument("--consolidation-balance-sides", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use side-balanced sampling during consolidation phase")
+    parser.add_argument("--consolidation-balanced-black-ratio", type=float, default=0.5,
+                        help="Black-to-move fraction when consolidation side balancing is enabled")
+    parser.add_argument("--consolidation-distill-value-weight", type=float, default=0.20,
+                        help="Value distillation weight in consolidation phase")
+    parser.add_argument("--consolidation-distill-policy-weight", type=float, default=0.60,
+                        help="Policy distillation weight in consolidation phase")
+    parser.add_argument("--consolidation-distill-temperature", type=float, default=1.0,
+                        help="Distillation temperature in consolidation phase")
+    parser.add_argument("--consolidation-policy-loss-weight", type=float, default=1.0,
+                        help="Policy loss weight passed to consolidation phase")
+    parser.add_argument("--primary-balance-sides", action=argparse.BooleanOptionalAction, default=False,
+                        help="Use side-balanced sampling during primary training phase")
+    parser.add_argument("--primary-balanced-black-ratio", type=float, default=0.5,
+                        help="Black-to-move fraction when primary side balancing is enabled")
+    parser.add_argument("--primary-train-only-side", type=str, default="auto",
+                        choices=["auto", "none", "white", "black"],
+                        help="Restrict primary training data to one side-to-move (auto=training side in alternating)")
+    parser.add_argument("--consolidation-train-only-side", type=str, default="auto",
+                        choices=["auto", "none", "white", "black"],
+                        help="Restrict consolidation training data to one side-to-move (auto=training side in alternating)")
+    args = parser.parse_args()
+    args.human_seed_dir = _resolve_project_path(args.human_seed_dir)
+    args.human_eval_dir = _resolve_project_path(args.human_eval_dir)
+
+    from config import (
+        SLIDING_WINDOW, POSITION_BUDGET, POSITION_BUDGET_MAX, PROCESSED_POSITION_CAP, OPPONENT_SIMULATIONS, RANDOM_SEED,
+        WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
+        LEARNING_RATE,
+        HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
+        USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
+    )
+    settings = _derive_runtime_settings(
+        args,
+        random_seed=RANDOM_SEED,
+        sliding_window=SLIDING_WINDOW,
+        position_budget_default=POSITION_BUDGET,
+        position_budget_max_default=POSITION_BUDGET_MAX,
+        processed_position_cap=PROCESSED_POSITION_CAP,
+        selfplay_sims_jitter_pct_default=SELFPLAY_SIMS_JITTER_PCT,
+        opponent_simulations=OPPONENT_SIMULATIONS,
+        warmup_epochs_default=WARMUP_EPOCHS,
+        warmup_start_factor_default=WARMUP_START_FACTOR,
+        use_se_blocks_default=USE_SE_BLOCKS,
+        se_reduction_default=SE_REDUCTION,
+        use_side_specialized_heads_default=USE_SIDE_SPECIALIZED_HEADS,
+        human_data_weight_default=HUMAN_DATA_WEIGHT,
+        humanseed_data_weight_default=HUMANSEED_DATA_WEIGHT,
+        blackfocus_data_weight_default=BLACKFOCUS_DATA_WEIGHT,
+    )
+    base_seed = settings["base_seed"]
+    set_seed(base_seed)
+    keep_gens = settings["keep_gens"]
+    position_budget = settings["position_budget"]
+    position_budget_max = settings["position_budget_max"]
+    max_processed_positions = settings["max_processed_positions"]
+    selfplay_sims_jitter_pct = settings["selfplay_sims_jitter_pct"]
+    use_se_blocks = settings["use_se_blocks"]
+    se_reduction = settings["se_reduction"]
+    use_side_specialized_heads = settings["use_side_specialized_heads"]
+    human_data_weight = settings["human_data_weight"]
+    humanseed_data_weight = settings["humanseed_data_weight"]
+    blackfocus_data_weight = settings["blackfocus_data_weight"]
+    black_iter_human_data_weight = settings["black_iter_human_data_weight"]
+    black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
+    black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    blackfocus_result_filter = settings["blackfocus_result_filter"]
+    black_iter_blackfocus_result_filter = settings["black_iter_blackfocus_result_filter"]
+    opponent_sims = settings["opponent_sims"]
+    black_focus_arena_sims = settings["black_focus_arena_sims"]
+    black_survival_sims = settings["black_survival_sims"]
+    warmup_epochs = settings["warmup_epochs"]
+    warmup_start_factor = settings["warmup_start_factor"]
+    gate_min_other_side_white = settings["gate_min_other_side_white"]
+    gate_min_other_side_black = settings["gate_min_other_side_black"]
+    _validate_runtime_settings(args, settings)
     consolidation_lr = LEARNING_RATE * args.consolidation_lr_factor
-    black_recovery_lr = LEARNING_RATE * args.black_recovery_lr_factor
 
     raw_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     processed_dir = os.path.join(PROJECT_ROOT, "data", "processed")
@@ -997,33 +1350,23 @@ def main():
             "--output-dir", processed_dir,
             "--seed", str(base_seed),
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
-            *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
-            "--quota-selfplay", str(args.quota_selfplay),
-            "--quota-human", str(args.quota_human),
-            "--quota-blackfocus", str(args.quota_blackfocus),
-            "--quota-humanseed", str(args.quota_humanseed),
-            "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
-            "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
-            "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
-            "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
+            *_data_processor_source_args(args),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ], "Bootstrap: processing all data")
         # Train initial model
-        run([
-            sys.executable, "train.py",
-            "--target", args.train_target,
-            "--epochs", str(args.epochs),
-            "--data-dir", processed_dir,
-            "--model-dir", model_dir,
-            "--seed", str(base_seed),
-            "--se-reduction", str(se_reduction),
-            *(
-                ["--use-side-specialized-heads"]
-                if use_side_specialized_heads
-                else ["--no-use-side-specialized-heads"]
+        run(
+            _build_train_cmd_base(
+                train_target=args.train_target,
+                epochs=args.epochs,
+                data_dir=processed_dir,
+                model_dir=model_dir,
+                seed=base_seed,
+                se_reduction=se_reduction,
+                use_se_blocks=use_se_blocks,
+                use_side_specialized_heads=use_side_specialized_heads,
             ),
-            *(["--use-se-blocks"] if use_se_blocks else ["--no-use-se-blocks"]),
-        ], "Bootstrap: training initial model")
+            "Bootstrap: training initial model",
+        )
         print("\n  Bootstrap complete. Starting iteration loop.\n")
 
     _seed_archive_if_empty(model_path, archive_dir, archive_manifest)
@@ -1040,8 +1383,7 @@ def main():
         "args": vars(args),
         "warmup_epochs_effective": warmup_epochs,
         "warmup_start_factor_effective": warmup_start_factor,
-        "gating_enabled": not args.no_gating,
-        "explore_from_rejected": bool(args.explore_from_rejected),
+        "gating_enabled": True,
         "gate_threshold": args.gate_threshold,
         "gate_min_side_score": args.gate_min_side_score,
         "promotion_guard_min_accept_epochs": int(args.min_accept_epochs),
@@ -1129,21 +1471,6 @@ def main():
             "distill_policy_weight": float(args.consolidation_distill_policy_weight),
             "distill_temperature": float(args.consolidation_distill_temperature),
         },
-        "black_recovery": {
-            "enabled": bool(args.black_recovery_epochs > 0),
-            "only_on_black_iterations": bool(args.black_recovery_only_on_black_iterations),
-            "epochs": int(args.black_recovery_epochs),
-            "lr_factor": float(args.black_recovery_lr_factor),
-            "lr": float(black_recovery_lr),
-            "batch_size": int(args.black_recovery_batch_size),
-            "policy_loss_weight": float(args.black_recovery_policy_loss_weight),
-            "balance_sides": bool(args.black_recovery_balance_sides),
-            "balanced_black_ratio": float(args.black_recovery_balanced_black_ratio),
-            "train_only_side": args.black_recovery_train_only_side,
-            "distill_value_weight": float(args.black_recovery_distill_value_weight),
-            "distill_policy_weight": float(args.black_recovery_distill_policy_weight),
-            "distill_temperature": float(args.black_recovery_distill_temperature),
-        },
         "primary_policy_loss_weight": float(args.primary_policy_loss_weight),
         "primary_balance_sides": bool(args.primary_balance_sides),
         "primary_balanced_black_ratio": float(args.primary_balanced_black_ratio),
@@ -1221,7 +1548,6 @@ def main():
     )
     print(
         f"  Pol weight:  primary={args.primary_policy_loss_weight}, "
-        f"recovery={args.black_recovery_policy_loss_weight}, "
         f"consolidation={args.consolidation_policy_loss_weight}"
     )
     print(
@@ -1232,18 +1558,6 @@ def main():
         f"  BF filter:   base={blackfocus_result_filter}, "
         f"black-iter={black_iter_blackfocus_result_filter}"
     )
-    if args.black_recovery_epochs > 0:
-        print(
-            f"  Recovery:    epochs={args.black_recovery_epochs}, lr={black_recovery_lr:.2e}, "
-            f"batch={args.black_recovery_batch_size}, side={args.black_recovery_train_only_side}, "
-            f"black-only-iters={args.black_recovery_only_on_black_iterations}, "
-            f"balanced={args.black_recovery_balance_sides}, "
-            f"black_ratio={args.black_recovery_balanced_black_ratio:.2f}, "
-            f"distill(v={args.black_recovery_distill_value_weight}, "
-            f"p={args.black_recovery_distill_policy_weight}, t={args.black_recovery_distill_temperature})"
-        )
-    else:
-        print("  Recovery:    disabled")
     if args.alternating:
         print(f"  Opponent:    {opponent_sims} sims (pool/frozen fallback)")
         print(
@@ -1252,35 +1566,32 @@ def main():
         )
         print(f"  Pattern:     {args.alternating_pattern}")
         print(f"  Pool size:   {args.pool_size} archived models")
-    if args.no_gating:
-        print("  Gating:      disabled (auto-promote candidates)")
-    else:
+    print(
+        f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, "
+        f"threshold={args.gate_threshold:.2f}, min_side={args.gate_min_side_score:.2f}"
+    )
+    if args.alternating:
         print(
-            f"  Gating:      arena {args.arena_games} games @ {args.arena_sims} sims, "
-            f"threshold={args.gate_threshold:.2f}, min_side={args.gate_min_side_score:.2f}"
+            f"               alternating side floor non-trained: "
+            f"white-train->{gate_min_other_side_white:.2f}, "
+            f"black-train->{gate_min_other_side_black:.2f}"
         )
-        if args.alternating:
+        if args.black_focus_arena_games > 0:
             print(
-                f"               alternating side floor non-trained: "
-                f"white-train->{gate_min_other_side_white:.2f}, "
-                f"black-train->{gate_min_other_side_black:.2f}"
+                f"               black-focus arena {args.black_focus_arena_games} games @ "
+                f"{black_focus_arena_sims} sims, threshold={args.black_focus_gate_threshold:.2f} "
+                f"(Black training side only)"
             )
-            if args.black_focus_arena_games > 0:
-                print(
-                    f"               black-focus arena {args.black_focus_arena_games} games @ "
-                    f"{black_focus_arena_sims} sims, threshold={args.black_focus_gate_threshold:.2f} "
-                    f"(Black training side only)"
+            if args.black_focus_arena_tier_min is not None or args.black_focus_arena_tier_max is not None:
+                bfa_tmin = (
+                    args.black_focus_arena_tier_min
+                    if args.black_focus_arena_tier_min is not None else 1
                 )
-                if args.black_focus_arena_tier_min is not None or args.black_focus_arena_tier_max is not None:
-                    bfa_tmin = (
-                        args.black_focus_arena_tier_min
-                        if args.black_focus_arena_tier_min is not None else 1
-                    )
-                    bfa_tmax = (
-                        args.black_focus_arena_tier_max
-                        if args.black_focus_arena_tier_max is not None else "max"
-                    )
-                    print(f"               black-focus arena tiers {bfa_tmin}..{bfa_tmax}")
+                bfa_tmax = (
+                    args.black_focus_arena_tier_max
+                    if args.black_focus_arena_tier_max is not None else "max"
+                )
+                print(f"               black-focus arena tiers {bfa_tmin}..{bfa_tmax}")
     print(
         f"  Promote gd:  min_epochs={args.min_accept_epochs}, "
         f"min_black_score={args.min_accept_black_score:.2f}"
@@ -1292,7 +1603,6 @@ def main():
         )
     else:
         print("  Black chk:   disabled")
-    print(f"  Explore rej: {args.explore_from_rejected}")
     print(f"  Epochs:      {args.epochs}")
     if position_budget is not None:
         budget_human = "no human_games" if args.exclude_human_games else "with human_games"
@@ -1366,17 +1676,6 @@ def main():
         consolidation_train_only_side = args.consolidation_train_only_side
         if consolidation_train_only_side == "auto":
             consolidation_train_only_side = train_side if args.alternating else "none"
-        black_recovery_train_only_side = args.black_recovery_train_only_side
-        if black_recovery_train_only_side == "auto":
-            black_recovery_train_only_side = train_side if args.alternating else "black"
-        run_black_recovery = (
-            args.black_recovery_epochs > 0
-            and (
-                (not args.black_recovery_only_on_black_iterations)
-                or (not args.alternating)
-                or (train_side == "black")
-            )
-        )
         if args.alternating and train_side == "black":
             effective_human_data_weight = black_iter_human_data_weight
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
@@ -1629,15 +1928,7 @@ def main():
             "--human-data-weight", str(effective_human_data_weight),
             "--humanseed-data-weight", str(effective_humanseed_data_weight),
             "--blackfocus-data-weight", str(effective_blackfocus_data_weight),
-            *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
-            "--quota-selfplay", str(args.quota_selfplay),
-            "--quota-human", str(args.quota_human),
-            "--quota-blackfocus", str(args.quota_blackfocus),
-            "--quota-humanseed", str(args.quota_humanseed),
-            "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
-            "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
-            "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
-            "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
+            *_data_processor_source_args(args),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
         if max_processed_positions is not None:
@@ -1662,6 +1953,39 @@ def main():
                 + f", total on disk: {total_games} games)"
             )
         t_proc = run(proc_cmd, proc_desc)
+        processing_summary = _load_processing_summary(processed_dir)
+        if isinstance(processing_summary, dict) and "error" in processing_summary:
+            print(f"  WARNING: failed to read processing summary: {processing_summary['error']}")
+        elif isinstance(processing_summary, dict):
+            train_sources = processing_summary.get("source_counts", {}).get("train", {})
+            if train_sources:
+                print(
+                    "  Proc src: "
+                    + ", ".join(f"{k}={int(v)}" for k, v in train_sources.items())
+                )
+            train_source_stats = processing_summary.get("source_stats", {}).get("train", {})
+            if train_source_stats:
+                stat_parts = []
+                for source_kind in sorted(train_source_stats.keys()):
+                    source_stat = train_source_stats.get(source_kind, {}) or {}
+                    count = int(source_stat.get("count", 0))
+                    if count <= 0:
+                        continue
+                    mcts_mean = source_stat.get("mcts_value", {}).get("mean")
+                    ent_mean = source_stat.get("policy_entropy", {}).get("mean")
+                    if mcts_mean is None or ent_mean is None:
+                        continue
+                    stat_parts.append(
+                        f"{source_kind}(n={count}, v_mean={float(mcts_mean):+.3f}, H={float(ent_mean):.3f})"
+                    )
+                if stat_parts:
+                    print("  Proc diag: " + "; ".join(stat_parts))
+            processing_warnings = processing_summary.get("warnings", [])
+            if processing_warnings:
+                for msg in processing_warnings:
+                    print(f"  Proc warning: {msg}")
+        else:
+            print("  Proc src: summary unavailable")
 
         # Step 3: Train candidate model (fine-tune from incumbent)
         candidate_dir = os.path.join(model_dir, "candidates", f"gen_{gen:04d}")
@@ -1669,234 +1993,89 @@ def main():
         if os.path.exists(candidate_dir):
             shutil.rmtree(candidate_dir)
         os.makedirs(candidate_dir, exist_ok=True)
-        train_cmd = [
-            sys.executable, "train.py",
-            "--target", args.train_target,
-            "--epochs", str(args.epochs),
-            "--data-dir", processed_dir,
-            "--model-dir", candidate_dir,
+        train_cmd = _build_train_cmd_base(
+            train_target=args.train_target,
+            epochs=args.epochs,
+            data_dir=processed_dir,
+            model_dir=candidate_dir,
+            seed=base_seed + gen * 10 + 4,
+            se_reduction=se_reduction,
+            use_se_blocks=use_se_blocks,
+            use_side_specialized_heads=use_side_specialized_heads,
+        )
+        train_cmd.extend([
             "--policy-loss-weight", str(args.primary_policy_loss_weight),
-            "--seed", str(base_seed + gen * 10 + 4),
             "--warmup-epochs", str(warmup_epochs),
             "--warmup-start-factor", str(warmup_start_factor),
-            "--se-reduction", str(se_reduction),
-        ]
-        train_cmd.append(
-            "--balanced-sides-train" if args.primary_balance_sides else "--no-balanced-sides-train"
+        ])
+        _append_train_side_args(
+            train_cmd,
+            balance_sides=args.primary_balance_sides,
+            balanced_black_ratio=args.primary_balanced_black_ratio,
+            train_only_side=primary_train_only_side,
         )
-        train_cmd.extend(["--balanced-black-ratio", str(args.primary_balanced_black_ratio)])
-        train_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
-        train_cmd.append(
-            "--use-side-specialized-heads"
-            if use_side_specialized_heads else "--no-use-side-specialized-heads"
-        )
-        if primary_train_only_side != "none":
-            train_cmd.extend(["--train-only-side", primary_train_only_side])
         if os.path.exists(source_model_path) and not args.primary_no_resume:
             train_cmd.extend(["--resume-from", source_model_path])
         t_train_primary = run(train_cmd, f"[{i+1}/{args.iterations}] Training candidate model")
-        t_train_black_recovery = 0.0
-        if run_black_recovery:
-            if not os.path.exists(candidate_path):
-                raise FileNotFoundError(
-                    f"Candidate model missing before black-recovery phase: {candidate_path}"
-                )
-            black_recovery_cmd = [
-                sys.executable, "train.py",
-                "--target", args.train_target,
-                "--epochs", str(args.black_recovery_epochs),
-                "--data-dir", processed_dir,
-                "--model-dir", candidate_dir,
-                "--seed", str(base_seed + gen * 10 + 9),
-                "--batch-size", str(args.black_recovery_batch_size),
-                "--lr", str(black_recovery_lr),
-                "--policy-loss-weight", str(args.black_recovery_policy_loss_weight),
-                "--warmup-epochs", "0",
-                "--resume-from", candidate_path,
-                "--se-reduction", str(se_reduction),
-                "--distill-value-weight", str(args.black_recovery_distill_value_weight),
-                "--distill-policy-weight", str(args.black_recovery_distill_policy_weight),
-                "--distill-temperature", str(args.black_recovery_distill_temperature),
-            ]
-            black_recovery_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
-            black_recovery_cmd.append(
-                "--use-side-specialized-heads"
-                if use_side_specialized_heads else "--no-use-side-specialized-heads"
-            )
-            black_recovery_cmd.append(
-                "--balanced-sides-train" if args.black_recovery_balance_sides else "--no-balanced-sides-train"
-            )
-            black_recovery_cmd.extend(
-                ["--balanced-black-ratio", str(args.black_recovery_balanced_black_ratio)]
-            )
-            if black_recovery_train_only_side != "none":
-                black_recovery_cmd.extend(["--train-only-side", black_recovery_train_only_side])
-            if (
-                args.black_recovery_distill_value_weight > 0
-                or args.black_recovery_distill_policy_weight > 0
-            ):
-                black_recovery_cmd.extend(["--distill-from", candidate_path])
-            t_train_black_recovery = run(
-                black_recovery_cmd,
-                f"[{i+1}/{args.iterations}] Black-recovery pass"
-            )
         t_train_consolidation = 0.0
         if args.consolidation_epochs > 0:
             if not os.path.exists(candidate_path):
                 raise FileNotFoundError(
                     f"Candidate model missing before consolidation: {candidate_path}"
                 )
-            consolidation_cmd = [
-                sys.executable, "train.py",
-                "--target", args.train_target,
-                "--epochs", str(args.consolidation_epochs),
-                "--data-dir", processed_dir,
-                "--model-dir", candidate_dir,
-                "--seed", str(base_seed + gen * 10 + 5),
+            consolidation_cmd = _build_train_cmd_base(
+                train_target=args.train_target,
+                epochs=args.consolidation_epochs,
+                data_dir=processed_dir,
+                model_dir=candidate_dir,
+                seed=base_seed + gen * 10 + 5,
+                se_reduction=se_reduction,
+                use_se_blocks=use_se_blocks,
+                use_side_specialized_heads=use_side_specialized_heads,
+            )
+            consolidation_cmd.extend([
                 "--batch-size", str(args.consolidation_batch_size),
                 "--lr", str(consolidation_lr),
                 "--policy-loss-weight", str(args.consolidation_policy_loss_weight),
                 "--warmup-epochs", "0",
                 "--resume-from", candidate_path,
-                "--se-reduction", str(se_reduction),
                 "--distill-value-weight", str(args.consolidation_distill_value_weight),
                 "--distill-policy-weight", str(args.consolidation_distill_policy_weight),
                 "--distill-temperature", str(args.consolidation_distill_temperature),
-            ]
-            consolidation_cmd.append("--use-se-blocks" if use_se_blocks else "--no-use-se-blocks")
-            consolidation_cmd.append(
-                "--use-side-specialized-heads"
-                if use_side_specialized_heads else "--no-use-side-specialized-heads"
+            ])
+            _append_train_side_args(
+                consolidation_cmd,
+                balance_sides=args.consolidation_balance_sides,
+                balanced_black_ratio=args.consolidation_balanced_black_ratio,
+                train_only_side=consolidation_train_only_side,
             )
-            consolidation_cmd.append(
-                "--balanced-sides-train" if args.consolidation_balance_sides else "--no-balanced-sides-train"
+            _append_distill_teacher_if_weighted(
+                consolidation_cmd,
+                value_weight=args.consolidation_distill_value_weight,
+                policy_weight=args.consolidation_distill_policy_weight,
+                teacher_path=source_model_path,
             )
-            consolidation_cmd.extend(
-                ["--balanced-black-ratio", str(args.consolidation_balanced_black_ratio)]
-            )
-            if consolidation_train_only_side != "none":
-                consolidation_cmd.extend(["--train-only-side", consolidation_train_only_side])
-            if (
-                args.consolidation_distill_value_weight > 0
-                or args.consolidation_distill_policy_weight > 0
-            ):
-                consolidation_cmd.extend(["--distill-from", source_model_path])
             t_train_consolidation = run(
                 consolidation_cmd,
                 f"[{i+1}/{args.iterations}] Consolidation pass"
             )
-        t_train = t_train_primary + t_train_black_recovery + t_train_consolidation
+        t_train = t_train_primary + t_train_consolidation
 
         # Step 4: Gate candidate vs incumbent and promote if accepted
         if not os.path.exists(candidate_path):
             raise FileNotFoundError(f"Candidate model missing after training: {candidate_path}")
-        if args.no_gating:
-            gate_info = {
-                "enabled": False,
-                "accepted": True,
-                "score": None,
-                "threshold": args.gate_threshold,
-                "min_side_score": args.gate_min_side_score,
-                "min_other_side": args.gate_min_other_side,
-                "total_games": 0,
-                "decision_mode": "disabled",
-            }
-            accepted = True
-        else:
-            gate_info = _run_arena(
-                candidate_model=candidate_path,
-                incumbent_model=model_path,
-                gen=gen,
-                model_dir=model_dir,
-                arena_games=args.arena_games,
-                arena_sims=args.arena_sims,
-                arena_workers=args.arena_workers,
-                base_seed=base_seed,
-                arena_tag="standard",
-            )
-            gate_info["enabled"] = True
-            gate_info["threshold"] = args.gate_threshold
-            gate_info["min_side_score"] = args.gate_min_side_score
-            gate_info["min_other_side"] = args.gate_min_other_side
-            white_std = gate_info["candidate_white"]
-            black_std = gate_info["candidate_black"]
-            if args.alternating:
-                primary_side = train_side
-                other_side = "white" if train_side == "black" else "black"
-                min_other_side = (
-                    gate_min_other_side_black
-                    if train_side == "black"
-                    else gate_min_other_side_white
-                )
-                gate_info["min_other_side"] = min_other_side
-                primary_info = gate_info[f"candidate_{primary_side}"]
-                other_info = gate_info[f"candidate_{other_side}"]
-                black_focus_gate = None
-                if train_side == "black" and args.black_focus_arena_games > 0:
-                    black_focus_gate = _run_arena(
-                        candidate_model=candidate_path,
-                        incumbent_model=model_path,
-                        gen=gen,
-                        model_dir=model_dir,
-                        arena_games=args.black_focus_arena_games,
-                        arena_sims=black_focus_arena_sims,
-                        arena_workers=args.arena_workers,
-                        base_seed=base_seed + 700000,
-                        arena_tag="black_focus",
-                        curriculum=True,
-                        curriculum_live_results=True,
-                        curriculum_tier_min=args.black_focus_arena_tier_min,
-                        curriculum_tier_max=args.black_focus_arena_tier_max,
-                    )
-                    gate_info["black_focus_arena"] = black_focus_gate
-                    gate_info["black_focus_threshold"] = args.black_focus_gate_threshold
-                gate_info.update({
-                    "decision_mode": "side_aware_strict",
-                    "primary_side": primary_side,
-                    "other_side": other_side,
-                    "primary_score": primary_info["score"],
-                    "other_score": other_info["score"],
-                    "primary_games": primary_info["games"],
-                    "other_games": other_info["games"],
-                })
-                accepted = (
-                    gate_info["total_games"] > 0
-                    and gate_info["primary_games"] > 0
-                    and gate_info["other_games"] > 0
-                    and gate_info["primary_score"] >= args.gate_threshold
-                    and gate_info["other_score"] >= min_other_side
-                    and white_std["games"] > 0
-                    and black_std["games"] > 0
-                    and white_std["score"] >= args.gate_min_side_score
-                    and black_std["score"] >= args.gate_min_side_score
-                )
-                if black_focus_gate is not None:
-                    focus_primary = black_focus_gate["candidate_black"]["score"]
-                    focus_games = black_focus_gate["candidate_black"]["games"]
-                    gate_info["black_focus_primary_score"] = focus_primary
-                    gate_info["black_focus_primary_games"] = focus_games
-                    gate_info["black_focus_pass"] = (
-                        focus_games > 0 and focus_primary >= args.black_focus_gate_threshold
-                    )
-            else:
-                gate_info.update({
-                    "decision_mode": "overall_strict_sides",
-                    "primary_side": "overall",
-                    "other_side": None,
-                    "primary_score": gate_info["score"],
-                    "other_score": None,
-                    "primary_games": gate_info["total_games"],
-                    "other_games": 0,
-                })
-                accepted = (
-                    gate_info["score"] >= args.gate_threshold
-                    and gate_info["total_games"] > 0
-                    and white_std["games"] > 0
-                    and black_std["games"] > 0
-                    and white_std["score"] >= args.gate_min_side_score
-                    and black_std["score"] >= args.gate_min_side_score
-                )
-            gate_info["accepted"] = accepted
+        gate_info, accepted = _evaluate_candidate_gate(
+            args=args,
+            candidate_path=candidate_path,
+            incumbent_model_path=model_path,
+            gen=gen,
+            model_dir=model_dir,
+            base_seed=base_seed,
+            train_side=train_side,
+            gate_min_other_side_white=gate_min_other_side_white,
+            gate_min_other_side_black=gate_min_other_side_black,
+            black_focus_arena_sims=black_focus_arena_sims,
+        )
 
         # Pre-promotion sanity: verify candidate Black survives from opening-like starts.
         if accepted and args.black_survival_games > 0:
@@ -1921,51 +2100,11 @@ def main():
                 "total_games": 0,
             }
 
-        # Promotion guards: prevent accidental regressions from short/noisy runs.
-        guard_reasons = []
-        if accepted and args.min_accept_epochs > 0 and args.epochs < args.min_accept_epochs:
-            guard_reasons.append(
-                f"epochs={args.epochs} below min_accept_epochs={args.min_accept_epochs}"
-            )
-        if accepted and args.min_accept_black_score > 0:
-            black_info = gate_info.get("candidate_black")
-            black_score = black_info["score"] if black_info else None
-            black_games = black_info["games"] if black_info else 0
-            if black_info is None:
-                guard_reasons.append(
-                    "missing candidate_black arena score; disable --no-gating or lower min_accept_black_score"
-                )
-            elif black_games <= 0:
-                guard_reasons.append("candidate_black arena games=0")
-            elif black_score < args.min_accept_black_score:
-                guard_reasons.append(
-                    f"candidate_black score={black_score:.3f} below min_accept_black_score={args.min_accept_black_score:.3f}"
-                )
-            gate_info["promotion_guard_black_score"] = black_score
-            gate_info["promotion_guard_black_games"] = black_games
-        if accepted and args.black_survival_games > 0:
-            survival = gate_info.get("black_survival", {})
-            survival_score = survival.get("score")
-            survival_games = survival.get("total_games", 0)
-            if survival_score is None:
-                guard_reasons.append("missing black survival score")
-            elif survival_games <= 0:
-                guard_reasons.append("black survival games=0")
-            elif survival_score < args.black_survival_threshold:
-                guard_reasons.append(
-                    f"black_survival score={survival_score:.3f} below black_survival_threshold={args.black_survival_threshold:.3f}"
-                )
-        if guard_reasons:
-            accepted = False
-            gate_info["accepted"] = False
-            gate_info["promotion_guard_failed"] = True
-            gate_info["promotion_guard_reasons"] = guard_reasons
-            print("\n  Promotion guard blocked candidate:")
-            for reason in guard_reasons:
-                print(f"    - {reason}")
-        else:
-            gate_info["promotion_guard_failed"] = False
-            gate_info["promotion_guard_reasons"] = []
+        accepted, gate_info = _apply_promotion_guards(
+            args=args,
+            gate_info=gate_info,
+            accepted=accepted,
+        )
 
         if accepted:
             shutil.copy2(candidate_path, model_path)
@@ -1978,37 +2117,8 @@ def main():
                 print(f"  Frozen fallback updated -> {frozen_path}")
             selfplay_model_path = model_path
         else:
-            if gate_info.get("decision_mode") == "side_aware_strict":
-                print(
-                    f"\n  Candidate REJECTED "
-                    f"(trained-{gate_info['primary_side']} score={gate_info['primary_score']:.3f} "
-                    f"vs {args.gate_threshold:.3f}, other-{gate_info['other_side']} "
-                    f"score={gate_info['other_score']:.3f} vs {gate_info.get('min_other_side', args.gate_min_other_side):.3f}, "
-                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
-                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
-                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}); "
-                    f"keeping incumbent"
-                )
-            elif gate_info.get("decision_mode") == "overall_strict_sides":
-                print(
-                    f"\n  Candidate REJECTED "
-                    f"(overall={gate_info.get('score', 0.0):.3f} vs {args.gate_threshold:.3f}, "
-                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}, "
-                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}, "
-                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}); "
-                    f"keeping incumbent"
-                )
-            else:
-                score = gate_info.get("score")
-                if score is None:
-                    print("\n  Candidate REJECTED (promotion guard failed; no-gating score unavailable); keeping incumbent")
-                else:
-                    print(f"\n  Candidate REJECTED (score={score:.3f} < {args.gate_threshold:.3f}); keeping incumbent")
-            if args.explore_from_rejected:
-                selfplay_model_path = candidate_path
-                print(f"  Exploration: next iteration seed model -> {selfplay_model_path}")
-            else:
-                selfplay_model_path = model_path
+            _print_rejection_reason(args, gate_info)
+            selfplay_model_path = model_path
 
         adaptive_update = None
         if args.adaptive_curriculum and adaptive_scale_key is not None:
@@ -2055,9 +2165,6 @@ def main():
             "next_seed_model_path": selfplay_model_path,
             "primary_train_only_side_effective": primary_train_only_side,
             "primary_policy_loss_weight_effective": float(args.primary_policy_loss_weight),
-            "black_recovery_train_only_side_effective": black_recovery_train_only_side,
-            "black_recovery_enabled_effective": bool(run_black_recovery),
-            "black_recovery_policy_loss_weight_effective": float(args.black_recovery_policy_loss_weight),
             "consolidation_train_only_side_effective": consolidation_train_only_side,
             "consolidation_policy_loss_weight_effective": float(args.consolidation_policy_loss_weight),
             "effective_processing_weights": {
@@ -2066,6 +2173,7 @@ def main():
                 "blackfocus": int(effective_blackfocus_data_weight),
                 "blackfocus_result_filter": effective_blackfocus_result_filter,
             },
+            "processed_data_summary": processing_summary,
             "effective_mix": {
                 "normal_games": int(effective_normal_games),
                 "curriculum_games": int(effective_curriculum_games),
@@ -2097,7 +2205,6 @@ def main():
                 "generate_curriculum": float(t_cur),
                 "process": float(t_proc),
                 "train_primary": float(t_train_primary),
-                "train_black_recovery": float(t_train_black_recovery),
                 "train_consolidation": float(t_train_consolidation),
                 "train": float(t_train),
                 "iteration_total": float(iter_elapsed),
@@ -2109,26 +2216,7 @@ def main():
         print(f"  Iteration {i+1}/{args.iterations} complete (trained {side_label}, candidate {gate_label})")
         print(f"  Time:  generate {format_time(t_gen)}  |  process {format_time(t_proc)}  |  train {format_time(t_train)}  |  total {format_time(iter_elapsed)}")
         if gate_info.get("enabled"):
-            if gate_info.get("decision_mode") == "side_aware_strict":
-                print(
-                    f"  Gate:  trained-{gate_info['primary_side']}={gate_info['primary_score']:.3f} "
-                    f"(>={args.gate_threshold:.3f})  other-{gate_info['other_side']}={gate_info['other_score']:.3f} "
-                    f"(>={gate_info.get('min_other_side', args.gate_min_other_side):.3f})  "
-                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
-                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
-                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
-                    f"overall={gate_info['score']:.3f}  games={gate_info['total_games']}"
-                )
-            elif gate_info.get("decision_mode") == "overall_strict_sides":
-                print(
-                    f"  Gate:  overall={gate_info['score']:.3f} (>= {args.gate_threshold:.3f})  "
-                    f"white={gate_info.get('candidate_white', {}).get('score', 0.0):.3f}  "
-                    f"black={gate_info.get('candidate_black', {}).get('score', 0.0):.3f}  "
-                    f"min_side={gate_info.get('min_side_score', args.gate_min_side_score):.3f}  "
-                    f"games={gate_info['total_games']}"
-                )
-            else:
-                print(f"  Gate:  score={gate_info['score']:.3f}  threshold={args.gate_threshold:.3f}  games={gate_info['total_games']}")
+            _print_gate_line(args, gate_info)
         if gate_info.get("black_survival", {}).get("ran"):
             bsv = gate_info["black_survival"]
             print(

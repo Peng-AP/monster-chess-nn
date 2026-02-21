@@ -1,161 +1,114 @@
-# Monster Chess NN - Execution Order (From Current State)
+﻿# Monster Chess NN - Execution Order (From Current State)
 
-**Last updated:** 2026-02-19  
+**Last updated:** 2026-02-21  
 **Input:** `IMPROVEMENT_PLAN.md` (living version)
 
-This is the practical next sequence given what is already implemented.
+This is the practical next sequence from the current cleaned pipeline.
 
 ## Stage Status Snapshot
 
-- Stage 0 (baseline snapshot tooling): `complete` tooling, `refresh needed` baseline artifact
-- Stage 1 (evaluation hygiene): `complete`
-- Stage 2 (stability patch set): `complete`
-- Stage 3 (gating infrastructure): `complete`
-- Stage 4+ (architecture/research): `partial` (policy widening + backbone scaling implemented)
+- Stage 0 (pipeline reliability): `complete`
+- Stage 1 (data controls): `complete` core + audit diagnostics
+- Stage 2 (search/gating): `complete` core + calibration tooling
+- Stage 3 (model work): `complete` core architecture options, `pending` next experiments
+- Stage 4 (code quality): `partial`
 
 ## Immediate Sprint (Recommended)
 
-### Stage A - Refresh Baseline Artifacts
+### Stage A - Gate Correctness Fix (Black-Focus Enforcement): `complete`
 
 Files:
 
-- `src/baseline_snapshot.py`
-- `baselines/`
+- `src/iterate.py`
 
 Tasks:
 
-1. Run a fresh baseline snapshot on current data/model.
-2. Record model hash, split sizes, and gate-relevant metrics.
-3. Save artifact with timestamp in `baselines/`.
+1. Enforce `black_focus_pass` in acceptance when black-focus arena is enabled.
+2. Add clear rejection reason line when black-focus threshold is the failing condition.
+3. Preserve metadata compatibility for historical run analysis.
 
 Gate:
 
-- Baseline JSON exists and matches current repository state.
+- Completed: black-focus arena outcome now directly affects acceptance in alternating Black runs.
 
-### Stage B - Position-Budget Windowing (Complete)
+### Stage B - Data/Label Audit Artifact: `complete`
 
 Files:
 
-- `src/config.py`
+- `src/data_processor.py`
+- `src/iterate.py`
+- `models/iterate_run_*.json`
+
+Tasks:
+
+1. Add per-source diagnostics in processing output (counts, value stats, policy entropy summary).
+2. Persist diagnostics into iterate metadata per generation.
+3. Add hard warnings for low-diversity or high-skew source streams.
+
+Gate:
+
+- Completed: processing now emits per-source counts/value stats/policy-entropy
+  diagnostics plus warnings, and iterate logs these diagnostics from
+  `processing_summary.json`.
+
+### Stage C - Gate Calibration Sweep Tool: `complete`
+
+Files:
+
+- `src/iterate.py`
+- new script under `src/` (e.g. `gate_sweep.py`)
+
+Tasks:
+
+1. Extend the current sweep utility (`src/gate_sweep.py`) with stronger recommendation logic.
+2. Report acceptance sensitivity by side-aware thresholds.
+3. Recommend calibrated defaults for `--gate-threshold` and side floors.
+
+Gate:
+
+- Completed: sweep now outputs recommendation candidates, confusion-style
+  metrics (precision/recall/F1/mismatch), and sensitivity summaries.
+
+### Stage D - Reproducible Run Presets: `complete`
+
+Files:
+
+- `README.md`
+- `src/iterate_presets.py`
+
+Tasks:
+
+1. Define `smoke`, `daily`, and `overnight` presets.
+2. Ensure presets use mandatory gating and bounded data caps.
+3. Document expected runtime and output artifacts.
+
+Gate:
+
+- Completed: presets can be launched via `src/iterate_presets.py` with
+  reproducible bounded settings and documented runtime/artifacts.
+
+## Next Sprint (After Stage A-D)
+
+### Stage E - Contract Tests for Core Invariants: `partial`
+
+Files:
+
+- new `tests/` directory
 - `src/data_processor.py`
 - `src/iterate.py`
 
 Tasks:
 
-1. Keep current min-budget behavior.
-2. Add optional max-cap for deterministic budget banding.
-3. Keep existing include/exclude behavior for curriculum/human data.
+1. Add tests for split non-overlap and source quota enforcement.
+2. Add tests for gate decision invariants and promotion guard behavior.
+3. Add smoke CLI tests for argument schema stability.
 
 Gate:
 
-- Completed in code: processing reports deterministic generation selection and
-  supports budget banding with min/max caps.
+- Initial local contract suite added under `tests/` and runnable via
+  `py -3 -m unittest discover -s tests -v`.
 
-### Stage C - Gated Validation Sweep (Current Priority)
-
-Files:
-
-- `src/iterate.py`
-- `models/iterate_run_*.json`
-- `models/arena_runs/`
-
-Tasks:
-
-1. Run short alternating gated iterations with current architecture defaults.
-2. Compare trained-side and non-trained-side arena scores against prior runs.
-3. Confirm whether acceptance rate improves over the previous rejection-only streak.
-
-Gate:
-
-- At least one accepted candidate or a clear metric trend that justifies next change axis.
-
-### Stage D - Baseline Refresh Artifact
-
-Files:
-
-- `src/baseline_snapshot.py`
-- `baselines/`
-
-Tasks:
-
-1. Capture fresh baseline JSON with current incumbent and processed split.
-2. Store model hash and evaluation metrics for future comparison.
-
-Gate:
-
-- Baseline artifact exists and references current incumbent hash.
-
-## Next Sprint (After Stage A-D)
-
-### Stage E - Playout-Cap Randomization (Implemented)
-
-Files:
-
-- `src/data_generation.py`
-- `src/mcts.py`
-
-Tasks:
-
-1. Added bounded randomization over simulation budgets per game.
-2. Added generation summary artifacts with sampled simulation statistics.
-
-Gate:
-
-- Implemented in code and validated in a gated run; continue monitoring for acceptance impact.
-
-### Stage F - Adaptive Curriculum Allocation
-
-Files:
-
-- `src/iterate.py`
-- `src/data_generation.py`
-
-Tasks:
-
-1. Shift curriculum/normal/black-focus mix based on recent gate outcomes.
-2. Keep hard bounds to avoid destabilizing data distribution.
-3. Persist effective mix + scale updates in run metadata.
-
-Gate:
-
-- Implemented in code and smoke-validated; monitor impact across multiple gated iterations.
-
-### Stage G - SE Blocks On Backbone
-
-Files:
-
-- `src/train.py`
-- `src/config.py`
-
-Tasks:
-
-1. Add optional SE modules to residual blocks behind a config flag.
-2. Keep default behavior backward-compatible for checkpoint loading.
-3. Compare arena and policy/value metrics against current backbone.
-
-Gate:
-
-- Implemented in code and exercised in SE-enabled gated runs; continue monitoring trend.
-
-### Stage H - Consolidation + Distillation Anti-Forgetting
-
-Files:
-
-- `src/iterate.py`
-- `src/train.py`
-
-Tasks:
-
-1. Add a second consolidation train pass after primary fine-tune.
-2. Use side-balanced sampling in consolidation to reduce side-collapse.
-3. Distill from incumbent during consolidation to preserve prior strength.
-4. Persist consolidation timings and metadata in iterate/train run artifacts.
-
-Gate:
-
-- Implemented and smoke-validated end-to-end (`iterate_run_20260219_125036.json`).
-
-### Stage I - WDL Value Head Experiment
+### Stage F - WDL Value Head Experiment
 
 Files:
 
@@ -164,46 +117,44 @@ Files:
 
 Tasks:
 
-1. Add optional WDL-style value head experiment path.
-2. Keep existing scalar value head as default for compatibility.
-3. Compare gate outcomes and calibration on human-eval positions.
+1. Implement optional WDL head path behind a flag.
+2. Keep scalar value head as default fallback.
+3. Compare calibration and gate outcomes against incumbent scalar path.
 
 Gate:
 
-- Stable training, non-regression on existing gate floors, and improved robustness.
+- No regression on side-aware gating with improved value calibration signals.
 
-### Stage J - Human-Seeded Self-Play Expansion
+### Stage G - Iteration Module Decomposition
 
 Files:
 
-- `src/data_generation.py`
 - `src/iterate.py`
+- new modules under `src/` (runner/gating/metadata helpers)
 
 Tasks:
 
-1. Generate extra iteration games from recorded human positions.
-2. Convert white-only human records into black-to-move starts when needed.
-3. Track human-seed generation outcomes separately from normal/curriculum streams.
+1. Split generation, processing, training, gating, and reporting into modules.
+2. Keep CLI surface backward-compatible.
+3. Preserve metadata schema where possible.
 
 Gate:
 
-- Black-side arena metrics improve beyond the previous zero-floor trend.
+- `iterate.py` becomes thin orchestration with unchanged behavior.
 
 ## Operational Rules
 
-1. One major change axis per stage.
-2. Do not disable gating for normal development runs.
-3. Keep each stage as an isolated commit.
-4. On failed gate, keep incumbent and continue from known-good state.
+1. Keep gating mandatory.
+2. Keep major changes isolated per stage.
+3. Always include validation artifacts in run commits.
+4. Prefer removal of weak features over adding compensating complexity.
 
 ## Suggested Commit Titles
 
-1. `Stage A: Refresh baseline snapshot artifact`
-2. `Stage B: Add position-budget max-cap windowing`
-3. `Stage C: Run gated validation sweep for expanded backbone`
-4. `Stage D: Refresh baseline snapshot for new architecture`
-5. `Stage E: Add playout-cap randomization`
-6. `Stage F: Add adaptive curriculum scheduling`
-7. `Stage G: Add optional SE modules in residual backbone`
-8. `Stage H: Add anti-forgetting consolidation distillation`
-9. `Stage I: Add WDL value-head experiment path`
+1. `Stage A: enforce black-focus gate acceptance path`
+2. `Stage B: add per-source data-label diagnostics`
+3. `Stage C: add gate calibration sweep tooling`
+4. `Stage D: add reproducible iterate presets`
+5. `Stage E: add pipeline contract tests`
+6. `Stage F: add optional WDL value head experiment`
+7. `Stage G: decompose iterate orchestration modules`

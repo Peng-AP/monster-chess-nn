@@ -1,17 +1,17 @@
-================================================================================
+﻿================================================================================
 MONSTER CHESS NN - CURRENT CONTEXT (COMPACT)
 ================================================================================
-Last updated: 2026-02-19
-Purpose: Fast technical handoff context aligned with current code state.
+Last updated: 2026-02-21
+Purpose: Fast technical handoff aligned with current code and local artifacts.
 
 1) PROJECT
 ================================================================================
-This project trains a neural network to play Monster Chess using a self-play loop
-with MCTS, data processing, model training, and candidate-vs-incumbent gating.
+This project trains a neural network for Monster Chess using self-play + MCTS,
+then promotes only gate-approved candidates.
 
-Monster Chess rules in this project:
+Monster Chess variant in this repo:
 - White: King + 4 pawns, takes TWO consecutive moves per turn.
-- Black: standard full army, takes ONE move per turn.
+- Black: Standard full army, takes ONE move per turn.
 - King capture ends game (no checkmate semantics).
 - White cannot castle.
 
@@ -21,89 +21,101 @@ rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1
 2) CORE PIPELINE
 ================================================================================
 Loop in `src/iterate.py`:
-1. Generate data via `src/data_generation.py`
-2. Process JSONL games via `src/data_processor.py`
-3. Train candidate via `src/train.py`
-4. Gate candidate vs incumbent via arena matches
+1. Generate data (`src/data_generation.py`)
+2. Process data (`src/data_processor.py`)
+3. Train candidate (`src/train.py`)
+4. Gate candidate vs incumbent (arena + promotion guards)
 5. Promote only if gate passes
 
-3) WHAT IS IMPLEMENTED (IMPORTANT)
+3) CURRENTLY IMPLEMENTED
 ================================================================================
-Implemented in current code:
-- Game-level split integrity (prevents train/val/test leakage by game)
-- Deterministic seed controls and metadata logging in train/iterate runs
-- True MSE + MAE reporting alongside value power loss
-- Arena gating with color-swap and side-aware acceptance thresholds
-- Alternating-side training with frozen/pool opponents
-- AdamW with no-decay param groups for biases/norm layers
-- Gradient clipping
-- Warmup fine-tuning from incumbent model
-- Baseline snapshot utility (`src/baseline_snapshot.py`)
-- Human game evaluation utility (`src/human_eval.py`)
+- Game-level split hygiene and overlap checks
+- Deterministic seed controls and run metadata
+- Power loss + true MSE/MAE reporting
+- Mandatory gated promotion (no no-gating path)
+- Alternating mode with frozen/pool opponents
+- Black-survival promotion guard
+- Position-budget windowing + processed cap
+- Source quota controls + source-aware target lambdas
+- Per-source processing diagnostics (counts + value/policy entropy stats)
+  with warning signals, persisted in `processing_summary.json`
+- Gate sweep calibration tool now reports recommendation candidates with
+  precision/recall/F1/mismatch and threshold sensitivity summaries
+- AdamW decoupled decay groups + grad clipping + warmup
+- Configurable backbone/policy width + optional SE + side heads
+- Consolidation distillation phase
+- Human-seeded game generation and human-eval utility
 
-4) KNOWN OPEN GAPS
+4) REMOVED PATHS (INTENTIONAL)
 ================================================================================
-Not yet implemented or still partial:
-- Fixed-generation sliding window remains (`SLIDING_WINDOW=2`)
-  instead of position-budget policy
-- No FPU reduction in PUCT unvisited-node scoring path
-- Check-position filtering in data generation is still hardcoded
-  (not yet exposed as ablation flag)
-- Policy head bottleneck remains narrow (2 channels before FC)
+- Explore-from-rejected continuation
+- Black-recovery phase
+- No-gating promotion mode
 
-5) MOST IMPORTANT BEHAVIORAL ISSUE
-================================================================================
-Asymmetry remains the dominant challenge:
-- White-side performance improves faster than Black-side performance.
-- Side-aware gate can reject candidates that fail the non-trained side floor.
+These were removed due to poor signal or quality-control bypass.
 
-6) KEY FILE MAP
+5) CODE REVIEW SNAPSHOT (2026-02-21)
 ================================================================================
-src/config.py             Hyperparameters, paths, curriculum FENs
-src/monster_chess.py      Game rules wrapper
-src/mcts.py               UCB + PUCT search
-src/evaluation.py         Heuristic + NN evaluator wrapper
-src/data_generation.py    Self-play generation
-src/data_processor.py     Game JSONL -> numpy tensors
-src/train.py              Dual-head residual model training
-src/iterate.py            Iteration loop + gating + metadata
-src/baseline_snapshot.py  Baseline artifact capture
-src/human_eval.py         Human game diagnostics
-src/play.py               CLI human vs AI
+High-level findings:
+- `src/iterate.py` remains large/complex despite debloat work.
+- Core reliability controls are strong; per-source data diagnostics and warnings
+  are now available in processing artifacts and iterate logs.
+- No automated test suite currently protects split/gate/CLI contracts.
+- `black_focus_pass` is now enforced in acceptance when black-focus arena is enabled.
+- Relative `--human-seed-dir` / `--human-eval-dir` inputs are normalized to
+  project-root absolute paths before subprocess usage.
 
-7) VERIFIED LOCAL SNAPSHOT (2026-02-19)
+6) VERIFIED LOCAL SNAPSHOT (2026-02-21)
 ================================================================================
-- Highest raw generation directory observed: nn_gen24
-- Processed positions shape: (86990, 8, 8, 15)
-- Processed splits: train=69592, val=8699, test=8699
-- Human game files: 25
-- Current model: models/best_value_net.pt
+- Highest normal generation: nn_gen178
+- Auxiliary dirs: blackfocus=132, curriculum=163, humanseed=7
+- Human game files: 30
+- Processed positions shape: (353685, 8, 8, 15)
+- Processed splits: train=246881, val=53400, test=53404
 - Current model SHA256:
-  D54E3117A7A28BD4C0C678FE2D3FAB231AA8943660CFBC1FF6958E9B70BC815B
+  F2BA1CD6DAE7CE59E1EB659979C9674A89B44C2BC1C8B69598F57851A5A83FBB
+
+7) KEY FILE MAP
+================================================================================
+src/config.py             Hyperparameters and default policy
+src/data_generation.py    Self-play generation
+src/data_processor.py     JSONL -> numpy conversion and split logic
+src/train.py              Model architecture and optimization
+src/iterate.py            End-to-end orchestration and gating
+src/iterate_presets.py    Named smoke/daily/overnight iterate launcher
+src/gate_sweep.py         Gate threshold/floor calibration sweep utility
+tests/                    Contract tests for data/gate/CLI invariants
+src/mcts.py               PUCT/UCB search
+src/human_eval.py         Human-game diagnostics
+src/baseline_snapshot.py  Baseline artifact generation
+src/play.py               CLI play vs model
 
 8) DOCUMENTS TO TRUST FIRST
 ================================================================================
-- README.md                         onboarding + command map
-- IMPROVEMENT_PLAN.md              living status of roadmap items
-- IMPROVEMENT_EXECUTION_ORDER.md   next implementation sequence
-- TRANSFER_HANDOFF_2026-02-19.md   historical + current transfer notes
+- README.md
+- IMPROVEMENT_PLAN.md
+- IMPROVEMENT_EXECUTION_ORDER.md
+- TRANSFER_HANDOFF_2026-02-19.md
 
-9) QUICK OPERATING COMMANDS
+9) QUICK COMMANDS
 ================================================================================
 Baseline snapshot:
   py -3 src/baseline_snapshot.py
 
-Iterative training (example):
-  py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 \
-    --black-focus-games 260 --simulations 120 --curriculum-simulations 50 \
-    --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 \
-    --warmup-start-factor 0.1 --keep-generations 3 --alternating \
-    --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 \
-    --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 \
-    --seed 20260219 --human-eval
+Iterate smoke (gated):
+  py -3 src/iterate_presets.py --preset smoke
+
+Iterate daily:
+  py -3 src/iterate_presets.py --preset daily
+
+Iterate overnight:
+  py -3 src/iterate_presets.py --preset overnight
 
 Human eval:
   py -3 src/human_eval.py --human-dir data/raw/human_games --model models/best_value_net.pt
+
+Contract tests:
+  py -3 -m unittest discover -s tests -v
 
 ================================================================================
 END CONTEXT

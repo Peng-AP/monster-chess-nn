@@ -1,78 +1,107 @@
-# Transfer Handoff (2026-02-19)
+﻿# Transfer Handoff (2026-02-21)
 
-This file is a transfer-oriented summary. It now separates historical notes from currently verified state.
+This file is transfer-oriented and grounded in currently verified local state.
 
-## 1) Historical Snapshot (Read as Context, Not Source of Truth)
+## 1) Verified Local Snapshot
 
-The previous handoff captured a run around generation 11 and referenced artifacts such as:
-
-- `models/run_large_20260218_221423.log`
-- `models/run_large_20260218_221423.err.log`
-- `models/archive/manifest.jsonl`
-- `models/candidates/gen_0011/best_value_net.pt`
-
-Those references are useful for historical reasoning but are not guaranteed to exist on this machine now.
-
-## 2) Currently Verified State on This Machine
-
-Verification timestamp: 2026-02-19
+Verification timestamp: 2026-02-21
 
 ### Data
 
-- Raw generation directories exist up through `data/raw/nn_gen24`
-- `data/raw/human_games` exists with `25` JSONL files
-- Processed dataset currently exists:
-  - `data/processed/positions.npy` shape: `(86990, 8, 8, 15)`
-  - `splits.npz`: `train=69592`, `val=8699`, `test=8699`
+- Highest normal generation directory: `data/raw/nn_gen178`
+- Auxiliary generation directories observed:
+  - `*_blackfocus`: 132
+  - `*_curriculum`: 163
+  - `*_humanseed`: 7
+- Human game files in `data/raw/human_games`: 30
+
+Processed dataset (`data/processed`):
+
+- `positions.npy` shape: `(353685, 8, 8, 15)`
+- `splits.npz`: `train=246881`, `val=53400`, `test=53404`
 
 ### Models
 
-- Present: `models/best_value_net.pt`
-- SHA256: `D54E3117A7A28BD4C0C678FE2D3FAB231AA8943660CFBC1FF6958E9B70BC815B`
+- `models/best_value_net.pt` SHA256:
+  `F2BA1CD6DAE7CE59E1EB659979C9674A89B44C2BC1C8B69598F57851A5A83FBB`
+- `models/frozen_opponent.pt` SHA256:
+  `F2BA1CD6DAE7CE59E1EB659979C9674A89B44C2BC1C8B69598F57851A5A83FBB`
 
-### Absent (at verification time)
+### Runs
 
-- `models/archive/manifest.jsonl`
-- `models/candidates/`
-- `models/run_large_20260218_221423.log`
-- `models/run_large_20260218_221423.err.log`
+- `models/iterate_run_*.json` files: 128
+- Most recent run files are on 2026-02-20.
 
-## 3) Recommended Resume Procedure
+## 2) Important Behavioral/Code State
 
-1. Rebuild a fresh baseline artifact before resuming long runs:
+- Gating is mandatory in current `src/iterate.py` (no `--no-gating` path).
+- Rejected candidates no longer seed next iterations (no explore-from-rejected path).
+- Black-recovery phase has been removed from iteration flow.
+- Consolidation phase remains available.
+- Gate-threshold sweep utility exists at `src/gate_sweep.py`.
+- Processing now writes per-source diagnostics + warnings to
+  `processing_summary.json`, and iterate logs/embeds this metadata.
+- Gate sweep now includes recommendation metrics (precision/recall/F1/mismatch)
+  and threshold sensitivity summaries.
+- Relative human path args (`--human-seed-dir`, `--human-eval-dir`) are
+  normalized to project-root absolute paths in iterate.
+- Preset launcher added: `src/iterate_presets.py` with `smoke`, `daily`,
+  and `overnight` profiles.
+- Initial contract test suite added in `tests/` (data contracts, guard/path
+  contracts, CLI schema smoke checks).
+
+## 3) What Changed Recently (for Continuity)
+
+Recent cleanup focused on reducing harmful/low-signal complexity:
+
+- Removed non-gated promotion mode.
+- Removed rejected-candidate exploration continuation.
+- Removed black-recovery sub-phase and related knobs.
+- Debloated large orchestration sections in `src/iterate.py` and settings helpers.
+
+## 4) Recommended Resume Procedure
+
+1. Refresh a baseline artifact:
 
 ```bash
 py -3 src/baseline_snapshot.py
 ```
 
-2. Run iteration with explicit flags (example):
+2. Run a short gated iterate smoke from preset launcher:
 
 ```bash
-py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 --black-focus-games 260 --simulations 120 --curriculum-simulations 50 --black-focus-simulations 100 --epochs 12 --warmup-epochs 3 --warmup-start-factor 0.1 --keep-generations 3 --alternating --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 --seed 20260219 --human-eval
+py -3 src/iterate_presets.py --preset smoke
 ```
 
-3. After each run, preserve:
+3. Preserve after each run:
 
 - `models/iterate_run_*.json`
+- `models/archive/manifest.jsonl` and accepted archive checkpoints
 - `models/best_value_net.pt`
-- any generated `models/archive/` and `models/candidates/` content
-- newly generated raw data directories in `data/raw/`
+- new `data/raw/nn_gen*` directories
 
-## 4) Quick Verification Commands
+4. Run contract tests after code changes:
 
-Use these before relying on any transfer note:
+```bash
+py -3 -m unittest discover -s tests -v
+```
+
+## 5) Quick Verification Commands
 
 ```bash
 # highest normal generation
 powershell -Command "$gens = Get-ChildItem data/raw -Directory | ? { $_.Name -match '^nn_gen(\d+)$' } | % { [int]([regex]::Match($_.Name,'^nn_gen(\d+)$').Groups[1].Value) }; if($gens){ ($gens | Measure-Object -Maximum).Maximum }"
 
-# model hash
-powershell -Command "(Get-FileHash models/best_value_net.pt -Algorithm SHA256).Hash"
-
 # processed split sizes
 py -3 -c "import numpy as np; s=np.load('data/processed/splits.npz'); print(len(s['train']), len(s['val']), len(s['test']))"
+
+# model hash
+powershell -Command "(Get-FileHash models/best_value_net.pt -Algorithm SHA256).Hash"
 ```
 
-## 5) Known Ongoing Risk
+## 6) Current Risk Focus
 
-- Side asymmetry remains the core challenge: candidate models often improve White-side play more than Black-side play, so side-aware gating may reject otherwise strong overall candidates.
+- Side asymmetry is still the central risk: improving Black without causing White-side collapse.
+- Data/label quality by source now has automated diagnostics/warnings; next risk
+  is calibrating warning thresholds against acceptance outcomes.
+- Black-focus arena threshold is now enforced in acceptance for alternating Black-side runs.

@@ -1,209 +1,174 @@
-# Monster Chess NN - Improvement Plan (Living)
+﻿# Monster Chess NN - Improvement Plan (Living)
 
-**Last updated:** 2026-02-19  
+**Last updated:** 2026-02-21  
 **Scope:** Current repo state on this machine (`main`)
 
 ## Status Legend
 
 - `complete`: implemented in code and actively used
-- `partial`: implemented in part, missing key behavior
+- `partial`: implemented in part, missing key behavior or validation depth
 - `pending`: not implemented yet
+- `removed`: intentionally removed because it hindered progress
 
 ## Executive Summary
 
-The core reliability foundation is now in place:
+The pipeline has a solid reliability base and now enforces gate-controlled promotion.
+Recent cleanup removed iteration paths that were producing low-signal regressions.
+Per-source processing diagnostics are now first-class artifacts and are surfaced
+in iterate logs/metadata for easier skew detection.
 
-- game-level split hygiene
-- deterministic seeds and run metadata
-- candidate gating with side-aware thresholds
-- stability defaults (AdamW, weight decay groups, grad clipping, warmup fine-tune)
+The primary bottleneck is no longer basic plumbing. It is now training signal quality and side-balance robustness, especially preventing Black-side strategic collapse while keeping White strength.
 
-The next bottlenecks are search/data quality and model capacity for Black-side play.
+Recent code-review fix applied:
+
+- `black_focus_pass` is now enforced in `accepted` gating logic for alternating Black-side runs with black-focus arena enabled.
+
+## Recent Cleanup (2026-02-21)
+
+- Removed `--no-gating` from `src/iterate.py` (`removed`)
+- Removed `--explore-from-rejected` branch from `src/iterate.py` (`removed`)
+- Removed Black-recovery phase and related CLI from `src/iterate.py` (`removed`)
+- Debloated and modularized large sections of `src/iterate.py` and `src/data_processor.py` (`complete`)
+
+Rationale: these paths either bypassed quality control, continued from rejected candidates, or added complexity without measurable acceptance benefit on this repo's run history.
 
 ## Guiding Rules
 
-1. Keep gating mandatory for promotion.
-2. Change one major axis per experiment batch.
-3. Keep every tunable exposed via `config.py` or CLI.
-4. Track every experiment with run metadata and gate outcome.
-5. Roll back by rejection, not by deleting history.
+1. Keep promotion gated by arena evidence.
+2. Favor fewer, stronger knobs over many interacting knobs.
+3. Change one major axis per experiment batch.
+4. Persist every run with metadata and explicit gate outcomes.
+5. Reject by evidence, not by intuition.
 
-## Phase 0 - Evaluation Hygiene
+## Phase 0 - Reliability Foundation
 
-### 0.1 Split by game, not position: `complete`
+### 0.1 Game-level split integrity: `complete`
 
-- Implemented in `src/data_processor.py` via game-level grouping and split integrity checks.
+- Implemented in `src/data_processor.py` with overlap checks.
 
-### 0.2 Deterministic seeds + metadata: `complete`
+### 0.2 Deterministic seeds and run metadata: `complete`
 
-- Implemented in `src/train.py` and `src/iterate.py` (seed control + JSON run metadata).
+- Implemented in `src/train.py` and `src/iterate.py`.
 
-### 0.3 Metric correctness (power loss vs true MSE/MAE): `complete`
+### 0.3 Correct metrics (power loss + true MSE/MAE): `complete`
 
-- Implemented in `src/train.py` logging and test summary.
+- Implemented in `src/train.py`.
 
-### 0.4 Arena evaluation harness for gating: `complete`
+### 0.4 Mandatory candidate gating path: `complete`
 
-- Implemented in `src/iterate.py` (`_run_arena` + gate decision logic).
+- Enforced in `src/iterate.py` after removal of `--no-gating`.
 
-## Phase 1 - Stability and Low-Risk Quality
+## Phase 1 - Data and Label Signal Quality
 
-### 1.1 Gradient clipping: `complete`
+### 1.1 Position-budget windowing with hard cap: `complete`
 
-- Implemented in `src/train.py` (`clip_grad_norm_`).
+- Implemented via `POSITION_BUDGET`, `POSITION_BUDGET_MAX`, `PROCESSED_POSITION_CAP`.
 
-### 1.2 AdamW + decoupled weight decay: `complete`
+### 1.2 Source quotas and source-aware target lambdas: `complete`
 
-- Implemented with no-decay groups for bias/norm params in `src/train.py`.
+- Implemented in `src/data_processor.py` and wired from `src/iterate.py`.
 
-### 1.3 Fine-tune from incumbent + warmup: `complete`
+### 1.3 Human/humanseed/blackfocus stream weighting: `complete`
 
-- Implemented with `--resume-from`, `--warmup-epochs`, `--warmup-start-factor`.
+- Implemented with stream-specific train weighting.
 
-### 1.4 Position-budget data window (replace fixed generation window): `complete`
+### 1.4 Per-source quality audit artifact: `complete`
 
-- Implemented min-budget selection via `POSITION_BUDGET` / `--position-budget`.
-- Implemented optional max-cap behavior via `POSITION_BUDGET_MAX` /
-  `--position-budget-max`.
-- Wired through `src/config.py`, `src/data_processor.py`, and `src/iterate.py`.
+- Implemented `processing_summary.json` with per-source counts, value stats,
+  policy entropy summaries, and warning signals.
+- Embedded and printed by iterate per generation via `processed_data_summary`.
 
-### 1.5 FPU reduction in PUCT path: `complete`
+### 1.5 Data pruning and retention policy formalization: `pending`
 
-- Implemented as `FPU_REDUCTION` in `src/config.py`, used in PUCT path in `src/mcts.py`.
+- Codify retention thresholds by generation age and contribution quality.
+- Keep processed sample count bounded for throughput stability.
 
-### 1.6 Configurable tactical filtering in generation: `complete`
+## Phase 2 - Search and Gating Robustness
 
-- Implemented via `SKIP_CHECK_POSITIONS` default and `--keep-check-positions` control path
-  in `src/data_generation.py` and `src/iterate.py`.
+### 2.1 PUCT FPU reduction and root noise: `complete`
 
-## Phase 2 - Controlled Architecture Upgrades
+- Implemented in `src/mcts.py` (`FPU_REDUCTION`, Dirichlet mix).
 
-### 2.1 Policy head widening: `complete`
+### 2.2 Opponent pool and alternating mode: `complete`
 
-- Implemented via `POLICY_HEAD_CHANNELS` (currently `16`) in `src/config.py` and wired in
-  `src/train.py`.
+- Implemented in `src/iterate.py` + `src/data_generation.py`.
 
-### 2.2 Backbone expansion (e.g., 8x128): `complete`
+### 2.3 Black-survival pre-promotion sanity gate: `complete`
 
-- Implemented via configurable `STEM_CHANNELS` and `RESIDUAL_BLOCK_CHANNELS` in
-  `src/config.py`, with dynamic tower construction and checkpoint-architecture inference
-  in `src/train.py`.
+- Implemented via `_run_black_survival` and promotion guard checks.
 
-### 2.3 SE blocks: `complete`
+### 2.4 Black-focus gate enforcement wiring: `complete`
 
-- Implemented optional SE modules in residual blocks via:
-  - `USE_SE_BLOCKS` / `SE_REDUCTION` in `src/config.py`
-  - SE-enabled residual blocks and checkpoint inference support in `src/train.py`
-  - iterate passthrough flags in `src/iterate.py` (`--use-se-blocks`, `--se-reduction`)
-- Validated with SE-enabled training smoke test and SE-enabled gated iterate runs.
+- `black_focus_pass` is now included in acceptance when black-focus arena is active.
 
-### 2.4 WDL value head experiment: `pending`
+### 2.5 Gate calibration harness (automated threshold sweeps): `complete`
 
-## Phase 3 - Search and Self-Play Robustness
+- `src/gate_sweep.py` now produces recommendation candidates with
+  precision/recall/F1/mismatch metrics and sensitivity summaries.
+- Sweep artifacts include recommended defaults plus acceptance-top configs.
 
-### 3.1 Enforced network gating: `complete`
+## Phase 3 - Model and Optimization
 
-- Candidate promotion is gate-controlled by default in `src/iterate.py`.
+### 3.1 Backbone scaling + policy head widening: `complete`
 
-### 3.2 Opponent pool: `complete`
+- Implemented with configurable stem/tower and wider policy head.
 
-- Implemented via archive pool options in `src/iterate.py` + `src/data_generation.py`.
+### 3.2 Optional SE blocks and side-specialized heads: `complete`
 
-### 3.3 Asymmetric simulation budgets: `complete`
+- Implemented and wired through train/iterate.
 
-- Implemented with train-side/opponent simulation split.
+### 3.3 Consolidation pass with distillation: `complete`
 
-### 3.4 Playout-cap randomization: `complete`
+- Implemented as post-primary optional phase.
 
-- Implemented per-game simulation budget sampling via
-  `--simulations-min/--simulations-max` in `src/data_generation.py`.
-- Wired from iteration loop via `--selfplay-sims-jitter-pct` and
-  `SELFPLAY_SIMS_JITTER_PCT` in `src/iterate.py` / `src/config.py`.
-- Generation-level simulation stats are persisted in
-  `generation_summary.json` and carried into iterate metadata summaries.
+### 3.4 WDL-style value head experiment: `pending`
 
-### 3.5 Adaptive curriculum allocation: `complete`
+- Not implemented; candidate for more stable value calibration.
 
-- Implemented adaptive game-mix scheduling in `src/iterate.py`:
-  - `--adaptive-curriculum`
-  - side-specific scaling with bounded range and update factors
-  - per-iteration `effective_mix` and `adaptive_update` metadata
-- Validated with a smoke gated iteration (`iterate_run_20260219_115558.json`).
+### 3.5 Stronger side-balance training curriculum: `partial`
 
-### 3.6 Anti-forgetting consolidation pass: `complete`
+- Side-balancing exists, but no automated schedule tied to failure modes.
 
-- Implemented teacher-distilled consolidation in `src/iterate.py`:
-  - `--consolidation-epochs`
-  - `--consolidation-lr-factor`
-  - `--consolidation-batch-size`
-  - `--consolidation-balance-sides`
-  - `--consolidation-distill-*`
-- Implemented training-side controls in `src/train.py`:
-  - `--balanced-sides-train`
-  - `--distill-from`
-  - `--distill-value-weight`
-  - `--distill-policy-weight`
-  - `--distill-temperature`
-- Validated with a full iteration smoke run (`iterate_run_20260219_125036.json`)
-  showing primary + consolidation timing and enabled distillation metadata.
+## Phase 4 - Code Health and Experiment Velocity
 
-### 3.7 Human-seeded start-position self-play: `complete`
+### 4.1 Iteration loop modularization: `partial`
 
-- Implemented in `src/data_generation.py`:
-  - `--start-fen-file` / `--start-fen-dir`
-  - `--start-fen-side` filtering
-  - policy-aware white-to-black conversion via `--start-fen-convert-white-to-black`
-  - curriculum tier targeting via `--curriculum-tier-min` / `--curriculum-tier-max`
-  - source metadata in generation summaries
-- Implemented in `src/iterate.py`:
-  - `--human-seed-games`
-  - `--human-seed-simulations`
-  - `--human-seed-dir`
-  - `--human-seed-side`
-  - `--human-seed-max-positions`
-  - black-focus tier targeting for generation and arena:
-    - `--black-focus-tier-min` / `--black-focus-tier-max`
-    - `--black-focus-arena-tier-min` / `--black-focus-arena-tier-max`
-  - per-iteration `human_seed_generation` and generation timing metadata
-- Current finding: improves black-result signal in black-focus/human-seed streams,
-  but gate thresholds are still not met in standard/opening arenas.
+- Significant cleanup done, but `src/iterate.py` is still monolithic.
 
-### 3.8 Train-split weighting for targeted black streams: `complete`
+### 4.2 Regression tests for pipeline contracts: `partial`
 
-- Implemented in `src/config.py`:
-  - `HUMANSEED_DATA_WEIGHT`
-  - `BLACKFOCUS_DATA_WEIGHT`
-- Implemented in `src/data_processor.py`:
-  - game tagging for `_humanseed` and `_blackfocus` sources
-  - train-only repetition weighting for those sources
-  - explicit processing log of active repetition weights
+- Added `tests/` suite for:
+  - data processor split/quota contract checks
+  - iterate promotion-guard/path contract checks
+  - CLI schema smoke checks (`iterate`, `data_processor`, `gate_sweep`,
+    `iterate_presets`)
+- Current local test command:
+  `py -3 -m unittest discover -s tests -v`
 
-## Phase 4 - Advanced Additions
+### 4.3 Reproducible experiment presets: `complete`
 
-### 4.1 Auxiliary heads: `pending`
-
-### 4.2 Separate White/Black networks: `pending`
-
-### 4.3 Dynamic curriculum generation: `pending`
+- Added `src/iterate_presets.py` with canonical `smoke`/`daily`/`overnight`
+  presets.
+- Presets enforce bounded data caps and standard gated iterate settings.
+- README now documents runtime expectations and produced artifacts.
 
 ## Current Priority Queue
 
-1. Continue multi-iteration gated alternating validation with consolidation + SE + adaptive curriculum + playout randomization.
-2. Run bounded-window validation sweeps using `position_budget` + `position_budget_max`.
-3. WDL value head experiment.
-4. Separate White/Black network experiment.
+1. Expand contract coverage to include full gate-decision invariants and
+   `processing_summary` schema expectations.
+2. Start WDL head experiment only after contract coverage is broadened.
 
 ## Validation Protocol (Required Per Major Change)
 
-1. Training stability: loss curves and no gradient spikes.
-2. Offline metrics: power loss, true MSE, MAE, policy CE.
-3. Gate outcome: candidate vs incumbent, color-balanced.
-4. Alternating mode check: trained side and non-trained side thresholds both pass.
-5. Human eval trend check when relevant (`src/human_eval.py`).
+1. Data checks: split overlap, source counts, quota adherence, cap adherence.
+2. Train checks: stable losses, no NaN spikes, consistent convergence shape.
+3. Gate checks: overall score + side-specific floors + black-survival result.
+4. Human-eval trend check where applicable.
+5. Throughput check: end-to-end iteration runtime remains acceptable.
 
 ## Exit Criteria
 
-1. Candidate acceptance settles in a healthy non-trivial range.
-2. Black-side gate score improves without collapsing White-side play.
-3. Improvements persist across multiple generations.
-4. No metric inflation from data leakage or split contamination.
+1. Non-trivial candidate acceptance rate under mandatory gating.
+2. Black-side arena and black-survival metrics improve without White collapse.
+3. Improvements persist across multiple generations and seeds.
+4. Data pipeline remains bounded and deterministic under configured caps.

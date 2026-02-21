@@ -142,6 +142,36 @@ def mirror_policy(policy_vec):
     return mirrored
 
 
+def _build_source_quota_ratios(quota_selfplay, quota_human, quota_blackfocus, quota_humanseed):
+    return {
+        "selfplay": float(quota_selfplay),
+        "human": float(quota_human),
+        "blackfocus": float(quota_blackfocus),
+        "humanseed": float(quota_humanseed),
+    }
+
+
+def _build_source_target_lambdas(selfplay_target_mcts_lambda, human_target_mcts_lambda,
+                                 blackfocus_target_mcts_lambda, humanseed_target_mcts_lambda):
+    return {
+        "selfplay": float(selfplay_target_mcts_lambda),
+        "human": float(human_target_mcts_lambda),
+        "blackfocus": float(blackfocus_target_mcts_lambda),
+        "humanseed": float(humanseed_target_mcts_lambda),
+    }
+
+
+def _validate_source_settings(use_source_quotas, source_quota_ratios, source_target_lambdas):
+    for key, value in source_quota_ratios.items():
+        if value < 0:
+            raise ValueError(f"--quota-{key} must be >= 0")
+    if use_source_quotas and sum(source_quota_ratios.values()) <= 0:
+        raise ValueError("Source quotas enabled but all source ratios are zero")
+    for key, value in source_target_lambdas.items():
+        if not (0.0 <= value <= 1.0):
+            raise ValueError(f"--{key}-target-mcts-lambda must be in [0, 1]")
+
+
 def _source_kind(game):
     """Normalize game source to one of SOURCE_ORDER."""
     if game.get("is_human"):
@@ -452,6 +482,157 @@ def _result_bucket(result):
     return 0
 
 
+def _policy_entropy(policy_vec):
+    """Shannon entropy (nats) of a dense policy vector."""
+    probs = policy_vec[policy_vec > 0.0]
+    if probs.size == 0:
+        return 0.0
+    return float(-np.sum(probs * np.log(probs)))
+
+
+def _init_source_stats():
+    stats = {}
+    for src in SOURCE_ORDER:
+        stats[src] = {
+            "count": 0,
+            "mcts_value_sum": 0.0,
+            "mcts_value_sumsq": 0.0,
+            "mcts_value_min": None,
+            "mcts_value_max": None,
+            "game_result_sum": 0.0,
+            "target_lambda_sum": 0.0,
+            "policy_entropy_sum": 0.0,
+            "policy_entropy_sumsq": 0.0,
+            "policy_entropy_min": None,
+            "policy_entropy_max": None,
+        }
+    return stats
+
+
+def _ensure_source_stats(stats, source_kind):
+    if source_kind not in stats:
+        stats[source_kind] = {
+            "count": 0,
+            "mcts_value_sum": 0.0,
+            "mcts_value_sumsq": 0.0,
+            "mcts_value_min": None,
+            "mcts_value_max": None,
+            "game_result_sum": 0.0,
+            "target_lambda_sum": 0.0,
+            "policy_entropy_sum": 0.0,
+            "policy_entropy_sumsq": 0.0,
+            "policy_entropy_min": None,
+            "policy_entropy_max": None,
+        }
+    return stats[source_kind]
+
+
+def _record_source_stat(stats, source_kind, val, game_result, target_lambda, policy_entropy):
+    src = _ensure_source_stats(stats, source_kind)
+    src["count"] += 1
+    src["mcts_value_sum"] += float(val)
+    src["mcts_value_sumsq"] += float(val) * float(val)
+    src["game_result_sum"] += float(game_result)
+    src["target_lambda_sum"] += float(target_lambda)
+    src["policy_entropy_sum"] += float(policy_entropy)
+    src["policy_entropy_sumsq"] += float(policy_entropy) * float(policy_entropy)
+    src["mcts_value_min"] = float(val) if src["mcts_value_min"] is None else min(src["mcts_value_min"], float(val))
+    src["mcts_value_max"] = float(val) if src["mcts_value_max"] is None else max(src["mcts_value_max"], float(val))
+    src["policy_entropy_min"] = (
+        float(policy_entropy)
+        if src["policy_entropy_min"] is None
+        else min(src["policy_entropy_min"], float(policy_entropy))
+    )
+    src["policy_entropy_max"] = (
+        float(policy_entropy)
+        if src["policy_entropy_max"] is None
+        else max(src["policy_entropy_max"], float(policy_entropy))
+    )
+
+
+def _finalize_source_stats(source_stats):
+    out = {}
+    for source_kind, src in source_stats.items():
+        count = int(src.get("count", 0))
+        if count <= 0:
+            out[source_kind] = {"count": 0}
+            continue
+        mcts_mean = float(src["mcts_value_sum"] / count)
+        mcts_var = max(0.0, float(src["mcts_value_sumsq"] / count) - (mcts_mean * mcts_mean))
+        ent_mean = float(src["policy_entropy_sum"] / count)
+        ent_var = max(0.0, float(src["policy_entropy_sumsq"] / count) - (ent_mean * ent_mean))
+        out[source_kind] = {
+            "count": count,
+            "mcts_value": {
+                "mean": mcts_mean,
+                "std": float(np.sqrt(mcts_var)),
+                "min": float(src["mcts_value_min"]),
+                "max": float(src["mcts_value_max"]),
+            },
+            "game_result_mean": float(src["game_result_sum"] / count),
+            "target_lambda_mean": float(src["target_lambda_sum"] / count),
+            "policy_entropy": {
+                "mean": ent_mean,
+                "std": float(np.sqrt(ent_var)),
+                "min": float(src["policy_entropy_min"]),
+                "max": float(src["policy_entropy_max"]),
+            },
+        }
+    return out
+
+
+def _build_processing_warnings(train_source_counts, train_source_stats, train_source_quotas):
+    warnings = []
+    total_train = int(sum(int(v) for v in train_source_counts.values()))
+    present_sources = [s for s, c in train_source_counts.items() if int(c) > 0]
+    if total_train <= 0:
+        warnings.append("Train split contains zero positions after processing")
+        return warnings
+
+    if len(present_sources) < 2:
+        warnings.append(
+            f"Low source diversity in train split ({len(present_sources)} active source)"
+        )
+
+    for source_kind, count_raw in train_source_counts.items():
+        count = int(count_raw)
+        if count <= 0:
+            continue
+        frac = count / total_train
+        if frac < 0.02:
+            warnings.append(
+                f"Train source '{source_kind}' is underrepresented ({count}/{total_train}, {100.0 * frac:.2f}%)"
+            )
+
+    if isinstance(train_source_quotas, dict):
+        for source_kind, quota_raw in train_source_quotas.items():
+            quota = int(quota_raw)
+            if quota <= 0:
+                continue
+            got = int(train_source_counts.get(source_kind, 0))
+            if got < max(50, int(0.5 * quota)):
+                warnings.append(
+                    f"Train source '{source_kind}' underfilled vs quota ({got}/{quota})"
+                )
+
+    for source_kind, stats in train_source_stats.items():
+        count = int(stats.get("count", 0))
+        if count < 200:
+            continue
+        mcts_mean = float(stats.get("mcts_value", {}).get("mean", 0.0))
+        ent_mean = float(stats.get("policy_entropy", {}).get("mean", 0.0))
+        if abs(mcts_mean) > 0.75:
+            warnings.append(
+                f"Train source '{source_kind}' has high |mcts_value mean| ({mcts_mean:.3f}); labels may be skewed"
+            )
+        if ent_mean < 0.35:
+            warnings.append(
+                f"Train source '{source_kind}' has low policy entropy mean ({ent_mean:.3f}); move targets may be collapsed"
+            )
+
+    return warnings
+
+
 def _split_games_by_result(games, seed):
     """Stratified game-level split (80/10/10) by result bucket."""
     rng = np.random.default_rng(seed)
@@ -500,12 +681,12 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                              dedupe_positions=False):
     """Convert game records to tensors for one split."""
     if source_target_lambdas is None:
-        source_target_lambdas = {
-            "selfplay": float(SELFPLAY_TARGET_MCTS_LAMBDA),
-            "human": float(HUMAN_TARGET_MCTS_LAMBDA),
-            "blackfocus": float(BLACKFOCUS_TARGET_MCTS_LAMBDA),
-            "humanseed": float(HUMANSEED_TARGET_MCTS_LAMBDA),
-        }
+        source_target_lambdas = _build_source_target_lambdas(
+            selfplay_target_mcts_lambda=SELFPLAY_TARGET_MCTS_LAMBDA,
+            human_target_mcts_lambda=HUMAN_TARGET_MCTS_LAMBDA,
+            blackfocus_target_mcts_lambda=BLACKFOCUS_TARGET_MCTS_LAMBDA,
+            humanseed_target_mcts_lambda=HUMANSEED_TARGET_MCTS_LAMBDA,
+        )
     tensors = []
     values = []
     game_results = []
@@ -513,6 +694,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
     target_lambdas = []
     split_game_ids = []
     source_counts = {s: 0 for s in SOURCE_ORDER}
+    source_stats = _init_source_stats()
     capped = False
     seen_positions = set()
 
@@ -523,6 +705,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         source_kind = game.get("source_kind") or _source_kind(game)
         if source_kind not in source_counts:
             source_counts[source_kind] = 0
+        _ensure_source_stats(source_stats, source_kind)
         source_quota = None if source_quotas is None else source_quotas.get(source_kind)
         if source_quota is not None and source_counts[source_kind] >= source_quota:
             continue
@@ -561,6 +744,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 gr = rec["game_result"]
                 pol = policy_dict_to_target(rec["policy"], is_white)
                 lam = float(source_target_lambdas.get(source_kind, 1.0))
+                pol_entropy = _policy_entropy(pol)
 
                 tensors.append(tensor)
                 values.append(val)
@@ -568,6 +752,9 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 policy_targets.append(pol)
                 target_lambdas.append(lam)
                 source_counts[source_kind] += 1
+                _record_source_stat(
+                    source_stats, source_kind, val, gr, lam, pol_entropy
+                )
                 if dedupe_active and pos_key is not None:
                     seen_positions.add(pos_key)
 
@@ -581,6 +768,9 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                     policy_targets.append(mirror_policy(pol))
                     target_lambdas.append(lam)
                     source_counts[source_kind] += 1
+                    _record_source_stat(
+                        source_stats, source_kind, val, gr, lam, pol_entropy
+                    )
                 elif augment and max_positions is not None and len(tensors) >= max_positions:
                     capped = True
                     break
@@ -604,7 +794,7 @@ def _convert_games_to_arrays(games, augment, human_repeat,
 
     return (
         X, y_value, y_result, y_policy, y_target_lambda,
-        split_game_ids, capped, source_counts,
+        split_game_ids, capped, source_counts, _finalize_source_stats(source_stats),
     )
 
 
@@ -653,18 +843,18 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         return
     if max_positions is not None and max_positions <= 0:
         max_positions = None
-    source_quota_ratios = {
-        "selfplay": float(quota_selfplay),
-        "human": float(quota_human),
-        "blackfocus": float(quota_blackfocus),
-        "humanseed": float(quota_humanseed),
-    }
-    source_target_lambdas = {
-        "selfplay": float(selfplay_target_mcts_lambda),
-        "human": float(human_target_mcts_lambda),
-        "blackfocus": float(blackfocus_target_mcts_lambda),
-        "humanseed": float(humanseed_target_mcts_lambda),
-    }
+    source_quota_ratios = _build_source_quota_ratios(
+        quota_selfplay=quota_selfplay,
+        quota_human=quota_human,
+        quota_blackfocus=quota_blackfocus,
+        quota_humanseed=quota_humanseed,
+    )
+    source_target_lambdas = _build_source_target_lambdas(
+        selfplay_target_mcts_lambda=selfplay_target_mcts_lambda,
+        human_target_mcts_lambda=human_target_mcts_lambda,
+        blackfocus_target_mcts_lambda=blackfocus_target_mcts_lambda,
+        humanseed_target_mcts_lambda=humanseed_target_mcts_lambda,
+    )
 
     split_games = _split_games_by_result(games, seed=seed)
     train_games = split_games["train"]
@@ -699,7 +889,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         print(f"  Processed position cap: total<={max_positions}")
 
     # Validation/test are never weighted.
-    X_val, yv_val, yr_val, yp_val, yl_val, val_game_ids, _, val_source_counts = _convert_games_to_arrays(
+    (
+        X_val, yv_val, yr_val, yp_val, yl_val,
+        val_game_ids, _, val_source_counts, val_source_stats,
+    ) = _convert_games_to_arrays(
         val_games,
         augment=augment,
         human_repeat=1,
@@ -707,7 +900,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         humanseed_repeat=1,
         source_target_lambdas=source_target_lambdas,
     )
-    X_test, yv_test, yr_test, yp_test, yl_test, test_game_ids, _, test_source_counts = _convert_games_to_arrays(
+    (
+        X_test, yv_test, yr_test, yp_test, yl_test,
+        test_game_ids, _, test_source_counts, test_source_stats,
+    ) = _convert_games_to_arrays(
         test_games,
         augment=augment,
         human_repeat=1,
@@ -753,7 +949,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         train_games_ordered = _interleave_games_by_source(train_games, seed=seed + 17)
 
     # Upweight targeted game sources only in TRAIN split to avoid validation/test skew.
-    X_train, yv_train, yr_train, yp_train, yl_train, train_game_ids, train_capped, train_source_counts = _convert_games_to_arrays(
+    (
+        X_train, yv_train, yr_train, yp_train, yl_train,
+        train_game_ids, train_capped, train_source_counts, train_source_stats,
+    ) = _convert_games_to_arrays(
         train_games_ordered,
         augment=augment,
         human_repeat=human_repeat,
@@ -777,6 +976,14 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         )
     if train_capped:
         print(f"  Train split capped at {len(X_train)} positions to honor max total size")
+    processing_warnings = _build_processing_warnings(
+        train_source_counts=train_source_counts,
+        train_source_stats=train_source_stats,
+        train_source_quotas=train_source_quotas,
+    )
+    if processing_warnings:
+        for msg in processing_warnings:
+            print(f"  WARNING: {msg}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -815,6 +1022,38 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     }
     with open(os.path.join(output_dir, "split_game_ids.json"), "w") as f:
         json.dump(split_game_ids, f, indent=2)
+    processing_summary = {
+        "positions_shape": list(X.shape),
+        "split_sizes": {
+            "train": int(n_train),
+            "val": int(n_val),
+            "test": int(n_test),
+        },
+        "source_counts": {
+            "train": train_source_counts,
+            "val": val_source_counts,
+            "test": test_source_counts,
+        },
+        "source_stats": {
+            "train": train_source_stats,
+            "val": val_source_stats,
+            "test": test_source_stats,
+        },
+        "source_quota_ratios": source_quota_ratios,
+        "source_quotas": train_source_quotas,
+        "source_target_lambdas": source_target_lambdas,
+        "train_split_capped": bool(train_capped),
+        "total_positions": int(total_positions),
+        "weights": {
+            "human": int(human_repeat),
+            "humanseed": int(humanseed_repeat),
+            "blackfocus": int(blackfocus_repeat),
+        },
+        "augment": bool(augment),
+        "warnings": processing_warnings,
+    }
+    with open(os.path.join(output_dir, "processing_summary.json"), "w") as f:
+        json.dump(processing_summary, f, indent=2)
 
     print(f"\nSaved to {output_dir}:")
     print(f"  positions.npy:    {X.shape}")
@@ -893,22 +1132,21 @@ if __name__ == "__main__":
         raise ValueError("--humanseed-data-weight must be >= 1")
     if args.blackfocus_data_weight < 1:
         raise ValueError("--blackfocus-data-weight must be >= 1")
-    for quota_name in ("quota_selfplay", "quota_human", "quota_blackfocus", "quota_humanseed"):
-        if getattr(args, quota_name) < 0:
-            raise ValueError(f"--{quota_name.replace('_', '-')} must be >= 0")
-    if args.use_source_quotas:
-        quota_sum = args.quota_selfplay + args.quota_human + args.quota_blackfocus + args.quota_humanseed
-        if quota_sum <= 0:
-            raise ValueError("Source quotas enabled but all source ratios are zero")
-    for lam_name in (
-        "human_target_mcts_lambda",
-        "humanseed_target_mcts_lambda",
-        "blackfocus_target_mcts_lambda",
-        "selfplay_target_mcts_lambda",
-    ):
-        lam = getattr(args, lam_name)
-        if not (0.0 <= lam <= 1.0):
-            raise ValueError(f"--{lam_name.replace('_', '-')} must be in [0, 1]")
+    _validate_source_settings(
+        use_source_quotas=args.use_source_quotas,
+        source_quota_ratios=_build_source_quota_ratios(
+            quota_selfplay=args.quota_selfplay,
+            quota_human=args.quota_human,
+            quota_blackfocus=args.quota_blackfocus,
+            quota_humanseed=args.quota_humanseed,
+        ),
+        source_target_lambdas=_build_source_target_lambdas(
+            selfplay_target_mcts_lambda=args.selfplay_target_mcts_lambda,
+            human_target_mcts_lambda=args.human_target_mcts_lambda,
+            blackfocus_target_mcts_lambda=args.blackfocus_target_mcts_lambda,
+            humanseed_target_mcts_lambda=args.humanseed_target_mcts_lambda,
+        ),
+    )
     if args.max_positions is not None and args.max_positions <= 0:
         args.max_positions = None
 

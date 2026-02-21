@@ -101,22 +101,62 @@ py -3 src/data_processor.py --raw-dir data/raw --output-dir data/processed --kee
 py -3 src/train.py --data-dir data/processed --model-dir models/candidates/manual_run --target mcts_value --epochs 12 --resume-from models/best_value_net.pt --warmup-epochs 3 --warmup-start-factor 0.1
 ```
 
-### 5) Run iterative training with gating
+### 5) Run iterate presets (recommended)
+
+Use the preset launcher to avoid manual flag hunting:
+
+```bash
+py -3 src/iterate_presets.py --show-presets
+py -3 src/iterate_presets.py --preset smoke
+py -3 src/iterate_presets.py --preset daily
+py -3 src/iterate_presets.py --preset overnight
+```
+
+Preset expectations (midrange CUDA GPU):
+
+- `smoke`: ~10-20 minutes, fast gate/processing sanity
+- `daily`: ~2-4 hours, balanced training batch
+- `overnight`: ~8-12 hours, long-run training
+
+Common outputs:
+
+- `data/raw/nn_gen*` and auxiliary generation directories
+- `data/processed/processing_summary.json`
+- `models/candidates/gen_*/`
+- `models/iterate_run_*.json`
+- `models/arena_runs/gen_*/` (daily/overnight)
+
+Optional overrides:
+
+```bash
+py -3 src/iterate_presets.py --preset smoke --seed 20260221
+py -3 src/iterate_presets.py --preset daily --iterations 1
+py -3 src/iterate_presets.py --preset overnight --dry-run
+py -3 src/iterate_presets.py --preset smoke -- --human-eval-value-diagnostics
+```
+
+### 6) Run iterative training with explicit flags
 
 ```bash
 py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 --black-focus-games 260 --human-seed-games 200 --simulations 120 --curriculum-simulations 50 --black-focus-simulations 100 --human-seed-simulations 120 --epochs 12 --warmup-epochs 3 --warmup-start-factor 0.1 --position-budget 220000 --position-budget-max 280000 --alternating --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 --human-seed-dir data/raw/human_games --human-seed-side auto --seed 20260219 --human-eval
 ```
 
-### 6) Play against the model
+### 7) Play against the model
 
 ```bash
 py -3 src/play.py --model models/best_value_net.pt --color black --sims 200 --save-data
 ```
 
-### 7) Evaluate recorded human games
+### 8) Evaluate recorded human games
 
 ```bash
 py -3 src/human_eval.py --human-dir data/raw/human_games --model models/best_value_net.pt
+```
+
+### 9) Run contract tests
+
+```bash
+py -3 -m unittest discover -s tests -v
 ```
 
 ## Documentation Map
