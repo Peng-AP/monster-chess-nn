@@ -67,6 +67,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
 ### 1.2 Source quotas and source-aware target lambdas: `complete`
 
 - Implemented in `src/data_processor.py` and wired from `src/iterate.py`.
+- Added dedicated Black-iteration quota profile wiring in `src/iterate.py`
+  (defaults favor Black-focus streams and can be overridden by CLI).
 
 ### 1.3 Human/humanseed/blackfocus stream weighting: `complete`
 

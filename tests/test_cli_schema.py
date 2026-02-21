@@ -33,6 +33,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--max-generation-age", out)
         self.assertIn("--min-nonhuman-plies", out)
         self.assertIn("--min-humanseed-policy-entropy", out)
+        self.assertIn("--black-iter-quota-blackfocus", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")

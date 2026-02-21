@@ -255,18 +255,35 @@ def _load_processing_summary(processed_dir):
         return {"error": str(e), "path": path}
 
 
-def _data_processor_source_args(args):
+def _data_processor_source_args_params(*, use_source_quotas, quota_selfplay, quota_human,
+                                       quota_blackfocus, quota_humanseed,
+                                       selfplay_target_mcts_lambda, human_target_mcts_lambda,
+                                       blackfocus_target_mcts_lambda, humanseed_target_mcts_lambda):
     return [
-        *(["--use-source-quotas"] if args.use_source_quotas else ["--no-use-source-quotas"]),
-        "--quota-selfplay", str(args.quota_selfplay),
-        "--quota-human", str(args.quota_human),
-        "--quota-blackfocus", str(args.quota_blackfocus),
-        "--quota-humanseed", str(args.quota_humanseed),
-        "--selfplay-target-mcts-lambda", str(args.selfplay_target_mcts_lambda),
-        "--human-target-mcts-lambda", str(args.human_target_mcts_lambda),
-        "--blackfocus-target-mcts-lambda", str(args.blackfocus_target_mcts_lambda),
-        "--humanseed-target-mcts-lambda", str(args.humanseed_target_mcts_lambda),
+        *(["--use-source-quotas"] if use_source_quotas else ["--no-use-source-quotas"]),
+        "--quota-selfplay", str(quota_selfplay),
+        "--quota-human", str(quota_human),
+        "--quota-blackfocus", str(quota_blackfocus),
+        "--quota-humanseed", str(quota_humanseed),
+        "--selfplay-target-mcts-lambda", str(selfplay_target_mcts_lambda),
+        "--human-target-mcts-lambda", str(human_target_mcts_lambda),
+        "--blackfocus-target-mcts-lambda", str(blackfocus_target_mcts_lambda),
+        "--humanseed-target-mcts-lambda", str(humanseed_target_mcts_lambda),
     ]
+
+
+def _data_processor_source_args(args):
+    return _data_processor_source_args_params(
+        use_source_quotas=args.use_source_quotas,
+        quota_selfplay=args.quota_selfplay,
+        quota_human=args.quota_human,
+        quota_blackfocus=args.quota_blackfocus,
+        quota_humanseed=args.quota_humanseed,
+        selfplay_target_mcts_lambda=args.selfplay_target_mcts_lambda,
+        human_target_mcts_lambda=args.human_target_mcts_lambda,
+        blackfocus_target_mcts_lambda=args.blackfocus_target_mcts_lambda,
+        humanseed_target_mcts_lambda=args.humanseed_target_mcts_lambda,
+    )
 
 
 def _data_processor_retention_args(max_generation_age, min_nonhuman_plies, min_humanseed_policy_entropy):
@@ -848,6 +865,8 @@ def _derive_runtime_settings(args, *,
                              use_se_blocks_default, se_reduction_default,
                              use_side_specialized_heads_default, human_data_weight_default,
                              humanseed_data_weight_default, blackfocus_data_weight_default,
+                             black_iter_quota_selfplay_default, black_iter_quota_human_default,
+                             black_iter_quota_blackfocus_default, black_iter_quota_humanseed_default,
                              max_generation_age_default, min_nonhuman_plies_default,
                              min_humanseed_policy_entropy_default):
     base_seed = args.seed if args.seed is not None else random_seed
@@ -893,6 +912,22 @@ def _derive_runtime_settings(args, *,
     black_iter_blackfocus_data_weight = (
         args.black_iter_blackfocus_data_weight
         if args.black_iter_blackfocus_data_weight is not None else blackfocus_data_weight
+    )
+    black_iter_quota_selfplay = (
+        args.black_iter_quota_selfplay
+        if args.black_iter_quota_selfplay is not None else black_iter_quota_selfplay_default
+    )
+    black_iter_quota_human = (
+        args.black_iter_quota_human
+        if args.black_iter_quota_human is not None else black_iter_quota_human_default
+    )
+    black_iter_quota_blackfocus = (
+        args.black_iter_quota_blackfocus
+        if args.black_iter_quota_blackfocus is not None else black_iter_quota_blackfocus_default
+    )
+    black_iter_quota_humanseed = (
+        args.black_iter_quota_humanseed
+        if args.black_iter_quota_humanseed is not None else black_iter_quota_humanseed_default
     )
     max_generation_age = (
         args.max_generation_age
@@ -960,6 +995,10 @@ def _derive_runtime_settings(args, *,
         "black_iter_human_data_weight": black_iter_human_data_weight,
         "black_iter_humanseed_data_weight": black_iter_humanseed_data_weight,
         "black_iter_blackfocus_data_weight": black_iter_blackfocus_data_weight,
+        "black_iter_quota_selfplay": black_iter_quota_selfplay,
+        "black_iter_quota_human": black_iter_quota_human,
+        "black_iter_quota_blackfocus": black_iter_quota_blackfocus,
+        "black_iter_quota_humanseed": black_iter_quota_humanseed,
         "max_generation_age": max_generation_age,
         "min_nonhuman_plies": min_nonhuman_plies,
         "min_humanseed_policy_entropy": min_humanseed_policy_entropy,
@@ -985,6 +1024,10 @@ def _validate_runtime_settings(args, settings):
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    black_iter_quota_selfplay = settings["black_iter_quota_selfplay"]
+    black_iter_quota_human = settings["black_iter_quota_human"]
+    black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
+    black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1042,6 +1085,14 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--min-nonhuman-plies must be >= 0")
     if min_humanseed_policy_entropy is not None and min_humanseed_policy_entropy < 0:
         raise ValueError("--min-humanseed-policy-entropy must be >= 0")
+    for name, val in (
+        ("--black-iter-quota-selfplay", black_iter_quota_selfplay),
+        ("--black-iter-quota-human", black_iter_quota_human),
+        ("--black-iter-quota-blackfocus", black_iter_quota_blackfocus),
+        ("--black-iter-quota-humanseed", black_iter_quota_humanseed),
+    ):
+        if val < 0:
+            raise ValueError(f"{name} must be >= 0")
     if args.black_focus_arena_tier_min is not None and args.black_focus_arena_tier_min < 1:
         raise ValueError("--black-focus-arena-tier-min must be >= 1")
     if args.black_focus_arena_tier_max is not None and args.black_focus_arena_tier_max < 1:
@@ -1310,6 +1361,14 @@ def main():
                         help="Source quota ratio for _blackfocus streams")
     parser.add_argument("--quota-humanseed", type=float, default=0.10,
                         help="Source quota ratio for _humanseed streams")
+    parser.add_argument("--black-iter-quota-selfplay", type=float, default=None,
+                        help="Black training iterations: source quota ratio for selfplay/curriculum streams (default: from config)")
+    parser.add_argument("--black-iter-quota-human", type=float, default=None,
+                        help="Black training iterations: source quota ratio for human_games stream (default: from config)")
+    parser.add_argument("--black-iter-quota-blackfocus", type=float, default=None,
+                        help="Black training iterations: source quota ratio for _blackfocus streams (default: from config)")
+    parser.add_argument("--black-iter-quota-humanseed", type=float, default=None,
+                        help="Black training iterations: source quota ratio for _humanseed streams (default: from config)")
     parser.add_argument("--human-target-mcts-lambda", type=float, default=0.20,
                         help="Human source mcts target weight lambda")
     parser.add_argument("--humanseed-target-mcts-lambda", type=float, default=0.85,
@@ -1389,6 +1448,8 @@ def main():
         WARMUP_EPOCHS, WARMUP_START_FACTOR, SELFPLAY_SIMS_JITTER_PCT,
         LEARNING_RATE,
         HUMAN_DATA_WEIGHT, HUMANSEED_DATA_WEIGHT, BLACKFOCUS_DATA_WEIGHT,
+        BLACK_ITER_SOURCE_QUOTA_SELFPLAY, BLACK_ITER_SOURCE_QUOTA_HUMAN,
+        BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS, BLACK_ITER_SOURCE_QUOTA_HUMANSEED,
         DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
         DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
         USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
@@ -1410,6 +1471,10 @@ def main():
         human_data_weight_default=HUMAN_DATA_WEIGHT,
         humanseed_data_weight_default=HUMANSEED_DATA_WEIGHT,
         blackfocus_data_weight_default=BLACKFOCUS_DATA_WEIGHT,
+        black_iter_quota_selfplay_default=BLACK_ITER_SOURCE_QUOTA_SELFPLAY,
+        black_iter_quota_human_default=BLACK_ITER_SOURCE_QUOTA_HUMAN,
+        black_iter_quota_blackfocus_default=BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS,
+        black_iter_quota_humanseed_default=BLACK_ITER_SOURCE_QUOTA_HUMANSEED,
         max_generation_age_default=DATA_RETENTION_MAX_GENERATION_AGE,
         min_nonhuman_plies_default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
         min_humanseed_policy_entropy_default=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
@@ -1430,6 +1495,10 @@ def main():
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    black_iter_quota_selfplay = settings["black_iter_quota_selfplay"]
+    black_iter_quota_human = settings["black_iter_quota_human"]
+    black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
+    black_iter_quota_humanseed = settings["black_iter_quota_humanseed"]
     max_generation_age = settings["max_generation_age"]
     min_nonhuman_plies = settings["min_nonhuman_plies"]
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
@@ -1570,6 +1639,12 @@ def main():
                 "human": float(args.quota_human),
                 "blackfocus": float(args.quota_blackfocus),
                 "humanseed": float(args.quota_humanseed),
+            },
+            "black_iteration_ratios": {
+                "selfplay": float(black_iter_quota_selfplay),
+                "human": float(black_iter_quota_human),
+                "blackfocus": float(black_iter_quota_blackfocus),
+                "humanseed": float(black_iter_quota_humanseed),
             },
             "target_lambdas": {
                 "selfplay": float(args.selfplay_target_mcts_lambda),
@@ -1782,6 +1857,12 @@ def main():
             f"selfplay={args.quota_selfplay:.2f}, human={args.quota_human:.2f}, "
             f"blackfocus={args.quota_blackfocus:.2f}, humanseed={args.quota_humanseed:.2f}"
         )
+        if args.alternating:
+            print(
+                "               black-iter "
+                f"selfplay={black_iter_quota_selfplay:.2f}, human={black_iter_quota_human:.2f}, "
+                f"blackfocus={black_iter_quota_blackfocus:.2f}, humanseed={black_iter_quota_humanseed:.2f}"
+            )
     else:
         print("  Src quotas:  disabled")
     print(
@@ -1848,11 +1929,19 @@ def main():
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
             effective_blackfocus_data_weight = black_iter_blackfocus_data_weight
             effective_blackfocus_result_filter = black_iter_blackfocus_result_filter
+            effective_quota_selfplay = black_iter_quota_selfplay
+            effective_quota_human = black_iter_quota_human
+            effective_quota_blackfocus = black_iter_quota_blackfocus
+            effective_quota_humanseed = black_iter_quota_humanseed
         else:
             effective_human_data_weight = human_data_weight
             effective_humanseed_data_weight = humanseed_data_weight
             effective_blackfocus_data_weight = blackfocus_data_weight
             effective_blackfocus_result_filter = blackfocus_result_filter
+            effective_quota_selfplay = args.quota_selfplay
+            effective_quota_human = args.quota_human
+            effective_quota_blackfocus = args.quota_blackfocus
+            effective_quota_humanseed = args.quota_humanseed
 
         print(f"\n{'#'*60}")
         print(f"  ITERATION {i+1}/{args.iterations}  -  Generation {gen}  -  Training: {side_label}")
@@ -1863,6 +1952,12 @@ def main():
             f"humanseed={effective_humanseed_data_weight}, blackfocus={effective_blackfocus_data_weight}"
         )
         print(f"  BF keep:     {effective_blackfocus_result_filter}")
+        if args.use_source_quotas:
+            print(
+                "  Proc quota:  "
+                f"selfplay={effective_quota_selfplay:.2f}, human={effective_quota_human:.2f}, "
+                f"blackfocus={effective_quota_blackfocus:.2f}, humanseed={effective_quota_humanseed:.2f}"
+            )
         print(
             "  Train filt:  "
             f"primary={primary_train_result_filter}, consolidation={consolidation_train_result_filter}"
@@ -2104,7 +2199,17 @@ def main():
             "--human-data-weight", str(effective_human_data_weight),
             "--humanseed-data-weight", str(effective_humanseed_data_weight),
             "--blackfocus-data-weight", str(effective_blackfocus_data_weight),
-            *_data_processor_source_args(args),
+            *_data_processor_source_args_params(
+                use_source_quotas=args.use_source_quotas,
+                quota_selfplay=effective_quota_selfplay,
+                quota_human=effective_quota_human,
+                quota_blackfocus=effective_quota_blackfocus,
+                quota_humanseed=effective_quota_humanseed,
+                selfplay_target_mcts_lambda=args.selfplay_target_mcts_lambda,
+                human_target_mcts_lambda=args.human_target_mcts_lambda,
+                blackfocus_target_mcts_lambda=args.blackfocus_target_mcts_lambda,
+                humanseed_target_mcts_lambda=args.humanseed_target_mcts_lambda,
+            ),
             *(["--exclude-human-games"] if args.exclude_human_games else []),
         ]
         if max_processed_positions is not None:
@@ -2360,6 +2465,10 @@ def main():
                 "humanseed": int(effective_humanseed_data_weight),
                 "blackfocus": int(effective_blackfocus_data_weight),
                 "blackfocus_result_filter": effective_blackfocus_result_filter,
+                "quota_selfplay": float(effective_quota_selfplay),
+                "quota_human": float(effective_quota_human),
+                "quota_blackfocus": float(effective_quota_blackfocus),
+                "quota_humanseed": float(effective_quota_humanseed),
             },
             "processed_data_summary": processing_summary,
             "effective_mix": {
