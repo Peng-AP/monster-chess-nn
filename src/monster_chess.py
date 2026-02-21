@@ -157,13 +157,48 @@ class MonsterChessGame:
         return safe_pairs if safe_pairs else all_pairs
 
     def _get_black_actions(self):
-        """Generate all legal moves for Black.
+        """Generate all legal single moves for Black.
 
-        Uses legal_moves so Black can't leave its own king in self-check.
-        No additional safety filters — MCTS handles threat awareness.
+        Monster Chess ends on king capture, so Black must be able to capture
+        White's king directly (python-chess legal_moves forbids this).
+        We therefore use pseudo-legal moves and apply the same
+        self-preservation policy used for White:
+          - keep moves that do not leave Black king attacked by White
+          - if no safe moves exist, allow all moves (forced blunder)
         """
         self.board.turn = chess.BLACK
-        return list(self.board.legal_moves)
+        candidate_moves = list(self.board.pseudo_legal_moves)
+        if not candidate_moves:
+            return []
+
+        safe_moves = []
+        all_moves = []
+        for move in candidate_moves:
+            self.board.push(move)
+
+            # Immediate king capture wins if Black king remains safe.
+            if self.board.king(chess.WHITE) is None:
+                black_king = self.board.king(chess.BLACK)
+                black_attacked = (
+                    black_king is not None
+                    and self.board.is_attacked_by(chess.WHITE, black_king)
+                )
+                self.board.pop()
+                if not black_attacked:
+                    return [move]
+                continue
+
+            all_moves.append(move)
+            black_king = self.board.king(chess.BLACK)
+            black_attacked = (
+                black_king is not None
+                and self.board.is_attacked_by(chess.WHITE, black_king)
+            )
+            if not black_attacked:
+                safe_moves.append(move)
+            self.board.pop()
+
+        return safe_moves if safe_moves else all_moves
 
     # ------------------------------------------------------------------
     # Applying actions
@@ -281,8 +316,7 @@ class MonsterChessGame:
 
     def _apply_random_black(self):
         """Sample a random legal move for Black."""
-        self.board.turn = chess.BLACK
-        legal = list(self.board.legal_moves)
+        legal = self._get_black_actions()
         if not legal:
             return False
 
