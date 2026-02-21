@@ -1504,6 +1504,7 @@ def main():
     black_iter_human_data_weight = settings["black_iter_human_data_weight"]
     black_iter_humanseed_data_weight = settings["black_iter_humanseed_data_weight"]
     black_iter_blackfocus_data_weight = settings["black_iter_blackfocus_data_weight"]
+    black_focus_scripted_black = settings["black_focus_scripted_black"]
     black_iter_quota_selfplay = settings["black_iter_quota_selfplay"]
     black_iter_quota_human = settings["black_iter_quota_human"]
     black_iter_quota_blackfocus = settings["black_iter_quota_blackfocus"]
