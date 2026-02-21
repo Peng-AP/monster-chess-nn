@@ -71,6 +71,22 @@ class TrainWdlContracts(unittest.TestCase):
         self.assertEqual(tuple(yp4.shape), tuple(yp.shape))
         self.assertEqual(tuple(yw4.shape), tuple(yw.shape))
 
+    def test_filter_train_indices_by_result_modes(self):
+        idx = np.array([0, 1, 2, 3, 4], dtype=np.int64)
+        game_results_side = np.array([-1.0, -0.2, 0.0, 0.4, 1.0], dtype=np.float32)
+        self.assertEqual(
+            train._filter_train_indices_by_result(idx, game_results_side, "any").tolist(),
+            [0, 1, 2, 3, 4],
+        )
+        self.assertEqual(
+            train._filter_train_indices_by_result(idx, game_results_side, "nonloss").tolist(),
+            [2, 3, 4],
+        )
+        self.assertEqual(
+            train._filter_train_indices_by_result(idx, game_results_side, "win").tolist(),
+            [3, 4],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

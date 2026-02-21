@@ -292,11 +292,21 @@ def _build_train_cmd_base(train_target, epochs, data_dir, model_dir, seed,
     ]
 
 
-def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only_side):
+def _append_train_side_args(cmd, balance_sides, balanced_black_ratio, train_only_side, train_result_filter):
     cmd.append(_bool_optional_flag("balanced-sides-train", balance_sides))
     cmd.extend(["--balanced-black-ratio", str(balanced_black_ratio)])
     if train_only_side != "none":
         cmd.extend(["--train-only-side", train_only_side])
+    cmd.extend(["--train-side-result-filter", train_result_filter])
+
+
+def _resolve_train_result_filter(mode, alternating, train_side):
+    m = str(mode)
+    if m == "auto":
+        if alternating and train_side == "black":
+            return "nonloss"
+        return "any"
+    return m
 
 
 def _append_distill_teacher_if_weighted(cmd, value_weight, policy_weight, teacher_path):
@@ -1281,9 +1291,15 @@ def main():
     parser.add_argument("--primary-train-only-side", type=str, default="auto",
                         choices=["auto", "none", "white", "black"],
                         help="Restrict primary training data to one side-to-move (auto=training side in alternating)")
+    parser.add_argument("--primary-train-result-filter", type=str, default="auto",
+                        choices=["auto", "any", "nonloss", "win"],
+                        help="Primary train result filter (auto=nonloss for alternating black, else any)")
     parser.add_argument("--consolidation-train-only-side", type=str, default="auto",
                         choices=["auto", "none", "white", "black"],
                         help="Restrict consolidation training data to one side-to-move (auto=training side in alternating)")
+    parser.add_argument("--consolidation-train-result-filter", type=str, default="auto",
+                        choices=["auto", "any", "nonloss", "win"],
+                        help="Consolidation train result filter (auto=nonloss for alternating black, else any)")
     args = parser.parse_args()
     args.human_seed_dir = _resolve_project_path(args.human_seed_dir)
     args.human_eval_dir = _resolve_project_path(args.human_eval_dir)
@@ -1709,9 +1725,15 @@ def main():
         primary_train_only_side = args.primary_train_only_side
         if primary_train_only_side == "auto":
             primary_train_only_side = train_side if args.alternating else "none"
+        primary_train_result_filter = _resolve_train_result_filter(
+            args.primary_train_result_filter, args.alternating, train_side
+        )
         consolidation_train_only_side = args.consolidation_train_only_side
         if consolidation_train_only_side == "auto":
             consolidation_train_only_side = train_side if args.alternating else "none"
+        consolidation_train_result_filter = _resolve_train_result_filter(
+            args.consolidation_train_result_filter, args.alternating, train_side
+        )
         if args.alternating and train_side == "black":
             effective_human_data_weight = black_iter_human_data_weight
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
@@ -1732,6 +1754,10 @@ def main():
             f"humanseed={effective_humanseed_data_weight}, blackfocus={effective_blackfocus_data_weight}"
         )
         print(f"  BF keep:     {effective_blackfocus_result_filter}")
+        print(
+            "  Train filt:  "
+            f"primary={primary_train_result_filter}, consolidation={consolidation_train_result_filter}"
+        )
 
         # Step 1a: Generate normal games
         opponent_pool_count = 0
@@ -2052,6 +2078,7 @@ def main():
             balance_sides=args.primary_balance_sides,
             balanced_black_ratio=args.primary_balanced_black_ratio,
             train_only_side=primary_train_only_side,
+            train_result_filter=primary_train_result_filter,
         )
         if os.path.exists(source_model_path) and not args.primary_no_resume:
             train_cmd.extend(["--resume-from", source_model_path])
@@ -2090,6 +2117,7 @@ def main():
                 balance_sides=args.consolidation_balance_sides,
                 balanced_black_ratio=args.consolidation_balanced_black_ratio,
                 train_only_side=consolidation_train_only_side,
+                train_result_filter=consolidation_train_result_filter,
             )
             _append_distill_teacher_if_weighted(
                 consolidation_cmd,
@@ -2206,8 +2234,10 @@ def main():
             "seed_model_path": source_model_path,
             "next_seed_model_path": selfplay_model_path,
             "primary_train_only_side_effective": primary_train_only_side,
+            "primary_train_result_filter_effective": primary_train_result_filter,
             "primary_policy_loss_weight_effective": float(args.primary_policy_loss_weight),
             "consolidation_train_only_side_effective": consolidation_train_only_side,
+            "consolidation_train_result_filter_effective": consolidation_train_result_filter,
             "consolidation_policy_loss_weight_effective": float(args.consolidation_policy_loss_weight),
             "effective_processing_weights": {
                 "human": int(effective_human_data_weight),

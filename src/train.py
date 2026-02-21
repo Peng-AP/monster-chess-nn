@@ -554,6 +554,20 @@ def _balanced_train_indices(train_idx, positions, seed, black_ratio=0.5):
     return balanced
 
 
+def _filter_train_indices_by_result(train_idx, game_results_side, mode):
+    """Filter train indices by side-perspective game outcome."""
+    m = str(mode)
+    if m == "any":
+        return train_idx
+    if m == "nonloss":
+        keep = game_results_side[train_idx] >= 0
+        return train_idx[keep]
+    if m == "win":
+        keep = game_results_side[train_idx] > 0
+        return train_idx[keep]
+    raise ValueError(f"Unknown result filter mode: {mode}")
+
+
 def _policy_distill_kl(student_logits, teacher_logits, temperature):
     """KL(teacher || student) distillation loss with temperature scaling."""
     t = float(temperature)
@@ -754,6 +768,9 @@ def main():
     parser.add_argument("--train-only-side", type=str, default="none",
                         choices=["none", "white", "black"],
                         help="Restrict training samples to one side-to-move")
+    parser.add_argument("--train-side-result-filter", type=str, default="any",
+                        choices=["any", "nonloss", "win"],
+                        help="When training on one side, optionally keep only non-loss or win outcomes for that side")
     parser.add_argument("--distill-from", type=str, default=None,
                         help="Teacher checkpoint path for anti-forgetting distillation")
     parser.add_argument("--distill-value-weight", type=float, default=0.0,
@@ -799,6 +816,8 @@ def main():
         raise ValueError("--wdl-draw-epsilon must be >= 0")
     if args.value_head == "scalar" and args.wdl_loss_weight > 0:
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
+    if args.train_only_side == "none" and args.train_side_result_filter != "any":
+        print("Warning: --train-side-result-filter ignored because --train-only-side=none")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -977,6 +996,7 @@ def main():
     }
 
     # Training loop
+    result_filter_fallback_warned = False
     for epoch in range(1, args.epochs + 1):
         # Recompute blend targets with annealed lambda each epoch
         if args.target == "blend":
@@ -1005,6 +1025,18 @@ def main():
                 base_train_idx = train_idx[~all_sides]
             if len(base_train_idx) == 0:
                 raise ValueError(f"--train-only-side={args.train_only_side} produced 0 samples")
+            if args.train_side_result_filter != "any":
+                filtered_idx = _filter_train_indices_by_result(
+                    base_train_idx, game_results_side, args.train_side_result_filter
+                )
+                if len(filtered_idx) > 0:
+                    base_train_idx = filtered_idx
+                elif not result_filter_fallback_warned:
+                    print(
+                        "Warning: --train-side-result-filter="
+                        f"{args.train_side_result_filter} yielded 0 samples; using unfiltered side data"
+                    )
+                    result_filter_fallback_warned = True
         if args.balanced_sides_train:
             epoch_train_idx = _balanced_train_indices(
                 base_train_idx, positions, seed=args.seed + epoch * 17,

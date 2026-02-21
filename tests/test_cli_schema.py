@@ -27,6 +27,8 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--human-seed-dir", out)
         self.assertIn("--value-head", out)
         self.assertIn("--wdl-loss-weight", out)
+        self.assertIn("--primary-train-result-filter", out)
+        self.assertIn("--consolidation-train-result-filter", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")
@@ -34,6 +36,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--value-head", out)
         self.assertIn("--wdl-loss-weight", out)
         self.assertIn("--wdl-draw-epsilon", out)
+        self.assertIn("--train-side-result-filter", out)
 
     def test_data_processor_help_contains_expected_flags(self):
         code, out = _run_help("data_processor.py")
