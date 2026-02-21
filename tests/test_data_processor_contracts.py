@@ -134,6 +134,38 @@ class DataProcessorContracts(unittest.TestCase):
         self.assertEqual(int(quotas["blackfocus"]), 0)
         self.assertEqual(int(quotas["humanseed"]), 0)
 
+    def test_rebalance_source_quotas_backfills_underfilled_sources(self):
+        quotas = {"selfplay": 5, "human": 5, "blackfocus": 0, "humanseed": 0}
+        capacities = {"selfplay": 20, "human": 2, "blackfocus": 0, "humanseed": 0}
+        rebalanced = dp._rebalance_source_quotas(
+            train_cap=10,
+            quotas=quotas,
+            source_capacity=capacities,
+            ratios={"selfplay": 0.5, "human": 0.5, "blackfocus": 0.0, "humanseed": 0.0},
+        )
+        self.assertEqual(sum(int(v) for v in rebalanced.values()), 10)
+        self.assertEqual(int(rebalanced["human"]), 2)
+        self.assertEqual(int(rebalanced["selfplay"]), 8)
+
+    def test_estimate_source_capacity_respects_dedupe_for_human(self):
+        rec_w = _record("white", 1)
+        rec_b = _record("black", -1)
+        games = [
+            _game("h1", "human", 1, [rec_w, rec_w, rec_b], generation=None),
+            _game("h2", "human", 1, [rec_w], generation=None),
+            _game("s1", "selfplay", 1, [rec_w, rec_b], generation=1),
+        ]
+        cap = dp._estimate_train_source_capacity(
+            train_games=games,
+            augment=False,
+            human_repeat=8,
+            blackfocus_repeat=1,
+            humanseed_repeat=1,
+            dedupe_positions=True,
+        )
+        self.assertEqual(int(cap["human"]), 2)
+        self.assertEqual(int(cap["selfplay"]), 2)
+
     def test_convert_games_respects_source_quotas(self):
         games = [
             _game(

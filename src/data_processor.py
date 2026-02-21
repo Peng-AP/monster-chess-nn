@@ -244,6 +244,83 @@ def _allocate_source_quotas(train_cap, ratios, train_games):
     return quota
 
 
+def _train_game_repeat(game, human_repeat, blackfocus_repeat, humanseed_repeat):
+    repeat = 1
+    if game.get("is_human"):
+        repeat = max(repeat, int(human_repeat))
+    if game.get("is_blackfocus"):
+        repeat = max(repeat, int(blackfocus_repeat))
+    if game.get("is_humanseed"):
+        repeat = max(repeat, int(humanseed_repeat))
+    return int(max(1, repeat))
+
+
+def _estimate_train_source_capacity(train_games, augment, human_repeat,
+                                    blackfocus_repeat, humanseed_repeat,
+                                    dedupe_positions):
+    """Estimate max train positions available per source before quota limits."""
+    cap = {s: 0 for s in SOURCE_ORDER}
+    dedupe_sets = {"human": set(), "humanseed": set()}
+    aug_mult = 2 if augment else 1
+
+    for game in train_games:
+        source_kind = game.get("source_kind") or _source_kind(game)
+        if source_kind not in cap:
+            cap[source_kind] = 0
+        records = game.get("records") or []
+        if not records:
+            continue
+        repeat = _train_game_repeat(
+            game,
+            human_repeat=human_repeat,
+            blackfocus_repeat=blackfocus_repeat,
+            humanseed_repeat=humanseed_repeat,
+        )
+
+        if dedupe_positions and source_kind in dedupe_sets:
+            seen = dedupe_sets[source_kind]
+            unique_new = 0
+            for rec in records:
+                pos_key = f"{rec.get('fen')}|{rec.get('current_player')}"
+                if pos_key in seen:
+                    continue
+                seen.add(pos_key)
+                unique_new += 1
+            cap[source_kind] += int(unique_new * aug_mult)
+            continue
+
+        cap[source_kind] += int(len(records) * repeat * aug_mult)
+
+    return cap
+
+
+def _rebalance_source_quotas(train_cap, quotas, source_capacity, ratios):
+    """Clamp quotas to source capacity, then backfill remaining slots."""
+    if quotas is None or train_cap is None:
+        return quotas
+
+    out = {}
+    for s in SOURCE_ORDER:
+        q = int(quotas.get(s, 0))
+        c = int(source_capacity.get(s, 0))
+        out[s] = max(0, min(q, c))
+
+    remaining = int(train_cap - sum(out.values()))
+    while remaining > 0:
+        candidates = [s for s in SOURCE_ORDER if int(source_capacity.get(s, 0)) > int(out.get(s, 0))]
+        if not candidates:
+            break
+        weighted = [s for s in candidates if float(ratios.get(s, 0.0)) > 0.0]
+        if weighted:
+            pick = max(weighted, key=lambda s: (float(ratios.get(s, 0.0)), int(source_capacity.get(s, 0)) - int(out.get(s, 0))))
+        else:
+            pick = max(candidates, key=lambda s: int(source_capacity.get(s, 0)) - int(out.get(s, 0)))
+        out[pick] = int(out.get(pick, 0)) + 1
+        remaining -= 1
+
+    return out
+
+
 def _collect_generation_dirs(subdirs):
     """Map generation number -> list of matching nn_gen* directory names."""
     gen_pattern = re.compile(r'^nn_gen(\d+)(?:_.*)?$')
@@ -857,13 +934,12 @@ def _convert_games_to_arrays(games, augment, human_repeat,
         source_quota = None if source_quotas is None else source_quotas.get(source_kind)
         if source_quota is not None and source_counts[source_kind] >= source_quota:
             continue
-        repeat = 1
-        if game.get("is_human"):
-            repeat = max(repeat, int(human_repeat))
-        if game.get("is_blackfocus"):
-            repeat = max(repeat, int(blackfocus_repeat))
-        if game.get("is_humanseed"):
-            repeat = max(repeat, int(humanseed_repeat))
+        repeat = _train_game_repeat(
+            game,
+            human_repeat=human_repeat,
+            blackfocus_repeat=blackfocus_repeat,
+            humanseed_repeat=humanseed_repeat,
+        )
         for _ in range(repeat):
             if max_positions is not None and len(tensors) >= max_positions:
                 capped = True
@@ -1090,17 +1166,42 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             f"{train_position_cap} (val+test={eval_positions})"
         )
 
+    requested_train_source_quotas = None
+    train_source_capacity = None
     train_source_quotas = None
     if use_source_quotas and train_position_cap is not None:
-        train_source_quotas = _allocate_source_quotas(
+        requested_train_source_quotas = _allocate_source_quotas(
             train_position_cap,
             source_quota_ratios,
             train_games,
         )
-        if train_source_quotas:
+        if requested_train_source_quotas:
+            train_source_capacity = _estimate_train_source_capacity(
+                train_games,
+                augment=augment,
+                human_repeat=human_repeat,
+                blackfocus_repeat=blackfocus_repeat,
+                humanseed_repeat=humanseed_repeat,
+                dedupe_positions=bool(use_source_quotas),
+            )
+            train_source_quotas = _rebalance_source_quotas(
+                train_position_cap,
+                requested_train_source_quotas,
+                train_source_capacity,
+                source_quota_ratios,
+            )
             print(
                 "  Train source quotas: "
                 + ", ".join(f"{k}={train_source_quotas.get(k, 0)}" for k in SOURCE_ORDER)
+            )
+            if requested_train_source_quotas != train_source_quotas:
+                print(
+                    "  Train source quotas (requested): "
+                    + ", ".join(f"{k}={requested_train_source_quotas.get(k, 0)}" for k in SOURCE_ORDER)
+                )
+            print(
+                "  Train source capacity estimate: "
+                + ", ".join(f"{k}={int(train_source_capacity.get(k, 0))}" for k in SOURCE_ORDER)
             )
         else:
             print("  Train source quotas: disabled (no active sources/ratios)")
@@ -1179,6 +1280,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         "val_source_position_counts": val_source_counts,
         "test_source_position_counts": test_source_counts,
         "train_source_quotas": train_source_quotas,
+        "requested_train_source_quotas": requested_train_source_quotas,
+        "train_source_capacity_estimate": train_source_capacity,
         "source_quota_ratios": source_quota_ratios,
         "source_target_lambdas": source_target_lambdas,
         "retention": retention_summary,
@@ -1207,6 +1310,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         },
         "source_quota_ratios": source_quota_ratios,
         "source_quotas": train_source_quotas,
+        "requested_source_quotas": requested_train_source_quotas,
+        "source_capacity_estimate": train_source_capacity,
         "source_target_lambdas": source_target_lambdas,
         "retention": retention_summary,
         "train_split_capped": bool(train_capped),
