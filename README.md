@@ -159,6 +159,9 @@ py -3 src/human_eval.py --human-dir data/raw/human_games --model models/best_val
 py -3 -m unittest discover -s tests -v
 ```
 
+Contract tests run automatically in GitHub Actions on push/PR via
+`.github/workflows/contract-tests.yml`.
+
 ## Documentation Map
 
 - `IMPROVEMENT_PLAN.md`: living status of the improvement roadmap

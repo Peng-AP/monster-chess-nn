@@ -144,6 +144,8 @@ Rationale: these paths either bypassed quality control, continued from rejected 
     `iterate_presets`)
 - Current local test command:
   `py -3 -m unittest discover -s tests -v`
+- Added CI workflow:
+  `.github/workflows/contract-tests.yml` (runs contract suite on push/PR)
 
 ### 4.3 Reproducible experiment presets: `complete`
 

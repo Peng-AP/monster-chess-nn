@@ -49,6 +49,8 @@ Processed dataset (`data/processed`):
   and `overnight` profiles.
 - Initial contract test suite added in `tests/` (data contracts, guard/path
   contracts, CLI schema smoke checks).
+- CI workflow added at `.github/workflows/contract-tests.yml` to run the
+  contract suite on push/PR.
 
 ## 3) What Changed Recently (for Continuity)
 

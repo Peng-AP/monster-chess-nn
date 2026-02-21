@@ -107,6 +107,8 @@ Gate:
 
 - Initial local contract suite added under `tests/` and runnable via
   `py -3 -m unittest discover -s tests -v`.
+- GitHub Actions workflow added to run the same suite on push/PR:
+  `.github/workflows/contract-tests.yml`.
 
 ### Stage F - WDL Value Head Experiment
 
