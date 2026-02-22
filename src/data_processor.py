@@ -689,7 +689,8 @@ def load_all_games(
         kept = len(filtered_blackfocus_games)
         total = len(blackfocus_games)
         blackfocus_filtered_keep_ratio = (kept / total) if total > 0 else 1.0
-        if blackfocus_filtered_keep_ratio < float(blackfocus_result_min_keep_ratio):
+        floor = float(blackfocus_result_min_keep_ratio)
+        if kept == 0 and floor > 0.0:
             fallback_blackfocus_result_filter = True
             games.extend(blackfocus_games)
         else:
@@ -713,9 +714,15 @@ def load_all_games(
         if fallback_blackfocus_result_filter:
             print(
                 "  Black-focus result filter fallback: "
+                "filtered set is empty; "
+                "using unfiltered _blackfocus games"
+            )
+        elif blackfocus_filtered_keep_ratio < float(blackfocus_result_min_keep_ratio):
+            print(
+                "  Black-focus result filter warning: "
                 f"keep_ratio={blackfocus_filtered_keep_ratio:.3f} below "
                 f"min_keep_ratio={float(blackfocus_result_min_keep_ratio):.3f}; "
-                "using unfiltered _blackfocus games"
+                "keeping filtered set to preserve black-advantage signal"
             )
 
     games, retention_summary = _apply_game_retention_policy(

@@ -91,6 +91,45 @@ class DataProcessorContracts(unittest.TestCase):
             )
             self.assertEqual(len(games), 0)
 
+    def test_load_all_games_blackfocus_filter_keeps_filtered_subset_when_nonempty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw"
+            bf_dir = raw / "nn_gen1_blackfocus"
+            bf_dir.mkdir(parents=True, exist_ok=True)
+
+            win_recs = [_record("white", 1.0) for _ in range(6)]
+            loss_recs = [_record("black", -1.0) for _ in range(6)]
+            (bf_dir / "g0.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in win_recs) + "\n",
+                encoding="utf-8",
+            )
+            (bf_dir / "g1.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in win_recs) + "\n",
+                encoding="utf-8",
+            )
+            (bf_dir / "g2.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in win_recs) + "\n",
+                encoding="utf-8",
+            )
+            (bf_dir / "g3.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in loss_recs) + "\n",
+                encoding="utf-8",
+            )
+
+            games = dp.load_all_games(
+                raw_dir=str(raw),
+                include_human=False,
+                min_blackfocus_plies=0,
+                blackfocus_result_filter="nonloss",
+                blackfocus_result_min_keep_ratio=0.50,
+                max_generation_age=0,
+                min_nonhuman_plies=0,
+                min_humanseed_policy_entropy=0.0,
+                return_summary=False,
+            )
+            self.assertEqual(len(games), 1)
+            self.assertEqual(int(games[0]["result_bucket"]), -1)
+
     def test_apply_game_retention_policy_drops_old_generations(self):
         games = [
             _game("nn_gen10/g1.jsonl", "selfplay", 0, [_record("white", 0)] * 8, generation=10),
