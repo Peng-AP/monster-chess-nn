@@ -469,19 +469,38 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
 def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
                         games, sims, workers, base_seed,
                         human_start_dir=None, human_start_max_positions=0,
-                        eval_temperature=0.01, eval_temperature_moves=0):
-    """Run a black-to-move survival sanity suite before promotion."""
+                        eval_temperature=0.01, eval_temperature_moves=0,
+                        relative_baseline=True, relative_min_delta=0.0):
+    """Run black survival sanity before promotion (candidate and optional baseline)."""
     arena_root = os.path.join(model_dir, "arena_runs", f"gen_{gen:04d}", "black_survival")
+    candidate_dir = os.path.join(arena_root, "candidate_black")
+    baseline_dir = os.path.join(arena_root, "baseline_black")
     if os.path.exists(arena_root):
         shutil.rmtree(arena_root)
-    os.makedirs(arena_root, exist_ok=True)
+    os.makedirs(candidate_dir, exist_ok=True)
+    os.makedirs(baseline_dir, exist_ok=True)
 
-    cmd = [
+    used_human_starts = False
+    start_fen_args = []
+    human_start_dir_abs = os.path.abspath(human_start_dir) if human_start_dir else None
+    if human_start_dir_abs and os.path.isdir(human_start_dir_abs):
+        has_jsonl = bool(glob.glob(os.path.join(human_start_dir_abs, "*.jsonl")))
+        if has_jsonl:
+            used_human_starts = True
+            start_fen_args = [
+                "--start-fen-dir", human_start_dir_abs,
+                "--start-fen-side", "black",
+                "--start-fen-convert-white-to-black",
+            ]
+            if human_start_max_positions and human_start_max_positions > 0:
+                start_fen_args.extend(["--start-fen-max-positions", str(human_start_max_positions)])
+
+    candidate_cmd = [
         sys.executable, "data_generation.py",
         "--num-games", str(games),
         "--simulations", str(sims),
         "--workers", str(workers),
-        "--output-dir", arena_root,
+        "--output-dir", candidate_dir,
         "--use-model", candidate_model,
         "--train-side", "black",
         "--opponent-model", incumbent_model,
@@ -489,39 +508,64 @@ def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
         "--record-all-plies",
         "--seed", str(base_seed + gen * 100 + 33),
     ]
-
-    used_human_starts = False
-    human_start_dir_abs = os.path.abspath(human_start_dir) if human_start_dir else None
-    if human_start_dir_abs and os.path.isdir(human_start_dir_abs):
-        has_jsonl = bool(glob.glob(os.path.join(human_start_dir_abs, "*.jsonl")))
-        if has_jsonl:
-            used_human_starts = True
-            cmd.extend([
-                "--start-fen-dir", human_start_dir_abs,
-                "--start-fen-side", "black",
-                "--start-fen-convert-white-to-black",
-            ])
-            if human_start_max_positions and human_start_max_positions > 0:
-                cmd.extend(["--start-fen-max-positions", str(human_start_max_positions)])
+    candidate_cmd.extend(start_fen_args)
     _append_eval_temperature_args(
-        cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
+        candidate_cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
     )
-
     run(
-        cmd,
+        candidate_cmd,
         f"Black survival sanity gen {gen}: candidate as Black vs incumbent ({games} games)",
     )
 
-    summary = _scan_result_dir(arena_root)
-    candidate_black = _candidate_score(summary, candidate_is_white=False)
+    candidate_summary = _scan_result_dir(candidate_dir)
+    candidate_black = _candidate_score(candidate_summary, candidate_is_white=False)
+
+    baseline_black = None
+    baseline_score = None
+    relative_delta = None
+    if relative_baseline:
+        baseline_cmd = [
+            sys.executable, "data_generation.py",
+            "--num-games", str(games),
+            "--simulations", str(sims),
+            "--workers", str(workers),
+            "--output-dir", baseline_dir,
+            "--use-model", incumbent_model,
+            "--train-side", "black",
+            "--opponent-model", incumbent_model,
+            "--opponent-sims", str(sims),
+            "--record-all-plies",
+            "--seed", str(base_seed + gen * 100 + 33),
+        ]
+        baseline_cmd.extend(start_fen_args)
+        _append_eval_temperature_args(
+            baseline_cmd, temperature=eval_temperature, temperature_moves=eval_temperature_moves
+        )
+        run(
+            baseline_cmd,
+            f"Black survival baseline gen {gen}: incumbent as Black vs incumbent ({games} games)",
+        )
+
+        baseline_summary = _scan_result_dir(baseline_dir)
+        baseline_black = _candidate_score(baseline_summary, candidate_is_white=False)
+        baseline_score = baseline_black["score"]
+        relative_delta = candidate_black["score"] - baseline_score
+
     return {
         "arena_root": arena_root,
+        "candidate_dir": candidate_dir,
+        "baseline_dir": baseline_dir if relative_baseline else None,
         "enabled": True,
         "ran": True,
         "used_human_starts": used_human_starts,
         "candidate_black": candidate_black,
         "total_games": candidate_black["games"],
         "score": candidate_black["score"],
+        "relative_enabled": bool(relative_baseline),
+        "baseline_black": baseline_black,
+        "baseline_score": baseline_score,
+        "relative_delta": relative_delta,
+        "relative_min_delta": float(relative_min_delta),
     }
 
 
@@ -770,10 +814,24 @@ def _apply_promotion_guards(args, gate_info, accepted):
         survival = gate_info.get("black_survival", {})
         survival_score = survival.get("score")
         survival_games = survival.get("total_games", 0)
+        relative_enabled = bool(getattr(args, "black_survival_relative", False))
+        relative_min_delta = float(getattr(args, "black_survival_min_delta", 0.0))
         if survival_score is None:
             guard_reasons.append("missing black survival score")
         elif survival_games <= 0:
             guard_reasons.append("black survival games=0")
+        elif relative_enabled:
+            relative_delta = survival.get("relative_delta")
+            baseline_score = survival.get("baseline_score")
+            if relative_delta is None or baseline_score is None:
+                guard_reasons.append(
+                    "missing black survival baseline delta (disable --black-survival-relative to use absolute threshold)"
+                )
+            elif relative_delta < relative_min_delta:
+                guard_reasons.append(
+                    f"black_survival delta={relative_delta:.3f} below black_survival_min_delta={relative_min_delta:.3f} "
+                    f"(candidate={survival_score:.3f}, baseline={baseline_score:.3f})"
+                )
         elif survival_score < args.black_survival_threshold:
             guard_reasons.append(
                 f"black_survival score={survival_score:.3f} below black_survival_threshold={args.black_survival_threshold:.3f}"
@@ -1250,6 +1308,8 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--black-survival-sims must be > 0")
     if not (0.0 <= args.black_survival_threshold <= 1.0):
         raise ValueError("--black-survival-threshold must be in [0, 1]")
+    if not (-1.0 <= args.black_survival_min_delta <= 1.0):
+        raise ValueError("--black-survival-min-delta must be in [-1, 1]")
     if black_focus_arena_sims <= 0:
         raise ValueError("--black-focus-arena-sims must be > 0")
     if max_generation_age is not None and max_generation_age < 0:
@@ -1484,7 +1544,11 @@ def main():
     parser.add_argument("--black-survival-sims", type=int, default=None,
                         help="MCTS simulations for black survival sanity games (default: --arena-sims)")
     parser.add_argument("--black-survival-threshold", type=float, default=0.35,
-                        help="Reject promotion if black survival score falls below this threshold")
+                        help="Absolute black survival threshold when --black-survival-relative is disabled")
+    parser.add_argument("--black-survival-relative", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use incumbent-vs-incumbent baseline and gate on candidate delta instead of absolute threshold")
+    parser.add_argument("--black-survival-min-delta", type=float, default=-0.02,
+                        help="With --black-survival-relative, require candidate survival score - baseline >= this value")
     parser.add_argument("--seed", type=int, default=None,
                         help="Base random seed (default: from config)")
     parser.add_argument("--human-eval", action="store_true",
@@ -1781,6 +1845,8 @@ def main():
         "black_survival_games": int(args.black_survival_games),
         "black_survival_sims": int(black_survival_sims),
         "black_survival_threshold": float(args.black_survival_threshold),
+        "black_survival_relative": bool(args.black_survival_relative),
+        "black_survival_min_delta": float(args.black_survival_min_delta),
         "gate_min_other_side": args.gate_min_other_side,
         "gate_min_other_side_white_effective": gate_min_other_side_white,
         "gate_min_other_side_black_effective": gate_min_other_side_black,
@@ -2022,10 +2088,16 @@ def main():
         f"min_black_score={args.min_accept_black_score:.2f}"
     )
     if args.black_survival_games > 0:
-        print(
-            f"  Black chk:   {args.black_survival_games} games @ {black_survival_sims} sims, "
-            f"threshold={args.black_survival_threshold:.2f}"
-        )
+        if args.black_survival_relative:
+            print(
+                f"  Black chk:   {args.black_survival_games} games @ {black_survival_sims} sims, "
+                f"relative delta>={args.black_survival_min_delta:.2f} vs incumbent baseline"
+            )
+        else:
+            print(
+                f"  Black chk:   {args.black_survival_games} games @ {black_survival_sims} sims, "
+                f"threshold={args.black_survival_threshold:.2f}"
+            )
     else:
         print("  Black chk:   disabled")
     print(f"  Epochs:      {args.epochs}")
@@ -2593,6 +2665,8 @@ def main():
                 human_start_max_positions=args.human_seed_max_positions,
                 eval_temperature=args.arena_temperature,
                 eval_temperature_moves=args.arena_temperature_moves,
+                relative_baseline=args.black_survival_relative,
+                relative_min_delta=args.black_survival_min_delta,
             )
             gate_info["black_survival"] = black_survival_info
         else:
@@ -2728,12 +2802,25 @@ def main():
             _print_gate_line(args, gate_info)
         if gate_info.get("black_survival", {}).get("ran"):
             bsv = gate_info["black_survival"]
-            print(
-                f"  BSurv: score={bsv.get('score', 0.0):.3f}  "
-                f"threshold={args.black_survival_threshold:.3f}  "
-                f"games={bsv.get('total_games', 0)}  "
-                f"human_starts={bsv.get('used_human_starts', False)}"
-            )
+            if bsv.get("relative_enabled"):
+                baseline_score = bsv.get("baseline_score")
+                rel_delta = bsv.get("relative_delta")
+                baseline_label = f"{baseline_score:.3f}" if baseline_score is not None else "n/a"
+                delta_label = f"{rel_delta:+.3f}" if rel_delta is not None else "n/a"
+                print(
+                    f"  BSurv: candidate={bsv.get('score', 0.0):.3f}  "
+                    f"baseline={baseline_label}  delta={delta_label}  "
+                    f"min_delta={args.black_survival_min_delta:+.3f}  "
+                    f"games={bsv.get('total_games', 0)}  "
+                    f"human_starts={bsv.get('used_human_starts', False)}"
+                )
+            else:
+                print(
+                    f"  BSurv: score={bsv.get('score', 0.0):.3f}  "
+                    f"threshold={args.black_survival_threshold:.3f}  "
+                    f"games={bsv.get('total_games', 0)}  "
+                    f"human_starts={bsv.get('used_human_starts', False)}"
+                )
         print(f"  Clock: {format_time(total_elapsed)} elapsed  |  ~{format_time(remaining)} remaining")
         print(f"{'-'*60}")
 

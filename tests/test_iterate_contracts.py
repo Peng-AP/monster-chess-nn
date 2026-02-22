@@ -147,12 +147,61 @@ class IterateContracts(unittest.TestCase):
             min_accept_black_score=0.0,
             black_survival_games=6,
             black_survival_threshold=0.40,
+            black_survival_relative=False,
+            black_survival_min_delta=0.0,
         )
         gate_info = {"accepted": True}
         accepted, out = it._apply_promotion_guards(args, gate_info, accepted=True)
         self.assertFalse(accepted)
         self.assertTrue(out.get("promotion_guard_failed"))
         self.assertTrue(any("missing black survival score" in x for x in out.get("promotion_guard_reasons", [])))
+
+    def test_apply_promotion_guards_rejects_relative_survival_delta(self):
+        args = SimpleNamespace(
+            epochs=8,
+            min_accept_epochs=0,
+            min_accept_black_score=0.0,
+            black_survival_games=6,
+            black_survival_threshold=0.0,
+            black_survival_relative=True,
+            black_survival_min_delta=0.05,
+        )
+        gate_info = {
+            "accepted": True,
+            "black_survival": {
+                "score": 0.18,
+                "total_games": 6,
+                "baseline_score": 0.20,
+                "relative_delta": -0.02,
+            },
+        }
+        accepted, out = it._apply_promotion_guards(args, gate_info, accepted=True)
+        self.assertFalse(accepted)
+        self.assertTrue(out.get("promotion_guard_failed"))
+        self.assertTrue(any("black_survival delta" in x for x in out.get("promotion_guard_reasons", [])))
+
+    def test_apply_promotion_guards_accepts_relative_survival_delta(self):
+        args = SimpleNamespace(
+            epochs=8,
+            min_accept_epochs=0,
+            min_accept_black_score=0.0,
+            black_survival_games=6,
+            black_survival_threshold=0.0,
+            black_survival_relative=True,
+            black_survival_min_delta=-0.03,
+        )
+        gate_info = {
+            "accepted": True,
+            "black_survival": {
+                "score": 0.18,
+                "total_games": 6,
+                "baseline_score": 0.20,
+                "relative_delta": -0.02,
+            },
+        }
+        accepted, out = it._apply_promotion_guards(args, gate_info, accepted=True)
+        self.assertTrue(accepted)
+        self.assertFalse(out.get("promotion_guard_failed"))
 
     def test_apply_promotion_guards_noop_when_already_rejected(self):
         args = SimpleNamespace(
