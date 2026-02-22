@@ -424,7 +424,9 @@ def _apply_game_retention_policy(games, max_generation_age=0, min_nonhuman_plies
             )
             continue
 
-        if source_kind != "human" and min_nonhuman_plies > 0 and positions < min_nonhuman_plies:
+        # Black-focus has its own dedicated plies filter; do not apply the
+        # generic non-human short-game filter a second time.
+        if source_kind not in ("human", "blackfocus") and min_nonhuman_plies > 0 and positions < min_nonhuman_plies:
             dropped["short_nonhuman"]["games"] += 1
             dropped["short_nonhuman"]["positions"] += positions
             dropped["short_nonhuman"]["by_source"][source_kind] = (
@@ -547,6 +549,7 @@ def load_all_games(
     include_human=True,
     min_blackfocus_plies=0,
     blackfocus_result_filter="any",
+    blackfocus_result_min_keep_ratio=0.25,
     max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
     min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
     min_humanseed_policy_entropy=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
@@ -624,10 +627,13 @@ def load_all_games(
         return ([], empty_summary) if return_summary else []
 
     games = []
+    blackfocus_games = []
     skipped_blackfocus_short = 0
     skipped_blackfocus_short_positions = 0
     skipped_blackfocus_result = 0
     skipped_blackfocus_result_positions = 0
+    fallback_blackfocus_result_filter = False
+    blackfocus_filtered_keep_ratio = 1.0
     for path in tqdm(paths, desc="Loading games"):
         rel = os.path.relpath(path, raw_dir).replace("\\", "/")
         is_human = "human_games/" in rel or rel.startswith("human_games")
@@ -644,16 +650,7 @@ def load_all_games(
             continue
         result = records[-1].get("game_result", 0)
         result_bucket = _result_bucket(result)
-        if (not is_human) and is_blackfocus:
-            if blackfocus_result_filter == "nonloss" and result_bucket > 0:
-                skipped_blackfocus_result += 1
-                skipped_blackfocus_result_positions += len(records)
-                continue
-            if blackfocus_result_filter == "win" and result_bucket >= 0:
-                skipped_blackfocus_result += 1
-                skipped_blackfocus_result_positions += len(records)
-                continue
-        games.append({
+        game_obj = {
             "game_id": rel,
             "records": records,
             "is_human": is_human,
@@ -668,7 +665,37 @@ def load_all_games(
                 else "blackfocus" if is_blackfocus
                 else "selfplay"
             ),
-        })
+        }
+        if (not is_human) and is_blackfocus:
+            blackfocus_games.append(game_obj)
+        else:
+            games.append(game_obj)
+
+    if blackfocus_result_filter != "any" and blackfocus_games:
+        filtered_blackfocus_games = []
+        for game in blackfocus_games:
+            result_bucket = int(game.get("result_bucket", 0))
+            positions = int(len(game.get("records", [])))
+            reject = (
+                (blackfocus_result_filter == "nonloss" and result_bucket > 0)
+                or (blackfocus_result_filter == "win" and result_bucket >= 0)
+            )
+            if reject:
+                skipped_blackfocus_result += 1
+                skipped_blackfocus_result_positions += positions
+            else:
+                filtered_blackfocus_games.append(game)
+
+        kept = len(filtered_blackfocus_games)
+        total = len(blackfocus_games)
+        blackfocus_filtered_keep_ratio = (kept / total) if total > 0 else 1.0
+        if blackfocus_filtered_keep_ratio < float(blackfocus_result_min_keep_ratio):
+            fallback_blackfocus_result_filter = True
+            games.extend(blackfocus_games)
+        else:
+            games.extend(filtered_blackfocus_games)
+    else:
+        games.extend(blackfocus_games)
 
     if min_blackfocus_plies > 0:
         print(
@@ -680,8 +707,16 @@ def load_all_games(
         print(
             f"  Black-focus result filter: mode={blackfocus_result_filter}, "
             f"skipped_games={skipped_blackfocus_result}, "
-            f"skipped_positions={skipped_blackfocus_result_positions}"
+            f"skipped_positions={skipped_blackfocus_result_positions}, "
+            f"keep_ratio={blackfocus_filtered_keep_ratio:.3f}"
         )
+        if fallback_blackfocus_result_filter:
+            print(
+                "  Black-focus result filter fallback: "
+                f"keep_ratio={blackfocus_filtered_keep_ratio:.3f} below "
+                f"min_keep_ratio={float(blackfocus_result_min_keep_ratio):.3f}; "
+                "using unfiltered _blackfocus games"
+            )
 
     games, retention_summary = _apply_game_retention_policy(
         games,
@@ -1042,6 +1077,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      include_human=True,
                      min_blackfocus_plies=0,
                      blackfocus_result_filter="any",
+                     blackfocus_result_min_keep_ratio=0.25,
                      max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
                      min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                      min_humanseed_policy_entropy=DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY,
@@ -1080,6 +1116,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         include_human=include_human,
         min_blackfocus_plies=min_blackfocus_plies,
         blackfocus_result_filter=blackfocus_result_filter,
+        blackfocus_result_min_keep_ratio=blackfocus_result_min_keep_ratio,
         max_generation_age=max_generation_age,
         min_nonhuman_plies=min_nonhuman_plies,
         min_humanseed_policy_entropy=min_humanseed_policy_entropy,
@@ -1383,6 +1420,8 @@ if __name__ == "__main__":
     parser.add_argument("--blackfocus-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="Keep _blackfocus games with any result, Black non-loss, or Black win only")
+    parser.add_argument("--blackfocus-result-min-keep-ratio", type=float, default=0.25,
+                        help="If _blackfocus result filtering keeps less than this ratio, fall back to unfiltered _blackfocus games")
     parser.add_argument("--max-generation-age", type=int, default=DATA_RETENTION_MAX_GENERATION_AGE,
                         help=f"Drop nn_gen* games older than this many generations behind latest (default: {DATA_RETENTION_MAX_GENERATION_AGE}, <=0 disables)")
     parser.add_argument("--min-nonhuman-plies", type=int, default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
@@ -1435,6 +1474,8 @@ if __name__ == "__main__":
         raise ValueError("--min-nonhuman-plies must be >= 0")
     if args.min_humanseed_policy_entropy < 0.0:
         raise ValueError("--min-humanseed-policy-entropy must be >= 0")
+    if not (0.0 <= args.blackfocus_result_min_keep_ratio <= 1.0):
+        raise ValueError("--blackfocus-result-min-keep-ratio must be in [0, 1]")
     if args.human_data_weight < 1:
         raise ValueError("--human-data-weight must be >= 1")
     if args.humanseed_data_weight < 1:
@@ -1468,6 +1509,7 @@ if __name__ == "__main__":
                      include_human=not args.exclude_human_games,
                      min_blackfocus_plies=args.min_blackfocus_plies,
                      blackfocus_result_filter=args.blackfocus_result_filter,
+                     blackfocus_result_min_keep_ratio=args.blackfocus_result_min_keep_ratio,
                      max_generation_age=args.max_generation_age,
                      min_nonhuman_plies=args.min_nonhuman_plies,
                      min_humanseed_policy_entropy=args.min_humanseed_policy_entropy,

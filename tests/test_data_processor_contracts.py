@@ -38,6 +38,59 @@ def _game(game_id, source_kind, result_bucket, records, generation=1, mean_polic
 
 
 class DataProcessorContracts(unittest.TestCase):
+    def test_load_all_games_blackfocus_filter_fallback_when_keep_ratio_too_low(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw"
+            bf_dir = raw / "nn_gen1_blackfocus"
+            bf_dir.mkdir(parents=True, exist_ok=True)
+
+            recs = [_record("white", 1.0) for _ in range(6)]
+            for idx in range(2):
+                (bf_dir / f"g{idx}.jsonl").write_text(
+                    "\n".join(json.dumps(r) for r in recs) + "\n",
+                    encoding="utf-8",
+                )
+
+            games = dp.load_all_games(
+                raw_dir=str(raw),
+                include_human=False,
+                min_blackfocus_plies=0,
+                blackfocus_result_filter="nonloss",
+                blackfocus_result_min_keep_ratio=0.50,
+                max_generation_age=0,
+                min_nonhuman_plies=0,
+                min_humanseed_policy_entropy=0.0,
+                return_summary=False,
+            )
+            self.assertEqual(len(games), 2)
+            self.assertTrue(all(bool(g.get("is_blackfocus")) for g in games))
+
+    def test_load_all_games_blackfocus_filter_keeps_empty_when_floor_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw"
+            bf_dir = raw / "nn_gen1_blackfocus"
+            bf_dir.mkdir(parents=True, exist_ok=True)
+
+            recs = [_record("white", 1.0) for _ in range(6)]
+            for idx in range(2):
+                (bf_dir / f"g{idx}.jsonl").write_text(
+                    "\n".join(json.dumps(r) for r in recs) + "\n",
+                    encoding="utf-8",
+                )
+
+            games = dp.load_all_games(
+                raw_dir=str(raw),
+                include_human=False,
+                min_blackfocus_plies=0,
+                blackfocus_result_filter="nonloss",
+                blackfocus_result_min_keep_ratio=0.0,
+                max_generation_age=0,
+                min_nonhuman_plies=0,
+                min_humanseed_policy_entropy=0.0,
+                return_summary=False,
+            )
+            self.assertEqual(len(games), 0)
+
     def test_apply_game_retention_policy_drops_old_generations(self):
         games = [
             _game("nn_gen10/g1.jsonl", "selfplay", 0, [_record("white", 0)] * 8, generation=10),
@@ -65,6 +118,22 @@ class DataProcessorContracts(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(kept[0]["source_kind"], "human")
         self.assertEqual(int(summary["dropped"]["short_nonhuman"]["games"]), 1)
+
+    def test_apply_game_retention_policy_keeps_blackfocus_under_short_nonhuman_filter(self):
+        games = [
+            _game("nn_gen5/self_short.jsonl", "selfplay", 0, [_record("white", 0)] * 2, generation=5),
+            _game("nn_gen5_blackfocus/bf_short.jsonl", "blackfocus", -1, [_record("black", -1)] * 2, generation=5),
+        ]
+        kept, summary = dp._apply_game_retention_policy(
+            games,
+            max_generation_age=0,
+            min_nonhuman_plies=4,
+        )
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["source_kind"], "blackfocus")
+        self.assertEqual(int(summary["dropped"]["short_nonhuman"]["games"]), 1)
+        self.assertEqual(int(summary["dropped"]["short_nonhuman"]["by_source"].get("selfplay", 0)), 1)
+        self.assertEqual(int(summary["dropped"]["short_nonhuman"]["by_source"].get("blackfocus", 0)), 0)
 
     def test_apply_game_retention_policy_drops_low_entropy_humanseed(self):
         games = [

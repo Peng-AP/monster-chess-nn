@@ -1354,6 +1354,8 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--adaptive-min-normal-games must be >= 0")
     if args.min_blackfocus_plies < 0:
         raise ValueError("--min-blackfocus-plies must be >= 0")
+    if not (0.0 <= args.blackfocus_result_min_keep_ratio <= 1.0):
+        raise ValueError("--blackfocus-result-min-keep-ratio must be in [0, 1]")
     if args.wdl_loss_weight < 0:
         raise ValueError("--wdl-loss-weight must be >= 0")
     if args.wdl_draw_epsilon < 0:
@@ -1579,6 +1581,8 @@ def main():
     parser.add_argument("--blackfocus-result-filter", type=str, default="any",
                         choices=["any", "nonloss", "win"],
                         help="Filter _blackfocus games during processing: any, Black non-loss, or Black win only")
+    parser.add_argument("--blackfocus-result-min-keep-ratio", type=float, default=0.25,
+                        help="If _blackfocus result filtering keeps less than this ratio, fall back to unfiltered _blackfocus games")
     parser.add_argument("--black-iter-blackfocus-result-filter", type=str, default=None,
                         choices=["any", "nonloss", "win"],
                         help="Override --blackfocus-result-filter on Black training iterations")
@@ -1863,6 +1867,7 @@ def main():
         "black_focus_scripted_black": bool(black_focus_scripted_black),
         "black_focus_arena_tier_min": args.black_focus_arena_tier_min,
         "black_focus_arena_tier_max": args.black_focus_arena_tier_max,
+        "blackfocus_result_min_keep_ratio": float(args.blackfocus_result_min_keep_ratio),
         "human_seed_games": args.human_seed_games,
         "human_seed_simulations": args.human_seed_simulations,
         "human_seed_dir": args.human_seed_dir,
@@ -2462,6 +2467,7 @@ def main():
             "--seed", str(base_seed + gen * 10 + 3),
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
             "--blackfocus-result-filter", effective_blackfocus_result_filter,
+            "--blackfocus-result-min-keep-ratio", str(args.blackfocus_result_min_keep_ratio),
             *_data_processor_retention_args(
                 max_generation_age,
                 min_nonhuman_plies,
