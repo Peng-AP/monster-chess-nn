@@ -798,6 +798,14 @@ def _apply_promotion_guards(args, gate_info, accepted):
         black_info = gate_info.get("candidate_black")
         black_score = black_info["score"] if black_info else None
         black_games = black_info["games"] if black_info else 0
+        black_score_source = "standard"
+        if gate_info.get("black_focus_required") and gate_info.get("effective_black_gate_score") is not None:
+            black_score = gate_info.get("effective_black_gate_score")
+            black_games = max(
+                int(black_games or 0),
+                int(gate_info.get("black_focus_primary_games") or 0),
+            )
+            black_score_source = str(gate_info.get("effective_black_gate_source") or "black_focus")
         if black_info is None:
             guard_reasons.append(
                 "missing candidate_black arena score; lower min_accept_black_score"
@@ -806,10 +814,12 @@ def _apply_promotion_guards(args, gate_info, accepted):
             guard_reasons.append("candidate_black arena games=0")
         elif black_score < args.min_accept_black_score:
             guard_reasons.append(
-                f"candidate_black score={black_score:.3f} below min_accept_black_score={args.min_accept_black_score:.3f}"
+                f"candidate_black score={black_score:.3f} ({black_score_source}) "
+                f"below min_accept_black_score={args.min_accept_black_score:.3f}"
             )
         gate_info["promotion_guard_black_score"] = black_score
         gate_info["promotion_guard_black_games"] = black_games
+        gate_info["promotion_guard_black_score_source"] = black_score_source
     if accepted and args.black_survival_games > 0:
         survival = gate_info.get("black_survival", {})
         survival_score = survival.get("score")
@@ -942,6 +952,18 @@ def _resolve_blackfocus_filters(base_filter, black_iter_override):
 
     Default black-iteration behavior keeps non-loss blackfocus outcomes.
     This avoids reinforcing collapse trajectories while still admitting draws.
+    """
+    base = str(base_filter)
+    if black_iter_override is None:
+        return base, "nonloss"
+    return base, str(black_iter_override)
+
+
+def _resolve_humanseed_filters(base_filter, black_iter_override):
+    """Resolve base/black-iteration humanseed result filters.
+
+    Default black-iteration behavior keeps non-loss humanseed outcomes.
+    This avoids reinforcing white-win collapse from converted human starts.
     """
     base = str(base_filter)
     if black_iter_override is None:
@@ -1168,6 +1190,10 @@ def _derive_runtime_settings(args, *,
         args.blackfocus_result_filter,
         args.black_iter_blackfocus_result_filter,
     )
+    humanseed_result_filter, black_iter_humanseed_result_filter = _resolve_humanseed_filters(
+        args.humanseed_result_filter,
+        args.black_iter_humanseed_result_filter,
+    )
     if position_budget is not None and position_budget <= 0:
         position_budget = None
     if position_budget_max is not None and position_budget_max <= 0:
@@ -1231,6 +1257,8 @@ def _derive_runtime_settings(args, *,
         "min_humanseed_policy_entropy": min_humanseed_policy_entropy,
         "blackfocus_result_filter": blackfocus_result_filter,
         "black_iter_blackfocus_result_filter": black_iter_blackfocus_result_filter,
+        "humanseed_result_filter": humanseed_result_filter,
+        "black_iter_humanseed_result_filter": black_iter_humanseed_result_filter,
         "opponent_sims": opponent_sims,
         "black_focus_arena_sims": black_focus_arena_sims,
         "black_survival_sims": black_survival_sims,
@@ -1356,6 +1384,8 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--min-blackfocus-plies must be >= 0")
     if not (0.0 <= args.blackfocus_result_min_keep_ratio <= 1.0):
         raise ValueError("--blackfocus-result-min-keep-ratio must be in [0, 1]")
+    if not (0.0 <= args.humanseed_result_min_keep_ratio <= 1.0):
+        raise ValueError("--humanseed-result-min-keep-ratio must be in [0, 1]")
     if args.wdl_loss_weight < 0:
         raise ValueError("--wdl-loss-weight must be >= 0")
     if args.wdl_draw_epsilon < 0:
@@ -1586,6 +1616,14 @@ def main():
     parser.add_argument("--black-iter-blackfocus-result-filter", type=str, default=None,
                         choices=["any", "nonloss", "win"],
                         help="Override --blackfocus-result-filter on Black training iterations")
+    parser.add_argument("--humanseed-result-filter", type=str, default="any",
+                        choices=["any", "nonloss", "win"],
+                        help="Filter _humanseed games during processing: any, Black non-loss, or Black win only")
+    parser.add_argument("--humanseed-result-min-keep-ratio", type=float, default=0.25,
+                        help="If _humanseed result filtering keeps less than this ratio, fall back to unfiltered _humanseed games")
+    parser.add_argument("--black-iter-humanseed-result-filter", type=str, default=None,
+                        choices=["any", "nonloss", "win"],
+                        help="Override --humanseed-result-filter on Black training iterations")
     parser.add_argument("--human-data-weight", type=int, default=None,
                         help="Train repetition weight for human_games stream (default: from config)")
     parser.add_argument("--humanseed-data-weight", type=int, default=None,
@@ -1753,6 +1791,8 @@ def main():
     min_humanseed_policy_entropy = settings["min_humanseed_policy_entropy"]
     blackfocus_result_filter = settings["blackfocus_result_filter"]
     black_iter_blackfocus_result_filter = settings["black_iter_blackfocus_result_filter"]
+    humanseed_result_filter = settings["humanseed_result_filter"]
+    black_iter_humanseed_result_filter = settings["black_iter_humanseed_result_filter"]
     opponent_sims = settings["opponent_sims"]
     black_focus_arena_sims = settings["black_focus_arena_sims"]
     black_survival_sims = settings["black_survival_sims"]
@@ -1868,6 +1908,7 @@ def main():
         "black_focus_arena_tier_min": args.black_focus_arena_tier_min,
         "black_focus_arena_tier_max": args.black_focus_arena_tier_max,
         "blackfocus_result_min_keep_ratio": float(args.blackfocus_result_min_keep_ratio),
+        "humanseed_result_min_keep_ratio": float(args.humanseed_result_min_keep_ratio),
         "human_seed_games": args.human_seed_games,
         "human_seed_simulations": args.human_seed_simulations,
         "human_seed_dir": args.human_seed_dir,
@@ -1911,6 +1952,10 @@ def main():
         "blackfocus_result_filter": {
             "base": blackfocus_result_filter,
             "black_iteration": black_iter_blackfocus_result_filter,
+        },
+        "humanseed_result_filter": {
+            "base": humanseed_result_filter,
+            "black_iteration": black_iter_humanseed_result_filter,
         },
         "data_retention": {
             "max_generation_age": int(max_generation_age or 0),
@@ -2205,6 +2250,7 @@ def main():
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
             effective_blackfocus_data_weight = black_iter_blackfocus_data_weight
             effective_blackfocus_result_filter = black_iter_blackfocus_result_filter
+            effective_humanseed_result_filter = black_iter_humanseed_result_filter
             effective_quota_selfplay = black_iter_quota_selfplay
             effective_quota_human = black_iter_quota_human
             effective_quota_blackfocus = black_iter_quota_blackfocus
@@ -2214,6 +2260,7 @@ def main():
             effective_humanseed_data_weight = humanseed_data_weight
             effective_blackfocus_data_weight = blackfocus_data_weight
             effective_blackfocus_result_filter = blackfocus_result_filter
+            effective_humanseed_result_filter = humanseed_result_filter
             effective_quota_selfplay = args.quota_selfplay
             effective_quota_human = args.quota_human
             effective_quota_blackfocus = args.quota_blackfocus
@@ -2227,7 +2274,10 @@ def main():
             f"  Proc wts:    human={effective_human_data_weight}, "
             f"humanseed={effective_humanseed_data_weight}, blackfocus={effective_blackfocus_data_weight}"
         )
-        print(f"  BF keep:     {effective_blackfocus_result_filter}")
+        print(
+            f"  Keep filt:   blackfocus={effective_blackfocus_result_filter}, "
+            f"humanseed={effective_humanseed_result_filter}"
+        )
         if args.use_source_quotas:
             print(
                 "  Proc quota:  "
@@ -2468,6 +2518,8 @@ def main():
             "--min-blackfocus-plies", str(args.min_blackfocus_plies),
             "--blackfocus-result-filter", effective_blackfocus_result_filter,
             "--blackfocus-result-min-keep-ratio", str(args.blackfocus_result_min_keep_ratio),
+            "--humanseed-result-filter", effective_humanseed_result_filter,
+            "--humanseed-result-min-keep-ratio", str(args.humanseed_result_min_keep_ratio),
             *_data_processor_retention_args(
                 max_generation_age,
                 min_nonhuman_plies,
@@ -2757,6 +2809,7 @@ def main():
                 "humanseed": int(effective_humanseed_data_weight),
                 "blackfocus": int(effective_blackfocus_data_weight),
                 "blackfocus_result_filter": effective_blackfocus_result_filter,
+                "humanseed_result_filter": effective_humanseed_result_filter,
                 "quota_selfplay": float(effective_quota_selfplay),
                 "quota_human": float(effective_quota_human),
                 "quota_blackfocus": float(effective_quota_blackfocus),

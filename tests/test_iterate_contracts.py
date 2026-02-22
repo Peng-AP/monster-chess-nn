@@ -117,6 +117,16 @@ class IterateContracts(unittest.TestCase):
         self.assertEqual(base, "any")
         self.assertEqual(black_iter, "win")
 
+    def test_resolve_humanseed_filters_defaults_black_iter_to_nonloss(self):
+        base, black_iter = it._resolve_humanseed_filters("any", None)
+        self.assertEqual(base, "any")
+        self.assertEqual(black_iter, "nonloss")
+
+    def test_resolve_humanseed_filters_honors_explicit_override(self):
+        base, black_iter = it._resolve_humanseed_filters("any", "win")
+        self.assertEqual(base, "any")
+        self.assertEqual(black_iter, "win")
+
     def test_resolve_train_result_filter_auto(self):
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="black"), "nonloss")
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=True, train_side="white"), "any")
@@ -139,6 +149,28 @@ class IterateContracts(unittest.TestCase):
         self.assertFalse(accepted)
         self.assertTrue(out.get("promotion_guard_failed"))
         self.assertTrue(any("candidate_black score" in x for x in out.get("promotion_guard_reasons", [])))
+
+    def test_apply_promotion_guards_uses_effective_black_score_when_black_focus_active(self):
+        args = SimpleNamespace(
+            epochs=4,
+            min_accept_epochs=0,
+            min_accept_black_score=0.55,
+            black_survival_games=0,
+            black_survival_threshold=0.35,
+        )
+        gate_info = {
+            "accepted": True,
+            "candidate_black": {"score": 0.0, "games": 12},
+            "black_focus_required": True,
+            "effective_black_gate_score": 0.70,
+            "effective_black_gate_source": "black_focus",
+            "black_focus_primary_games": 12,
+        }
+        accepted, out = it._apply_promotion_guards(args, gate_info, accepted=True)
+        self.assertTrue(accepted)
+        self.assertFalse(out.get("promotion_guard_failed"))
+        self.assertEqual(out.get("promotion_guard_black_score_source"), "black_focus")
+        self.assertAlmostEqual(float(out.get("promotion_guard_black_score")), 0.70)
 
     def test_apply_promotion_guards_rejects_missing_survival(self):
         args = SimpleNamespace(
