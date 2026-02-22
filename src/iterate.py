@@ -396,6 +396,7 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             "--train-side", "white",
             "--opponent-model", incumbent_model,
             "--opponent-sims", str(arena_sims),
+            "--record-all-plies",
             "--seed", str(base_seed + gen * 100 + 11),
         ]
         if curriculum:
@@ -425,6 +426,7 @@ def _run_arena(candidate_model, incumbent_model, gen, model_dir, arena_games,
             "--train-side", "black",
             "--opponent-model", incumbent_model,
             "--opponent-sims", str(arena_sims),
+            "--record-all-plies",
             "--seed", str(base_seed + gen * 100 + 22),
         ]
         if curriculum:
@@ -484,6 +486,7 @@ def _run_black_survival(candidate_model, incumbent_model, gen, model_dir,
         "--train-side", "black",
         "--opponent-model", incumbent_model,
         "--opponent-sims", str(sims),
+        "--record-all-plies",
         "--seed", str(base_seed + gen * 100 + 33),
     ]
 
@@ -787,6 +790,10 @@ def _apply_promotion_guards(args, gate_info, accepted):
         gate_info["promotion_guard_failed"] = False
         gate_info["promotion_guard_reasons"] = []
     return accepted, gate_info
+
+
+def _should_run_black_survival(args):
+    return bool(args.black_survival_games > 0)
 
 
 def _print_rejection_reason(args, gate_info):
@@ -2570,8 +2577,9 @@ def main():
             black_focus_arena_sims=black_focus_arena_sims,
         )
 
-        # Pre-promotion sanity: verify candidate Black survives from opening-like starts.
-        if accepted and args.black_survival_games > 0:
+        # Black survival sanity: always evaluate when enabled so we keep
+        # diagnostics even when primary gating already failed.
+        if _should_run_black_survival(args):
             black_survival_info = _run_black_survival(
                 candidate_model=candidate_path,
                 incumbent_model=model_path,

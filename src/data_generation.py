@@ -53,6 +53,7 @@ _curriculum_indices = None
 _temperature_high = TEMPERATURE_HIGH
 _temperature_low = TEMPERATURE_LOW
 _temperature_moves = TEMPERATURE_MOVES
+_record_all_plies = False
 
 
 def _is_training_side_position(is_white):
@@ -75,6 +76,8 @@ def _should_skip_record(move_number, is_white, board_is_check, rng):
       - Keep stronger filtering on non-training-side positions to avoid
         blowing up dataset size with lower-priority signal.
     """
+    if _record_all_plies:
+        return False
     if _curriculum:
         # Curriculum positions are already targeted; keep all unless tactical.
         early_skip = False
@@ -277,13 +280,14 @@ def _curriculum_indices_for_range(tier_min, tier_max):
 def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results, scripted_black,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, curriculum_indices,
-                 temperature_high, temperature_low, temperature_moves):
+                 temperature_high, temperature_low, temperature_moves,
+                 record_all_plies):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
     global _curriculum_indices
-    global _temperature_high, _temperature_low, _temperature_moves
+    global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
@@ -296,6 +300,7 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _temperature_high = float(temperature_high)
     _temperature_low = float(temperature_low)
     _temperature_moves = int(temperature_moves)
+    _record_all_plies = bool(record_all_plies)
     if model_path:
         from evaluation import NNEvaluator
         _eval_fn = NNEvaluator(model_path)
@@ -523,6 +528,8 @@ def main():
                         help=f"Number of opening plies using high temperature (default: {TEMPERATURE_MOVES})")
     parser.add_argument("--keep-check-positions", action="store_true",
                         help="Keep positions where side to move is in check (default: skip them)")
+    parser.add_argument("--record-all-plies", action="store_true",
+                        help="Disable retention skipping and record every ply (for eval/arena reliability)")
     parser.add_argument("--start-fen-file", type=str, default=None,
                         help="Optional JSONL file of start positions (expects records with 'fen')")
     parser.add_argument("--start-fen-dir", type=str, default=None,
@@ -649,6 +656,8 @@ def main():
         print("Retention: keeping in-check positions")
     else:
         print("Retention: skipping in-check positions")
+    if args.record_all_plies:
+        print("Retention: recording all plies (no random/early/check skipping)")
     if sim_min == sim_max:
         print(f"Simulation budget: fixed {sim_min} per game")
     else:
@@ -695,7 +704,8 @@ def main():
                   args.scripted_black, args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, curriculum_indices,
-                  args.temperature_high, args.temperature_low, args.temperature_moves),
+                  args.temperature_high, args.temperature_low, args.temperature_moves,
+                  args.record_all_plies),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
@@ -797,6 +807,7 @@ def main():
             "curriculum_positions": int(len(curriculum_indices)) if curriculum_indices is not None else None,
             "scripted_black": bool(args.scripted_black),
             "keep_check_positions": bool(args.keep_check_positions),
+            "record_all_plies": bool(args.record_all_plies),
             "seed": int(args.seed) if args.seed is not None else None,
             "start_fen": {
                 "enabled": bool(len(start_fens) > 0),

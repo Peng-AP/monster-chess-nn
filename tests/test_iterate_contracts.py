@@ -168,6 +168,14 @@ class IterateContracts(unittest.TestCase):
         self.assertFalse(out.get("promotion_guard_failed"))
         self.assertEqual(out.get("promotion_guard_reasons"), [])
 
+    def test_should_run_black_survival_true_when_enabled(self):
+        args = SimpleNamespace(black_survival_games=6)
+        self.assertTrue(it._should_run_black_survival(args))
+
+    def test_should_run_black_survival_false_when_disabled(self):
+        args = SimpleNamespace(black_survival_games=0)
+        self.assertFalse(it._should_run_black_survival(args))
+
     def test_resolve_project_path_handles_relative_existing_path(self):
         rel = os.path.join("data", "raw", "human_games")
         resolved = it._resolve_project_path(rel)
