@@ -133,6 +133,52 @@ class IterateContracts(unittest.TestCase):
         self.assertEqual(it._resolve_train_result_filter("auto", alternating=False, train_side="both"), "any")
         self.assertEqual(it._resolve_train_result_filter("win", alternating=True, train_side="black"), "win")
 
+    def test_resolve_consolidation_train_only_side_auto_defaults_black_iteration_to_black(self):
+        self.assertEqual(
+            it._resolve_consolidation_train_only_side(
+                "auto", alternating=True, train_side="black", black_iter_override=None
+            ),
+            "black",
+        )
+        self.assertEqual(
+            it._resolve_consolidation_train_only_side(
+                "auto", alternating=True, train_side="white", black_iter_override=None
+            ),
+            "none",
+        )
+
+    def test_resolve_consolidation_train_only_side_honors_black_iter_override(self):
+        self.assertEqual(
+            it._resolve_consolidation_train_only_side(
+                "auto", alternating=True, train_side="black", black_iter_override="none"
+            ),
+            "none",
+        )
+
+    def test_resolve_consolidation_distill_weights_defaults_black_iteration_to_zero(self):
+        v, p = it._resolve_consolidation_distill_weights(
+            value_weight=0.2,
+            policy_weight=0.6,
+            alternating=True,
+            train_side="black",
+            black_iter_value_override=None,
+            black_iter_policy_override=None,
+        )
+        self.assertAlmostEqual(v, 0.0)
+        self.assertAlmostEqual(p, 0.0)
+
+    def test_resolve_consolidation_distill_weights_honors_black_iter_overrides(self):
+        v, p = it._resolve_consolidation_distill_weights(
+            value_weight=0.2,
+            policy_weight=0.6,
+            alternating=True,
+            train_side="black",
+            black_iter_value_override=0.05,
+            black_iter_policy_override=0.15,
+        )
+        self.assertAlmostEqual(v, 0.05)
+        self.assertAlmostEqual(p, 0.15)
+
     def test_apply_promotion_guards_rejects_low_black_score(self):
         args = SimpleNamespace(
             epochs=4,

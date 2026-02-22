@@ -1,4 +1,6 @@
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -71,6 +73,68 @@ class DataGenerationContracts(unittest.TestCase):
             rng=_FixedRng(0.0),
         )
         self.assertFalse(skip)
+
+    def test_to_white_perspective_value_respects_side(self):
+        self.assertAlmostEqual(dg._to_white_perspective_value(0.4, "white"), 0.4)
+        self.assertAlmostEqual(dg._to_white_perspective_value(0.4, "black"), -0.4)
+        self.assertIsNone(dg._to_white_perspective_value("bad", "white"))
+
+    def test_load_start_fens_filters_by_white_value_max(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "starts.jsonl"
+            records = [
+                {
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+                    "current_player": "white",
+                    "mcts_value": 0.5,
+                },
+                {
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+                    "current_player": "white",
+                    "mcts_value": -0.5,
+                },
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec) + "\n")
+
+            fens, stats = dg._load_start_fens(
+                file_path=str(p),
+                side_filter="any",
+                white_value_max=0.0,
+            )
+            self.assertEqual(len(fens), 1)
+            self.assertEqual(stats.get("filtered_by_white_value"), 1)
+
+    def test_load_start_fens_filters_before_black_conversion(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "starts.jsonl"
+            records = [
+                {
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+                    "current_player": "white",
+                    "mcts_value": 0.4,
+                },
+                {
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+                    "current_player": "white",
+                    "mcts_value": -0.4,
+                },
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec) + "\n")
+
+            fens, stats = dg._load_start_fens(
+                file_path=str(p),
+                side_filter="black",
+                convert_white_to_black=True,
+                white_value_max=0.0,
+                seed=123,
+            )
+            self.assertEqual(len(fens), 1)
+            self.assertEqual(stats.get("filtered_by_white_value"), 1)
+            self.assertEqual(stats.get("converted_added"), 1)
 
 
 if __name__ == "__main__":

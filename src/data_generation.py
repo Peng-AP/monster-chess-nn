@@ -126,6 +126,19 @@ def _iter_start_fen_paths(file_path, dir_path):
                 yield os.path.join(dir_path, name)
 
 
+def _to_white_perspective_value(raw_value, rec_side):
+    """Convert record value to White perspective using side-to-move label."""
+    try:
+        v = float(raw_value)
+    except Exception:
+        return None
+    if rec_side == "white":
+        return v
+    if rec_side == "black":
+        return -v
+    return None
+
+
 def _convert_white_to_black_start(fen, rng, policy_dict=None):
     """Advance one White turn to produce a Black-to-move start FEN.
 
@@ -164,7 +177,8 @@ def _convert_white_to_black_start(fen, rng, policy_dict=None):
 
 def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
                      max_positions=0, seed=None,
-                     convert_white_to_black=False):
+                     convert_white_to_black=False,
+                     white_value_max=None):
     """Load start FEN candidates from JSONL records with optional side filter."""
     if not file_path and not dir_path:
         return [], {
@@ -172,6 +186,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
             "records_total": 0,
             "records_valid": 0,
             "records_kept": 0,
+            "filtered_by_white_value": 0,
         }
 
     side_filter = str(side_filter or "any").lower()
@@ -182,6 +197,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
     white_side_candidates = []
     records_total = 0
     records_valid = 0
+    filtered_by_white_value = 0
     files_used = 0
     for path in _iter_start_fen_paths(file_path=file_path, dir_path=dir_path):
         if not os.path.isfile(path):
@@ -212,6 +228,16 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
                         rec_side = _fen_turn_side(fen)
                 if rec_side is None:
                     continue
+                white_value = None
+                if isinstance(obj, dict):
+                    white_value = _to_white_perspective_value(obj.get("mcts_value"), rec_side)
+                if (
+                    white_value_max is not None
+                    and white_value is not None
+                    and white_value > float(white_value_max)
+                ):
+                    filtered_by_white_value += 1
+                    continue
                 records_valid += 1
                 if side_filter != "any" and rec_side != side_filter:
                     if side_filter == "black" and rec_side == "white" and convert_white_to_black:
@@ -240,6 +266,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
         "records_total": records_total,
         "records_valid": records_valid,
         "records_kept": len(all_fens),
+        "filtered_by_white_value": filtered_by_white_value,
         "white_candidates_for_conversion": len(white_side_candidates),
         "converted_added": converted_added,
     }
@@ -541,6 +568,8 @@ def main():
                         help="Cap loaded start positions (0 = no cap)")
     parser.add_argument("--start-fen-convert-white-to-black", action="store_true",
                         help="When filtering for black starts, convert white-to-move records by sampling one White turn")
+    parser.add_argument("--start-fen-white-value-max", type=float, default=None,
+                        help="Optional max White-perspective value for retaining start FEN records")
     args = parser.parse_args()
     if args.simulations <= 0:
         raise ValueError("--simulations must be > 0")
@@ -556,6 +585,8 @@ def main():
         raise ValueError("--temperature-low must be > 0")
     if args.temperature_moves < 0:
         raise ValueError("--temperature-moves must be >= 0")
+    if args.start_fen_white_value_max is not None and not (-1.0 <= args.start_fen_white_value_max <= 1.0):
+        raise ValueError("--start-fen-white-value-max must be in [-1, 1]")
 
     sim_min = args.simulations if args.simulations_min is None else args.simulations_min
     sim_max = args.simulations if args.simulations_max is None else args.simulations_max
@@ -627,6 +658,7 @@ def main():
         max_positions=args.start_fen_max_positions,
         seed=args.seed,
         convert_white_to_black=args.start_fen_convert_white_to_black,
+        white_value_max=args.start_fen_white_value_max,
     )
     if (args.start_fen_file or args.start_fen_dir) and not start_fens:
         raise ValueError("No start positions loaded after applying filters")
@@ -816,6 +848,7 @@ def main():
                 "side_filter": args.start_fen_side,
                 "max_positions": int(args.start_fen_max_positions),
                 "convert_white_to_black": bool(args.start_fen_convert_white_to_black),
+                "white_value_max": args.start_fen_white_value_max,
                 "loaded_positions": int(len(start_fens)),
                 "source_stats": start_fen_stats,
             },

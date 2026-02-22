@@ -340,6 +340,44 @@ def _resolve_train_result_filter(mode, alternating, train_side):
     return m
 
 
+def _resolve_consolidation_train_only_side(mode, alternating, train_side, black_iter_override):
+    """Resolve consolidation side filter with black-iteration defaults."""
+    if alternating and str(train_side) == "black" and black_iter_override is not None:
+        return str(black_iter_override)
+    m = str(mode)
+    if m == "auto":
+        if alternating and str(train_side) == "black":
+            return "black"
+        return "none"
+    return m
+
+
+def _resolve_consolidation_distill_weights(
+    value_weight,
+    policy_weight,
+    alternating,
+    train_side,
+    black_iter_value_override,
+    black_iter_policy_override,
+):
+    """Resolve consolidation distillation with black-iteration protection.
+
+    Default behavior disables consolidation distillation in alternating
+    black iterations unless explicit black-iteration overrides are provided.
+    """
+    if alternating and str(train_side) == "black":
+        if black_iter_value_override is None:
+            v = 0.0
+        else:
+            v = float(black_iter_value_override)
+        if black_iter_policy_override is None:
+            p = 0.0
+        else:
+            p = float(black_iter_policy_override)
+        return v, p
+    return float(value_weight), float(policy_weight)
+
+
 def _append_distill_teacher_if_weighted(cmd, value_weight, policy_weight, teacher_path):
     if value_weight > 0 or policy_weight > 0:
         cmd.extend(["--distill-from", teacher_path])
@@ -1386,6 +1424,13 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--blackfocus-result-min-keep-ratio must be in [0, 1]")
     if not (0.0 <= args.humanseed_result_min_keep_ratio <= 1.0):
         raise ValueError("--humanseed-result-min-keep-ratio must be in [0, 1]")
+    if args.human_seed_white_value_max is not None and not (-1.0 <= args.human_seed_white_value_max <= 1.0):
+        raise ValueError("--human-seed-white-value-max must be in [-1, 1]")
+    if (
+        args.black_iter_human_seed_white_value_max is not None
+        and not (-1.0 <= args.black_iter_human_seed_white_value_max <= 1.0)
+    ):
+        raise ValueError("--black-iter-human-seed-white-value-max must be in [-1, 1]")
     if args.wdl_loss_weight < 0:
         raise ValueError("--wdl-loss-weight must be >= 0")
     if args.wdl_draw_epsilon < 0:
@@ -1432,6 +1477,16 @@ def _validate_runtime_settings(args, settings):
         raise ValueError("--consolidation-distill-value-weight must be >= 0")
     if args.consolidation_distill_policy_weight < 0:
         raise ValueError("--consolidation-distill-policy-weight must be >= 0")
+    if (
+        args.black_iter_consolidation_distill_value_weight is not None
+        and args.black_iter_consolidation_distill_value_weight < 0
+    ):
+        raise ValueError("--black-iter-consolidation-distill-value-weight must be >= 0")
+    if (
+        args.black_iter_consolidation_distill_policy_weight is not None
+        and args.black_iter_consolidation_distill_policy_weight < 0
+    ):
+        raise ValueError("--black-iter-consolidation-distill-policy-weight must be >= 0")
     if args.consolidation_distill_temperature <= 0:
         raise ValueError("--consolidation-distill-temperature must be > 0")
     if args.primary_policy_loss_weight <= 0:
@@ -1596,6 +1651,10 @@ def main():
                         help="Human-seed start side filter (auto=training side in alternating mode)")
     parser.add_argument("--human-seed-max-positions", type=int, default=2000,
                         help="Cap loaded human start positions per generation (0 = no cap)")
+    parser.add_argument("--human-seed-white-value-max", type=float, default=None,
+                        help="Filter human-seed start records by max White-perspective value (applies when start-fen records include mcts_value)")
+    parser.add_argument("--black-iter-human-seed-white-value-max", type=float, default=0.0,
+                        help="Override --human-seed-white-value-max on alternating black iterations")
     parser.add_argument("--human-eval-value-diagnostics", action="store_true",
                         help="Include model value diagnostics on human positions (slower)")
     parser.add_argument("--exclude-human-games", action="store_true",
@@ -1718,6 +1777,13 @@ def main():
     parser.add_argument("--consolidation-train-result-filter", type=str, default="auto",
                         choices=["auto", "any", "nonloss", "win"],
                         help="Consolidation train result filter (auto=any when side=none, else nonloss for alternating black)")
+    parser.add_argument("--black-iter-consolidation-train-only-side", type=str, default=None,
+                        choices=["none", "white", "black"],
+                        help="Override consolidation side filter on alternating black iterations")
+    parser.add_argument("--black-iter-consolidation-distill-value-weight", type=float, default=None,
+                        help="Override consolidation value distillation weight on alternating black iterations (default: 0.0)")
+    parser.add_argument("--black-iter-consolidation-distill-policy-weight", type=float, default=None,
+                        help="Override consolidation policy distillation weight on alternating black iterations (default: 0.0)")
     parser.add_argument("--black-human-as-ai", action=argparse.BooleanOptionalAction, default=True,
                         help="When training black side, include human source positions as black-side supervision")
     args = parser.parse_args()
@@ -1914,6 +1980,8 @@ def main():
         "human_seed_dir": args.human_seed_dir,
         "human_seed_side": args.human_seed_side,
         "human_seed_max_positions": args.human_seed_max_positions,
+        "human_seed_white_value_max": args.human_seed_white_value_max,
+        "black_iter_human_seed_white_value_max": args.black_iter_human_seed_white_value_max,
         "black_train_sims_mult": float(args.black_train_sims_mult),
         "black_opponent_sims_mult": float(args.black_opponent_sims_mult),
         "primary_no_resume": bool(args.primary_no_resume),
@@ -2207,7 +2275,9 @@ def main():
     if args.human_seed_games > 0:
         print(
             f"  Human seed:  enabled (dir={args.human_seed_dir}, side={args.human_seed_side}, "
-            f"max_positions={args.human_seed_max_positions})"
+            f"max_positions={args.human_seed_max_positions}, "
+            f"white_v_max={args.human_seed_white_value_max}, "
+            f"black_iter_white_v_max={args.black_iter_human_seed_white_value_max})"
         )
     print()
 
@@ -2236,15 +2306,29 @@ def main():
         primary_train_result_filter = _resolve_train_result_filter(
             args.primary_train_result_filter, args.alternating, train_side
         )
-        consolidation_train_only_side = args.consolidation_train_only_side
-        if consolidation_train_only_side == "auto":
-            consolidation_train_only_side = "none"
+        consolidation_train_only_side = _resolve_consolidation_train_only_side(
+            args.consolidation_train_only_side,
+            args.alternating,
+            train_side,
+            args.black_iter_consolidation_train_only_side,
+        )
         if consolidation_train_only_side == "none":
             consolidation_train_result_filter = "any"
         else:
             consolidation_train_result_filter = _resolve_train_result_filter(
                 args.consolidation_train_result_filter, args.alternating, train_side
             )
+        (
+            effective_consolidation_distill_value_weight,
+            effective_consolidation_distill_policy_weight,
+        ) = _resolve_consolidation_distill_weights(
+            args.consolidation_distill_value_weight,
+            args.consolidation_distill_policy_weight,
+            args.alternating,
+            train_side,
+            args.black_iter_consolidation_distill_value_weight,
+            args.black_iter_consolidation_distill_policy_weight,
+        )
         if args.alternating and train_side == "black":
             effective_human_data_weight = black_iter_human_data_weight
             effective_humanseed_data_weight = black_iter_humanseed_data_weight
@@ -2255,6 +2339,11 @@ def main():
             effective_quota_human = black_iter_quota_human
             effective_quota_blackfocus = black_iter_quota_blackfocus
             effective_quota_humanseed = black_iter_quota_humanseed
+            effective_human_seed_white_value_max = (
+                args.black_iter_human_seed_white_value_max
+                if args.black_iter_human_seed_white_value_max is not None
+                else args.human_seed_white_value_max
+            )
         else:
             effective_human_data_weight = human_data_weight
             effective_humanseed_data_weight = humanseed_data_weight
@@ -2265,6 +2354,7 @@ def main():
             effective_quota_human = args.quota_human
             effective_quota_blackfocus = args.quota_blackfocus
             effective_quota_humanseed = args.quota_humanseed
+            effective_human_seed_white_value_max = args.human_seed_white_value_max
 
         print(f"\n{'#'*60}")
         print(f"  ITERATION {i+1}/{args.iterations}  -  Generation {gen}  -  Training: {side_label}")
@@ -2278,6 +2368,8 @@ def main():
             f"  Keep filt:   blackfocus={effective_blackfocus_result_filter}, "
             f"humanseed={effective_humanseed_result_filter}"
         )
+        if effective_human_seed_white_value_max is not None:
+            print(f"  HS v_max:    white<= {float(effective_human_seed_white_value_max):+.3f}")
         if args.use_source_quotas:
             print(
                 "  Proc quota:  "
@@ -2287,6 +2379,11 @@ def main():
         print(
             "  Train filt:  "
             f"primary={primary_train_result_filter}, consolidation={consolidation_train_result_filter}"
+        )
+        print(
+            "  Distill:     "
+            f"consolidation(value={effective_consolidation_distill_value_weight:.3f}, "
+            f"policy={effective_consolidation_distill_policy_weight:.3f})"
         )
 
         # Step 1a: Generate normal games
@@ -2402,6 +2499,11 @@ def main():
                 hs_cmd.extend(["--start-fen-side", start_side])
                 if start_side == "black":
                     hs_cmd.append("--start-fen-convert-white-to-black")
+            if effective_human_seed_white_value_max is not None:
+                hs_cmd.extend([
+                    "--start-fen-white-value-max",
+                    str(effective_human_seed_white_value_max),
+                ])
             hs_sim_bounds = _sim_bounds(effective_human_seed_sims)
             if hs_sim_bounds is not None:
                 hs_cmd.extend([
@@ -2663,8 +2765,8 @@ def main():
                 "--policy-loss-weight", str(args.consolidation_policy_loss_weight),
                 "--warmup-epochs", "0",
                 "--resume-from", candidate_path,
-                "--distill-value-weight", str(args.consolidation_distill_value_weight),
-                "--distill-policy-weight", str(args.consolidation_distill_policy_weight),
+                "--distill-value-weight", str(effective_consolidation_distill_value_weight),
+                "--distill-policy-weight", str(effective_consolidation_distill_policy_weight),
                 "--distill-temperature", str(args.consolidation_distill_temperature),
             ])
             _append_train_side_args(
@@ -2681,8 +2783,8 @@ def main():
             )
             _append_distill_teacher_if_weighted(
                 consolidation_cmd,
-                value_weight=args.consolidation_distill_value_weight,
-                policy_weight=args.consolidation_distill_policy_weight,
+                value_weight=effective_consolidation_distill_value_weight,
+                policy_weight=effective_consolidation_distill_policy_weight,
                 teacher_path=source_model_path,
             )
             t_train_consolidation = run(
@@ -2803,6 +2905,8 @@ def main():
             "primary_policy_loss_weight_effective": float(args.primary_policy_loss_weight),
             "consolidation_train_only_side_effective": consolidation_train_only_side,
             "consolidation_train_result_filter_effective": consolidation_train_result_filter,
+            "consolidation_distill_value_weight_effective": float(effective_consolidation_distill_value_weight),
+            "consolidation_distill_policy_weight_effective": float(effective_consolidation_distill_policy_weight),
             "consolidation_policy_loss_weight_effective": float(args.consolidation_policy_loss_weight),
             "effective_processing_weights": {
                 "human": int(effective_human_data_weight),
@@ -2821,6 +2925,10 @@ def main():
                 "curriculum_games": int(effective_curriculum_games),
                 "black_focus_games": int(effective_black_focus_games),
                 "human_seed_games": int(effective_human_seed_games),
+                "human_seed_white_value_max": (
+                    None if effective_human_seed_white_value_max is None
+                    else float(effective_human_seed_white_value_max)
+                ),
                 "normal_simulations": int(effective_train_sims),
                 "black_focus_simulations": int(effective_black_focus_sims),
                 "human_seed_simulations": int(effective_human_seed_sims),
