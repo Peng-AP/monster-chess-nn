@@ -206,9 +206,7 @@ def _safe_pairs_gen(game):
 
 def get_human_black_action(game):
     """Get a single move from the human playing Black."""
-    board = game.board
-    board.turn = chess.BLACK
-    legal = list(board.legal_moves)
+    legal = game.get_legal_actions()
 
     if not legal:
         return None
@@ -217,7 +215,7 @@ def get_human_black_action(game):
         text = input(f"  {BOLD}Your move:{RESET} ").strip()
         if text.lower() in ("quit", "resign", "q"):
             return "resign"
-        move = parse_move(text, board)
+        move = parse_move(text, game.board)
         if move is None or move not in legal:
             print(f"  Invalid. Legal moves: {', '.join(m.uci() for m in legal[:20])}")
             if len(legal) > 20:
@@ -255,6 +253,7 @@ def main():
 
     # Load evaluator
     eval_fn = None
+    heuristic_eval = None
     if not args.heuristic:
         model_path = args.model or os.path.join(MODEL_DIR, "best_value_net.pt")
         if os.path.exists(model_path):
@@ -264,6 +263,9 @@ def main():
             print(f"  Model loaded (CUDA: {eval_fn.device.type == 'cuda'})")
         else:
             print(f"No model at {model_path} — falling back to heuristic eval")
+    if args.save_data:
+        from evaluation import evaluate as heuristic_evaluate
+        heuristic_eval = heuristic_evaluate
 
     engine = MCTS(num_simulations=args.sims, eval_fn=eval_fn)
     human_is_white = args.color == "white"
@@ -319,8 +321,7 @@ def main():
                 break
 
             if args.save_data:
-                from evaluation import evaluate
-                eval_white = evaluate(game) if eval_fn is None else eval_fn(game)
+                eval_white = heuristic_eval(game) if eval_fn is None else eval_fn(game)
                 side_value = eval_white if is_white else -eval_white
                 if is_white:
                     m1, m2 = action

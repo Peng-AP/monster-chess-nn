@@ -4,6 +4,7 @@ import numpy as np
 from config import (
     WHITE_PAWN_VALUE, PAWN_ELIMINATION_BONUS, BLOCKED_PAWN_PENALTY,
     KING_DISPLACEMENT_WEIGHT, KING_MOBILITY_WEIGHT, BARRIER_RANK_FILE_WEIGHT,
+    PIECE_SAFETY_BONUS, BLACK_KING_EXPOSURE_PENALTY,
 )
 
 _KING_DELTAS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
@@ -59,6 +60,37 @@ def _white_can_capture_king(board):
     return False
 
 
+def _black_can_capture_king(board):
+    """Check if Black can capture White's king in one move.
+
+    Returns True if any Black pseudo-legal move reaches the White king
+    square while leaving Black's own king safe.
+    """
+    wk = board.king(chess.WHITE)
+    if wk is None:
+        return False
+    bk = board.king(chess.BLACK)
+    if bk is None:
+        return False
+
+    saved_turn = board.turn
+    board.turn = chess.BLACK
+    for move in board.pseudo_legal_moves:
+        if move.to_square == wk:
+            board.push(move)
+            bk_after = board.king(chess.BLACK)
+            black_safe = (
+                bk_after is None
+                or not board.is_attacked_by(chess.WHITE, bk_after)
+            )
+            board.pop()
+            if black_safe:
+                board.turn = saved_turn
+                return True
+    board.turn = saved_turn
+    return False
+
+
 def _is_passed_pawn(board, sq, color):
     """Check if a pawn has no opposing pawns blocking or flanking its path."""
     file = chess.square_file(sq)
@@ -102,6 +134,8 @@ def evaluate(game_state):
     # ---- Capture threat scan (dominates all other terms) ----
     if _white_can_capture_king(board):
         return 0.95  # White captures Black's king next turn
+    if _black_can_capture_king(board):
+        return -0.95  # Black captures White's king next move
 
     score = 0.0
     wk = board.king(chess.WHITE)
@@ -185,6 +219,24 @@ def evaluate(game_state):
     # Pawn elimination bonus: fewer White pawns = Black is winning
     eliminated_pawns = 4 - white_pawns
     score -= eliminated_pawns * PAWN_ELIMINATION_BONUS
+
+    # Black piece safety — reward heavy pieces at safe distance from White king
+    safe_heavy = 0
+    for sq in board.pieces(chess.QUEEN, chess.BLACK) | board.pieces(chess.ROOK, chess.BLACK):
+        dist = max(abs(wk_rank - chess.square_rank(sq)),
+                   abs(wk_file - chess.square_file(sq)))
+        if dist >= 3:
+            safe_heavy += 1
+    score -= safe_heavy * PIECE_SAFETY_BONUS
+
+    # Black king exposure — penalize when squares around Black king are attacked
+    bk_attacked_adj = 0
+    for dr, df in _KING_DELTAS:
+        r, f = bk_rank + dr, bk_file + df
+        if 0 <= r <= 7 and 0 <= f <= 7:
+            if board.is_attacked_by(chess.WHITE, chess.square(f, r)):
+                bk_attacked_adj += 1
+    score += bk_attacked_adj * BLACK_KING_EXPOSURE_PENALTY
 
     # ---- King confinement & sub-goals ----
 
@@ -342,6 +394,10 @@ class NNEvaluator:
             return -1.0, None
         if board.king(chess.BLACK) is None:
             return 1.0, None
+        if _white_can_capture_king(board):
+            return 0.95, None
+        if _black_can_capture_king(board):
+            return -0.95, None
 
         tensor = self.fen_to_tensor(
             game_state.fen(),
@@ -383,6 +439,12 @@ class NNEvaluator:
                 policy_list.append(None)
             elif board.king(chess.BLACK) is None:
                 values.append(1.0)
+                policy_list.append(None)
+            elif _white_can_capture_king(board):
+                values.append(0.95)
+                policy_list.append(None)
+            elif _black_can_capture_king(board):
+                values.append(-0.95)
                 policy_list.append(None)
             else:
                 values.append(None)

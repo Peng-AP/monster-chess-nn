@@ -104,11 +104,49 @@ CURRICULUM_FENS = [
     # White has PAWNS — realistic mid-game where Black has promoted.
     "4k3/8/8/8/8/q7/q7/2PPK3 b - - 0 1",   # 2 queens vs king+pawns
     "r3k3/8/8/8/8/r7/q7/3KPP2 b - - 0 1",   # Q+2R vs king+pawns
+
+    # === TIER 6: Realistic mid-game — 1-2 pawns eliminated, king advanced ===
+    # Black has Q+2R (typical mid-game army) vs king+2-3 pawns.
+    # White king on ranks 3-5 using king+pawn combo strategy.
+    # Target: -0.5 (Black advantage, needs good technique to convert)
+    #
+    # 2 pawns, king in center
+    "r4rk1/pp1q1ppp/8/8/2P1K3/5P2/8/8 b - - 0 1",       # Ke4, Pc4+Pf3
+    "r3r1k1/pp3ppp/3q4/8/3P1K2/5P2/8/8 b - - 0 1",       # Kf4, Pd4+Pf3
+    "r4r1k/pp3ppp/8/q7/2P5/4KP2/8/8 b - - 0 1",          # Ke3, Pc4+Pf3, active Qa5
+    "r4rk1/pp2qppp/8/5K2/3P4/5P2/8/8 b - - 0 1",         # Kf5 advanced, Pd4+Pf3
+    # 3 pawns, pawn wall shielding king
+    "r2r2k1/pp3ppp/1q6/8/3KP3/2P2P2/8/8 b - - 0 1",      # Kd4, Pc3+Pe4+Pf3
+    "r2r2k1/pp2qppp/2b5/8/3P4/2PK1P2/8/8 b - - 0 1",     # Kd3, Pc3+Pd4+Pf3, Bc6
+    # 3 pawns, aggressive advance
+    "rr1q2k1/pp3ppp/8/3KP3/2P2P2/8/8/8 b - - 0 1",       # Kd5, Pc4+Pe5+Pf4
+    # 1 pawn, heavy Black advantage (3 eliminated)
+    "r4rk1/pb2qppp/8/8/4KP2/8/8/8 b - - 0 1",            # Ke4, Pf4 only, Bb7
+
+    # === TIER 7: Opening positions from human games (moves 2-7) ===
+    # Realistic early-game positions where Black survived/won.
+    # White to move — natural game flow: White double-moves, then Black responds.
+    # Target: -0.3 (slight Black edge, must learn defensive opening play)
+    #
+    # 4 pawns intact, early development
+    "rnbqkbnr/ppp1pppp/8/3p4/8/2P2P2/3PP3/4K3 w kq - 0 2",   # move 2, d5 reply
+    "r1bqkbnr/1ppppppp/2n5/p7/2P1P3/3P1P2/8/4K3 w kq - 0 3", # move 3, Nc6+a5
+    "r1bqkbnr/ppp1pppp/8/4p3/2P2P2/3PK3/8/8 w kq - 0 3",     # move 3, e5 center grab
+    "r1bqkbnr/1ppppppp/2n5/p7/5P2/8/3PP3/4K3 w kq - 0 3",    # move 3, Nc6+a5 alt
+    # 3 pawns (1 eliminated), mid-opening
+    "r1bqkbnr/1pp1pppp/2n1p3/p7/2P5/3P1P2/8/4K3 w kq - 0 4", # move 4, e6 solid
+    "r1bqkbnr/1pp1pppp/2n1p3/8/p1P2P2/3P4/5K2/8 w kq - 0 5", # move 5, Kf2 advance
+    "r2qkbnr/1pp1pppp/2n1b3/p7/8/2PP4/4K3/8 w kq - 0 5",     # move 5, Be6 developed
+    # 2 pawns (2 eliminated), White advancing
+    "r2qkbnr/1pp1pppp/2n1b3/8/p1P5/3P4/5K2/8 w kq - 0 6",    # move 6, Be6+Nc6 active
+    # 1 pawn (3 eliminated), king exposed
+    "r2qkbnr/1pp1pppp/4b3/8/p1Pn4/4K3/8/8 w kq - 0 7",       # move 7, Nd4 aggressive
+    "r1bqkbnr/1ppppppp/8/5P2/p2P4/8/8/4K3 w kq - 0 5",       # move 5, pawn push gambit
 ]
 
 # Value label per tier: strong signal for forced wins, softer for advantages
-CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29]  # indices where tiers end
-CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7]  # per tier
+CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29, 31, 39]  # indices where tiers end
+CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3]  # per tier
 
 # Tensor encoding
 NUM_PIECE_LAYERS = 12
@@ -170,10 +208,10 @@ SOURCE_QUOTA_SELFPLAY = 0.50
 SOURCE_QUOTA_HUMAN = 0.25
 SOURCE_QUOTA_BLACKFOCUS = 0.15
 SOURCE_QUOTA_HUMANSEED = 0.10
-BLACK_ITER_SOURCE_QUOTA_SELFPLAY = 0.45
+BLACK_ITER_SOURCE_QUOTA_SELFPLAY = 0.25
 BLACK_ITER_SOURCE_QUOTA_HUMAN = 0.00
 BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS = 0.35
-BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.20
+BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.40
 # Source-aware value labels: lambda = weight on mcts_value; (1-lambda) on game_result.
 SELFPLAY_TARGET_MCTS_LAMBDA = 1.00
 HUMAN_TARGET_MCTS_LAMBDA = 0.20
@@ -186,11 +224,13 @@ BLACK_FOCUS_SCRIPTED_BLACK = False  # live MCTS Black outperforms scripted Black
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)
-PAWN_ELIMINATION_BONUS = 0.10       # bonus per eliminated White pawn (4 - count)
-BLOCKED_PAWN_PENALTY = 0.08         # penalty per White pawn that can't advance
+PAWN_ELIMINATION_BONUS = 0.18       # bonus per eliminated White pawn (4 - count)
+BLOCKED_PAWN_PENALTY = 0.12         # penalty per White pawn that can't advance
 KING_DISPLACEMENT_WEIGHT = 0.06     # reward per unit of king displacement from center
 KING_MOBILITY_WEIGHT = 0.01         # penalty per restricted square (2-move reachability)
 BARRIER_RANK_FILE_WEIGHT = 0.12     # bonus per barrier rank/file between king and edge
+PIECE_SAFETY_BONUS = 0.08           # bonus per Black heavy piece at safe distance (>= 3) from White king
+BLACK_KING_EXPOSURE_PENALTY = 0.04  # penalty per square adjacent to Black king attacked by White
 
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

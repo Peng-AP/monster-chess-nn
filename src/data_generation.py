@@ -15,7 +15,7 @@ from config import (
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
     RAW_DATA_DIR, CURRICULUM_FENS,
     CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES,
-    SKIP_CHECK_POSITIONS,
+    SKIP_CHECK_POSITIONS, MAX_GAME_TURNS,
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
@@ -744,7 +744,14 @@ def main():
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
             try:
-                for future in as_completed(futures, timeout=600):
+                # Timeout scales with sim budget: a 150-turn game at max sims
+                # can legitimately take 10+ minutes.  Allow ~0.02s per sim
+                # per turn × MAX_GAME_TURNS, with a floor of 600s.
+                per_game_budget = max(600, int(sim_max * MAX_GAME_TURNS * 0.025))
+                # Total timeout = per-game budget (longest possible single game)
+                # plus 60s overhead for process startup / teardown.
+                total_timeout = per_game_budget + 60
+                for future in as_completed(futures, timeout=total_timeout):
                     try:
                         game_id, _sim_used, records, elapsed = future.result()
                     except (BrokenExecutor, Exception) as e:
