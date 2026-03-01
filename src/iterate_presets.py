@@ -124,7 +124,7 @@ PRESETS = {
             "--simulations", "300",
             "--curriculum-simulations", "80",
             "--black-focus-simulations", "200",
-            "--human-seed-simulations", "300",
+            "--human-seed-simulations", "150",
             "--epochs", "12",
             "--warmup-epochs", "3",
             "--warmup-start-factor", "0.1",

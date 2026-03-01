@@ -2,6 +2,7 @@ import chess
 import copy
 import random
 from config import STARTING_FEN, MAX_GAME_TURNS
+from evaluation import evaluate as _heuristic_evaluate
 
 
 class MonsterChessGame:
@@ -51,7 +52,11 @@ class MonsterChessGame:
             self._result = 1
         elif self.turn_count >= MAX_GAME_TURNS:
             self._terminal = True
-            self._result = 0
+            # Use heuristic to re-label move-limit draws: if Black has a
+            # dominant material advantage (score < -0.4), record -0.5 instead
+            # of 0 so the model learns these are Black-favored, not neutral.
+            h = _heuristic_evaluate(self)
+            self._result = -0.5 if h < -0.4 else 0
         # Skip the expensive get_legal_actions() check — stalemate is
         # extremely rare in Monster Chess and not worth the O(n²) cost
         # on every terminal check during MCTS.

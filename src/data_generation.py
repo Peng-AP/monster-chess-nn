@@ -748,9 +748,11 @@ def main():
                 # can legitimately take 10+ minutes.  Allow ~0.02s per sim
                 # per turn × MAX_GAME_TURNS, with a floor of 600s.
                 per_game_budget = max(600, int(sim_max * MAX_GAME_TURNS * 0.025))
-                # Total timeout = per-game budget (longest possible single game)
-                # plus 60s overhead for process startup / teardown.
-                total_timeout = per_game_budget + 60
+                # Total timeout = per-game budget scaled by number of sequential
+                # batches (num_games / workers), plus 120s overhead.
+                # Previously used per_game_budget + 60 (per-game budget as batch
+                # budget), which caused systematic data loss for slower games.
+                total_timeout = per_game_budget * max(1, args.num_games // workers) + 120
                 for future in as_completed(futures, timeout=total_timeout):
                     try:
                         game_id, _sim_used, records, elapsed = future.result()
