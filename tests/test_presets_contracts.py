@@ -21,9 +21,17 @@ def _arg_value(args, flag):
 
 class PresetContracts(unittest.TestCase):
     def test_all_expected_presets_exist(self):
-        self.assertEqual(set(presets.PRESETS.keys()), {"smoke", "daily", "overnight"})
+        self.assertEqual(
+            set(presets.PRESETS.keys()),
+            {"smoke", "daily", "overnight", "consolidation"},
+        )
 
     def test_presets_include_core_gating_and_caps(self):
+        # Presets that explicitly use --alternating (Black-focus alternation).
+        # "consolidation" intentionally omits --alternating to train both sides
+        # simultaneously with the overall_strict_sides gate.
+        ALTERNATING_PRESETS = {"smoke", "daily", "overnight"}
+
         for name, preset in presets.PRESETS.items():
             args = preset["args"]
             self.assertIn("--gate-threshold", args, msg=name)
@@ -32,8 +40,9 @@ class PresetContracts(unittest.TestCase):
             self.assertIn("--max-processed-positions", args, msg=name)
             self.assertIn("--position-budget", args, msg=name)
             self.assertIn("--position-budget-max", args, msg=name)
-            self.assertIn("--alternating", args, msg=name)
             self.assertIn("--human-seed-dir", args, msg=name)
+            if name in ALTERNATING_PRESETS:
+                self.assertIn("--alternating", args, msg=name)
 
             max_positions = int(_arg_value(args, "--max-processed-positions"))
             self.assertGreater(max_positions, 0)

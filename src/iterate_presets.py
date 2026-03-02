@@ -150,6 +150,49 @@ PRESETS = {
             "--human-eval",
         ],
     },
+    "consolidation": {
+        "description": "Non-alternating run to absorb bruteforce-augmented humanseed data",
+        "expected_runtime": "~6-10 hours on a midrange CUDA GPU",
+        "artifacts": [
+            "data/raw/nn_gen* (+ _curriculum/_humanseed)",
+            "data/processed/processing_summary.json",
+            "models/candidates/gen_*/",
+            "models/arena_runs/gen_*/",
+            "models/iterate_run_*.json",
+            "models/human_eval_incumbent_latest.json",
+        ],
+        "args": [
+            "--iterations", "8",
+            "--games", "160",
+            "--curriculum-games", "200",
+            "--human-seed-games", "120",
+            "--simulations", "200",
+            "--curriculum-simulations", "60",
+            "--human-seed-simulations", "150",
+            "--epochs", "10",
+            "--warmup-epochs", "2",
+            "--warmup-start-factor", "0.1",
+            "--position-budget", "200000",
+            "--position-budget-max", "260000",
+            "--max-processed-positions", "500000",
+            # No --alternating: iterate.py trains both sides simultaneously and
+            # uses overall_strict_sides gate (overall >= threshold AND both sides
+            # >= gate-min-side-score).  Black-focus games are skipped by design.
+            "--opponent-sims", "150",
+            "--pool-size", "6",
+            "--arena-games", "60",
+            "--arena-sims", "100",
+            "--arena-workers", "4",
+            "--gate-threshold", "0.40",
+            "--gate-min-side-score", "0.05",
+            "--gate-min-other-side", "0.05",
+            "--min-accept-black-score", "0.00",
+            "--human-seed-dir", "data/raw/human_games",
+            "--human-seed-side", "auto",
+            "--seed", "20260221",
+            "--human-eval",
+        ],
+    },
 }
 
 
@@ -170,7 +213,7 @@ def _cmdline(parts):
 
 def _print_presets():
     print("Available presets:\n")
-    for name in ("smoke", "daily", "overnight"):
+    for name in ("smoke", "daily", "overnight", "consolidation"):
         p = PRESETS[name]
         print(f"- {name}: {p['description']}")
         print(f"  expected runtime: {p['expected_runtime']}")
