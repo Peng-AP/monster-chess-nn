@@ -341,7 +341,7 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
             _opponent_eval_pool.append(NNEvaluator(p))
 
 
-def play_game(num_simulations):
+def play_game(num_simulations, game_deadline=None):
     """Play one full game of Monster Chess via MCTS self-play.
 
     Uses NN evaluator if loaded by worker, otherwise heuristic.
@@ -350,6 +350,11 @@ def play_game(num_simulations):
 
     When _train_side is "white" or "black", uses separate MCTS engines
     for each side (frozen-opponent alternating training).
+
+    game_deadline: optional wall-clock time.time() value; if the loop
+    iteration starts after this time, the game is cut short and whatever
+    records were collected so far are returned.  This prevents a single
+    slow game from blocking the whole batch indefinitely.
 
     Returns a list of records, one per position:
         {fen, mcts_value, policy, current_player, game_result}
@@ -400,6 +405,12 @@ def play_game(num_simulations):
     move_number = 0
 
     while not game.is_terminal():
+        if game_deadline is not None and time.time() > game_deadline:
+            # Game exceeded per-game wall-clock budget.  Return whatever
+            # records were collected; the result will be set to draw (0)
+            # below since the game is not terminal.
+            break
+
         is_white = game.is_white_turn
 
         # Side-aware retention to protect scarce training-side signal.
@@ -503,8 +514,13 @@ def _worker(args):
             np.random.seed(np_seed)
         except Exception:
             pass
+    # Per-game wall-clock deadline: same formula as main()'s per_game_budget.
+    # Caps each game at a finite runtime so a single slow position cannot
+    # block the entire batch for hours.
+    per_game_budget = max(600, int(num_simulations * MAX_GAME_TURNS * 0.025))
+    game_deadline = time.time() + per_game_budget
     t0 = time.time()
-    records = play_game(num_simulations)
+    records = play_game(num_simulations, game_deadline=game_deadline)
     elapsed = time.time() - t0
     return game_id, num_simulations, records, elapsed
 
