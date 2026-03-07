@@ -142,11 +142,55 @@ CURRICULUM_FENS = [
     # 1 pawn (3 eliminated), king exposed
     "r2qkbnr/1pp1pppp/4b3/8/p1Pn4/4K3/8/8 w kq - 0 7",       # move 7, Nd4 aggressive
     "r1bqkbnr/1ppppppp/8/5P2/p2P4/8/8/4K3 w kq - 0 5",       # move 5, pawn push gambit
+
+    # === TIER 8: White overextension — isolated advanced pawns, king lagging ===
+    # White has pushed one or more pawns to rank 5-6 WITHOUT king support.
+    # Black can immediately capture the advanced pawn(s), winning material.
+    # Target: -0.4 (Black material gain, White king stranded, needs technique)
+    #
+    # Black queen can take d5 along d-file
+    "r2q1rk1/pp3ppp/8/3P4/8/8/2P1PP2/4K3 b - - 0 1",         # Pd5 hanging, Qd8xd5
+    # Black rook can take f5 along f-file (f7 clear)
+    "r2q1rk1/pp4pp/8/5P2/8/8/2PPP3/4K3 b - - 0 1",            # Pf5 hanging, Rf8xf5
+    # Two center pawns advanced, knight captures e5
+    "r2q1rk1/pp3ppp/2n5/3PP3/8/8/2P2P2/4K3 b - - 0 1",        # Pd5+Pe5, Nc6xe5
+    # Two flank pawns advanced, rook captures c5 along c-file
+    "2r1q1k1/pp3ppp/8/2PP4/8/8/4PP2/4K3 b - - 0 1",           # Pc5+Pd5, Rc8xc5
+    # Opening: full Black army vs advanced center pawns
+    "r1bqkb1r/pp2pppp/2n5/3PP3/8/8/2P2P2/4K3 b kq - 0 1",     # Nc6xe5 or Qd8xd5
+    # Pawn pushed to rank 6 (very advanced), queen captures
+    "r2q1rk1/pp3ppp/3P4/8/8/8/2P1PP2/4K3 b - - 0 1",          # Pd6 hanging, Qd8xd6
+    # Standard opening, White advanced d5 recklessly, full army response
+    "rnbqkbnr/ppp1pppp/8/3P4/8/8/2P1PP2/4K3 b kq - 0 1",      # Qd8xd5 immediate
+
+    # === TIER 9: White king coordination failure — king on rank 1-2, pawns on rank 3-4 ===
+    # White's pawns are advancing but king is stuck far behind.
+    # Training signal: "king on rank 1 with pawns on rank 4 = structural disadvantage."
+    # The heuristic's king-exposure and pawn-support terms will naturally produce
+    # games where White advances the king early as the winning plan.
+    # Target: -0.3 (Black slight structural advantage; White can recover with correct play)
+    #
+    # King on e1, center pawns c4+d4, support pawns e3+f3 — classic coordination lag
+    "rnbqkbnr/pppppppp/8/8/2PP4/4PP2/8/4K3 w kq - 0 1",       # Ke1, Pc4+Pd4+Pe3+Pf3
+    # King on e1, diagonal pawn formation c3+d4+e4+f3 — center heavy
+    "rnbqkbnr/pppppppp/8/8/3PP3/2P2P2/8/4K3 w kq - 0 1",       # Ke1, Pc3+Pd4+Pe4+Pf3
+    # King one step advanced to e2 but still too far back from rank 3-4 pawns
+    "rnbqkbnr/pppppppp/8/8/3PP3/2P2P2/4K3/8 w kq - 0 1",       # Ke2, Pc3+Pd4+Pe4+Pf3
+    # King off-center on d1, spread pawn formation c4+d3+e4+f3
+    "rnbqkbnr/pppppppp/8/8/2P1P3/3P1P2/8/3K4 w kq - 0 1",      # Kd1, Pc4+Pd3+Pe4+Pf3
+    # King on e1, double-rank split: c3+d3 on rank 3, e4+f4 on rank 4 — king can't catch up
+    "rnbqkbnr/pppppppp/8/8/4PP2/2PP4/8/4K3 w kq - 0 1",        # Ke1, Pc3+Pd3+Pe4+Pf4
+
+    # === TIER 10: Standard opening — full armies, both sides from move 1 ===
+    # The exact Monster Chess starting position.
+    # Training goal: teach both sides opening play from move 1.
+    # Target: 0.0 (contested; White has double-move advantage, Black has full army)
+    "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",         # Standard Monster Chess opening
 ]
 
 # Value label per tier: strong signal for forced wins, softer for advantages
-CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29, 31, 39]  # indices where tiers end
-CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3]  # per tier
+CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29, 31, 39, 49, 56, 61]  # indices where tiers end
+CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3, -0.4, -0.3, 0.0]  # per tier
 
 # Tensor encoding
 NUM_PIECE_LAYERS = 12
@@ -164,7 +208,7 @@ DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
 POLICY_TARGET_PSEUDOCOUNT = 0.25  # Laplace-style smoothing for policy targets (0 disables)
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
-POLICY_HEAD_CHANNELS = 16  # policy head bottleneck channels (was 2)
+POLICY_HEAD_CHANNELS = 32  # policy head bottleneck channels (widened from 16 for fresh start)
 STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
@@ -224,7 +268,7 @@ BLACK_FOCUS_SCRIPTED_BLACK = False  # live MCTS Black outperforms scripted Black
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)
-PAWN_ELIMINATION_BONUS = 0.18       # bonus per eliminated White pawn (4 - count)
+PAWN_ELIMINATION_BONUS = 0.14       # bonus per eliminated White pawn (4 - count)
 BLOCKED_PAWN_PENALTY = 0.12         # penalty per White pawn that can't advance
 KING_DISPLACEMENT_WEIGHT = 0.06     # reward per unit of king displacement from center
 KING_MOBILITY_WEIGHT = 0.01         # penalty per restricted square (2-move reachability)

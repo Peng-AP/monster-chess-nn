@@ -768,7 +768,16 @@ def main():
                 # batches (num_games / workers), plus 120s overhead.
                 # Previously used per_game_budget + 60 (per-game budget as batch
                 # budget), which caused systematic data loss for slower games.
-                total_timeout = per_game_budget * max(1, args.num_games // workers) + 120
+                #
+                # IMPORTANT: cap per_game_budget for batch timeout at 600s.
+                # The worker's game_deadline already handles legitimate slow games
+                # (and allows up to the full per_game_budget inside the game loop).
+                # The batch timeout must be short enough to catch a CUDA or worker
+                # deadlock within a few hours rather than 30+.  If a game-logic
+                # loop hangs, the worker's deadline breaks it; if CUDA deadlocks,
+                # the batch timeout below is the only escape hatch.
+                per_game_budget_batch = min(per_game_budget, 600)
+                total_timeout = per_game_budget_batch * max(1, args.num_games // workers) + 120
                 for future in as_completed(futures, timeout=total_timeout):
                     try:
                         game_id, _sim_used, records, elapsed = future.result()
@@ -805,10 +814,20 @@ def main():
                 timed_out_games += hung
                 pbar.update(hung)
     finally:
-        # shutdown(wait=False) returns immediately; cancel_futures prevents
-        # queued tasks from starting. Then kill any still-running workers.
+        # Snapshot _processes BEFORE shutdown — shutdown(wait=False) clears the
+        # internal dict, leaving _kill_workers() nothing to iterate over and
+        # producing zombie workers that block the next subprocess pool.
+        _procs_snapshot = dict(getattr(executor, '_processes', {}))
         executor.shutdown(wait=False, cancel_futures=True)
-        _kill_workers(executor)
+        for pid, proc in _procs_snapshot.items():
+            if proc.is_alive():
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    proc.join(timeout=3)
+                    if proc.is_alive():
+                        os.kill(pid, 9)  # SIGKILL
+                except (OSError, ProcessLookupError):
+                    pass
 
     white = sum(v for k, v in results.items() if k > 0)
     black = sum(v for k, v in results.items() if k < 0)
