@@ -38,6 +38,8 @@ from evaluation import evaluate
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 
+import json as _json
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Rollout leaf evaluator
@@ -150,21 +152,35 @@ def play_one_game(start_fen, mcts_obj, temperature_moves=15):
 # Single calibration cell
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_cell(tiers, sims, mode, num_games, seed=42, verbose=True, output_dir=None):
+def run_cell(tiers, sims, mode, num_games, seed=42, verbose=True, output_dir=None,
+             model_path=None, start_fens_override=None):
     """Run one cell of the calibration matrix.
 
     Returns a stats dict with win rates, game lengths, timing.
+
+    model_path: required when mode='hybrid', optional for other modes.
+    start_fens_override: if provided, use these FENs instead of tier positions.
     """
-    fens = get_tier_fens(tiers)
-    if not fens:
-        return {"error": "no FENs for requested tiers", "tiers": tiers}
+    if start_fens_override is not None:
+        fens = list(start_fens_override)
+        if not fens:
+            return {"error": "start_fens_override is empty", "tiers": tiers}
+    else:
+        fens = get_tier_fens(tiers)
+        if not fens:
+            return {"error": "no FENs for requested tiers", "tiers": tiers}
 
     if mode == "heuristic":
         eval_fn = evaluate
     elif mode == "rollout":
         eval_fn = RolloutEvaluator()
+    elif mode == "hybrid":
+        if not model_path:
+            raise ValueError("mode='hybrid' requires model_path")
+        from evaluation import HybridEvaluator
+        eval_fn = HybridEvaluator(model_path)
     else:
-        raise ValueError(f"Unknown mode '{mode}' — use 'heuristic' or 'rollout'")
+        raise ValueError(f"Unknown mode '{mode}' — use 'heuristic', 'rollout', or 'hybrid'")
 
     mcts_obj = MCTS(num_simulations=sims, eval_fn=eval_fn)
 
@@ -193,7 +209,7 @@ def run_cell(tiers, sims, mode, num_games, seed=42, verbose=True, output_dir=Non
     # Optionally save JSONL
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        tier_str = "".join(str(t) for t in tiers)
+        tier_str = "".join(str(t) for t in tiers) if tiers else "custom"
         fname = f"games_t{tier_str}_s{sims}_{mode}.jsonl"
         out_path = os.path.join(output_dir, fname)
         n_pos = 0
@@ -376,11 +392,17 @@ def main():
                         help="Run the full calibration matrix")
     parser.add_argument("--tiers", type=int, nargs="+", default=[4, 5],
                         help="Curriculum tiers to sample starting positions from (1-indexed)")
-    parser.add_argument("--sims", type=int, default=500,
+    parser.add_argument("--start-fen", type=str, default=None,
+                        help="Single starting FEN string (overrides --tiers)")
+    parser.add_argument("--start-fen-dir", type=str, default=None,
+                        help="Directory of JSONL files to sample start FENs from (overrides --tiers)")
+    parser.add_argument("--sims", "--simulations", type=int, default=500, dest="sims",
                         help="MCTS simulations per move")
-    parser.add_argument("--mode", choices=["heuristic", "rollout"], default="heuristic",
-                        help="Leaf evaluation mode")
-    parser.add_argument("--games", type=int, default=12,
+    parser.add_argument("--mode", choices=["heuristic", "rollout", "hybrid"], default="heuristic",
+                        help="Leaf evaluation mode (hybrid = NN policy + heuristic value)")
+    parser.add_argument("--use-model", type=str, default=None,
+                        help="Path to .pt model (required for --mode hybrid)")
+    parser.add_argument("--games", "--num-games", type=int, default=12, dest="games",
                         help="Games per cell (calibrate) or total games (single run)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
@@ -390,9 +412,39 @@ def main():
                         help="Show available tiers and exit")
     args = parser.parse_args()
 
+    if args.mode == "hybrid" and not args.use_model:
+        parser.error("--mode hybrid requires --use-model")
+
     if args.list_tiers:
         describe_tiers()
         return
+
+    # Resolve start FENs from --start-fen or --start-fen-dir (overrides --tiers)
+    start_fens_override = None
+    if args.start_fen:
+        start_fens_override = [args.start_fen]
+        print(f"Using single start FEN: {args.start_fen}")
+    elif args.start_fen_dir:
+        start_fens_override = []
+        for fname in sorted(os.listdir(args.start_fen_dir)):
+            fpath = os.path.join(args.start_fen_dir, fname)
+            if not (fname.endswith(".jsonl") and os.path.isfile(fpath)):
+                continue
+            with open(fpath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = _json.loads(line)
+                        fen = obj.get("fen") if isinstance(obj, dict) else str(obj)
+                        if fen:
+                            start_fens_override.append(fen)
+                    except Exception:
+                        pass
+        if not start_fens_override:
+            parser.error(f"--start-fen-dir found no FENs in: {args.start_fen_dir}")
+        print(f"Loaded {len(start_fens_override)} start FENs from {args.start_fen_dir}")
 
     if args.calibrate:
         print(f"Starting calibration matrix — {args.games} games per cell, seed={args.seed}")
@@ -400,10 +452,19 @@ def main():
         print("at sim counts 200 / 500 / 1000.\n")
         run_calibration(games_per_cell=args.games, seed=args.seed)
     else:
-        fens = get_tier_fens(args.tiers)
-        print(f"Single-cell run: tiers={args.tiers}  sims={args.sims}  "
+        if start_fens_override is not None:
+            n_fens = len(start_fens_override)
+            src_desc = (f"start-fen='{args.start_fen}'" if args.start_fen
+                        else f"start-fen-dir ({n_fens} FENs)")
+        else:
+            n_fens = len(get_tier_fens(args.tiers))
+            src_desc = f"tiers={args.tiers} ({n_fens} FENs)"
+
+        print(f"Single-cell run: {src_desc}  sims={args.sims}  "
               f"mode={args.mode}  games={args.games}")
-        print(f"Starting positions: {len(fens)} FENs across {len(args.tiers)} tier(s)")
+        if args.use_model:
+            print(f"Model: {args.use_model}")
+
         stats = run_cell(
             tiers=args.tiers,
             sims=args.sims,
@@ -412,6 +473,8 @@ def main():
             seed=args.seed,
             verbose=True,
             output_dir=args.output_dir,
+            model_path=args.use_model,
+            start_fens_override=start_fens_override,
         )
         print(f"\nResult: Black {stats['black_pct']:.1%} ({stats['black']}/{stats['n']})  "
               f"avg_len={stats['avg_len']:.0f}  avg_sec={stats['avg_sec']:.1f}s  "

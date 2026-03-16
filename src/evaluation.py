@@ -472,3 +472,38 @@ class NNEvaluator:
                 policy_list[idx] = pol_np[j]
 
         return values, policy_list
+
+
+class HybridEvaluator:
+    """MCTS evaluator: NN policy head + heuristic value function.
+
+    Combines the NN's learned move priors (policy head) with the reliable
+    heuristic evaluator (evaluation.py) for leaf position values.  This
+    allows MCTS to focus search on promising moves while still getting
+    accurate position evaluations — generating training data that can
+    calibrate the NN value head.
+
+    MCTS dispatch: because this class has both `batch_evaluate` and
+    `evaluate_with_policy`, MCTS automatically selects _run_batched_puct
+    (PUCT with policy priors + heuristic values at leaves).
+    """
+
+    def __init__(self, model_path):
+        self._nn = NNEvaluator(model_path)
+
+    def __call__(self, game_state):
+        return evaluate(game_state)
+
+    def evaluate_with_policy(self, game_state):
+        """Heuristic value + NN policy logits."""
+        _, policy = self._nn.evaluate_with_policy(game_state)
+        return evaluate(game_state), policy
+
+    def batch_evaluate(self, game_states):
+        return [evaluate(gs) for gs in game_states]
+
+    def batch_evaluate_with_policy(self, game_states):
+        """Heuristic values + NN policy logits for a batch."""
+        _, policies = self._nn.batch_evaluate_with_policy(game_states)
+        values = [evaluate(gs) for gs in game_states]
+        return values, policies

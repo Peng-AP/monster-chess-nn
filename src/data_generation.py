@@ -54,6 +54,7 @@ _temperature_high = TEMPERATURE_HIGH
 _temperature_low = TEMPERATURE_LOW
 _temperature_moves = TEMPERATURE_MOVES
 _record_all_plies = False
+_hybrid_eval = False
 
 
 def _is_training_side_position(is_white):
@@ -308,13 +309,13 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
-                 record_all_plies):
+                 record_all_plies, hybrid_eval=False):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
     global _curriculum_indices
-    global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies
+    global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies, _hybrid_eval
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
@@ -328,9 +329,14 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _temperature_low = float(temperature_low)
     _temperature_moves = int(temperature_moves)
     _record_all_plies = bool(record_all_plies)
+    _hybrid_eval = bool(hybrid_eval)
     if model_path:
-        from evaluation import NNEvaluator
-        _eval_fn = NNEvaluator(model_path)
+        if _hybrid_eval:
+            from evaluation import HybridEvaluator
+            _eval_fn = HybridEvaluator(model_path)
+        else:
+            from evaluation import NNEvaluator
+            _eval_fn = NNEvaluator(model_path)
     if opponent_model_path:
         from evaluation import NNEvaluator
         _opponent_eval_fn = NNEvaluator(opponent_model_path)
@@ -538,6 +544,8 @@ def main():
                         help="Number of parallel workers (default: CPU count)")
     parser.add_argument("--use-model", type=str, default=None,
                         help="Path to trained .pt model for NN evaluation")
+    parser.add_argument("--hybrid-eval", action="store_true",
+                        help="Use NN policy head + heuristic value (requires --use-model)")
     parser.add_argument("--curriculum", action="store_true",
                         help="Use endgame curriculum starting positions")
     parser.add_argument("--curriculum-live-results", action="store_true",
@@ -587,6 +595,8 @@ def main():
     parser.add_argument("--start-fen-white-value-max", type=float, default=None,
                         help="Optional max White-perspective value for retaining start FEN records")
     args = parser.parse_args()
+    if args.hybrid_eval and not args.use_model:
+        raise ValueError("--hybrid-eval requires --use-model")
     if args.simulations <= 0:
         raise ValueError("--simulations must be > 0")
     if args.simulations_min is not None and args.simulations_min <= 0:
@@ -753,7 +763,7 @@ def main():
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, curriculum_indices,
                   args.temperature_high, args.temperature_low, args.temperature_moves,
-                  args.record_all_plies),
+                  args.record_all_plies, args.hybrid_eval),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
