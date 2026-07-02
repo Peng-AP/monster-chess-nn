@@ -109,6 +109,29 @@ class HalfMoveContracts(unittest.TestCase):
         _action, _probs, root_value = engine.get_best_action(game, temperature=0.0)
         self.assertGreater(root_value, 0.5, "White forced king-capture should read strongly positive")
 
+    def test_pending_eval_uses_single_move_threat_scan(self):
+        # White Ra1+Ke1 vs Black Ke8: the rook capture needs TWO moves
+        # (Ra8 then Rxe8).  After White wastes m1, only one move remains, so
+        # the heuristic must NOT return the +0.95 capture-threat score the
+        # full double-move scan would produce.
+        fen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1"
+        game = MonsterChessGame(fen=fen)
+        game.apply_search_action(chess.Move.from_uci("e1d1"))
+        self.assertTrue(game.white_half_pending)
+        self.assertLess(evaluate(game), 0.95,
+                        "pending-state eval counted a two-move king capture "
+                        "with only one half-move remaining")
+
+    def test_pending_eval_keeps_real_single_move_threat(self):
+        # White Ke6 pending with Black Ke8 at distance 2 is NOT capturable in
+        # one king move; but a rook on e1 pending can take e8 in one move.
+        fen = "4k3/8/8/8/8/8/8/4RK2 w - - 0 1"
+        game = MonsterChessGame(fen=fen)
+        game.apply_search_action(chess.Move.from_uci("f1g1"))  # m1 wasted
+        self.assertTrue(game.white_half_pending)
+        self.assertEqual(evaluate(game), 0.95,
+                         "pending-state eval missed a genuine one-move capture")
+
     def test_forced_capture_completes_in_one_turn(self):
         fen = "4k3/8/4K3/8/8/8/8/8 w - - 0 1"
         game = MonsterChessGame(fen=fen)

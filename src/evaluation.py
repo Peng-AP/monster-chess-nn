@@ -60,6 +60,38 @@ def _white_can_capture_king(board):
     return False
 
 
+def _white_can_capture_king_single(board):
+    """Check if White can capture Black's king in ONE move.
+
+    Used for states where White has already spent the first half of its
+    double-move (white_half_pending): only a single move remains, so the
+    two-move scan above would count threats a turn early.
+    """
+    bk = board.king(chess.BLACK)
+    if bk is None:
+        return False
+    wk = board.king(chess.WHITE)
+    if wk is None:
+        return False
+
+    saved_turn = board.turn
+    board.turn = chess.WHITE
+    for move in board.pseudo_legal_moves:
+        if move.to_square == bk:
+            board.push(move)
+            wk_after = board.king(chess.WHITE)
+            white_safe = (
+                wk_after is None
+                or not board.is_attacked_by(chess.BLACK, wk_after)
+            )
+            board.pop()
+            if white_safe:
+                board.turn = saved_turn
+                return True
+    board.turn = saved_turn
+    return False
+
+
 def _black_can_capture_king(board):
     """Check if Black can capture White's king in one move.
 
@@ -132,8 +164,14 @@ def evaluate(game_state):
         return 1.0
 
     # ---- Capture threat scan (dominates all other terms) ----
-    if _white_can_capture_king(board):
-        return 0.95  # White captures Black's king next turn
+    # On a half-pending state (White already played m1) only ONE White move
+    # remains, so the two-move scan would count threats a turn early.
+    if getattr(game_state, "white_half_pending", False):
+        white_threat = _white_can_capture_king_single(board)
+    else:
+        white_threat = _white_can_capture_king(board)
+    if white_threat:
+        return 0.95  # White captures Black's king within the current turn
     if _black_can_capture_king(board):
         return -0.95  # Black captures White's king next move
 
