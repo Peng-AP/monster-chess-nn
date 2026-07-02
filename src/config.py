@@ -188,9 +188,16 @@ CURRICULUM_FENS = [
     "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",         # Standard Monster Chess opening
 ]
 
-# Value label per tier: strong signal for forced wins, softer for advantages
+# Value label per tier.  Only Tiers 1-2 are PROVABLY forced Black wins and keep a
+# forced label (-1.0); Tiers 3-10 now train on the LIVE game result regardless of the
+# --curriculum-live-results flag (REWORK_PLAN.md Phase 2.4).  The graded constants for
+# Tiers 3-10 (-0.7 ... 0.0) encoded a belief about position value as ground truth; an
+# asserted constant carries no move-level gradient, so it teaches "which side" without
+# "which moves".  The remaining values below are retained only for documentation of the
+# curriculum's original design intent and are NOT used as labels for Tiers 3-10.
 CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29, 31, 39, 49, 56, 61]  # indices where tiers end
 CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3, -0.4, -0.3, 0.0]  # per tier
+CURRICULUM_FORCED_MAX_TIER = 2  # tiers <= this use forced labels; higher tiers use live results
 
 # Tensor encoding
 NUM_PIECE_LAYERS = 12
@@ -206,7 +213,9 @@ C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
 FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
 DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
-POLICY_TARGET_PSEUDOCOUNT = 0.25  # Laplace-style smoothing for policy targets (0 disables)
+POLICY_TARGET_PSEUDOCOUNT = 0.0  # policy-target smoothing as a FRACTION of total root
+                                 # visits, spread uniformly (0 = raw visit-count
+                                 # targets, the AlphaZero default). See mcts.get_best_action.
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 POLICY_HEAD_CHANNELS = 32  # policy head bottleneck channels (widened from 16 for fresh start)
 STEM_CHANNELS = 64
@@ -227,7 +236,11 @@ WARMUP_START_FACTOR = 0.1
 VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
 LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
-VALUE_TARGET = "source_aware"  # "game_result" or "mcts_value" or "blend" or "source_aware"
+VALUE_TARGET = "game_result"  # "game_result" or "mcts_value" or "blend" or "source_aware".
+                              # Grounded on outcomes (REWORK_PLAN.md Phase 2.1): the value
+                              # target must carry information the net does not already have.
+                              # A blend (lambda<=0.3) may be revisited only AFTER the loop
+                              # works and root Q genuinely reflects search improvement.
 VALUE_HEAD_MODE = "scalar"  # "scalar" or "wdl" (wdl = expected value from WDL logits)
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
@@ -257,10 +270,13 @@ BLACK_ITER_SOURCE_QUOTA_HUMAN = 0.00
 BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS = 0.35
 BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.40
 # Source-aware value labels: lambda = weight on mcts_value; (1-lambda) on game_result.
-SELFPLAY_TARGET_MCTS_LAMBDA = 1.00
-HUMAN_TARGET_MCTS_LAMBDA = 0.20
-BLACKFOCUS_TARGET_MCTS_LAMBDA = 0.90
-HUMANSEED_TARGET_MCTS_LAMBDA = 0.85
+# All zero (REWORK_PLAN.md Phase 2.1): train the value head purely on game outcomes.
+# With the pre-fix search, mcts_value was the network's own root evaluation fed back
+# as its own target — a self-distillation fixed point that flattened calibration to ~0.
+SELFPLAY_TARGET_MCTS_LAMBDA = 0.00
+HUMAN_TARGET_MCTS_LAMBDA = 0.00
+BLACKFOCUS_TARGET_MCTS_LAMBDA = 0.00
+HUMANSEED_TARGET_MCTS_LAMBDA = 0.00
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
 SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction

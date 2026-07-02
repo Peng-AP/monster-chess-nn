@@ -1,0 +1,174 @@
+"""Benchmark anchor: score a candidate against the heuristic MCTS (REWORK_PLAN.md §0.2).
+
+The heuristic UCB1 search is the only search in the repo known to play sensibly, so it
+serves as a permanent, fixed yardstick.  Every candidate model is measured against it —
+not only against the moving incumbent — so progress is absolute, not relative.
+
+Runs both colors, temperature 0, no Dirichlet noise, no data saved.  Writes one JSON per
+run to ``benchmarks/``.
+
+    py -3 src/benchmark.py                       # heuristic vs heuristic (sanity)
+    py -3 src/benchmark.py --model models/best_value_net.pt --games 100 --sims 400
+"""
+import argparse
+import json
+import os
+import time
+
+from config import MODEL_DIR, PROJECT_ROOT
+from monster_chess import MonsterChessGame
+from mcts import MCTS
+from evaluation import evaluate
+
+
+def _legal(game):
+    """Legal actions in whatever granularity the search uses (half-move aware)."""
+    fn = getattr(game, "get_search_actions", None)
+    return fn() if fn else game.get_legal_actions()
+
+
+def _apply(game, action):
+    """Apply an action produced by get_best_action, half-move aware."""
+    fn = getattr(game, "apply_search_action", None)
+    (fn or game.apply_action)(action)
+
+
+def _build_engine(model_path, sims):
+    """Return (engine, label). NN engine if a model is given, else heuristic."""
+    if model_path:
+        from evaluation import NNEvaluator
+        eval_fn = NNEvaluator(model_path)
+        label = f"nn:{os.path.basename(model_path)}"
+    else:
+        eval_fn = evaluate
+        label = "heuristic"
+    engine = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
+                  allow_early_stop=True)
+    return engine, label
+
+
+def play_one(white_engine, black_engine, start_fen=None, max_plies=600):
+    """Play a single deterministic game. Returns (result, n_plies, n_decisions)."""
+    game = MonsterChessGame(fen=start_fen) if start_fen else MonsterChessGame()
+    decisions = 0
+    plies = 0
+    while not game.is_terminal() and plies < max_plies:
+        engine = white_engine if game.is_white_turn else black_engine
+        action, _probs, _val = engine.get_best_action(game, temperature=0.0)
+        if action is None:
+            break
+        _apply(game, action)
+        decisions += 1
+        plies += 1
+    return game.get_result(), plies, decisions
+
+
+def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None):
+    import random
+    candidate, cand_label = _build_engine(model_path, sims)
+    anchor, anchor_label = _build_engine(None, anchor_sims)
+
+    n_white = games // 2       # candidate plays White
+    n_black = games - n_white  # candidate plays Black
+
+    cand_wins = cand_draws = cand_losses = 0
+    black_wins_for_candidate = 0
+    total_len = 0
+    t0 = time.time()
+    total_decisions = 0
+
+    for i in range(n_white):
+        random.seed(seed + i)
+        result, plies, dec = play_one(candidate, anchor, start_fen=start_fen)
+        total_len += plies
+        total_decisions += dec
+        if result > 0:
+            cand_wins += 1
+        elif result < 0:
+            cand_losses += 1
+        else:
+            cand_draws += 1
+
+    for i in range(n_black):
+        random.seed(seed + 1000 + i)
+        result, plies, dec = play_one(anchor, candidate, start_fen=start_fen)
+        total_len += plies
+        total_decisions += dec
+        if result < 0:
+            cand_wins += 1
+            black_wins_for_candidate += 1
+        elif result > 0:
+            cand_losses += 1
+        else:
+            cand_draws += 1
+
+    elapsed = time.time() - t0
+    score = (cand_wins + 0.5 * cand_draws) / games if games else 0.0
+    # Overall Black-win share across the match (either engine as Black): reported
+    # because it is the project's primary strength signal (Black is winning with
+    # correct play — REWORK_PLAN.md §9).
+    black_share = black_wins_for_candidate / n_black if n_black else 0.0
+
+    return {
+        "candidate": cand_label,
+        "anchor": anchor_label,
+        "games": games,
+        "candidate_sims": sims,
+        "anchor_sims": anchor_sims,
+        "seed": seed,
+        "start_fen": start_fen,
+        "candidate_wins": cand_wins,
+        "candidate_draws": cand_draws,
+        "candidate_losses": cand_losses,
+        "candidate_score": round(score, 4),
+        "candidate_black_win_share": round(black_share, 4),
+        "mean_game_plies": round(total_len / games, 2) if games else 0.0,
+        "sec_per_decision": round(elapsed / total_decisions, 4) if total_decisions else None,
+        "elapsed_sec": round(elapsed, 1),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+
+def main():
+    p = argparse.ArgumentParser(description="Benchmark a model against the heuristic anchor")
+    p.add_argument("--model", type=str, default=None,
+                   help="Candidate model path (omit = heuristic vs heuristic sanity)")
+    p.add_argument("--games", type=int, default=100)
+    p.add_argument("--sims", type=int, default=400, help="Candidate simulations")
+    p.add_argument("--anchor-sims", type=int, default=None,
+                   help="Heuristic anchor simulations (default: --sims)")
+    p.add_argument("--seed", type=int, default=20260702)
+    p.add_argument("--start-fen", type=str, default=None)
+    p.add_argument("--out-dir", type=str, default=os.path.join(PROJECT_ROOT, "benchmarks"))
+    args = p.parse_args()
+
+    if args.games <= 0:
+        raise ValueError("--games must be > 0")
+    if args.sims <= 0:
+        raise ValueError("--sims must be > 0")
+    anchor_sims = args.anchor_sims if args.anchor_sims is not None else args.sims
+    if anchor_sims <= 0:
+        raise ValueError("--anchor-sims must be > 0")
+
+    model_path = args.model
+    if model_path and not os.path.exists(model_path):
+        raise FileNotFoundError(f"--model not found: {model_path}")
+
+    print(f"Benchmark: candidate={'heuristic' if not model_path else model_path} "
+          f"({args.sims} sims) vs heuristic anchor ({anchor_sims} sims), {args.games} games")
+    result = run_benchmark(
+        model_path=model_path, games=args.games, sims=args.sims,
+        anchor_sims=anchor_sims, seed=args.seed, start_fen=args.start_fen,
+    )
+    print(json.dumps(result, indent=2))
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    tag = "heuristic" if not model_path else os.path.splitext(os.path.basename(model_path))[0]
+    out_path = os.path.join(args.out_dir, f"benchmark_{tag}_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
+    print(f"Saved to {out_path}")
+
+
+if __name__ == "__main__":
+    main()

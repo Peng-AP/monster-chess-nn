@@ -109,6 +109,29 @@ def format_eval(value):
     return f"  [{bar}] {label}"
 
 
+def ai_select_full_action(engine, game, temperature):
+    """Search half-moves but return a full atomic action for play/display.
+
+    The engine now searches White's turn as two half-moves, so get_best_action
+    returns a single move.  For White we search m1, apply it on a clone, then search
+    m2 — letting play.py keep applying atomic (m1, m2) pairs and rendering both moves
+    together.  Black is already a single move (REWORK_PLAN.md Phase 3).
+    """
+    action, probs, val = engine.get_best_action(game, temperature=temperature)
+    if action is None:
+        return None, probs, val
+    if game.is_white_turn and not game.white_half_pending and not isinstance(action, tuple):
+        tmp = game.clone()
+        tmp.apply_search_action(action)
+        if tmp.is_terminal():
+            return (action, chess.Move.null()), probs, val
+        action2, _p2, _v2 = engine.get_best_action(tmp, temperature=temperature)
+        if action2 is None:
+            return (action, chess.Move.null()), probs, val
+        return (action, action2), probs, val
+    return action, probs, val
+
+
 def parse_move(text, board):
     """Parse user input into a chess.Move. Accepts UCI (e2e4) or SAN (Nf3)."""
     text = text.strip()
@@ -267,7 +290,9 @@ def main():
         from evaluation import evaluate as heuristic_evaluate
         heuristic_eval = heuristic_evaluate
 
-    engine = MCTS(num_simulations=args.sims, eval_fn=eval_fn)
+    # Human play: deterministic priors (no root noise), early stop allowed.
+    engine = MCTS(num_simulations=args.sims, eval_fn=eval_fn,
+                  root_noise=False, allow_early_stop=True)
     human_is_white = args.color == "white"
     session_id = time.strftime("%Y%m%d_%H%M%S")
     ai_color = "black" if human_is_white else "white"
@@ -351,8 +376,8 @@ def main():
             side = "White" if is_white else "Black"
             print(f"  {DIM}AI ({side}) thinking...{RESET}", end="", flush=True)
             t0 = time.time()
-            action, action_probs, root_value = engine.get_best_action(
-                game, temperature=0.1,
+            action, action_probs, root_value = ai_select_full_action(
+                engine, game, temperature=0.1,
             )
             elapsed = time.time() - t0
 

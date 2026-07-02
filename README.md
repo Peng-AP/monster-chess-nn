@@ -98,7 +98,7 @@ py -3 src/data_processor.py --raw-dir data/raw --output-dir data/processed --kee
 ### 4) Train a model (fine-tuning example)
 
 ```bash
-py -3 src/train.py --data-dir data/processed --model-dir models/candidates/manual_run --target mcts_value --epochs 12 --resume-from models/best_value_net.pt --warmup-epochs 3 --warmup-start-factor 0.1
+py -3 src/train.py --data-dir data/processed --model-dir models/candidates/manual_run --target game_result --epochs 12 --resume-from models/best_value_net.pt --warmup-epochs 3 --warmup-start-factor 0.1
 ```
 
 ### 5) Run iterate presets (recommended)

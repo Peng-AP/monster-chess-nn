@@ -402,6 +402,7 @@ class NNEvaluator:
         tensor = self.fen_to_tensor(
             game_state.fen(),
             is_white_turn=game_state.is_white_turn,
+            half_pending=getattr(game_state, "white_half_pending", False),
         )
         # (8, 8, C) -> (1, C, 8, 8) channels-first
         inp = self.torch.from_numpy(
@@ -453,6 +454,7 @@ class NNEvaluator:
                 sides.append(gs.is_white_turn)
                 tensors.append(self.fen_to_tensor(
                     gs.fen(), is_white_turn=gs.is_white_turn,
+                    half_pending=getattr(gs, "white_half_pending", False),
                 ))
 
         if tensors:

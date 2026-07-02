@@ -14,7 +14,7 @@ from config import (
     MCTS_SIMULATIONS, NUM_GAMES, OPPONENT_SIMULATIONS,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
     RAW_DATA_DIR, CURRICULUM_FENS,
-    CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES,
+    CURRICULUM_TIER_BOUNDARIES, CURRICULUM_TIER_VALUES, CURRICULUM_FORCED_MAX_TIER,
     SKIP_CHECK_POSITIONS, MAX_GAME_TURNS,
 )
 from monster_chess import MonsterChessGame
@@ -55,6 +55,8 @@ _temperature_low = TEMPERATURE_LOW
 _temperature_moves = TEMPERATURE_MOVES
 _record_all_plies = False
 _hybrid_eval = False
+_root_noise = True          # Dirichlet root noise (self-play exploration)
+_allow_early_stop = False   # off for training data (preserve full visit targets)
 
 
 def _is_training_side_position(is_white):
@@ -309,13 +311,15 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
-                 record_all_plies, hybrid_eval=False):
+                 record_all_plies, hybrid_eval=False,
+                 root_noise=True, allow_early_stop=False):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results, _scripted_black
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
     global _curriculum_indices
     global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies, _hybrid_eval
+    global _root_noise, _allow_early_stop
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
     _scripted_black = scripted_black
@@ -330,6 +334,8 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _temperature_moves = int(temperature_moves)
     _record_all_plies = bool(record_all_plies)
     _hybrid_eval = bool(hybrid_eval)
+    _root_noise = bool(root_noise)
+    _allow_early_stop = bool(allow_early_stop)
     if model_path:
         if _hybrid_eval:
             from evaluation import HybridEvaluator
@@ -370,7 +376,8 @@ def play_game(num_simulations, game_deadline=None):
     # Build engine(s) based on training mode
     if _train_side == "both":
         # Single engine for both sides (backward-compatible)
-        engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
+        engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
+                      root_noise=_root_noise, allow_early_stop=_allow_early_stop)
         white_engine = engine
         black_engine = engine
     else:
@@ -379,9 +386,11 @@ def play_game(num_simulations, game_deadline=None):
         opponent_eval = _opponent_eval_fn
         if _opponent_eval_pool:
             opponent_eval = rng.choice(_opponent_eval_pool)
-        train_engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn)
+        train_engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
+                            root_noise=_root_noise, allow_early_stop=_allow_early_stop)
         opponent_engine = MCTS(num_simulations=_opponent_sims,
-                               eval_fn=opponent_eval)
+                               eval_fn=opponent_eval,
+                               root_noise=_root_noise, allow_early_stop=_allow_early_stop)
         if _train_side == "white":
             white_engine = train_engine
             black_engine = opponent_engine
@@ -409,15 +418,21 @@ def play_game(num_simulations, game_deadline=None):
         game = MonsterChessGame()
     records = []
     move_number = 0
+    aborted = False
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
-            # Game exceeded per-game wall-clock budget.  Return whatever
-            # records were collected; the result will be set to draw (0)
-            # below since the game is not terminal.
+            # Game exceeded per-game wall-clock budget.  Mark it aborted so the
+            # caller can DISCARD it — a non-terminal cutoff is not a draw, and
+            # labeling it 0 injects false draw signal (REWORK_PLAN.md Phase 2.3).
+            aborted = True
             break
 
         is_white = game.is_white_turn
+        # Half-move flag: 1 on White's second half (its m2), else 0.  Recorded so the
+        # encoder sets MOVE_COUNT_LAYER and each White half becomes its own policy
+        # training sample (REWORK_PLAN.md Phase 3.4).
+        half = 1 if (is_white and game.white_half_pending) else 0
 
         # Side-aware retention to protect scarce training-side signal.
         skip_record = _should_skip_record(
@@ -441,8 +456,9 @@ def play_game(num_simulations, game_deadline=None):
                     "mcts_value": round(-root_value, 4),
                     "policy": {action.uci(): 1.0},
                     "current_player": "black",
+                    "half": 0,
                 })
-            game.apply_action(action)
+            game.apply_search_action(action)
         else:
             # Pick the engine for the current side
             engine = white_engine if is_white else black_engine
@@ -458,23 +474,32 @@ def play_game(num_simulations, game_deadline=None):
                     "mcts_value": round(root_value, 4),
                     "policy": action_probs,
                     "current_player": "white" if is_white else "black",
+                    "half": half,
                 })
-            game.apply_action(action)
+            game.apply_search_action(action)
 
         move_number += 1
+
+    if aborted:
+        # Discard aborted games entirely: no reliable label exists.
+        return [], True
 
     if _force_result is not None:
         result = _force_result
     elif _curriculum and (not _curriculum_live_results) and chosen_fen_idx is not None:
-        # Per-tier forced value: look up which tier this FEN belongs to
-        tier = _tier_for_index(chosen_fen_idx) - 1
-        result = CURRICULUM_TIER_VALUES[tier]
+        # Forced tier value only for provably-won Tiers 1-2; higher tiers use the
+        # live game result even without --curriculum-live-results (Phase 2.4).
+        tier = _tier_for_index(chosen_fen_idx)  # 1-indexed
+        if tier <= CURRICULUM_FORCED_MAX_TIER:
+            result = CURRICULUM_TIER_VALUES[tier - 1]
+        else:
+            result = game.get_result()
     else:
         result = game.get_result()
     for rec in records:
         rec["game_result"] = result
 
-    return records
+    return records, False
 
 
 def save_game(records, output_dir, game_id):
@@ -526,9 +551,9 @@ def _worker(args):
     per_game_budget = max(600, int(num_simulations * MAX_GAME_TURNS * 0.025))
     game_deadline = time.time() + per_game_budget
     t0 = time.time()
-    records = play_game(num_simulations, game_deadline=game_deadline)
+    records, aborted = play_game(num_simulations, game_deadline=game_deadline)
     elapsed = time.time() - t0
-    return game_id, num_simulations, records, elapsed
+    return game_id, num_simulations, records, elapsed, aborted
 
 
 def main():
@@ -581,6 +606,10 @@ def main():
                         help="Keep positions where side to move is in check (default: skip them)")
     parser.add_argument("--record-all-plies", action="store_true",
                         help="Disable retention skipping and record every ply (for eval/arena reliability)")
+    parser.add_argument("--no-root-noise", action="store_true",
+                        help="Disable Dirichlet root noise (use for arena/eval; keep ON for self-play exploration)")
+    parser.add_argument("--allow-early-stop", action="store_true",
+                        help="Allow MCTS early stopping (use for arena/eval; keep OFF for self-play so policy visit targets stay intact)")
     parser.add_argument("--start-fen-file", type=str, default=None,
                         help="Optional JSONL file of start positions (expects records with 'fen')")
     parser.add_argument("--start-fen-dir", type=str, default=None,
@@ -763,7 +792,8 @@ def main():
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, curriculum_indices,
                   args.temperature_high, args.temperature_low, args.temperature_moves,
-                  args.record_all_plies, args.hybrid_eval),
+                  args.record_all_plies, args.hybrid_eval,
+                  not args.no_root_noise, args.allow_early_stop),
     )
     try:
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
@@ -790,11 +820,17 @@ def main():
                 total_timeout = per_game_budget_batch * max(1, args.num_games // workers) + 120
                 for future in as_completed(futures, timeout=total_timeout):
                     try:
-                        game_id, _sim_used, records, elapsed = future.result()
+                        game_id, _sim_used, records, elapsed, aborted = future.result()
                     except (BrokenExecutor, Exception) as e:
                         gid = futures[future]
                         tqdm.write(f"  Game {gid}: FAILED ({e}), skipping")
                         failed_games += 1
+                        pbar.update(1)
+                        continue
+                    if aborted:
+                        # Deadline-cut game: discarded, not labeled a draw.
+                        timed_out_games += 1
+                        tqdm.write(f"  Game {game_id}: aborted at deadline, discarded ({elapsed:.1f}s)")
                         pbar.update(1)
                         continue
                     path = save_game(records, args.output_dir, game_id=game_id)

@@ -384,10 +384,16 @@ def _append_distill_teacher_if_weighted(cmd, value_weight, policy_weight, teache
 
 
 def _append_eval_temperature_args(cmd, temperature, temperature_moves):
+    # Evaluation/arena games must be measured, not explored: no Dirichlet root noise
+    # and early stopping allowed (only the game result is scored, never the policy
+    # distribution).  Self-play keeps noise on and early-stop off for training data
+    # (REWORK_PLAN.md Phase 1.4-1.5).
     cmd.extend([
         "--temperature-high", str(temperature),
         "--temperature-low", str(temperature),
         "--temperature-moves", str(temperature_moves),
+        "--no-root-noise",
+        "--allow-early-stop",
     ])
 
 
@@ -1557,9 +1563,10 @@ def main():
                         help="Policy loss weight passed to primary training phase")
     parser.add_argument("--primary-no-resume", action="store_true",
                         help="Do not initialize primary training from incumbent checkpoint")
-    parser.add_argument("--train-target", type=str, default="source_aware",
+    parser.add_argument("--train-target", type=str, default="game_result",
                         choices=["mcts_value", "game_result", "blend", "source_aware"],
-                        help="Training target passed to train.py")
+                        help="Training target passed to train.py (default game_result: "
+                             "outcome-grounded value labels, REWORK_PLAN.md Phase 2.1)")
     parser.add_argument("--value-head", type=str, default="scalar",
                         choices=["scalar", "wdl"],
                         help="Value head mode passed to train.py")

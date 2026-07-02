@@ -131,14 +131,16 @@ def play_one_game(start_fen, mcts_obj, temperature_moves=15):
         if action is None:
             break
 
+        half = 1 if (game.is_white_turn and game.white_half_pending) else 0
         records.append({
             "fen": game.board.fen(),
             "mcts_value": round(float(root_value), 4),
             "policy": {k: round(v, 4) for k, v in policy.items()},
             "current_player": "white" if game.is_white_turn else "black",
+            "half": half,
         })
 
-        game.apply_action(action)
+        game.apply_search_action(action)
         move_num += 1
 
     result = game.get_result()

@@ -41,13 +41,13 @@ PIECE_TO_LAYER = {
 }
 
 
-def fen_to_tensor(fen, is_white_turn=True):
+def fen_to_tensor(fen, is_white_turn=True, half_pending=False):
     """Convert a FEN string to an (8, 8, 15) tensor.
 
     Layers:
       0-11: piece positions (binary)
       12:   turn indicator (+1 White, -1 Black)
-      13:   move count within turn (0 or 1 for White's double-move)
+      13:   half-move indicator (1.0 on White's SECOND half-move, else 0.0)
       14:   White pawn advancement gradient (0.0 at rank 2, 1.0 at rank 8)
     """
     board = chess.Board(fen)
@@ -64,10 +64,11 @@ def fen_to_tensor(fen, is_white_turn=True):
     # Turn indicator
     tensor[:, :, TURN_LAYER] = 1.0 if is_white_turn else -1.0
 
-    # Move count layer (always 0 at position level — the MCTS treats
-    # double-moves atomically, so we record 0 here; this layer is
-    # reserved for future per-half-move encoding)
-    tensor[:, :, MOVE_COUNT_LAYER] = 0.0
+    # Half-move indicator: 1.0 when this is the second of White's two moves
+    # (white_half_pending), so the network can value/route the two halves
+    # differently (REWORK_PLAN.md Phase 3.2).  0.0 for Black and for White's first
+    # half.  Legacy records without a half flag decode as 0.0 (backward compatible).
+    tensor[:, :, MOVE_COUNT_LAYER] = 1.0 if half_pending else 0.0
 
     # White pawn advancement gradient
     for sq in board.pieces(chess.PAWN, chess.WHITE):
@@ -1061,13 +1062,15 @@ def _convert_games_to_arrays(games, augment, human_repeat,
                 if source_quota is not None and source_counts[source_kind] >= source_quota:
                     break
                 is_white = rec["current_player"] == "white"
+                half_pending = bool(rec.get("half"))
                 pos_key = None
                 dedupe_active = dedupe_positions and source_kind == "humanseed"
                 if dedupe_active:
-                    pos_key = f"{rec['fen']}|{rec['current_player']}"
+                    pos_key = f"{rec['fen']}|{rec['current_player']}|{int(half_pending)}"
                     if pos_key in seen_positions:
                         continue
-                tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white)
+                tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white,
+                                       half_pending=half_pending)
                 # mcts_value from data_generation is already from the
                 # side-to-move perspective for both White and Black.
                 mv = rec["mcts_value"]

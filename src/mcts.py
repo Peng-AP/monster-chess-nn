@@ -26,6 +26,29 @@ def _softmax_masked(logits, indices):
     return {idx: float(exp_vals[j] / total) for j, idx in enumerate(indices)}
 
 
+# ----------------------------------------------------------------------
+# State access helpers.
+#
+# The search prefers the half-move API (get_search_actions / apply_search_action)
+# when the game exposes it: White's two-move turn is decomposed into two plies so
+# each half gets a learned prior and the branching factor collapses from ~900
+# (m1, m2) pairs to ~30+30 single moves (REWORK_PLAN.md Phase 3).  When the game
+# only offers the atomic pair API these fall back to it unchanged.
+# ----------------------------------------------------------------------
+
+def _state_legal_actions(state):
+    fn = getattr(state, "get_search_actions", None)
+    return fn() if fn is not None else state.get_legal_actions()
+
+
+def _state_apply(state, action):
+    fn = getattr(state, "apply_search_action", None)
+    if fn is not None:
+        fn(action)
+    else:
+        state.apply_action(action)
+
+
 class MCTSNode:
     __slots__ = (
         "state", "parent", "children", "action",
@@ -68,14 +91,22 @@ class MCTSNode:
         """AlphaZero-style PUCT: Q + c * P * sqrt(N_parent) / (1 + N)."""
         parent_visits = max(1, self.parent.visit_count) if self.parent else 1
         if self.visit_count == 0:
-            # FPU: start unvisited child Q slightly below parent's value in
-            # the *current selector's* perspective. For non-root parents,
-            # parent.q_value is stored from grandparent perspective, so flip.
+            # FPU: start an unvisited child's Q slightly below the parent's value,
+            # expressed in the *current selector's* (parent side-to-move) perspective.
+            #
+            # A node's stored q_value is in the perspective of the side that moved
+            # INTO it — i.e. its own parent's side-to-move (see _backpropagate).  So
+            # parent.q_value is in the grandparent's perspective.  It matches the
+            # selector's perspective only when grandparent and parent share the same
+            # side to move; otherwise it must be flipped.  Under strict alternation
+            # that flip happens every non-root ply, but White's two consecutive
+            # half-moves do NOT flip side, so the general test below is required.
             if self.parent is None:
                 fpu_q = 0.0
             else:
                 parent_q = self.parent.q_value
-                if self.parent.parent is not None:
+                gp = self.parent.parent
+                if gp is not None and gp.state.is_white_turn != self.parent.state.is_white_turn:
                     parent_q = -parent_q
                 fpu_q = max(-1.0, min(1.0, parent_q - fpu_reduction))
             return fpu_q + c_puct * self.prior * math.sqrt(parent_visits)
@@ -89,7 +120,7 @@ class MCTSNode:
     def expand_one(self):
         """Expand one untried action (UCB1 mode). Returns new child or None."""
         if self._untried_actions is None:
-            self._untried_actions = list(self.state.get_legal_actions())
+            self._untried_actions = list(_state_legal_actions(self.state))
             random.shuffle(self._untried_actions)
 
         if not self._untried_actions:
@@ -98,7 +129,7 @@ class MCTSNode:
 
         action = self._untried_actions.pop()
         child_state = self.state.clone()
-        child_state.apply_action(action)
+        _state_apply(child_state, action)
         child = MCTSNode(child_state, parent=self, action=action)
         self.children.append(child)
 
@@ -117,7 +148,7 @@ class MCTSNode:
                 actions_and_priors = [(a, p / total) for a, p in actions_and_priors]
         for action, prior in actions_and_priors:
             child_state = self.state.clone()
-            child_state.apply_action(action)
+            _state_apply(child_state, action)
             child = MCTSNode(child_state, parent=self, action=action, prior=prior)
             self.children.append(child)
         self._is_expanded = True
@@ -136,10 +167,22 @@ class MCTS:
     VIRTUAL_LOSS = 3
 
     def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None,
-                 batch_size=128):
+                 batch_size=16, root_noise=True, allow_early_stop=True):
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn or evaluate
+        # Leaf-parallel batch width.  Kept small: wide in-tree batching queues many
+        # leaves against the same shallow tree and degrades selection quality.  GPU
+        # throughput comes from parallelism ACROSS games (workers), not within one
+        # tree (REWORK_PLAN.md Phase 1.3).
         self.batch_size = batch_size
+        # Dirichlet root noise belongs in self-play generation only.  Arena / eval /
+        # benchmark / human play construct with root_noise=False so measurement and
+        # play are not perturbed (REWORK_PLAN.md Phase 1.4).
+        self.root_noise = root_noise
+        # Early stopping truncates the visit distribution that becomes the policy
+        # training target, so callers that RECORD data disable it; callers that only
+        # need the move (play / arena) keep it (REWORK_PLAN.md Phase 1.5).
+        self.allow_early_stop = allow_early_stop
         self._supports_batch = hasattr(self.eval_fn, 'batch_evaluate')
         self._has_policy = hasattr(self.eval_fn, 'evaluate_with_policy')
 
@@ -180,15 +223,20 @@ class MCTS:
             key = self._action_key(child.action, root_state.is_white_turn)
             children_info.append((child, key, child.visit_count))
 
-        # Build action_probs from visit distribution
-        pseudo = max(0.0, float(POLICY_TARGET_PSEUDOCOUNT))
+        # Build action_probs from the visit distribution.  POLICY_TARGET_PSEUDOCOUNT
+        # is a *fraction of total visits* spread uniformly (0 = raw visit counts, the
+        # AlphaZero target).  This keeps smoothing proportional to search effort
+        # instead of swamping low-sim targets (REWORK_PLAN.md Phase 1.6).
         total_visits = sum(info[2] for info in children_info)
-        denom = total_visits + pseudo * len(children_info)
+        pseudo_frac = max(0.0, float(POLICY_TARGET_PSEUDOCOUNT))
+        pseudo_total = pseudo_frac * total_visits
+        per_child = pseudo_total / len(children_info) if children_info else 0.0
+        denom = total_visits + pseudo_total
         if denom <= 0:
             uniform = 1.0 / len(children_info)
             action_probs = {info[1]: uniform for info in children_info}
         else:
-            action_probs = {info[1]: (info[2] + pseudo) / denom for info in children_info}
+            action_probs = {info[1]: (info[2] + per_child) / denom for info in children_info}
 
         # Temperature-based selection
         if temperature < 0.01:
@@ -215,7 +263,8 @@ class MCTS:
             node = self._select_ucb(root)
             leaf, value = self._evaluate_and_expand_ucb(node)
             self._backpropagate(leaf, value)
-            if i % 32 == 31 and self._should_stop_early(root, i + 1):
+            if (self.allow_early_stop and i % 32 == 31
+                    and self._should_stop_early(root, i + 1)):
                 break
 
     def _select_ucb(self, node):
@@ -243,7 +292,9 @@ class MCTS:
 
     def _run_batched(self, root):
         sims_done = 0
-        while sims_done < self.num_simulations and not self._should_stop_early(root, sims_done):
+        while sims_done < self.num_simulations:
+            if self.allow_early_stop and self._should_stop_early(root, sims_done):
+                break
             batch_needs_eval = []
             batch_terminal = []
             batch_count = min(self.batch_size, self.num_simulations - sims_done)
@@ -290,58 +341,67 @@ class MCTS:
     def _run_batched_puct(self, root):
         """PUCT-based MCTS with batched NN evaluation and policy priors.
 
-        Flow per simulation:
-          1. Select leaf via PUCT scores
-          2. If leaf is unexpanded: add to batch for NN eval
-          3. After batch eval: expand leaf with policy priors, backprop value
+        The root is expanded and backpropagated synchronously first, so the batch
+        loop always descends into real children.  During batch collection a
+        `pending` set tracks selected nodes; re-selecting a pending node means the
+        current frontier is exhausted, so the batch is processed early rather than
+        padded with duplicate work (virtual loss cannot diversify an unexpanded
+        frontier).  Simulations are counted by completed backpropagations, never by
+        selection attempts (REWORK_PLAN.md Phase 1.1-1.2).
         """
-        noise_added = False
-        sims_done = 0
-        while sims_done < self.num_simulations and not self._should_stop_early(root, sims_done):
-            batch_leaves = []       # unexpanded leaves needing NN eval
-            batch_terminal = []     # (leaf, value)
-            batch_count = min(self.batch_size, self.num_simulations - sims_done)
+        if root.state.is_terminal():
+            self._backpropagate(root, root.state.get_result())
+            return
 
-            for _ in range(batch_count):
+        root_value, root_policy = self.eval_fn.evaluate_with_policy(root.state)
+        if not root.is_fully_expanded():
+            self._expand_with_policy(root, root_policy)
+        self._backpropagate(root, root_value)
+        if self.root_noise and root.children:
+            self._add_dirichlet_noise(root)
+
+        sims_done = 1  # the root evaluation is one simulation
+        while sims_done < self.num_simulations:
+            if self.allow_early_stop and self._should_stop_early(root, sims_done):
+                break
+
+            target = min(self.batch_size, self.num_simulations - sims_done)
+            leaves = []          # (node, needs_nn, immediate_value_or_None)
+            pending = set()
+            while len(leaves) < target:
                 node = self._select_puct(root)
-
-                if node.state.is_terminal():
-                    batch_terminal.append((node, node.state.get_result()))
-                    continue
-
-                if node.is_fully_expanded():
-                    # Fully expanded but all children terminal or similar
-                    batch_terminal.append((node, self.eval_fn(node.state)))
-                    continue
-
-                # Node needs expansion — queue for NN eval
+                if id(node) in pending:
+                    break  # frontier exhausted for this batch
+                pending.add(id(node))
                 self._apply_virtual_loss(node)
-                batch_leaves.append(node)
+                if node.state.is_terminal():
+                    leaves.append((node, False, node.state.get_result()))
+                elif node.is_fully_expanded():
+                    # Selection stopped at an expanded node with no descendable
+                    # child (e.g. no legal moves): evaluate in place.
+                    leaves.append((node, False, self.eval_fn(node.state)))
+                else:
+                    leaves.append((node, True, None))
 
-            # Batch evaluate all leaves
-            if batch_leaves:
-                states = [leaf.state for leaf in batch_leaves]
+            nn_nodes = [n for (n, needs, _) in leaves if needs]
+            nn_results = {}
+            if nn_nodes:
+                states = [n.state for n in nn_nodes]
                 values, policies = self.eval_fn.batch_evaluate_with_policy(states)
+                for n, v, p in zip(nn_nodes, values, policies):
+                    nn_results[id(n)] = (v, p)
 
-                for leaf, value, policy in zip(batch_leaves, values, policies):
-                    self._revert_virtual_loss(leaf)
+            for node, needs, imm in leaves:
+                self._revert_virtual_loss(node)
+                if needs:
+                    value, policy = nn_results[id(node)]
+                    if not node.is_fully_expanded():
+                        self._expand_with_policy(node, policy)
+                    self._backpropagate(node, value)
+                else:
+                    self._backpropagate(node, imm)
 
-                    # Expand with policy priors (if not already expanded
-                    # by a concurrent batch element — race guard)
-                    if not leaf.is_fully_expanded():
-                        self._expand_with_policy(leaf, policy)
-
-                    self._backpropagate(leaf, value)
-
-                # Add Dirichlet noise to root after its first expansion
-                if not noise_added and root.children:
-                    self._add_dirichlet_noise(root)
-                    noise_added = True
-
-            for leaf, value in batch_terminal:
-                self._backpropagate(leaf, value)
-
-            sims_done += batch_count
+            sims_done += len(leaves)
 
     def _select_puct(self, node):
         """Walk down tree using PUCT until we hit a terminal or unexpanded node."""
@@ -354,50 +414,57 @@ class MCTS:
         return node
 
     def _expand_with_policy(self, node, policy_logits):
-        """Expand all children of a node using policy logits for priors."""
-        from data_processor import move_to_index
+        """Expand all children of a node using policy logits for priors.
 
-        actions = node.state.get_legal_actions()
+        Half-move search yields single Move objects for every ply (both White halves
+        and Black), so priors come straight from the policy head via move_to_index.
+        The legacy atomic path yields (m1, m2) tuples for White; those keep the old
+        marginalized-P(m1) priors and the move-count cap.
+        """
+        actions = _state_legal_actions(node.state)
         if not actions:
             node._is_expanded = True
             node._untried_actions = []
             return
 
-        is_white = node.state.is_white_turn
-
-        # Cap White's double-move children to top 80 by prior (move count pruning)
-        max_ch = 80 if is_white else None
+        is_pair = isinstance(actions[0], tuple)
 
         if policy_logits is None:
-            # No policy available — use uniform priors
             uniform = 1.0 / len(actions)
+            max_ch = 80 if is_pair else None
             node.expand_all([(a, uniform) for a in actions], max_children=max_ch)
             return
 
-        if is_white:
+        if is_pair:
             actions_and_priors = self._white_priors(actions, policy_logits)
+            node.expand_all(actions_and_priors, max_children=80)
         else:
-            actions_and_priors = self._black_priors(actions, policy_logits)
+            actions_and_priors = self._single_move_priors(actions, policy_logits)
+            node.expand_all(actions_and_priors, max_children=None)
 
-        node.expand_all(actions_and_priors, max_children=max_ch)
+    def _single_move_priors(self, legal_actions, policy_logits):
+        """Priors for single-move plies (Black, and either White half-move)."""
+        from data_processor import move_to_index
+
+        indices = [move_to_index(m) for m in legal_actions]
+        probs = _softmax_masked(policy_logits, indices)
+        return [(move, probs.get(idx, 1.0 / len(legal_actions)))
+                for move, idx in zip(legal_actions, indices)]
 
     def _white_priors(self, legal_actions, policy_logits):
-        """Compute priors for White's (m1, m2) pairs.
+        """Priors for White's atomic (m1, m2) pairs (legacy / fallback path).
 
-        Uses P(m1) from the policy head, distributed uniformly across
-        the m2 continuations for each m1:  P(m1, m2) = P(m1) / |m2s|.
+        Uses P(m1) from the policy head, distributed uniformly across the m2
+        continuations for each m1:  P(m1, m2) = P(m1) / |m2s|.
         """
         from data_processor import move_to_index
 
-        # Group pairs by m1 index
         m1_groups = defaultdict(list)
         for m1, m2 in legal_actions:
             m1_groups[move_to_index(m1)].append((m1, m2))
 
-        # P(m1) via masked softmax over legal first moves
         m1_probs = _softmax_masked(policy_logits, list(m1_groups.keys()))
 
-        # Distribute each P(m1) uniformly among its m2s
         actions_and_priors = []
         for m1_idx, pairs in m1_groups.items():
             p_m1 = m1_probs.get(m1_idx, 1.0 / len(m1_groups))
@@ -407,15 +474,9 @@ class MCTS:
 
         return actions_and_priors
 
+    # Backwards-compatible alias (older imports / tests may reference this name).
     def _black_priors(self, legal_actions, policy_logits):
-        """Compute priors for Black's single moves from policy logits."""
-        from data_processor import move_to_index
-
-        indices = [move_to_index(m) for m in legal_actions]
-        probs = _softmax_masked(policy_logits, indices)
-
-        return [(move, probs.get(idx, 1.0 / len(legal_actions)))
-                for move, idx in zip(legal_actions, indices)]
+        return self._single_move_priors(legal_actions, policy_logits)
 
     # ------------------------------------------------------------------
     # Shared helpers
@@ -438,7 +499,12 @@ class MCTS:
             n = n.parent
 
     def _backpropagate(self, node, value):
-        """Propagate value (from White's perspective) back up to root."""
+        """Propagate value (from White's perspective) back up to root.
+
+        A node's total_value accumulates in the perspective of the side that moved
+        into it (its parent's side-to-move), so Q is read consistently by that
+        parent during selection.
+        """
         while node is not None:
             node.visit_count += 1
             if node.parent is not None:
@@ -451,8 +517,8 @@ class MCTS:
 
     @staticmethod
     def _action_key(action, is_white):
-        if is_white:
+        """Stable string key for an action (atomic pair or single half-move)."""
+        if isinstance(action, tuple):
             m1, m2 = action
             return f"{m1.uci()},{m2.uci()}"
-        else:
-            return action.uci()
+        return action.uci()

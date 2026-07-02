@@ -219,15 +219,16 @@ class DualHeadNet(nn.Module):
                 self.wdl_head_black.load_state_dict(self.wdl_head.state_dict())
 
     def _make_value_head(self):
+        # No dropout (REWORK_PLAN.md Phase 2.2): heavy dropout on a small GAP feature
+        # pushes predictions toward the batch mean (~0), which was a direct contributor
+        # to flat value calibration.  Weight decay (build_optimizer) is the regularizer.
         return nn.Sequential(
             nn.AdaptiveAvgPool2d(1),       # (N, C, 1, 1)
             nn.Flatten(),                  # (N, C)
             nn.Linear(self.backbone_out_channels, 128),
             nn.ReLU(),
-            nn.Dropout(0.3),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(0.3),
             nn.Linear(64, 1),
             nn.Tanh(),
         )
@@ -238,7 +239,6 @@ class DualHeadNet(nn.Module):
             nn.Flatten(),
             nn.Linear(self.backbone_out_channels, 128),
             nn.ReLU(),
-            nn.Dropout(0.3),
             nn.Linear(128, 3),  # [loss, draw, win]
         )
 

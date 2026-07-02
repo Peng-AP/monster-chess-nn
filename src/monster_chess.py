@@ -21,6 +21,10 @@ class MonsterChessGame:
         self.turn_count = 0
         self._terminal = False
         self._result = None  # +1 white wins, -1 black wins, 0 draw
+        # True only between White's first and second half-move (search/training
+        # decomposition — see get_search_actions/apply_search_action).  The atomic
+        # (m1, m2) API leaves this False throughout.
+        self.white_half_pending = False
 
     def clone(self):
         g = MonsterChessGame.__new__(MonsterChessGame)
@@ -29,6 +33,7 @@ class MonsterChessGame:
         g.turn_count = self.turn_count
         g._terminal = self._terminal
         g._result = self._result
+        g.white_half_pending = self.white_half_pending
         return g
 
     def current_player(self):
@@ -52,11 +57,18 @@ class MonsterChessGame:
             self._result = 1
         elif self.turn_count >= MAX_GAME_TURNS:
             self._terminal = True
-            # Use heuristic to re-label move-limit draws: if Black has a
-            # dominant material advantage (score < -0.4), record -0.5 instead
-            # of 0 so the model learns these are Black-favored, not neutral.
+            # Re-label move-limit endings by the final position, SYMMETRICALLY, so
+            # neither side is favored a priori (REWORK_PLAN.md Phase 2.4).  A game
+            # reaching the ply cap while one side is decisively ahead is not a true
+            # draw; this is a position-dependent proxy (carries gradient), not an
+            # asserted constant.  The threshold applies equally in both directions.
             h = _heuristic_evaluate(self)
-            self._result = -0.5 if h < -0.4 else 0
+            if h < -0.4:
+                self._result = -0.5
+            elif h > 0.4:
+                self._result = 0.5
+            else:
+                self._result = 0
         # Skip the expensive get_legal_actions() check — stalemate is
         # extremely rare in Monster Chess and not worth the O(n²) cost
         # on every terminal check during MCTS.
@@ -206,11 +218,89 @@ class MonsterChessGame:
         return safe_moves if safe_moves else all_moves
 
     # ------------------------------------------------------------------
-    # Applying actions
+    # Half-move (search / training) API
+    #
+    # White's two-move turn is decomposed into two single-move plies so MCTS can
+    # give each half a learned prior and the branching factor collapses from ~900
+    # (m1, m2) pairs to ~30 + ~30 single moves (REWORK_PLAN.md Phase 3).  The atomic
+    # pair API above is preserved unchanged for real game play (play.py) and for the
+    # strict pair-level legality of recorded human games.
+    #
+    # Legality note: a first half-move (m1) carries NO king-safety constraint —
+    # White may step INTO check, then out on m2 (the defining Monster Chess rule).
+    # Only the completed turn (after m2) must leave White's king safe, enforced at
+    # the pending node.  This differs slightly from the atomic rule, which hides an
+    # m1 whose only continuations are unsafe when a globally-safe pair exists; here
+    # such an m1 is offered but the search sees the losing m2 and avoids it.
+    # ------------------------------------------------------------------
+
+    def get_search_actions(self):
+        """Legal single-move actions for the current (half-)ply."""
+        if self._terminal or self.is_terminal():
+            return []
+        if not self.is_white_turn:
+            return self._get_black_actions()
+        if self.white_half_pending:
+            return self._white_second_half_moves()
+        return self._white_single_moves()
+
+    def _white_second_half_moves(self):
+        """White's legal second half-moves: king-safe ones, else all (forced blunder)."""
+        self.board.turn = chess.WHITE
+        candidates = list(self.board.pseudo_legal_moves)
+        if not candidates:
+            return []
+        safe = []
+        allm = []
+        for m2 in candidates:
+            self.board.push(m2)
+            # Capturing the Black king wins outright if White stays safe.
+            if self.board.king(chess.BLACK) is None:
+                wk = self.board.king(chess.WHITE)
+                white_safe = wk is None or not self.board.is_attacked_by(chess.BLACK, wk)
+                self.board.pop()
+                if white_safe:
+                    return [m2]
+                continue
+            allm.append(m2)
+            wk = self.board.king(chess.WHITE)
+            if wk is not None and not self.board.is_attacked_by(chess.BLACK, wk):
+                safe.append(m2)
+            self.board.pop()
+        return safe if safe else allm
+
+    def apply_search_action(self, action):
+        """Apply one half-move (or a Black move) in-place and advance state."""
+        if self.is_white_turn and not self.white_half_pending:
+            # First half of White's turn: no side flip, no turn increment yet.
+            # Keep board.turn = WHITE so fen() stays consistent with the fact that
+            # White is still to move (its second half); python-chess would otherwise
+            # flip it to BLACK on push.
+            self.board.push(action)
+            if self.board.king(chess.BLACK) is not None:
+                self.board.turn = chess.WHITE
+            self.white_half_pending = True
+        elif self.is_white_turn and self.white_half_pending:
+            # Second half completes White's turn.
+            self.board.turn = chess.WHITE
+            self.board.push(action)
+            self.white_half_pending = False
+            self.is_white_turn = False
+            self.turn_count += 1
+        else:
+            # Black's single move.
+            self.board.push(action)
+            self.is_white_turn = True
+            self.turn_count += 1
+        self._terminal = False
+        self._result = None
+
+    # ------------------------------------------------------------------
+    # Applying actions (atomic pair API)
     # ------------------------------------------------------------------
 
     def apply_action(self, action):
-        """Apply an action in-place and advance the game state."""
+        """Apply an atomic action in-place and advance the game state."""
         if self.is_white_turn:
             m1, m2 = action
             self.board.push(m1)
@@ -226,6 +316,7 @@ class MonsterChessGame:
         self.turn_count += 1
         self._terminal = False
         self._result = None
+        self.white_half_pending = False
 
     def apply_random_action(self):
         """Pick and apply a random legal action. Much faster than
