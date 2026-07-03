@@ -353,6 +353,19 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
             _opponent_eval_pool.append(NNEvaluator(p))
 
 
+def _mate_algo_applicable(game):
+    """True when the verified scripted conversion applies: bare White king vs
+    Black king + at least three heavies (Q/R)."""
+    board = game.board
+    if chess.popcount(board.occupied_co[chess.WHITE]) != 1:
+        return False
+    if board.king(chess.BLACK) is None or board.king(chess.WHITE) is None:
+        return False
+    heavies = (board.pieces(chess.QUEEN, chess.BLACK)
+               | board.pieces(chess.ROOK, chess.BLACK))
+    return len(heavies) >= 3
+
+
 def play_game(num_simulations, game_deadline=None):
     """Play one full game of Monster Chess via MCTS self-play.
 
@@ -419,6 +432,7 @@ def play_game(num_simulations, game_deadline=None):
     records = []
     move_number = 0
     aborted = False
+    mate_bot = None  # ScriptedMate takes over Black once the position qualifies
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
@@ -442,7 +456,29 @@ def play_game(num_simulations, game_deadline=None):
             rng=rng,
         )
 
-        if not is_white and scripted_fn is not None:
+        if not is_white and (mate_bot is not None or _mate_algo_applicable(game)):
+            # Provably-won ending reached (bare White king vs 3+ Black
+            # heavies): defer Black to the verified scripted conversion so the
+            # game finishes with a REAL outcome instead of a shuffle-timeout.
+            # Not an asserted label — the algorithm plays the position out.
+            if mate_bot is None:
+                from scripted_mate import ScriptedMate
+                mate_bot = ScriptedMate()
+            action = mate_bot.select_move(game)
+            if action is None:
+                break
+            if not skip_record:
+                from evaluation import evaluate
+                root_value = evaluate(game)
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(-root_value, 4),
+                    "policy": {action.uci(): 1.0},
+                    "current_player": "black",
+                    "half": 0,
+                })
+            game.apply_search_action(action)
+        elif not is_white and scripted_fn is not None:
             # Use scripted play for Black in curriculum games
             game.board.turn = chess.BLACK
             action = scripted_fn(game.board)
