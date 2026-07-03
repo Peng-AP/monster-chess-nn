@@ -92,6 +92,14 @@ def _white_can_capture_king_single(board):
     return False
 
 
+def _white_threat_scan(game_state):
+    """Pending-aware White capture threat: single-move scan when White has
+    already spent the first half of its turn, full double-move scan otherwise."""
+    if getattr(game_state, "white_half_pending", False):
+        return _white_can_capture_king_single(game_state.board)
+    return _white_can_capture_king(game_state.board)
+
+
 def _black_can_capture_king(board):
     """Check if Black can capture White's king in one move.
 
@@ -164,13 +172,9 @@ def evaluate(game_state):
         return 1.0
 
     # ---- Capture threat scan (dominates all other terms) ----
-    # On a half-pending state (White already played m1) only ONE White move
-    # remains, so the two-move scan would count threats a turn early.
-    if getattr(game_state, "white_half_pending", False):
-        white_threat = _white_can_capture_king_single(board)
-    else:
-        white_threat = _white_can_capture_king(board)
-    if white_threat:
+    # Pending-aware: with only one White half-move left the full two-move scan
+    # would count threats a turn early.
+    if _white_threat_scan(game_state):
         return 0.95  # White captures Black's king within the current turn
     if _black_can_capture_king(board):
         return -0.95  # Black captures White's king next move
@@ -432,7 +436,7 @@ class NNEvaluator:
             return -1.0, None
         if board.king(chess.BLACK) is None:
             return 1.0, None
-        if _white_can_capture_king(board):
+        if _white_threat_scan(game_state):
             return 0.95, None
         if _black_can_capture_king(board):
             return -0.95, None
@@ -464,6 +468,27 @@ class NNEvaluator:
         """Evaluate multiple states, return (values, policies) lists."""
         return self._batch_impl(game_states)
 
+    def batch_policies(self, game_states):
+        """Policy logits only, one NN forward, NO threat scans.
+
+        For callers (HybridEvaluator) that already ran the capture scans as
+        part of their own value computation — avoids the double scan
+        (REWORK_PLAN.md Phase 4.1).
+        """
+        if not game_states:
+            return []
+        tensors = [self.fen_to_tensor(
+            gs.fen(), is_white_turn=gs.is_white_turn,
+            half_pending=getattr(gs, "white_half_pending", False),
+        ) for gs in game_states]
+        batch_np = np.stack(tensors, axis=0).transpose(0, 3, 1, 2)
+        batch = self.torch.from_numpy(batch_np).to(self.device)
+        if self._half:
+            batch = batch.half()
+        with self.torch.no_grad():
+            _val_out, pol_out = self.model(batch)
+        return list(pol_out.cpu().float().numpy())
+
     def _batch_impl(self, game_states):
         values = []
         policy_list = []
@@ -479,7 +504,7 @@ class NNEvaluator:
             elif board.king(chess.BLACK) is None:
                 values.append(1.0)
                 policy_list.append(None)
-            elif _white_can_capture_king(board):
+            elif _white_threat_scan(gs):
                 values.append(0.95)
                 policy_list.append(None)
             elif _black_can_capture_king(board):
@@ -535,15 +560,33 @@ class HybridEvaluator:
         return evaluate(game_state)
 
     def evaluate_with_policy(self, game_state):
-        """Heuristic value + NN policy logits."""
-        _, policy = self._nn.evaluate_with_policy(game_state)
-        return evaluate(game_state), policy
+        """Heuristic value + NN policy logits (single threat scan, in evaluate).
+
+        |value| >= 0.95 means the heuristic's capture scan (or its score cap)
+        fired: the position is decided, so the NN forward is skipped and MCTS
+        falls back to uniform priors there — priors are irrelevant in decided
+        positions.
+        """
+        value = evaluate(game_state)
+        if abs(value) >= 0.95:
+            return value, None
+        policy = self._nn.batch_policies([game_state])[0]
+        return value, policy
 
     def batch_evaluate(self, game_states):
         return [evaluate(gs) for gs in game_states]
 
     def batch_evaluate_with_policy(self, game_states):
-        """Heuristic values + NN policy logits for a batch."""
-        _, policies = self._nn.batch_evaluate_with_policy(game_states)
+        """Heuristic values + NN policy logits for a batch.
+
+        Threat scans run exactly once (inside evaluate); the NN forward covers
+        only undecided states (REWORK_PLAN.md Phase 4.1).
+        """
         values = [evaluate(gs) for gs in game_states]
+        policies = [None] * len(game_states)
+        undecided = [i for i, v in enumerate(values) if abs(v) < 0.95]
+        if undecided:
+            pols = self._nn.batch_policies([game_states[i] for i in undecided])
+            for i, p in zip(undecided, pols):
+                policies[i] = p
         return values, policies
