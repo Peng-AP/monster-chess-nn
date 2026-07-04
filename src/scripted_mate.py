@@ -67,7 +67,10 @@ class ScriptedMate:
         for m in legal:
             g = game.clone()
             g.apply_search_action(m)
-            score = self._white_reply_min(g.board, depth=2)
+            # depth=1: a single danger-gated escape extension.  depth=2
+            # resolved chases slightly better but exploded combinatorially in
+            # chase-heavy games (one 16-game verification batch took ~7 h).
+            score = self._white_reply_min(g.board, depth=1)
             # Anti-repetition: on a score plateau, drifting to novel positions
             # beats shuffling between two of them until the turn cap.
             key = g.board.board_fen()
