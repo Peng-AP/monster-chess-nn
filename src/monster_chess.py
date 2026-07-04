@@ -120,18 +120,13 @@ class MonsterChessGame:
         for m1 in first_moves:
             self.board.push(m1)
 
-            # If first move captured Black's king, game over — pair with null
+            # If first move captured Black's king, game over — pair with null.
+            # King capture wins UNCONDITIONALLY: the game ends before any
+            # check on White's own king can matter ("double-move check" rule,
+            # confirmed 2026-07-04).
             if self.board.king(chess.BLACK) is None:
-                white_king = self.board.king(chess.WHITE)
-                white_attacked = (
-                    white_king is not None
-                    and self.board.is_attacked_by(chess.BLACK, white_king)
-                )
                 self.board.pop()
-                if not white_attacked:
-                    return [(m1, chess.Move.null())]
-                # Unsafe king-capture is illegal under self-preservation.
-                continue
+                return [(m1, chess.Move.null())]
 
             self.board.turn = chess.WHITE
             second_moves = list(self.board.pseudo_legal_moves)
@@ -139,20 +134,13 @@ class MonsterChessGame:
             for m2 in second_moves:
                 self.board.push(m2)
 
-                # If second move captured Black's king, instant win
+                # If second move captured Black's king, instant win —
+                # unconditionally (game ends before White's own check matters).
                 if self.board.king(chess.BLACK) is None:
-                    white_king = self.board.king(chess.WHITE)
-                    white_attacked = (
-                        white_king is not None
-                        and self.board.is_attacked_by(chess.BLACK, white_king)
-                    )
                     self.board.pop()
-                    if not white_attacked:
-                        self.board.turn = chess.BLACK
-                        self.board.pop()
-                        return [(m1, m2)]
-                    # Unsafe king-capture is illegal under self-preservation.
-                    continue
+                    self.board.turn = chess.BLACK
+                    self.board.pop()
+                    return [(m1, m2)]
 
                 all_pairs.append((m1, m2))
 
@@ -193,17 +181,12 @@ class MonsterChessGame:
         for move in candidate_moves:
             self.board.push(move)
 
-            # Immediate king capture wins if Black king remains safe.
+            # Immediate king capture wins UNCONDITIONALLY — the game ends
+            # before White could answer, so Black's own king safety after the
+            # capture is irrelevant.
             if self.board.king(chess.WHITE) is None:
-                black_king = self.board.king(chess.BLACK)
-                black_attacked = (
-                    black_king is not None
-                    and self.board.is_attacked_by(chess.WHITE, black_king)
-                )
                 self.board.pop()
-                if not black_attacked:
-                    return [move]
-                continue
+                return [move]
 
             all_moves.append(move)
             black_king = self.board.king(chess.BLACK)
@@ -254,14 +237,11 @@ class MonsterChessGame:
         allm = []
         for m2 in candidates:
             self.board.push(m2)
-            # Capturing the Black king wins outright if White stays safe.
+            # Capturing the Black king wins outright — UNCONDITIONALLY, even
+            # with White's own king left attacked (the game is already over).
             if self.board.king(chess.BLACK) is None:
-                wk = self.board.king(chess.WHITE)
-                white_safe = wk is None or not self.board.is_attacked_by(chess.BLACK, wk)
                 self.board.pop()
-                if white_safe:
-                    return [m2]
-                continue
+                return [m2]
             allm.append(m2)
             wk = self.board.king(chess.WHITE)
             if wk is not None and not self.board.is_attacked_by(chess.BLACK, wk):

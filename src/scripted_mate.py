@@ -17,8 +17,10 @@ position looks like:
 - a <= 5: the fence stops LANDING beyond it, not CAPTURING beyond it; keeping
   the White king's ceiling at vrank 4 leaves the Black king zone (vrank 7)
   out of double-move capture range.
-- Immunity: White may capture the Black king only if White ends its turn
-  safe, so a DEFENDED Black king is immune (barring forced-blunder cases).
+- King capture wins UNCONDITIONALLY (double-move-check rule, confirmed
+  2026-07-04): there is no "defended king immunity".  The Black king's only
+  safety is distance — Chebyshev >= 3 from the White king whenever White is
+  to move.
 - Mate: shrink the confinement zone; when the zone is fully covered every
   White turn ends attacked and the king is captured next move.
 
@@ -65,7 +67,7 @@ class ScriptedMate:
         for m in legal:
             g = game.clone()
             g.apply_search_action(m)
-            score = self._white_reply_min(g.board)
+            score = self._white_reply_min(g.board, depth=2)
             # Anti-repetition: on a score plateau, drifting to novel positions
             # beats shuffling between two of them until the turn cap.
             key = g.board.board_fen()
@@ -77,8 +79,15 @@ class ScriptedMate:
         return best_move if best_move is not None else legal[0]
 
     # ------------------------------------------------------------------
-    def _white_reply_min(self, board):
-        """Worst-case (for Black) score over all White double-move replies."""
+    def _white_reply_min(self, board, depth=0):
+        """Worst-case (for Black) score over all White double-move replies.
+
+        depth > 0 enables a danger-gated extension: when a reply leaves the
+        Black king in the chase zone (Chebyshev <= 3), the leaf is resolved by
+        a king-escape search one Black+White level deeper instead of the
+        static score — 2-ply alone cannot see multi-turn king hunts, which
+        was the residual ~6% death rate.
+        """
         wk = board.king(chess.WHITE)
         bk = board.king(chess.BLACK)
         if bk is None:
@@ -96,13 +105,10 @@ class ScriptedMate:
         for m1 in m1s:
             if m1 is not None:
                 if m1.to_square == bk:
-                    # Capture on the first half wins for White immediately
-                    # (rule: only offered/kept when White ends safe, but be
-                    # conservative and treat it as a loss unless defended).
-                    if not board.is_attacked_by(chess.BLACK, bk):
-                        board.turn = saved_turn
-                        return -INF
-                    continue
+                    # Capture on the first half wins for White immediately —
+                    # unconditionally (double-move-check rule).
+                    board.turn = saved_turn
+                    return -INF
                 board.push(m1)
                 board.turn = chess.WHITE
                 wk1 = board.king(chess.WHITE)
@@ -117,30 +123,63 @@ class ScriptedMate:
                 any_m2 = False
                 for m2 in m2s:
                     if m2.to_square == bk:
-                        board.push(m2)
-                        wk2 = board.king(chess.WHITE)
-                        safe = (wk2 is None or
-                                not board.is_attacked_by(chess.BLACK, wk2))
+                        # Unconditional loss: king capture wins regardless of
+                        # the capturer's own safety.
                         board.pop()
-                        board.turn = chess.WHITE
-                        if safe:
-                            board.pop()
-                            board.turn = saved_turn
-                            return -INF  # king falls: position is lost
-                        continue
+                        board.turn = saved_turn
+                        return -INF
                     any_m2 = True
                     board.push(m2)
-                    s = self._score(board)
+                    s = self._leaf(board, depth)
                     board.pop()
                     board.turn = chess.WHITE
                     worst = min(worst, s)
                 if not any_m2:
-                    worst = min(worst, self._score(board))
+                    worst = min(worst, self._leaf(board, depth))
                 board.pop()
             if worst == -INF:
                 break
         board.turn = saved_turn
         return worst
+
+    def _leaf(self, board, depth):
+        """Leaf resolution: static score, or a king-escape extension when the
+        Black king is in the chase zone and depth remains."""
+        if depth <= 0:
+            return self._score(board)
+        wk = board.king(chess.WHITE)
+        bk = board.king(chess.BLACK)
+        if wk is None or bk is None or _cheb(bk, wk) > 3:
+            return self._score(board)
+        return self._black_escape_max(board, depth - 1)
+
+    def _black_escape_max(self, board, depth):
+        """Black-to-move escape search: king steps plus win-by-capture, each
+        answered by White's minimizing reply.  Restricted to king moves — the
+        point is resolving the chase, not full-width search."""
+        wk = board.king(chess.WHITE)
+        bk = board.king(chess.BLACK)
+        if wk is None:
+            return INF
+        if bk is None:
+            return -INF
+        saved_turn = board.turn
+        board.turn = chess.BLACK
+        best = None
+        for m in list(board.pseudo_legal_moves):
+            if m.to_square == wk:
+                board.turn = saved_turn
+                return INF  # capture the White king: win
+            if m.from_square != bk:
+                continue
+            board.push(m)
+            s = self._white_reply_min(board, depth=depth)
+            board.pop()
+            board.turn = chess.BLACK
+            best = s if best is None else max(best, s)
+        board.turn = saved_turn
+        # No king move at all: fall back to the static score.
+        return best if best is not None else self._score(board)
 
     # ------------------------------------------------------------------
     def _score(self, board):
@@ -165,15 +204,32 @@ class ScriptedMate:
         if board.is_attacked_by(chess.BLACK, wk):
             score += 900.0
 
-        # King safety / immunity.
-        bk_defended = board.is_attacked_by(chess.BLACK, bk)
+        # King safety is DISTANCE ONLY (no defended-king immunity under the
+        # corrected rules: king capture wins unconditionally).
         d_kings = _cheb(bk, wk)
-        if d_kings <= 2 and not bk_defended:
+        if d_kings <= 2:
             score -= 5000.0  # White captures next turn
-        if d_kings <= 4:
-            # Defense makes proximity survivable, not desirable — a big bonus
-            # here taught the king to camp beside White, blocking fence ranks.
-            score += 4.0 if bk_defended else -30.0
+        elif d_kings <= 4:
+            # In the chase zone the king lives or dies by ESCAPE GEOMETRY —
+            # a cornered king with no square that restores distance >= 3 is
+            # dead in a few turns even though no single 2-ply line shows it.
+            escapes = 0
+            bkf, bkr = chess.square_file(bk), chess.square_rank(bk)
+            for df in (-1, 0, 1):
+                for dr in (-1, 0, 1):
+                    if df == 0 and dr == 0:
+                        continue
+                    f, r = bkf + df, bkr + dr
+                    if 0 <= f <= 7 and 0 <= r <= 7:
+                        to = chess.square(f, r)
+                        if board.piece_at(to) is None and _cheb(to, wk) >= 3:
+                            escapes += 1
+            if escapes == 0:
+                score -= 4000.0
+            elif escapes == 1:
+                score -= 120.0
+            else:
+                score -= 40.0 if d_kings == 3 else 10.0
         score += min(d_kings, 5) * 2.0
 
         # Material: a heavy within double-move range is (conservatively) lost.
@@ -191,6 +247,11 @@ class ScriptedMate:
             r = chess.square_rank(sq)
             if r == bk_rank and bk_mid:
                 continue
+            # A cover the king can capture this turn (Chebyshev <= 2, transit
+            # through attacked squares is legal) is already gone — counting it
+            # made the search hold a fence while its rook was being eaten.
+            if _cheb(sq, wk) < 3:
+                continue
             covered.add(vr(r))
 
         # Fence: tightest adjacent covered pair strictly above the king,
@@ -200,8 +261,21 @@ class ScriptedMate:
             if vwk < a <= 5 and (a + 1) in covered:
                 fence = a
                 break
+        if vwk >= 5:
+            # White king inside the Black zone: crisis under corrected rules
+            # (no immunity — only fences keep the Black king alive).
+            score -= 150.0
+
         if fence is not None:
-            score += 120.0 + (5 - fence) * 25.0
+            # The fence is EVERYTHING: without immunity, a lone king is
+            # always run down in the open (White gains one Chebyshev step per
+            # turn).  These weights must dominate all shaping terms so the
+            # 2-ply search spends its first tempi completing the fence.
+            score += 200.0 + (5 - fence) * 25.0
+            bk_vr = vr(bk_rank)
+            # Safe side of the fence: White's ceiling is fence-1 (landing),
+            # capture reach fence+1, so the king needs vrank >= fence+2.
+            score += 60.0 if bk_vr >= fence + 2 else -60.0
             if fence - 1 in covered:
                 score += 45.0  # squeeze rank in place
                 if fence - 1 == 0 or (fence - 1) == vwk:
@@ -245,7 +319,7 @@ class ScriptedMate:
             if base is not None:
                 for r in (base, base + 1):
                     if r in covered:
-                        score += 25.0
+                        score += 60.0
                 near = sorted(abs(vr(chess.square_rank(sq)) - base)
                               for sq in heavies)
                 for gap in near[:2]:
@@ -263,6 +337,10 @@ class ScriptedMate:
             d = _cheb(sq, wk)
             if d == 3:
                 score += 1.0
+            # Heavies hugging their own king block its escape squares — the
+            # clustered-corner starts died exactly this way.  Untangle early.
+            if _cheb(sq, bk) <= 1:
+                score -= 10.0
 
         # Keep the Black king drifting toward its home zone (vrank 7) so it
         # neither wanders into the push zone nor blocks fence ranks mid-file.

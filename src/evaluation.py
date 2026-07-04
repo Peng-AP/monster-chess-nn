@@ -24,37 +24,21 @@ def _white_can_capture_king(board):
     if wk is None:
         return False
 
+    # King capture wins UNCONDITIONALLY (double-move-check rule, 2026-07-04):
+    # no safety check on the capturing side — the game ends first.
     saved_turn = board.turn
     board.turn = chess.WHITE
     for m1 in board.pseudo_legal_moves:
         if m1.to_square == bk:
-            board.push(m1)
-            wk_after = board.king(chess.WHITE)
-            white_safe = (
-                wk_after is None
-                or not board.is_attacked_by(chess.BLACK, wk_after)
-            )
-            board.pop()
-            if white_safe:
-                board.turn = saved_turn
-                return True
-            continue
+            board.turn = saved_turn
+            return True
         board.push(m1)
         board.turn = chess.WHITE
         for m2 in board.pseudo_legal_moves:
             if m2.to_square == bk:
-                board.push(m2)
-                wk_after = board.king(chess.WHITE)
-                white_safe = (
-                    wk_after is None
-                    or not board.is_attacked_by(chess.BLACK, wk_after)
-                )
                 board.pop()
-                if white_safe:
-                    board.pop()
-                    board.turn = saved_turn
-                    return True
-            board.turn = chess.BLACK
+                board.turn = saved_turn
+                return True
         board.pop()
     board.turn = saved_turn
     return False
@@ -74,20 +58,13 @@ def _white_can_capture_king_single(board):
     if wk is None:
         return False
 
+    # Unconditional: capturing the king wins regardless of White's own safety.
     saved_turn = board.turn
     board.turn = chess.WHITE
     for move in board.pseudo_legal_moves:
         if move.to_square == bk:
-            board.push(move)
-            wk_after = board.king(chess.WHITE)
-            white_safe = (
-                wk_after is None
-                or not board.is_attacked_by(chess.BLACK, wk_after)
-            )
-            board.pop()
-            if white_safe:
-                board.turn = saved_turn
-                return True
+            board.turn = saved_turn
+            return True
     board.turn = saved_turn
     return False
 
@@ -113,20 +90,13 @@ def _black_can_capture_king(board):
     if bk is None:
         return False
 
+    # Unconditional: capturing the king wins regardless of Black's own safety.
     saved_turn = board.turn
     board.turn = chess.BLACK
     for move in board.pseudo_legal_moves:
         if move.to_square == wk:
-            board.push(move)
-            bk_after = board.king(chess.BLACK)
-            black_safe = (
-                bk_after is None
-                or not board.is_attacked_by(chess.WHITE, bk_after)
-            )
-            board.pop()
-            if black_safe:
-                board.turn = saved_turn
-                return True
+            board.turn = saved_turn
+            return True
     board.turn = saved_turn
     return False
 

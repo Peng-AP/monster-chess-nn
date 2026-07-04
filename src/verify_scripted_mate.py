@@ -17,23 +17,31 @@ from scripted_mate import ScriptedMate
 
 
 def random_start_fen(rng):
-    """K+Q+R+R (Black) vs K (White): White low, Black pieces high and safe."""
-    wk = chess.square(rng.randrange(8), rng.randrange(0, 3))
+    """K+Q+R+R (Black) vs K (White): White low, Black pieces high and safe.
+
+    All Black pieces start at Chebyshev >= 5 from the White king: White moves
+    first and covers distance 2, so anything closer can be forked/attacked
+    before Black gets a tempo.  A start where White wins material by force
+    breaks the task's premise (this material is winning FOR BLACK) — under
+    the corrected unconditional-king-capture rules, a lost heavy can turn the
+    position into a fortress draw or worse.
+    """
+    wk = chess.square(rng.randrange(8), rng.randrange(0, 2))
     used = {wk}
 
     def place(rank_lo, rank_hi):
         while True:
             sq = chess.square(rng.randrange(8), rng.randrange(rank_lo, rank_hi + 1))
-            if sq not in used and _cheb(sq, wk) >= 3:
+            if sq not in used and _cheb(sq, wk) >= 5:
                 used.add(sq)
                 return sq
 
     board = chess.Board(None)
     board.set_piece_at(wk, chess.Piece(chess.KING, chess.WHITE))
-    board.set_piece_at(place(6, 7), chess.Piece(chess.KING, chess.BLACK))
-    board.set_piece_at(place(5, 7), chess.Piece(chess.QUEEN, chess.BLACK))
-    board.set_piece_at(place(5, 7), chess.Piece(chess.ROOK, chess.BLACK))
-    board.set_piece_at(place(5, 7), chess.Piece(chess.ROOK, chess.BLACK))
+    board.set_piece_at(place(7, 7), chess.Piece(chess.KING, chess.BLACK))
+    board.set_piece_at(place(6, 7), chess.Piece(chess.QUEEN, chess.BLACK))
+    board.set_piece_at(place(6, 7), chess.Piece(chess.ROOK, chess.BLACK))
+    board.set_piece_at(place(6, 7), chess.Piece(chess.ROOK, chess.BLACK))
     board.turn = chess.WHITE
     return board.fen()
 
