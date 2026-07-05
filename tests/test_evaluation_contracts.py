@@ -104,8 +104,10 @@ class PieceSafetyTests(unittest.TestCase):
 
 class BlackKingExposureTests(unittest.TestCase):
     def test_exposed_king_worse_for_black(self):
-        # Black king near White king (exposed) vs far away (safe)
-        exposed = MonsterChessGame(fen="8/8/8/8/3Kk3/8/8/8 b - - 0 1")
+        # Black king near White king (exposed) vs far away (safe).
+        # Distance 2, not adjacent: adjacent with Black to move is simply a
+        # won position (Black captures the king), not "exposure".
+        exposed = MonsterChessGame(fen="8/8/8/8/2K1k3/8/8/8 b - - 0 1")
         safe = MonsterChessGame(fen="4k3/8/8/8/8/8/8/K7 b - - 0 1")
         exposed_val = evaluate(exposed)
         safe_val = evaluate(safe)

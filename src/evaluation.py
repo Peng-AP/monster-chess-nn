@@ -142,12 +142,18 @@ def evaluate(game_state):
         return 1.0
 
     # ---- Capture threat scan (dominates all other terms) ----
-    # Pending-aware: with only one White half-move left the full two-move scan
-    # would count threats a turn early.
-    if _white_threat_scan(game_state):
-        return 0.95  # White captures Black's king within the current turn
-    if _black_can_capture_king(board):
-        return -0.95  # Black captures White's king next move
+    # Side-to-move ONLY: a capture available to the mover ends the game, so
+    # the position is decided. A threat AGAINST the mover is NOT decided —
+    # the mover may parry, escape, or capture first; clamping there taught
+    # Black that any check ~= a won game (sacrificial-check bug). If the
+    # mover cannot actually escape, search sees the true clamp one ply down.
+    # White scan is pending-aware: with only one half-move left the full
+    # two-move scan would count threats a turn early.
+    if game_state.is_white_turn:
+        if _white_threat_scan(game_state):
+            return 0.95  # White captures Black's king within the current turn
+    elif _black_can_capture_king(board):
+        return -0.95  # Black captures White's king with the move in hand
 
     score = 0.0
     wk = board.king(chess.WHITE)
@@ -406,9 +412,11 @@ class NNEvaluator:
             return -1.0, None
         if board.king(chess.BLACK) is None:
             return 1.0, None
-        if _white_threat_scan(game_state):
-            return 0.95, None
-        if _black_can_capture_king(board):
+        # Side-to-move-only clamps — see evaluate() for the rationale.
+        if game_state.is_white_turn:
+            if _white_threat_scan(game_state):
+                return 0.95, None
+        elif _black_can_capture_king(board):
             return -0.95, None
 
         tensor = self.fen_to_tensor(
@@ -474,10 +482,10 @@ class NNEvaluator:
             elif board.king(chess.BLACK) is None:
                 values.append(1.0)
                 policy_list.append(None)
-            elif _white_threat_scan(gs):
+            elif gs.is_white_turn and _white_threat_scan(gs):
                 values.append(0.95)
                 policy_list.append(None)
-            elif _black_can_capture_king(board):
+            elif not gs.is_white_turn and _black_can_capture_king(board):
                 values.append(-0.95)
                 policy_list.append(None)
             else:
