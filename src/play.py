@@ -196,13 +196,19 @@ def get_human_white_action(game):
             continue
         # Check if the pair leaves White king safe
         board.push(m2)
+        if board.king(chess.BLACK) is None:
+            # m2 captured the Black king — wins UNCONDITIONALLY, own-king
+            # safety is irrelevant (the game ends first).
+            board.pop()
+            break
         wk = board.king(chess.WHITE)
         if wk is not None and board.is_attacked_by(chess.BLACK, wk):
-            # Check if ANY pair is safe — if not, allow it (forced blunder)
+            # Check if ANY winning-or-safe pair exists — if not, allow it
+            # (forced blunder)
             board.pop()
             board.turn = chess.BLACK
             board.pop()
-            safe_exists = any(True for _ in _safe_pairs_gen(game))
+            safe_exists = _winning_or_safe_pair_exists(game)
             board.push(m1)
             board.turn = chess.WHITE
             if safe_exists:
@@ -219,12 +225,30 @@ def get_human_white_action(game):
     return (m1, m2)
 
 
-def _safe_pairs_gen(game):
-    """Yield one safe pair to check if any exist (short-circuit)."""
+def _winning_or_safe_pair_exists(game):
+    """True if White has a pair that wins (king capture) or leaves the king safe.
+
+    get_legal_actions lists winning pairs first, then safe pairs, and falls
+    back to all pairs only when neither exists — so testing the first pair
+    is sufficient.
+    """
     clone = game.clone()
-    actions = clone.get_legal_actions()
-    for a in actions[:1]:
-        yield a
+    pairs = clone.get_legal_actions()
+    if not pairs:
+        return False
+    m1, m2 = pairs[0]
+    b = clone.board
+    b.turn = chess.WHITE
+    b.push(m1)
+    if b.king(chess.BLACK) is None:
+        return True
+    b.turn = chess.WHITE
+    if m2 != chess.Move.null():
+        b.push(m2)
+    if b.king(chess.BLACK) is None:
+        return True
+    wk = b.king(chess.WHITE)
+    return wk is not None and not b.is_attacked_by(chess.BLACK, wk)
 
 
 def get_human_black_action(game):

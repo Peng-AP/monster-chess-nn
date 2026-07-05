@@ -94,27 +94,39 @@ class MonsterChessGame:
 
         White actions are (move1, move2) tuples.
         Black actions are single Move objects.
+
+        Complete legality oracle: with a king capture available, ALL legal
+        actions are still listed (winning captures first) so human move
+        validation never rejects a legal alternative. The engine's search
+        path (get_search_actions) keeps the winning-capture shortcut.
         """
         if self._terminal:
             return []
 
         if self.is_white_turn:
-            return self._get_white_actions()
+            return self._get_white_actions(truncate_wins=False)
         else:
-            return self._get_black_actions()
+            return self._get_black_actions(truncate_wins=False)
 
-    def _get_white_actions(self):
+    def _get_white_actions(self, truncate_wins=True):
         """Generate all legal double-move pairs for White.
 
         White CAN put Black's king in check (threaten capture).
         White CANNOT leave its own king attacked (self-preservation).
         Exception: if ALL moves leave White's king attacked (checkmate),
         return all moves — White is forced to blunder and Black captures.
+
+        truncate_wins: with a king capture available, return just one winning
+        pair (search shortcut — the game is decided). Pass False for a
+        complete legality oracle (human move validation); winning pairs are
+        then listed FIRST, followed by safe pairs (or all pairs if none are
+        safe). Callers rely on that ordering.
         """
         first_moves = self._white_single_moves()
         if not first_moves:
             return []
 
+        win_pairs = []
         safe_pairs = []
         all_pairs = []
         for m1 in first_moves:
@@ -126,7 +138,10 @@ class MonsterChessGame:
             # confirmed 2026-07-04).
             if self.board.king(chess.BLACK) is None:
                 self.board.pop()
-                return [(m1, chess.Move.null())]
+                if truncate_wins:
+                    return [(m1, chess.Move.null())]
+                win_pairs.append((m1, chess.Move.null()))
+                continue
 
             self.board.turn = chess.WHITE
             second_moves = list(self.board.pseudo_legal_moves)
@@ -138,9 +153,12 @@ class MonsterChessGame:
                 # unconditionally (game ends before White's own check matters).
                 if self.board.king(chess.BLACK) is None:
                     self.board.pop()
-                    self.board.turn = chess.BLACK
-                    self.board.pop()
-                    return [(m1, m2)]
+                    if truncate_wins:
+                        self.board.turn = chess.BLACK
+                        self.board.pop()
+                        return [(m1, m2)]
+                    win_pairs.append((m1, m2))
+                    continue
 
                 all_pairs.append((m1, m2))
 
@@ -159,9 +177,9 @@ class MonsterChessGame:
             self.board.pop()
 
         # If no safe moves, White is forced to blunder (Black captures)
-        return safe_pairs if safe_pairs else all_pairs
+        return win_pairs + (safe_pairs if safe_pairs else all_pairs)
 
-    def _get_black_actions(self):
+    def _get_black_actions(self, truncate_wins=True):
         """Generate all legal single moves for Black.
 
         Monster Chess ends on king capture, so Black must be able to capture
@@ -170,12 +188,17 @@ class MonsterChessGame:
         self-preservation policy used for White:
           - keep moves that do not leave Black king attacked by White
           - if no safe moves exist, allow all moves (forced blunder)
+
+        truncate_wins: with a king capture available, return just that one
+        move (search shortcut). Pass False for a complete legality oracle
+        (human move validation); winning captures are then listed first.
         """
         self.board.turn = chess.BLACK
         candidate_moves = list(self.board.pseudo_legal_moves)
         if not candidate_moves:
             return []
 
+        win_moves = []
         safe_moves = []
         all_moves = []
         for move in candidate_moves:
@@ -186,7 +209,10 @@ class MonsterChessGame:
             # capture is irrelevant.
             if self.board.king(chess.WHITE) is None:
                 self.board.pop()
-                return [move]
+                if truncate_wins:
+                    return [move]
+                win_moves.append(move)
+                continue
 
             all_moves.append(move)
             black_king = self.board.king(chess.BLACK)
@@ -198,7 +224,7 @@ class MonsterChessGame:
                 safe_moves.append(move)
             self.board.pop()
 
-        return safe_moves if safe_moves else all_moves
+        return win_moves + (safe_moves if safe_moves else all_moves)
 
     # ------------------------------------------------------------------
     # Half-move (search / training) API

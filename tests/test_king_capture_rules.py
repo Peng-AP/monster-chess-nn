@@ -82,9 +82,35 @@ class BlackCapturesWhileAttacked(unittest.TestCase):
         fen = "Kk6/8/8/8/8/8/8/R7 b - - 0 1"
         game = MonsterChessGame(fen=fen)
         moves = game.get_legal_actions()
-        self.assertEqual(moves, [chess.Move.from_uci("b8a8")],
-                         "the winning king capture must dominate Black's list")
+        # Legality oracle: the winning capture is listed FIRST, but other
+        # legal moves stay available (human may decline the win).
+        self.assertEqual(moves[0], chess.Move.from_uci("b8a8"),
+                         "the winning king capture must be listed first")
+        self.assertGreater(len(moves), 1,
+                           "legal alternatives must not be truncated away")
         self.assertTrue(_black_can_capture_king(game.board))
+
+    def test_search_actions_keep_the_winning_shortcut(self):
+        # Engine path: with a capture available the search list is truncated
+        # to just the win (behavior-preserving for all recorded results).
+        fen = "Kk6/8/8/8/8/8/8/R7 b - - 0 1"
+        game = MonsterChessGame(fen=fen)
+        self.assertEqual(game.get_search_actions(),
+                         [chess.Move.from_uci("b8a8")])
+
+    def test_white_legal_pairs_untruncated_with_capture_available(self):
+        # White Kc2 can capture Black Kc4 via Kc2-c3, Kc3xc4. The legality
+        # oracle must list winning pair(s) first AND keep the alternatives.
+        fen = "8/8/8/8/2k5/8/2K5/8 w - - 0 1"
+        game = MonsterChessGame(fen=fen)
+        pairs = game.get_legal_actions()
+        wins = [p for p in pairs if p[1] != chess.Move.null()
+                and p[1].to_square == chess.C4]
+        self.assertTrue(wins, "winning pairs must be present")
+        self.assertEqual(pairs[0][1].to_square, chess.C4,
+                         "a winning pair must be listed first")
+        self.assertGreater(len(pairs), len(wins),
+                           "non-winning pairs must not be truncated away")
 
 
 if __name__ == "__main__":
