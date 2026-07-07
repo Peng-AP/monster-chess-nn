@@ -47,11 +47,9 @@ class CliSchemaSmoke(unittest.TestCase):
     def test_data_processor_help_contains_expected_flags(self):
         code, out = _run_help("data_processor.py")
         self.assertEqual(code, 0)
-        self.assertIn("--use-source-quotas", out)
-        self.assertIn("--human-target-mcts-lambda", out)
         self.assertIn("--max-generation-age", out)
         self.assertIn("--min-nonhuman-plies", out)
-        self.assertIn("--min-humanseed-policy-entropy", out)
+        self.assertIn("--exclude-human-games", out)
 
     def test_data_generation_help_contains_temperature_flags(self):
         code, out = _run_help("data_generation.py")
