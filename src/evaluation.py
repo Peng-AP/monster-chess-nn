@@ -119,7 +119,7 @@ def _is_passed_pawn(board, sq, color):
     return True
 
 
-def evaluate(game_state):
+def evaluate(game_state, king_geom_scale=1.0, king_attack_scale=1.0):
     """Evaluate a Monster Chess position heuristically.
 
     Monster Chess specifics:
@@ -132,6 +132,13 @@ def evaluate(game_state):
 
     Returns a float in [-1, 1] from White's perspective.
     Designed to be swappable with a neural-network evaluation later.
+
+    king_geom_scale / king_attack_scale (default 1.0 = frozen baseline): tuning
+    knobs for the White-king terms, used to A/B heuristic variants without
+    duplicating this function (tools/heuristic_ab.py). king_geom_scale weights
+    the pure-geometry confinement penalties (displacement + edge proximity);
+    king_attack_scale weights the king's attacking tropism rewards. Leaving
+    both at 1.0 reproduces the historical anchor exactly.
     """
     board = game_state.board
 
@@ -202,9 +209,9 @@ def evaluate(game_state):
     # Chebyshev distance — with double moves, king threatens at distance 2
     king_dist = max(abs(wk_rank - bk_rank), abs(wk_file - bk_file))
     if king_dist <= 2:
-        score += 0.15  # imminent capture threat
+        score += 0.15 * king_attack_scale  # imminent capture threat
     elif king_dist <= 4:
-        score += 0.05  # within 2-turn striking range
+        score += 0.05 * king_attack_scale  # within 2-turn striking range
 
     # Tropism to undefended Black pieces (free captures with double move)
     piece_values = {chess.PAWN: 0.03, chess.KNIGHT: 0.08, chess.BISHOP: 0.08,
@@ -215,7 +222,7 @@ def evaluate(game_state):
             dist = max(abs(wk_rank - chess.square_rank(sq)),
                        abs(wk_file - chess.square_file(sq)))
             if dist <= 2 and not board.is_attacked_by(chess.BLACK, sq):
-                score += piece_values.get(piece.piece_type, 0.05)
+                score += piece_values.get(piece.piece_type, 0.05) * king_attack_scale
 
     # ---- Black's chances ----
 
@@ -265,13 +272,13 @@ def evaluate(game_state):
     rank_from_center = abs(wk_rank - 3.5)   # 0.5 to 3.5
     file_from_center = abs(wk_file - 3.5)
     displacement = (rank_from_center + file_from_center) / 7.0  # 0 to 1
-    score -= displacement * heavy_scale * KING_DISPLACEMENT_WEIGHT
+    score -= displacement * heavy_scale * KING_DISPLACEMENT_WEIGHT * king_geom_scale
 
     # Edge proximity — king on edge is easier to confine
     rank_edge = min(wk_rank, 7 - wk_rank)
     file_edge = min(wk_file, 7 - wk_file)
     edge_dist = min(rank_edge, file_edge)
-    score -= (3 - edge_dist) * 0.10 * heavy_scale
+    score -= (3 - edge_dist) * 0.10 * heavy_scale * king_geom_scale
 
     # Adjacent squares attacked by Black — measures immediate confinement
     adjacent_attacked = 0
