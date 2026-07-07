@@ -1,170 +1,94 @@
 # Monster Chess NN
 
-Neural-network + MCTS engine for the Monster Chess variant (White gets two consecutive moves, Black gets one).
+Neural-network + MCTS engine for the Monster Chess variant: White has a king and
+four pawns but moves **twice** per turn; Black has a full standard army and moves
+once. The game ends when a king is captured — a king capture wins
+unconditionally, even if the capturing side would be "in check".
 
-This repository now includes a full self-play -> processing -> training -> gated-promotion loop, plus baseline and human-game evaluation tools.
+Established balance conclusion: **Black wins with correct play**, so Black's
+conversion strength is the project's primary quality signal.
 
-## Current Project State
+## Layout
 
-As of 2026-02-19 (local machine snapshot):
-
-- Highest detected generation directory: `data/raw/nn_gen24`
-- Processed dataset shape: `(86990, 8, 8, 15)`
-- Processed splits: `train=69592`, `val=8699`, `test=8699`
-- Human game files: `25` in `data/raw/human_games`
-- Current model: `models/best_value_net.pt`
-- Model SHA256: `D54E3117A7A28BD4C0C678FE2D3FAB231AA8943660CFBC1FF6958E9B70BC815B`
-
-Important behavioral note:
-
-- White-side play remains much stronger than Black-side play; side-aware gating can still reject candidates that only improve White.
-
-## What Is Implemented
-
-- Game-level train/val/test splitting to prevent leakage (`src/data_processor.py`)
-- Deterministic seeding and run metadata for training/iteration runs (`src/train.py`, `src/iterate.py`)
-- True MSE/MAE reporting alongside value power loss (`src/train.py`)
-- Candidate vs incumbent arena gating with side-aware thresholds (`src/iterate.py`)
-- Alternating training mode with frozen/pool opponents (`src/iterate.py`, `src/data_generation.py`)
-- Human-seeded self-play starts from recorded human positions (`src/iterate.py`, `src/data_generation.py`)
-- AdamW with decoupled weight decay groups (`src/train.py`)
-- Gradient clipping (`src/train.py`)
-- Fine-tune from incumbent with LR warmup (`src/train.py`, `src/iterate.py`)
-- Baseline snapshot tool (`src/baseline_snapshot.py`)
-- Human game evaluation tool (`src/human_eval.py`)
-
-## Remaining High-Priority Gaps
-
-- Sliding window is still fixed-count generation based (`SLIDING_WINDOW=2`) instead of position-budget based (`src/config.py`)
-- No FPU reduction in PUCT path yet (`src/mcts.py`)
-- Tactical position filtering is not yet configurable (check positions are always filtered) (`src/data_generation.py`)
-- Policy head bottleneck remains (2 channels before FC projection) (`src/train.py`)
-
-## Repository Layout
-
-- `src/config.py`: central hyperparameters and curriculum FENs
-- `src/monster_chess.py`: Monster Chess rules wrapper around `python-chess`
-- `src/mcts.py`: UCB/PUCT MCTS search
-- `src/evaluation.py`: heuristic evaluator and neural evaluator wrapper
-- `src/data_generation.py`: self-play game generation
-- `src/data_processor.py`: JSONL -> tensor dataset conversion
-- `src/train.py`: dual-head residual network training
-- `src/iterate.py`: automated generation/process/train/gate loop
-- `src/play.py`: CLI human vs AI gameplay
-- `src/baseline_snapshot.py`: stage-0 baseline capture tool
-- `src/human_eval.py`: post-run human-game evaluation
-
-## Setup
-
-Tested environment:
-
-- Windows + Python 3.13
-- CUDA-enabled PyTorch
-
-Install the core dependencies:
-
-```bash
-py -3 -m pip install chess numpy torch tqdm
+```
+src/
+  config.py          # all tunables (~15 knobs) + curriculum start positions
+  monster_chess.py   # rules, atomic (m1, m2) API + half-move search API
+  mcts.py            # batched PUCT (NN) + sequential UCB1 (heuristic)
+  evaluation.py      # heuristic eval, NNEvaluator, HybridEvaluator
+  encoding.py        # fen_to_tensor, policy encoding, mirror augmentation
+  data_generation.py # self-play game generation (multiprocess)
+  data_processor.py  # raw JSONL -> training tensors (flat, game-level split)
+  train.py           # dual-head resnet, game_result target, optional WDL head
+  benchmark.py       # fixed heuristic-anchor yardstick (JSON history in benchmarks/)
+  iterate.py         # loop: generate -> process -> train -> gate -> archive
+  scripted_mate.py   # deterministic Black K+heavies conversion (demo games)
+  verify_scripted_mate.py
+  make_blackfocus_starts.py  # backward-chained Black-won start FENs
+  play.py / play.ipynb       # play against the engine (terminal / notebook)
+tools/               # one-off calibration tools (bruteforce gen, human eval)
+tests/               # contract tests (run: py -3 -m unittest discover -s tests)
+benchmarks/          # anchor benchmark JSON history
 ```
 
-Optional notebook/UI dependencies:
+## Commands
+
+Generate self-play data (heuristic eval, curriculum starts, live results):
 
 ```bash
-py -3 -m pip install jupyter ipywidgets
+py -3 src/data_generation.py --num-games 800 --simulations 400 \
+    --curriculum --curriculum-live-results --record-all-plies \
+    --seed 42 --output-dir data/raw/my_run
 ```
 
-Note: `requirements.txt` contains legacy packages and does not fully reflect the current PyTorch-based pipeline.
-
-## Common Commands
-
-### 1) Capture a baseline snapshot
+Process raw games into tensors:
 
 ```bash
-py -3 src/baseline_snapshot.py
+py -3 src/data_processor.py --raw-dir data/raw/my_run --output-dir data/processed/my_run --seed 42
 ```
 
-### 2) Generate self-play data
+Train (outcome-grounded value target, WDL head):
 
 ```bash
-py -3 src/data_generation.py --num-games 200 --simulations 200 --use-model models/best_value_net.pt --output-dir data/raw/nn_genX
+py -3 src/train.py --data-dir data/processed/my_run --model-dir models/my_model \
+    --target game_result --value-head wdl --epochs 30 --seed 42
 ```
 
-### 3) Process raw data
+Benchmark against the fixed heuristic anchor (the project yardstick):
 
 ```bash
-py -3 src/data_processor.py --raw-dir data/raw --output-dir data/processed --keep-generations 3
+py -3 src/benchmark.py --model models/my_model/best_value_net.pt --games 20 --sims 400
 ```
 
-### 4) Train a model (fine-tuning example)
+Run one full loop generation with gated promotion:
 
 ```bash
-py -3 src/train.py --data-dir data/processed --model-dir models/candidates/manual_run --target game_result --epochs 12 --resume-from models/best_value_net.pt --warmup-epochs 3 --warmup-start-factor 0.1
+py -3 src/iterate.py --generations 1
 ```
 
-### 5) Run iterate presets (recommended)
-
-Use the preset launcher to avoid manual flag hunting:
+Verify the scripted-mate conversion algorithm vs MCTS White:
 
 ```bash
-py -3 src/iterate_presets.py --show-presets
-py -3 src/iterate_presets.py --preset smoke
-py -3 src/iterate_presets.py --preset daily
-py -3 src/iterate_presets.py --preset overnight
+py -3 src/verify_scripted_mate.py --games 16 --white-sims 200 --seed 7
 ```
 
-Preset expectations (midrange CUDA GPU):
+Play against a model: open `src/play.ipynb` (widget UI, saves games to
+`data/raw/human_games/`) or `py -3 src/play.py`.
 
-- `smoke`: ~10-20 minutes, fast gate/processing sanity
-- `daily`: ~2-4 hours, balanced training batch
-- `overnight`: ~8-12 hours, long-run training
+## Promotion gate (iterate.py)
 
-Common outputs:
+A candidate is promoted to `models/best_value_net.pt` only if it
 
-- `data/raw/nn_gen*` and auxiliary generation directories
-- `data/processed/processing_summary.json`
-- `models/candidates/gen_*/`
-- `models/iterate_run_*.json`
-- `models/arena_runs/gen_*/` (daily/overnight)
+1. scores >= 0.55 against the incumbent (both colors, temperature 0, no noise), and
+2. does not regress against the heuristic anchor by more than the configured epsilon.
 
-Optional overrides:
+Every candidate and its gate report are archived under `models/candidates/gen_<N>/`;
+the loop history lives in `models/iterate_history.json`.
 
-```bash
-py -3 src/iterate_presets.py --preset smoke --seed 20260221
-py -3 src/iterate_presets.py --preset daily --iterations 1
-py -3 src/iterate_presets.py --preset overnight --dry-run
-py -3 src/iterate_presets.py --preset smoke -- --human-eval-value-diagnostics
-```
+## History
 
-### 6) Run iterative training with explicit flags
-
-```bash
-py -3 src/iterate.py --iterations 2 --games 180 --curriculum-games 220 --black-focus-games 260 --human-seed-games 200 --simulations 120 --curriculum-simulations 50 --black-focus-simulations 100 --human-seed-simulations 120 --epochs 12 --warmup-epochs 3 --warmup-start-factor 0.1 --position-budget 220000 --position-budget-max 280000 --alternating --opponent-sims 140 --pool-size 6 --arena-games 80 --arena-sims 80 --arena-workers 4 --gate-threshold 0.54 --gate-min-other-side 0.42 --human-seed-dir data/raw/human_games --human-seed-side auto --seed 20260219 --human-eval
-```
-
-### 7) Play against the model
-
-```bash
-py -3 src/play.py --model models/best_value_net.pt --color black --sims 200 --save-data
-```
-
-### 8) Evaluate recorded human games
-
-```bash
-py -3 src/human_eval.py --human-dir data/raw/human_games --model models/best_value_net.pt
-```
-
-### 9) Run contract tests
-
-```bash
-py -3 -m unittest discover -s tests -v
-```
-
-Contract tests run automatically in GitHub Actions on push/PR via
-`.github/workflows/contract-tests.yml`.
-
-## Documentation Map
-
-- `IMPROVEMENT_PLAN.md`: living status of the improvement roadmap
-- `IMPROVEMENT_EXECUTION_ORDER.md`: next implementation order from current repo state
-- `TRANSFER_HANDOFF_2026-02-19.md`: transfer handoff notes (historical + current-state guidance)
-- `context.txt`: compact technical context summary for agent handoff
+The engine went through a documented rework (`REWORK_PLAN.md`): search fix (D1),
+outcome-grounded value targets (D2), half-move factorization for White, a core
+rules correction (unconditional king capture, 2026-07-04), a side-to-move eval
+clamp fix (2026-07-05), and the Phase 5 deletion of the compensation machinery
+that predated those fixes.
