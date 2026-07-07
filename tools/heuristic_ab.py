@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from mcts import MCTS
 from evaluation import evaluate
-from benchmark import play_one, summarize_side
+from benchmark import play_one, summarize_side, _build_engine
 from config import CURRICULUM_FENS, CURRICULUM_TIER_BOUNDARIES
 
 
@@ -51,11 +51,24 @@ def _engine(eval_fn, sims):
                 allow_early_stop=True)
 
 
-def _score_one_eval(tested_eval, test_side, cand_sims, ref_sims, games, seed):
-    """Score one eval on a fixed side against the frozen baseline opponent."""
-    ref_eval = evaluate  # frozen baseline (scales default to 1.0)
+def _ref_engine(ref_model, sims):
+    """Reference opponent: an NN model if given, else the frozen heuristic.
+
+    A strong NN reference (e.g. v8) is what de-saturates White-eval tests —
+    heuristic-Black is too weak to stress White, so White pins at ~1.0 and no
+    White change is visible.
+    """
+    if ref_model:
+        engine, _ = _build_engine(ref_model, sims)
+        return engine
+    return _engine(evaluate, sims)
+
+
+def _score_one_eval(tested_eval, test_side, cand_sims, ref_sims, games, seed,
+                    ref_model=None):
+    """Score one eval on a fixed side against the reference opponent."""
     tested = _engine(tested_eval, cand_sims)
-    ref = _engine(ref_eval, ref_sims)
+    ref = _ref_engine(ref_model, ref_sims)
     rows = []
     for i in range(games):
         random.seed(seed + i)
@@ -115,13 +128,17 @@ def run_fen_suite(test_side, geom, attack, tiers, sims, seed):
     }
 
 
-def run_side_test(test_side, geom, attack, cand_sims, ref_sims, games, seed):
+def run_side_test(test_side, geom, attack, cand_sims, ref_sims, games, seed,
+                  ref_model=None):
     candidate_eval = functools.partial(
         evaluate, king_geom_scale=geom, king_attack_scale=attack)
-    baseline = _score_one_eval(evaluate, test_side, cand_sims, ref_sims, games, seed)
-    candidate = _score_one_eval(candidate_eval, test_side, cand_sims, ref_sims, games, seed)
+    baseline = _score_one_eval(evaluate, test_side, cand_sims, ref_sims, games,
+                               seed, ref_model=ref_model)
+    candidate = _score_one_eval(candidate_eval, test_side, cand_sims, ref_sims,
+                                games, seed, ref_model=ref_model)
     return {
         "test_side": test_side,
+        "ref_model": ref_model or "heuristic",
         "king_geom_scale": geom,
         "king_attack_scale": attack,
         "cand_sims": cand_sims,
@@ -148,6 +165,9 @@ def main():
     p.add_argument("--cand-sims", type=int, default=150, help="[match mode] tested side sims")
     p.add_argument("--ref-sims", type=int, default=600, help="[match mode] reference sims")
     p.add_argument("--games", type=int, default=16, help="[match mode] games")
+    p.add_argument("--ref-model", type=str, default=None,
+                   help="[match mode] NN reference opponent path (default: heuristic). "
+                        "Use a strong model (e.g. v8) to de-saturate White tests.")
     p.add_argument("--seed", type=int, default=20260707)
     args = p.parse_args()
 
@@ -159,10 +179,11 @@ def main():
                           tiers, args.sims, args.seed)
     else:
         print(f"A/B match test-side={args.test_side}: candidate(geom={args.geom_scale}, "
-              f"attack={args.attack_scale}) @ {args.cand_sims} vs baseline-ref "
-              f"@ {args.ref_sims} sims, {args.games} games")
+              f"attack={args.attack_scale}) @ {args.cand_sims} vs "
+              f"{args.ref_model or 'heuristic'} @ {args.ref_sims} sims, {args.games} games")
         r = run_side_test(args.test_side, args.geom_scale, args.attack_scale,
-                          args.cand_sims, args.ref_sims, args.games, args.seed)
+                          args.cand_sims, args.ref_sims, args.games, args.seed,
+                          ref_model=args.ref_model)
     print(json.dumps(r, indent=2))
     base, cand = r["baseline"], r["candidate"]
     saturated = base["score"] in (0.0, 1.0)
