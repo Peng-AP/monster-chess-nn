@@ -446,17 +446,8 @@ def load_data(data_dir):
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
     policies = np.load(os.path.join(data_dir, "policies.npy"))
-    target_lambdas_path = os.path.join(data_dir, "target_lambdas.npy")
-    if os.path.exists(target_lambdas_path):
-        target_lambdas = np.load(target_lambdas_path)
-    else:
-        target_lambdas = np.ones((len(positions),), dtype=np.float32)
-    source_ids_path = os.path.join(data_dir, "source_ids.npy")
-    source_ids = None
-    if os.path.exists(source_ids_path):
-        source_ids = np.load(source_ids_path)
     splits = np.load(os.path.join(data_dir, "splits.npz"))
-    return positions, mcts_values, game_results, policies, target_lambdas, source_ids, splits
+    return positions, mcts_values, game_results, policies, splits
 
 
 def to_side_perspective(values_white_perspective, positions):
@@ -465,18 +456,12 @@ def to_side_perspective(values_white_perspective, positions):
     return values_white_perspective * side_sign
 
 
-def get_targets(mcts_values, game_results, target_type, blend_weight, target_lambdas=None):
+def get_targets(mcts_values, game_results, target_type):
     """Build value training targets based on the chosen strategy."""
     if target_type == "game_result":
         return game_results
     elif target_type == "mcts_value":
         return mcts_values
-    elif target_type == "blend":
-        return blend_weight * mcts_values + (1 - blend_weight) * game_results
-    elif target_type == "source_aware":
-        if target_lambdas is None:
-            raise ValueError("source_aware target requires per-sample target_lambdas")
-        return target_lambdas * mcts_values + (1 - target_lambdas) * game_results
     else:
         raise ValueError(f"Unknown target type: {target_type}")
 
@@ -490,14 +475,6 @@ def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
     labels[values > eps] = 2
     labels[values < -eps] = 0
     return labels
-
-
-def get_blend_lambda(epoch, max_epochs):
-    """Anneal blend weight from BLEND_START to BLEND_END over training."""
-    if max_epochs <= 1:
-        return BLEND_START
-    t = (epoch - 1) / (max_epochs - 1)
-    return BLEND_START + (BLEND_END - BLEND_START) * t
 
 
 def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None, y_wdl=None):
@@ -528,104 +505,6 @@ def _unpack_loader_batch(batch):
     raise ValueError(f"Unexpected batch tuple length: {len(batch)}")
 
 
-def _side_labels_from_positions(positions):
-    """Return bool array: True for white-to-move, False for black-to-move."""
-    turn_plane = positions[:, 0, 0, TURN_LAYER]
-    return turn_plane > 0
-
-
-def _balanced_train_indices(train_idx, positions, seed, black_ratio=0.5):
-    """Build side-balanced train indices with optional black-side skew."""
-    if len(train_idx) == 0:
-        return train_idx
-    r = float(black_ratio)
-    if not (0.0 < r < 1.0):
-        raise ValueError("black_ratio must be in (0, 1)")
-    sides = _side_labels_from_positions(positions[train_idx])
-    white = train_idx[sides]
-    black = train_idx[~sides]
-    if len(white) == 0 or len(black) == 0:
-        return train_idx
-
-    n = len(train_idx)
-    target_black = int(round(n * r))
-    target_black = max(1, min(n - 1, target_black))
-    target_white = n - target_black
-    rng = np.random.default_rng(seed)
-    white_bal = rng.choice(white, size=target_white, replace=len(white) < target_white)
-    black_bal = rng.choice(black, size=target_black, replace=len(black) < target_black)
-    balanced = np.concatenate([white_bal, black_bal]).astype(np.int64, copy=False)
-    rng.shuffle(balanced)
-    return balanced
-
-
-def _filter_train_indices_by_result(train_idx, game_results_side, mode):
-    """Filter train indices by side-perspective game outcome."""
-    m = str(mode)
-    if m == "any":
-        return train_idx
-    if m == "nonloss":
-        keep = game_results_side[train_idx] >= 0
-        return train_idx[keep]
-    if m == "win":
-        keep = game_results_side[train_idx] > 0
-        return train_idx[keep]
-    raise ValueError(f"Unknown result filter mode: {mode}")
-
-
-def _filter_human_indices_as_black_by_result(train_idx, game_results_white, mode):
-    """Filter human-source indices while treating Black as the training side."""
-    m = str(mode)
-    if m == "any":
-        return train_idx
-    if m == "nonloss":
-        keep = game_results_white[train_idx] <= 0
-        return train_idx[keep]
-    if m == "win":
-        keep = game_results_white[train_idx] < 0
-        return train_idx[keep]
-    raise ValueError(f"Unknown result filter mode: {mode}")
-
-
-def _apply_result_filter_with_floor(train_idx, game_results_side, mode, min_keep_ratio):
-    """Apply side-result filtering with a minimum retained-sample floor.
-
-    Returns (indices, kept_ratio, fell_back_to_unfiltered).
-    """
-    if len(train_idx) == 0:
-        return train_idx, 1.0, False
-    m = str(mode)
-    if m == "any":
-        return train_idx, 1.0, False
-    filtered = _filter_train_indices_by_result(train_idx, game_results_side, m)
-    kept_ratio = float(len(filtered)) / float(len(train_idx))
-    floor = float(min_keep_ratio)
-    if floor < 0.0:
-        floor = 0.0
-    if floor > 1.0:
-        floor = 1.0
-    if len(filtered) == 0 or kept_ratio < floor:
-        return train_idx, kept_ratio, True
-    return filtered, kept_ratio, False
-
-
-def _select_human_source_black_indices(train_idx, source_ids, positions):
-    """Return human-source indices restricted to Black-to-move positions."""
-    if source_ids is None or len(train_idx) == 0:
-        return train_idx[:0]
-    sides = _side_labels_from_positions(positions[train_idx])  # True=white, False=black
-    mask = (source_ids[train_idx] == SOURCE_ID_HUMAN) & (~sides)
-    return train_idx[mask]
-
-
-def _policy_distill_kl(student_logits, teacher_logits, temperature):
-    """KL(teacher || student) distillation loss with temperature scaling."""
-    t = float(temperature)
-    student_logp = F.log_softmax(student_logits / t, dim=1)
-    teacher_p = F.softmax(teacher_logits / t, dim=1)
-    return F.kl_div(student_logp, teacher_p, reduction="batchmean") * (t * t)
-
-
 def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
     """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5."""
     return torch.pow(torch.abs(pred - target), exponent).mean()
@@ -653,16 +532,12 @@ def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor)
 
 
 def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm,
-                 teacher_model=None, distill_value_weight=0.0,
-                 distill_policy_weight=0.0, distill_temperature=1.0,
                  use_wdl_head=False, wdl_loss_weight=0.0):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
     total_wdl_loss = 0.0
-    total_distill_value = 0.0
-    total_distill_policy = 0.0
     n = 0
 
     for batch in loader:
@@ -691,20 +566,6 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
             loss_wdl = F.cross_entropy(wdl_logits, yw_b)
             loss = loss + wdl_loss_weight * loss_wdl
 
-        loss_distill_val = torch.zeros((), device=device)
-        loss_distill_pol = torch.zeros((), device=device)
-        if teacher_model is not None and (distill_value_weight > 0 or distill_policy_weight > 0):
-            with torch.no_grad():
-                teacher_value, teacher_policy = teacher_model(X_b)
-            if distill_value_weight > 0:
-                loss_distill_val = F.mse_loss(value_pred, teacher_value)
-                loss = loss + distill_value_weight * loss_distill_val
-            if distill_policy_weight > 0:
-                loss_distill_pol = _policy_distill_kl(
-                    policy_pred, teacher_policy, temperature=distill_temperature,
-                )
-                loss = loss + distill_policy_weight * loss_distill_pol
-
         optimizer.zero_grad()
         loss.backward()
         if grad_clip_norm > 0:
@@ -716,8 +577,6 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
         total_wdl_loss += loss_wdl.item() * bs
-        total_distill_value += loss_distill_val.item() * bs
-        total_distill_policy += loss_distill_pol.item() * bs
         n += bs
 
     return (
@@ -725,8 +584,6 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_val_loss / n,
         total_pol_loss / n,
         total_wdl_loss / n,
-        total_distill_value / n,
-        total_distill_policy / n,
     )
 
 
@@ -808,38 +665,14 @@ def main():
                         help=f"Enable SE modules in residual blocks (default: {USE_SE_BLOCKS})")
     parser.add_argument("--se-reduction", type=int, default=SE_REDUCTION,
                         help=f"SE channel reduction ratio (default: {SE_REDUCTION})")
-    parser.add_argument("--use-side-specialized-heads", action=argparse.BooleanOptionalAction,
-                        default=USE_SIDE_SPECIALIZED_HEADS,
-                        help=f"Use side-specialized value/policy heads (default: {USE_SIDE_SPECIALIZED_HEADS})")
-    parser.add_argument("--balanced-sides-train", action=argparse.BooleanOptionalAction, default=False,
-                        help="Use side-balanced white/black-to-move sampling for each train epoch")
-    parser.add_argument("--balanced-black-ratio", type=float, default=0.5,
-                        help="When balanced sampling is enabled, target fraction of black-to-move samples")
-    parser.add_argument("--train-only-side", type=str, default="none",
-                        choices=["none", "white", "black"],
-                        help="Restrict training samples to one side-to-move")
-    parser.add_argument("--train-side-result-filter", type=str, default="any",
-                        choices=["any", "nonloss", "win"],
-                        help="When training on one side, optionally keep only non-loss or win outcomes for that side")
-    parser.add_argument("--train-side-result-min-keep-ratio", type=float, default=0.35,
-                        help="If side-result filtering keeps less than this ratio, fall back to unfiltered side data")
-    parser.add_argument("--black-include-human-source", action=argparse.BooleanOptionalAction, default=False,
-                        help="When --train-only-side=black, include human source samples as black-side supervision")
-    parser.add_argument("--distill-from", type=str, default=None,
-                        help="Teacher checkpoint path for anti-forgetting distillation")
-    parser.add_argument("--distill-value-weight", type=float, default=0.0,
-                        help="Weight for value distillation MSE term")
-    parser.add_argument("--distill-policy-weight", type=float, default=0.0,
-                        help="Weight for policy distillation KL term")
-    parser.add_argument("--distill-temperature", type=float, default=1.0,
-                        help="Temperature for policy distillation")
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
-                        choices=["game_result", "mcts_value", "blend", "source_aware"])
+                        choices=["game_result", "mcts_value"],
+                        help=f"Value training target (default: {VALUE_TARGET})")
     parser.add_argument("--value-head", type=str, default=VALUE_HEAD_MODE,
                         choices=["scalar", "wdl"],
                         help=f"Value head mode (default: {VALUE_HEAD_MODE})")
     parser.add_argument("--wdl-loss-weight", type=float, default=WDL_LOSS_WEIGHT,
-                        help=f"WDL CE auxiliary loss weight (default: {WDL_LOSS_WEIGHT})")
+                        help=f"CE weight for the WDL head (default: {WDL_LOSS_WEIGHT})")
     parser.add_argument("--wdl-draw-epsilon", type=float, default=WDL_DRAW_EPSILON,
                         help=f"Draw band for WDL labels, |target|<=eps (default: {WDL_DRAW_EPSILON})")
     args = parser.parse_args()
@@ -854,26 +687,12 @@ def main():
         raise ValueError("--policy-loss-weight must be > 0")
     if args.se_reduction <= 0:
         raise ValueError("--se-reduction must be > 0")
-    if args.distill_value_weight < 0:
-        raise ValueError("--distill-value-weight must be >= 0")
-    if args.distill_policy_weight < 0:
-        raise ValueError("--distill-policy-weight must be >= 0")
-    if args.distill_temperature <= 0:
-        raise ValueError("--distill-temperature must be > 0")
-    if (args.distill_value_weight > 0 or args.distill_policy_weight > 0) and not args.distill_from:
-        raise ValueError("Distillation weights require --distill-from")
-    if not (0.0 < args.balanced_black_ratio < 1.0):
-        raise ValueError("--balanced-black-ratio must be in (0, 1)")
     if args.wdl_loss_weight < 0:
         raise ValueError("--wdl-loss-weight must be >= 0")
     if args.wdl_draw_epsilon < 0:
         raise ValueError("--wdl-draw-epsilon must be >= 0")
     if args.value_head == "scalar" and args.wdl_loss_weight > 0:
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
-    if args.train_only_side == "none" and args.train_side_result_filter != "any":
-        print("Warning: --train-side-result-filter ignored because --train-only-side=none")
-    if not (0.0 <= args.train_side_result_min_keep_ratio <= 1.0):
-        raise ValueError("--train-side-result-min-keep-ratio must be in [0, 1]")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -884,7 +703,7 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
-    positions, mcts_values, game_results, policies, target_lambdas, source_ids, splits = load_data(args.data_dir)
+    positions, mcts_values, game_results, policies, splits = load_data(args.data_dir)
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -897,15 +716,7 @@ def main():
 
     game_results_side = to_side_perspective(game_results, positions)
     wdl_targets = build_wdl_targets(game_results_side, draw_epsilon=args.wdl_draw_epsilon)
-
-    # For non-blend targets, compute once. For blend, recompute per epoch.
-    if args.target != "blend":
-        value_targets = get_targets(
-            mcts_values, game_results_side, args.target, BLEND_WEIGHT,
-            target_lambdas=target_lambdas,
-        )
-    else:
-        value_targets = None  # computed per epoch with annealing
+    value_targets = get_targets(mcts_values, game_results_side, args.target)
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
@@ -918,36 +729,12 @@ def main():
             f"loss={losses} draw={draws} win={wins} "
             f"(draw_epsilon={args.wdl_draw_epsilon:.3f}, ce_w={args.wdl_loss_weight:.3f})"
         )
-    if args.target == "source_aware":
-        print(
-            "Source-aware lambda stats: "
-            f"min={target_lambdas.min():.2f} "
-            f"max={target_lambdas.max():.2f} "
-            f"mean={target_lambdas.mean():.2f}"
-        )
-    if source_ids is not None:
-        human_count = int((source_ids == SOURCE_ID_HUMAN).sum())
-        human_black_count = int(
-            (
-                (source_ids == SOURCE_ID_HUMAN)
-                & (~_side_labels_from_positions(positions))
-            ).sum()
-        )
-        print(
-            "Source IDs loaded: yes "
-            f"(human samples={human_count}, human black-to-move={human_black_count})"
-        )
-    else:
-        print("Source IDs loaded: no (legacy processed data format)")
     print(f"Policy loss weight: {args.policy_loss_weight}")
-    if args.target == "blend":
-        print(f"Lambda annealing: {BLEND_START} -> {BLEND_END} over {args.epochs} epochs")
 
     # Build model
     model = build_model(
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
-        use_side_specialized_heads=args.use_side_specialized_heads,
         use_wdl_head=(args.value_head == "wdl"),
         value_head_mode=args.value_head,
     ).to(device)
@@ -972,24 +759,6 @@ def main():
             f"Resumed weights from {args.resume_from}: "
             f"loaded {loaded_count} tensors, skipped {len(skipped_keys)} incompatible"
         )
-
-    teacher_model = None
-    distill_enabled = args.distill_value_weight > 0 or args.distill_policy_weight > 0
-    if args.distill_from:
-        if not os.path.exists(args.distill_from):
-            raise FileNotFoundError(f"--distill-from not found: {args.distill_from}")
-        if distill_enabled:
-            teacher_model, _ = load_model_for_inference(args.distill_from, device)
-            teacher_model.eval()
-            for p in teacher_model.parameters():
-                p.requires_grad_(False)
-            print(
-                f"Distillation teacher: {args.distill_from} "
-                f"(value_w={args.distill_value_weight}, policy_w={args.distill_policy_weight}, "
-                f"T={args.distill_temperature})"
-            )
-        else:
-            print("Distillation teacher path provided, but both distillation weights are zero.")
 
     optimizer, decay_count, no_decay_count = build_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay,
@@ -1022,21 +791,10 @@ def main():
         "residual_block_count": int(model.residual_block_count),
         "use_se_blocks": bool(model.use_se_blocks),
         "se_reduction": int(model.se_reduction),
-        "use_side_specialized_heads": bool(model.use_side_specialized_heads),
         "value_head_mode": str(model.value_head_mode),
         "use_wdl_head": bool(model.use_wdl_head),
         "wdl_draw_epsilon": float(args.wdl_draw_epsilon),
         "wdl_loss_weight": float(args.wdl_loss_weight),
-        "balanced_sides_train": bool(args.balanced_sides_train),
-        "balanced_black_ratio": float(args.balanced_black_ratio),
-        "train_only_side": args.train_only_side,
-        "distillation": {
-            "enabled": bool(distill_enabled),
-            "teacher_path": args.distill_from,
-            "value_weight": float(args.distill_value_weight),
-            "policy_weight": float(args.distill_policy_weight),
-            "temperature": float(args.distill_temperature),
-        },
         "resume_from": args.resume_from,
         "resume_loaded_tensors": int(resume_loaded_count) if resume_loaded_count is not None else None,
         "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
@@ -1066,16 +824,8 @@ def main():
     }
 
     # Training loop
-    result_filter_fallback_warned = False
-    black_human_include_logged = False
     for epoch in range(1, args.epochs + 1):
-        # Recompute blend targets with annealed lambda each epoch
-        if args.target == "blend":
-            lam = get_blend_lambda(epoch, args.epochs)
-            epoch_targets = lam * mcts_values + (1 - lam) * game_results_side
-        else:
-            epoch_targets = value_targets
-            lam = None
+        epoch_targets = value_targets
 
         lr_used = _set_epoch_lr(
             optimizer,
@@ -1087,67 +837,7 @@ def main():
 
         train_gen = torch.Generator()
         train_gen.manual_seed(args.seed + epoch)
-        base_train_idx = train_idx
-        if args.train_only_side != "none":
-            all_sides = _side_labels_from_positions(positions[train_idx])
-            if args.train_only_side == "white":
-                base_train_idx = train_idx[all_sides]
-            else:
-                base_train_idx = train_idx[~all_sides]
-            if len(base_train_idx) == 0:
-                raise ValueError(f"--train-only-side={args.train_only_side} produced 0 samples")
-            if args.train_side_result_filter != "any":
-                filtered_idx, kept_ratio, fell_back = _apply_result_filter_with_floor(
-                    base_train_idx,
-                    game_results_side,
-                    args.train_side_result_filter,
-                    args.train_side_result_min_keep_ratio,
-                )
-                if not fell_back:
-                    base_train_idx = filtered_idx
-                elif not result_filter_fallback_warned:
-                    print(
-                        "Warning: --train-side-result-filter="
-                        f"{args.train_side_result_filter} kept {kept_ratio:.1%} "
-                        f"(min_keep_ratio={args.train_side_result_min_keep_ratio:.1%}); "
-                        "using unfiltered side data"
-                    )
-                    result_filter_fallback_warned = True
-            if (
-                args.train_only_side == "black"
-                and args.black_include_human_source
-                and source_ids is not None
-            ):
-                human_idx = _select_human_source_black_indices(
-                    train_idx, source_ids, positions
-                )
-                if args.train_side_result_filter != "any":
-                    human_idx = _filter_human_indices_as_black_by_result(
-                        human_idx, game_results, args.train_side_result_filter
-                    )
-                if len(human_idx) > 0:
-                    base_train_idx = np.unique(
-                        np.concatenate([base_train_idx, human_idx]).astype(np.int64, copy=False)
-                    )
-                    if not black_human_include_logged:
-                        print(
-                            "Including human source black-to-move samples while training black: "
-                            f"{len(human_idx)} positions"
-                        )
-                        black_human_include_logged = True
-                elif not black_human_include_logged:
-                    print(
-                        "Warning: --black-include-human-source enabled but no eligible human black-to-move samples "
-                        "matched current filters"
-                    )
-                    black_human_include_logged = True
-        if args.balanced_sides_train:
-            epoch_train_idx = _balanced_train_indices(
-                base_train_idx, positions, seed=args.seed + epoch * 17,
-                black_ratio=args.balanced_black_ratio,
-            )
-        else:
-            epoch_train_idx = base_train_idx
+        epoch_train_idx = train_idx
         val_loader = _make_loader(
             positions[val_idx],
             epoch_targets[val_idx],
@@ -1168,12 +858,8 @@ def main():
             y_wdl=wdl_targets[epoch_train_idx] if args.value_head == "wdl" else None,
         )
 
-        train_loss, train_v, train_p, train_wdl, train_dv, train_dp = _train_epoch(
+        train_loss, train_v, train_p, train_wdl = _train_epoch(
             model, train_loader, optimizer, device, args.policy_loss_weight, args.grad_clip,
-            teacher_model=teacher_model,
-            distill_value_weight=args.distill_value_weight,
-            distill_policy_weight=args.distill_policy_weight,
-            distill_temperature=args.distill_temperature,
             use_wdl_head=(args.value_head == "wdl"),
             wdl_loss_weight=args.wdl_loss_weight if args.value_head == "wdl" else 0.0,
         )
@@ -1185,24 +871,14 @@ def main():
             scheduler.step()
 
         lr = lr_used
-        lam_str = f"  λ={lam:.2f}" if (args.target == "blend" and lam is not None) else ""
-        distill_str = ""
-        if distill_enabled:
-            distill_str = f"  distill(v={train_dv:.4f} p={train_dp:.4f})"
         wdl_str = ""
         if args.value_head == "wdl":
             acc_str = f"{val_wdl_acc:.1%}" if val_wdl_acc is not None else "n/a"
             wdl_str = f"  wdl(train_ce={train_wdl:.4f} val_ce={val_wdl:.4f} val_acc={acc_str})"
-        balance_str = ""
-        if args.balanced_sides_train:
-            balance_str = f" balanced(b={args.balanced_black_ratio:.2f})"
-        side_str = ""
-        if args.train_only_side != "none":
-            side_str = f" side={args.train_only_side}"
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{lam_str}{distill_str}{wdl_str}{balance_str}{side_str}")
+              f"lr={lr:.1e}{wdl_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
             "train_samples": int(len(epoch_train_idx)),
@@ -1210,8 +886,6 @@ def main():
             "train_value_power_loss": float(train_v),
             "train_policy_ce": float(train_p),
             "train_wdl_ce": float(train_wdl),
-            "train_distill_value_mse": float(train_dv),
-            "train_distill_policy_kl": float(train_dp),
             "val_total_loss": float(val_loss),
             "val_value_power_loss": float(val_v),
             "val_value_mse": float(val_mse),
@@ -1220,7 +894,6 @@ def main():
             "val_wdl_ce": float(val_wdl),
             "val_wdl_accuracy": float(val_wdl_acc) if val_wdl_acc is not None else None,
             "lr": float(lr),
-            "blend_lambda": float(lam) if lam is not None else None,
         })
 
         # Checkpoint
@@ -1237,11 +910,9 @@ def main():
 
     # Load best model for test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
-    # Use final epoch targets for test eval
-    final_targets = epoch_targets if args.target == "blend" else value_targets
     test_loader = _make_loader(
         positions[test_idx],
-        final_targets[test_idx],
+        value_targets[test_idx],
         policies[test_idx],
         args.batch_size,
         shuffle=False,

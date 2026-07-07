@@ -42,7 +42,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--value-head", out)
         self.assertIn("--wdl-loss-weight", out)
         self.assertIn("--wdl-draw-epsilon", out)
-        self.assertIn("--train-side-result-filter", out)
+        self.assertIn("--target", out)
 
     def test_data_processor_help_contains_expected_flags(self):
         code, out = _run_help("data_processor.py")
