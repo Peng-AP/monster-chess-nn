@@ -73,12 +73,12 @@ def summarize_side(plies_by_result):
 
     plies_by_result: list of (candidate_result, plies) where candidate_result
     is from the CANDIDATE's perspective (>0 candidate win, <0 loss, 0 draw)
-    regardless of which color the candidate played. This lets White and Black
-    blocks share one shape.
+    regardless of which color the candidate played. White and Black are
+    summarized identically — same shape, same stats, no side special-cased.
 
     Returns wins/losses/draws, score = (W + 0.5 D) / N, mean plies overall,
-    mean plies when the candidate WON (conversion speed), and mean plies when
-    the candidate LOST (resistance — how long it survives a defeat).
+    and mean plies split by won/lost games (how decisively games go, in
+    either direction).
     """
     wins = losses = draws = 0
     all_plies, win_plies, loss_plies = [], [], []
@@ -143,8 +143,8 @@ def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None):
     cand_draws = white["draws"] + black["draws"]
     total_len = sum(p for _r, p in white_games) + sum(p for _r, p in black_games)
     score = (cand_wins + 0.5 * cand_draws) / games if games else 0.0
-    # Overall Black-win share across the match (candidate as Black): the project's
-    # primary balance signal (Black wins with correct play — REWORK_PLAN.md §9).
+    # Share of the candidate's Black games that it won (kept for continuity
+    # with older benchmark JSON; it is just black_strength restated).
     black_share = black["wins"] / n_black if n_black else 0.0
 
     return {
@@ -162,11 +162,11 @@ def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None):
         "candidate_score": round(score, 4),
         "candidate_black_win_share": round(black_share, 4),
         "mean_game_plies": round(total_len / games, 2) if games else 0.0,
-        # --- per-side strength (the metric that isolates play quality) ---
+        # --- per-side strength (isolates play quality by color) ---
         # white_strength = model-as-White score vs anchor-Black
         # black_strength = model-as-Black score vs anchor-White
-        # Track each across versions; do NOT compare the two to each other
-        # (the game is imbalanced, so equal scores are not equal strength).
+        # Read plainly: the lower of the two is the side the model plays
+        # worse and should improve. Track each across versions.
         "white_strength": white,
         "black_strength": black,
         "sec_per_decision": round(elapsed / total_decisions, 4) if total_decisions else None,
@@ -210,12 +210,11 @@ def main():
 
     w, b = result["white_strength"], result["black_strength"]
     print("\n--- Per-side strength (vs heuristic anchor) ---")
-    print(f"  As White: score {w['score']} ({w['wins']}-{w['losses']}-{w['draws']} "
-          f"W-L-D over {w['games']}), mean plies {w['mean_plies']}, "
-          f"resistance-when-lost {w['mean_plies_when_lost']} plies")
-    print(f"  As Black: score {b['score']} ({b['wins']}-{b['losses']}-{b['draws']} "
-          f"W-L-D over {b['games']}), mean plies {b['mean_plies']}, "
-          f"conversion-when-won {b['mean_plies_when_won']} plies")
+    for side, s in (("White", w), ("Black", b)):
+        print(f"  As {side}: score {s['score']} "
+              f"({s['wins']}-{s['losses']}-{s['draws']} W-L-D over {s['games']}), "
+              f"mean plies {s['mean_plies']} "
+              f"(won {s['mean_plies_when_won']}, lost {s['mean_plies_when_lost']})")
 
     os.makedirs(args.out_dir, exist_ok=True)
     tag = "heuristic" if not model_path else os.path.splitext(os.path.basename(model_path))[0]
