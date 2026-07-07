@@ -259,6 +259,18 @@ ITERATE_ANCHOR_EPSILON = 0.05    # allowed anchor-score regression
 ITERATE_MAX_GENERATION_AGE = 4   # processing window in generations
 ITERATE_EPOCHS = 30              # training epochs per generation
 
+# White-king aggression (heuristic eval, adopted 2026-07-07). 1.0/1.0 = the
+# original GA-tuned baseline; these values scale the White-king terms:
+#   KING_GEOM_SCALE   weights the pure-geometry confinement penalties
+#                     (displacement + edge proximity) — the GA baseline over-
+#                     penalized a safe, advancing king (real confinement is
+#                     already caught by the adjacent-attacked + mobility terms).
+#   KING_ATTACK_SCALE weights the king's attacking tropism rewards.
+# Validated same-side paired vs v8-Black: White 0.44 -> 0.875 (+0.44), Black
+# conversion unchanged. See tools/heuristic_ab.py.
+KING_GEOM_SCALE = 0.4
+KING_ATTACK_SCALE = 1.8
+
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)
 PAWN_ELIMINATION_BONUS = 0.14       # bonus per eliminated White pawn (4 - count)

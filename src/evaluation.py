@@ -5,6 +5,7 @@ from config import (
     WHITE_PAWN_VALUE, PAWN_ELIMINATION_BONUS, BLOCKED_PAWN_PENALTY,
     KING_DISPLACEMENT_WEIGHT, KING_MOBILITY_WEIGHT, BARRIER_RANK_FILE_WEIGHT,
     PIECE_SAFETY_BONUS, BLACK_KING_EXPOSURE_PENALTY,
+    KING_GEOM_SCALE, KING_ATTACK_SCALE,
 )
 
 _KING_DELTAS = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
@@ -119,7 +120,8 @@ def _is_passed_pawn(board, sq, color):
     return True
 
 
-def evaluate(game_state, king_geom_scale=1.0, king_attack_scale=1.0):
+def evaluate(game_state, king_geom_scale=KING_GEOM_SCALE,
+             king_attack_scale=KING_ATTACK_SCALE):
     """Evaluate a Monster Chess position heuristically.
 
     Monster Chess specifics:
@@ -133,12 +135,13 @@ def evaluate(game_state, king_geom_scale=1.0, king_attack_scale=1.0):
     Returns a float in [-1, 1] from White's perspective.
     Designed to be swappable with a neural-network evaluation later.
 
-    king_geom_scale / king_attack_scale (default 1.0 = frozen baseline): tuning
-    knobs for the White-king terms, used to A/B heuristic variants without
-    duplicating this function (tools/heuristic_ab.py). king_geom_scale weights
-    the pure-geometry confinement penalties (displacement + edge proximity);
-    king_attack_scale weights the king's attacking tropism rewards. Leaving
-    both at 1.0 reproduces the historical anchor exactly.
+    king_geom_scale / king_attack_scale: tuning knobs for the White-king terms
+    (tools/heuristic_ab.py A/Bs variants without duplicating this function).
+    king_geom_scale weights the pure-geometry confinement penalties
+    (displacement + edge proximity); king_attack_scale weights the king's
+    attacking tropism rewards. They default to the ADOPTED values
+    (KING_GEOM_SCALE / KING_ATTACK_SCALE in config); pass 1.0/1.0 to recover
+    the original GA-tuned baseline exactly.
     """
     board = game_state.board
 
