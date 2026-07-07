@@ -200,12 +200,10 @@ CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3, -0.4, -0.3, 
 CURRICULUM_FORCED_MAX_TIER = 2  # tiers <= this use forced labels; higher tiers use live results
 
 # Tensor encoding
-NUM_PIECE_LAYERS = 12
 TURN_LAYER = 12
 MOVE_COUNT_LAYER = 13
 PAWN_ADVANCEMENT_LAYER = 14
-TOTAL_LAYERS = 15
-TENSOR_SHAPE = (8, 8, TOTAL_LAYERS)
+TENSOR_SHAPE = (8, 8, 15)
 
 # Policy head
 POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
@@ -224,7 +222,6 @@ RESIDUAL_BLOCK_CHANNELS = (
 )  # deeper tower (stage F backbone scaling)
 USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
-USE_SIDE_SPECIALIZED_HEADS = False  # optional side-specific value/policy heads
 
 # Training
 BATCH_SIZE = 256
@@ -236,51 +233,31 @@ WARMUP_START_FACTOR = 0.1
 VALUE_LOSS_EXPONENT = 2.5  # power-law loss (Stockfish uses 2.5 vs MSE's 2.0)
 LR_GAMMA = 0.95           # exponential LR decay per epoch
 EPOCHS = 50
-VALUE_TARGET = "game_result"  # "game_result" or "mcts_value" or "blend" or "source_aware".
-                              # Grounded on outcomes (REWORK_PLAN.md Phase 2.1): the value
-                              # target must carry information the net does not already have.
-                              # A blend (lambda<=0.3) may be revisited only AFTER the loop
-                              # works and root Q genuinely reflects search improvement.
+VALUE_TARGET = "game_result"  # "game_result" or "mcts_value". Grounded on outcomes
+                              # (REWORK_PLAN.md Phase 2.1): the value target must carry
+                              # information the net does not already have.
 VALUE_HEAD_MODE = "scalar"  # "scalar" or "wdl" (wdl = expected value from WDL logits)
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
-BLEND_WEIGHT = 0.7      # weight for mcts_value when VALUE_TARGET="blend"
-BLEND_START = 0.8       # lambda at epoch 1 (trust MCTS more early)
-BLEND_END = 0.5         # lambda at final epoch (shift toward game results)
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
-# Human data
-HUMAN_DATA_WEIGHT = 8     # repeat human game positions N times during processing
-HUMANSEED_DATA_WEIGHT = 2  # repeat _humanseed game positions N times in TRAIN split
-BLACKFOCUS_DATA_WEIGHT = 2  # repeat _blackfocus game positions N times in TRAIN split
+# Data retention (data_processor.py)
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)
 DATA_RETENTION_MIN_NONHUMAN_PLIES = 4   # drop non-human games shorter than this many plies (<=0 disables)
-DATA_RETENTION_MIN_HUMANSEED_POLICY_ENTROPY = 0.05  # drop human-seed games with near-deterministic policy targets (<=0 disables)
-SLIDING_WINDOW = 2        # keep only the last N NN generations for training
-POSITION_BUDGET = 250000  # include enough recent generations to hit this many raw positions
-POSITION_BUDGET_MAX = 250000   # upper cap for position-budget windowing (0 disables cap)
-PROCESSED_POSITION_CAP = 500000  # hard cap on processed train+val+test positions (0 disables)
-SOURCE_QUOTA_ENABLED = True
-SOURCE_QUOTA_SELFPLAY = 0.50
-SOURCE_QUOTA_HUMAN = 0.25
-SOURCE_QUOTA_BLACKFOCUS = 0.15
-SOURCE_QUOTA_HUMANSEED = 0.10
-BLACK_ITER_SOURCE_QUOTA_SELFPLAY = 0.25
-BLACK_ITER_SOURCE_QUOTA_HUMAN = 0.00
-BLACK_ITER_SOURCE_QUOTA_BLACKFOCUS = 0.35
-BLACK_ITER_SOURCE_QUOTA_HUMANSEED = 0.40
-# Source-aware value labels: lambda = weight on mcts_value; (1-lambda) on game_result.
-# All zero (REWORK_PLAN.md Phase 2.1): train the value head purely on game outcomes.
-# With the pre-fix search, mcts_value was the network's own root evaluation fed back
-# as its own target — a self-distillation fixed point that flattened calibration to ~0.
-SELFPLAY_TARGET_MCTS_LAMBDA = 0.00
-HUMAN_TARGET_MCTS_LAMBDA = 0.00
-BLACKFOCUS_TARGET_MCTS_LAMBDA = 0.00
-HUMANSEED_TARGET_MCTS_LAMBDA = 0.00
 OPPONENT_SIMULATIONS = 200  # MCTS sims for frozen opponent in alternating training
 SKIP_CHECK_POSITIONS = True  # drop in-check positions during data generation by default
-SELFPLAY_SIMS_JITTER_PCT = 0.20  # randomize self-play per-game sims +/- this fraction
-BLACK_FOCUS_SCRIPTED_BLACK = False  # live MCTS Black outperforms scripted Black on current curriculum starts
+
+# Self-improvement loop (iterate.py)
+ITERATE_GAMES = 400              # self-play games per generation
+ITERATE_BLACKFOCUS_GAMES = 150   # black-focus games per generation (0 disables)
+ITERATE_SIMS = 400               # generation MCTS simulations
+ITERATE_ARENA_GAMES = 100        # candidate-vs-incumbent gate games
+ITERATE_ARENA_SIMS = 400         # arena + anchor simulations
+ITERATE_GATE_THRESHOLD = 0.55    # min candidate score vs incumbent
+ITERATE_ANCHOR_GAMES = 20        # anchor benchmark games per candidate
+ITERATE_ANCHOR_EPSILON = 0.05    # allowed anchor-score regression
+ITERATE_MAX_GENERATION_AGE = 4   # processing window in generations
+ITERATE_EPOCHS = 30              # training epochs per generation
 
 # Sub-goal reward shaping (Black strategic progress in heuristic eval)
 WHITE_PAWN_VALUE = 0.18             # value per White pawn (was 0.10)

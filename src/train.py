@@ -15,18 +15,17 @@ from torch.utils.data import TensorDataset, DataLoader
 from config import (
     TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
-    VALUE_TARGET, BLEND_WEIGHT, BLEND_START, BLEND_END,
+    VALUE_TARGET,
     VALUE_HEAD_MODE, WDL_LOSS_WEIGHT, WDL_DRAW_EPSILON,
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
     POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
-    USE_SE_BLOCKS, SE_REDUCTION, USE_SIDE_SPECIALIZED_HEADS,
+    USE_SE_BLOCKS, SE_REDUCTION,
 )
 
 # Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
 IN_CHANNELS = TENSOR_SHAPE[2]
-SOURCE_ID_HUMAN = 1  # SOURCE_ORDER index in data_processor.py
 
 
 def set_seed(seed):
@@ -147,7 +146,7 @@ class DualHeadNet(nn.Module):
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
         use_se_blocks=USE_SE_BLOCKS,
         se_reduction=SE_REDUCTION,
-        use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
+        use_side_specialized_heads=False,
         use_wdl_head=False,
         value_head_mode=VALUE_HEAD_MODE,
     ):
@@ -386,7 +385,7 @@ def build_model(
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
     use_se_blocks=USE_SE_BLOCKS,
     se_reduction=SE_REDUCTION,
-    use_side_specialized_heads=USE_SIDE_SPECIALIZED_HEADS,
+    use_side_specialized_heads=False,
     use_wdl_head=False,
     value_head_mode=VALUE_HEAD_MODE,
 ):
