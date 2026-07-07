@@ -60,13 +60,6 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--temperature-low", out)
         self.assertIn("--temperature-moves", out)
 
-    def test_gate_sweep_help_contains_new_calibration_flags(self):
-        code, out = _run_help("gate_sweep.py")
-        self.assertEqual(code, 0)
-        self.assertIn("--recommend-k", out)
-        self.assertIn("--target-accept-rate", out)
-        self.assertIn("--prefer-strict", out)
-
     def test_iterate_presets_help_and_dry_run(self):
         code, out = _run_help("iterate_presets.py")
         self.assertEqual(code, 0)

@@ -43,7 +43,6 @@ _opponent_eval_fn = None
 _opponent_eval_pool = []
 _curriculum = False
 _curriculum_live_results = False
-_scripted_black = False
 _force_result = None
 _train_side = "both"
 _opponent_sims = OPPONENT_SIMULATIONS
@@ -129,59 +128,8 @@ def _iter_start_fen_paths(file_path, dir_path):
                 yield os.path.join(dir_path, name)
 
 
-def _to_white_perspective_value(raw_value, rec_side):
-    """Convert record value to White perspective using side-to-move label."""
-    try:
-        v = float(raw_value)
-    except Exception:
-        return None
-    if rec_side == "white":
-        return v
-    if rec_side == "black":
-        return -v
-    return None
-
-
-def _convert_white_to_black_start(fen, rng, policy_dict=None):
-    """Advance one White turn to produce a Black-to-move start FEN.
-
-    If a white-action policy is available, prefer the highest-probability
-    legal action to keep converted starts aligned with recorded play.
-    """
-    try:
-        game = MonsterChessGame(fen=fen)
-    except Exception:
-        return None
-    if not game.is_white_turn or game.is_terminal():
-        return None
-    actions = game.get_legal_actions()
-    if not actions:
-        return None
-    action = None
-    if isinstance(policy_dict, dict) and policy_dict:
-        legal_set = set(actions)
-        # Try highest-probability actions first.
-        ordered = sorted(policy_dict.items(), key=lambda kv: float(kv[1]), reverse=True)
-        for action_str, _prob in ordered:
-            try:
-                parsed = MonsterChessGame.str_to_action(action_str, is_white=True)
-            except Exception:
-                continue
-            if parsed in legal_set:
-                action = parsed
-                break
-    if action is None:
-        action = rng.choice(actions)
-    game.apply_action(action)
-    if game.is_white_turn:
-        return None
-    return game.fen()
-
-
 def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
-                     max_positions=0, seed=None,
-                     convert_white_to_black=False,
-                     white_value_max=None):
+                     max_positions=0, seed=None):
     """Load start FEN candidates from JSONL records with optional side filter."""
     if not file_path and not dir_path:
         return [], {
@@ -189,7 +137,6 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
             "records_total": 0,
             "records_valid": 0,
             "records_kept": 0,
-            "filtered_by_white_value": 0,
         }
 
     side_filter = str(side_filter or "any").lower()
@@ -197,10 +144,8 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
         raise ValueError("start FEN side filter must be one of: any, white, black")
 
     all_fens = []
-    white_side_candidates = []
     records_total = 0
     records_valid = 0
-    filtered_by_white_value = 0
     files_used = 0
     for path in _iter_start_fen_paths(file_path=file_path, dir_path=dir_path):
         if not os.path.isfile(path):
@@ -231,34 +176,10 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
                         rec_side = _fen_turn_side(fen)
                 if rec_side is None:
                     continue
-                white_value = None
-                if isinstance(obj, dict):
-                    white_value = _to_white_perspective_value(obj.get("mcts_value"), rec_side)
-                if (
-                    white_value_max is not None
-                    and white_value is not None
-                    and white_value > float(white_value_max)
-                ):
-                    filtered_by_white_value += 1
-                    continue
                 records_valid += 1
                 if side_filter != "any" and rec_side != side_filter:
-                    if side_filter == "black" and rec_side == "white" and convert_white_to_black:
-                        policy = obj.get("policy") if isinstance(obj, dict) else None
-                        white_side_candidates.append((fen, policy))
                     continue
                 all_fens.append(fen)
-
-    converted_added = 0
-    if side_filter == "black" and convert_white_to_black and white_side_candidates:
-        convert_rng = random.Random(seed if seed is not None else 0)
-        for white_fen, white_policy in white_side_candidates:
-            converted = _convert_white_to_black_start(
-                white_fen, convert_rng, policy_dict=white_policy
-            )
-            if converted:
-                all_fens.append(converted)
-                converted_added += 1
 
     if max_positions and max_positions > 0 and len(all_fens) > max_positions:
         rng = random.Random(seed)
@@ -269,9 +190,6 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
         "records_total": records_total,
         "records_valid": records_valid,
         "records_kept": len(all_fens),
-        "filtered_by_white_value": filtered_by_white_value,
-        "white_candidates_for_conversion": len(white_side_candidates),
-        "converted_added": converted_added,
     }
 
 
@@ -307,7 +225,7 @@ def _curriculum_indices_for_range(tier_min, tier_max):
     return indices
 
 
-def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results, scripted_black,
+def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
@@ -315,14 +233,13 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
                  root_noise=True, allow_early_stop=False):
     """Initializer for worker processes - loads model(s) once per worker."""
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
-    global _curriculum, _curriculum_live_results, _scripted_black
+    global _curriculum, _curriculum_live_results
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
     global _curriculum_indices
     global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies, _hybrid_eval
     global _root_noise, _allow_early_stop
     _curriculum = curriculum
     _curriculum_live_results = curriculum_live_results
-    _scripted_black = scripted_black
     _force_result = force_result
     _train_side = train_side
     _opponent_sims = opponent_sims
@@ -371,7 +288,6 @@ def play_game(num_simulations, game_deadline=None):
 
     Uses NN evaluator if loaded by worker, otherwise heuristic.
     Uses curriculum starting positions if _curriculum is set.
-    Uses scripted Black play if _scripted_black is set (curriculum only).
 
     When _train_side is "white" or "black", uses separate MCTS engines
     for each side (frozen-opponent alternating training).
@@ -410,11 +326,6 @@ def play_game(num_simulations, game_deadline=None):
         else:  # "black"
             white_engine = opponent_engine
             black_engine = train_engine
-
-    scripted_fn = None
-    if _scripted_black:
-        from scripted_endgame import get_scripted_black_move
-        scripted_fn = get_scripted_black_move
 
     chosen_fen_idx = None
     if _start_fens:
@@ -465,23 +376,6 @@ def play_game(num_simulations, game_deadline=None):
                 from scripted_mate import ScriptedMate
                 mate_bot = ScriptedMate()
             action = mate_bot.select_move(game)
-            if action is None:
-                break
-            if not skip_record:
-                from evaluation import evaluate
-                root_value = evaluate(game)
-                records.append({
-                    "fen": game.fen(),
-                    "mcts_value": round(-root_value, 4),
-                    "policy": {action.uci(): 1.0},
-                    "current_player": "black",
-                    "half": 0,
-                })
-            game.apply_search_action(action)
-        elif not is_white and scripted_fn is not None:
-            # Use scripted play for Black in curriculum games
-            game.board.turn = chess.BLACK
-            action = scripted_fn(game.board)
             if action is None:
                 break
             if not skip_record:
@@ -615,8 +509,6 @@ def main():
                         help="Curriculum tier lower bound (1-indexed)")
     parser.add_argument("--curriculum-tier-max", type=int, default=None,
                         help="Curriculum tier upper bound (1-indexed)")
-    parser.add_argument("--scripted-black", action="store_true",
-                        help="Use scripted endgame play for Black (curriculum only)")
     parser.add_argument("--force-result", type=int, default=None, choices=[-1, 0, 1],
                         help="Override game result for all games (1=White, -1=Black, 0=Draw)")
     parser.add_argument("--train-side", type=str, default="both",
@@ -655,10 +547,6 @@ def main():
                         help="Filter loaded start positions by side to move")
     parser.add_argument("--start-fen-max-positions", type=int, default=0,
                         help="Cap loaded start positions (0 = no cap)")
-    parser.add_argument("--start-fen-convert-white-to-black", action="store_true",
-                        help="When filtering for black starts, convert white-to-move records by sampling one White turn")
-    parser.add_argument("--start-fen-white-value-max", type=float, default=None,
-                        help="Optional max White-perspective value for retaining start FEN records")
     args = parser.parse_args()
     if args.hybrid_eval and not args.use_model:
         raise ValueError("--hybrid-eval requires --use-model")
@@ -676,8 +564,6 @@ def main():
         raise ValueError("--temperature-low must be > 0")
     if args.temperature_moves < 0:
         raise ValueError("--temperature-moves must be >= 0")
-    if args.start_fen_white_value_max is not None and not (-1.0 <= args.start_fen_white_value_max <= 1.0):
-        raise ValueError("--start-fen-white-value-max must be in [-1, 1]")
 
     sim_min = args.simulations if args.simulations_min is None else args.simulations_min
     sim_max = args.simulations if args.simulations_max is None else args.simulations_max
@@ -748,8 +634,6 @@ def main():
         side_filter=args.start_fen_side,
         max_positions=args.start_fen_max_positions,
         seed=args.seed,
-        convert_white_to_black=args.start_fen_convert_white_to_black,
-        white_value_max=args.start_fen_white_value_max,
     )
     if (args.start_fen_file or args.start_fen_dir) and not start_fens:
         raise ValueError("No start positions loaded after applying filters")
@@ -757,8 +641,7 @@ def main():
         print(
             f"Using start-position source: kept {len(start_fens)} FENs "
             f"(files={start_fen_stats['files']}, valid={start_fen_stats['records_valid']}, "
-            f"total={start_fen_stats['records_total']}, side={args.start_fen_side}, "
-            f"converted={start_fen_stats.get('converted_added', 0)})"
+            f"total={start_fen_stats['records_total']}, side={args.start_fen_side})"
         )
 
     if args.curriculum:
@@ -768,8 +651,6 @@ def main():
             print("Curriculum labels: using live game results")
         else:
             print("Curriculum labels: using forced tier values")
-    if args.scripted_black:
-        print("Using scripted endgame play for Black")
     if args.force_result is not None:
         label = {1: "White win", -1: "Black win", 0: "Draw"}[args.force_result]
         print(f"Forcing game result: {args.force_result} ({label})")
@@ -824,7 +705,7 @@ def main():
         max_workers=workers,
         initializer=_init_worker,
         initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
-                  args.scripted_black, args.force_result,
+                  args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, curriculum_indices,
                   args.temperature_high, args.temperature_low, args.temperature_moves,
@@ -963,7 +844,6 @@ def main():
             "curriculum_tier_min": int(curriculum_tier_min) if args.curriculum else None,
             "curriculum_tier_max": int(curriculum_tier_max) if args.curriculum else None,
             "curriculum_positions": int(len(curriculum_indices)) if curriculum_indices is not None else None,
-            "scripted_black": bool(args.scripted_black),
             "keep_check_positions": bool(args.keep_check_positions),
             "record_all_plies": bool(args.record_all_plies),
             "seed": int(args.seed) if args.seed is not None else None,
@@ -973,8 +853,6 @@ def main():
                 "dir": args.start_fen_dir,
                 "side_filter": args.start_fen_side,
                 "max_positions": int(args.start_fen_max_positions),
-                "convert_white_to_black": bool(args.start_fen_convert_white_to_black),
-                "white_value_max": args.start_fen_white_value_max,
                 "loaded_positions": int(len(start_fens)),
                 "source_stats": start_fen_stats,
             },
