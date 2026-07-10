@@ -132,21 +132,65 @@ def ai_select_full_action(engine, game, temperature):
     return action, probs, val
 
 
-def parse_move(text, board):
-    """Parse user input into a chess.Move. Accepts UCI (e2e4) or SAN (Nf3)."""
+def parse_move(text, board, legal_set=None):
+    """Parse user input into a chess.Move. Accepts UCI (e2e4) or SAN (Nf3).
+
+    legal_set: when provided, candidate moves are validated against it and a
+    manual-SAN fallback runs over it.  parse_san rejects moves that are legal
+    in Monster Chess but illegal in standard chess (king moves into check on
+    White's first half, king-captures-king), so SAN input for those moves
+    only works through the fallback.  King moves also accept the no-'x' and
+    lowercase forms ("Kd4"/"kxd4") — 'k' is not a file letter, so this is
+    unambiguous.
+    """
     text = text.strip()
+    valid = set(legal_set) if legal_set is not None else None
     # Try UCI first
     try:
         move = chess.Move.from_uci(text)
-        if move in board.pseudo_legal_moves or move in board.legal_moves:
+        if valid is not None:
+            if move in valid:
+                return move
+        elif move in board.pseudo_legal_moves or move in board.legal_moves:
             return move
     except (ValueError, chess.InvalidMoveError):
         pass
-    # Try SAN
+    # Try standard SAN
     try:
-        return board.parse_san(text)
-    except (ValueError, chess.InvalidMoveError, chess.AmbiguousMoveError) as e:
+        move = board.parse_san(text)
+        if valid is None or move in valid:
+            return move
+    except (ValueError, chess.InvalidMoveError, chess.AmbiguousMoveError):
+        pass
+    if valid is None:
         return None
+    # Manual-SAN fallback over the true legal set (Monster Chess moves that
+    # python-chess's standard-chess validator refuses).
+    clean = text.rstrip('+#')
+    for move in valid:
+        try:
+            if board.san(move).rstrip('+#') == clean:
+                return move
+        except Exception:
+            pass  # board.san can raise on king-capture moves
+        piece = board.piece_at(move.from_square)
+        if piece is None:
+            continue
+        is_cap = board.is_capture(move) or board.piece_at(move.to_square) is not None
+        to_sq = chess.square_name(move.to_square)
+        if piece.piece_type == chess.PAWN:
+            manual = (chr(ord('a') + chess.square_file(move.from_square)) + 'x' + to_sq
+                      if is_cap else to_sq)
+            if manual == clean:
+                return move
+        else:
+            manual = piece.symbol().upper() + ('x' if is_cap else '') + to_sq
+            if manual == clean:
+                return move
+            if piece.piece_type == chess.KING and clean.lower() in (
+                    "k" + to_sq, "kx" + to_sq):
+                return move
+    return None
 
 
 def get_human_white_action(game):
@@ -159,7 +203,7 @@ def get_human_white_action(game):
         text = input(f"  {BOLD}Your move 1/2:{RESET} ").strip()
         if text.lower() in ("quit", "resign", "q"):
             return "resign"
-        m1 = parse_move(text, board)
+        m1 = parse_move(text, board, legal_set=legal_first)
         if m1 is None:
             print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_first[:20])}")
             if len(legal_first) > 20:
@@ -185,7 +229,7 @@ def get_human_white_action(game):
         if text.lower() in ("quit", "resign", "q"):
             board.pop()
             return "resign"
-        m2 = parse_move(text, board)
+        m2 = parse_move(text, board, legal_set=legal_second)
         if m2 is None:
             print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_second[:20])}")
             if len(legal_second) > 20:
@@ -262,7 +306,7 @@ def get_human_black_action(game):
         text = input(f"  {BOLD}Your move:{RESET} ").strip()
         if text.lower() in ("quit", "resign", "q"):
             return "resign"
-        move = parse_move(text, game.board)
+        move = parse_move(text, game.board, legal_set=legal)
         if move is None or move not in legal:
             print(f"  Invalid. Legal moves: {', '.join(m.uci() for m in legal[:20])}")
             if len(legal) > 20:
