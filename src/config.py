@@ -236,6 +236,12 @@ EPOCHS = 50
 VALUE_TARGET = "game_result"  # "game_result" or "mcts_value". Grounded on outcomes
                               # (REWORK_PLAN.md Phase 2.1): the value target must carry
                               # information the net does not already have.
+VALUE_TARGET_GAMMA = 0.999  # per-ply discount on the scalar game_result target
+                            # (data_processor): win-in-5 trains higher than
+                            # win-in-50, giving search an urgency gradient in
+                            # saturated won positions (anti-shuffle/anti-suicide,
+                            # owner-observed v12 failure). 1.0 = off. Still
+                            # outcome-grounded — sign and source stay the result.
 VALUE_HEAD_MODE = "scalar"  # "scalar" or "wdl" (wdl = expected value from WDL logits)
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels

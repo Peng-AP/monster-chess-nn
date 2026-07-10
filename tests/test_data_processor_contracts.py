@@ -135,5 +135,36 @@ class ProcessRawDataSmokeTests(unittest.TestCase):
                 len(meta["train"]) + len(meta["val"]) + len(meta["test"]), 10)
 
 
+
+class ValueDiscountTests(unittest.TestCase):
+    def _recs(self, fens, result):
+        recs = []
+        for f in fens:
+            r = _record("black", result)
+            r["fen"] = f
+            recs.append(r)
+        return recs
+
+    def test_discount_slopes_toward_game_end(self):
+        fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in (1, 2, 3, 4)]
+        recs = self._recs(fens, -1.0)
+        out = dp._discounted_results(recs, gamma=0.9)
+        self.assertAlmostEqual(out[0], -0.9 ** 3)
+        self.assertAlmostEqual(out[1], -0.9 ** 2)
+        self.assertAlmostEqual(out[2], -0.9)
+        self.assertAlmostEqual(out[3], -1.0)
+
+    def test_discount_segments_infile_duplicates(self):
+        fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in (1, 2, 3)]
+        recs = self._recs(fens, -1.0) * 2  # x2 in-file duplication
+        out = dp._discounted_results(recs, gamma=0.9)
+        expected = [-0.9 ** 2, -0.9, -1.0] * 2
+        for got, want in zip(out, expected):
+            self.assertAlmostEqual(got, want)
+
+    def test_gamma_one_is_identity(self):
+        recs = self._recs(["8/8/8/8/8/1k1K4/8/8 b - - 0 1"] * 3, 1.0)
+        self.assertEqual(dp._discounted_results(recs, gamma=1.0), [1.0, 1.0, 1.0])
+
 if __name__ == "__main__":
     unittest.main()
