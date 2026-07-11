@@ -47,14 +47,24 @@ def _build_engine(model_path, sims):
     return engine, label
 
 
-def play_one(white_engine, black_engine, start_fen=None, max_plies=600):
-    """Play a single deterministic game. Returns (result, n_plies, n_decisions)."""
+def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
+             opening_temp_plies=0, opening_temp=0.5):
+    """Play a single game. Returns (result, n_plies, n_decisions).
+
+    opening_temp_plies > 0 samples the first N plies at opening_temp instead
+    of temp 0. REQUIRED for NN-vs-NN matches (iterate arena, tools/match.py):
+    two deterministic engines at temp 0 replay the identical game no matter
+    how the RNG is seeded, silently collapsing the sample size to 1.
+    Heuristic-involved games diverge via seeded tie-breaks, so the anchor
+    benchmark keeps 0 (yardstick unchanged).
+    """
     game = MonsterChessGame(fen=start_fen) if start_fen else MonsterChessGame()
     decisions = 0
     plies = 0
     while not game.is_terminal() and plies < max_plies:
         engine = white_engine if game.is_white_turn else black_engine
-        action, _probs, _val = engine.get_best_action(game, temperature=0.0)
+        temp = opening_temp if plies < opening_temp_plies else 0.0
+        action, _probs, _val = engine.get_best_action(game, temperature=temp)
         if action is None:
             break
         _apply(game, action)

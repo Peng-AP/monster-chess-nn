@@ -75,8 +75,14 @@ def _next_generation(raw_dir):
     return best + 1
 
 
-def run_arena(candidate_path, incumbent_path, games, sims, seed):
-    """Head-to-head candidate vs incumbent, both colors, temp 0, no noise.
+def run_arena(candidate_path, incumbent_path, games, sims, seed,
+              opening_temp_plies=16):
+    """Head-to-head candidate vs incumbent, both colors, no noise.
+
+    The first opening_temp_plies plies are sampled at temperature (benchmark.
+    play_one) — two NN engines at pure temp 0 are deterministic, so every
+    seeded "game" replays identically and the arena silently scores a single
+    game N times. Temp-diversified openings restore a real sample.
 
     Returns candidate score in [0, 1].
     """
@@ -91,14 +97,16 @@ def run_arena(candidate_path, incumbent_path, games, sims, seed):
     wins = draws = 0
     for i in range(n_white):
         random.seed(seed + i)
-        result, _plies, _dec = play_one(candidate, incumbent)
+        result, _plies, _dec = play_one(candidate, incumbent,
+                                        opening_temp_plies=opening_temp_plies)
         if result > 0:
             wins += 1
         elif result == 0:
             draws += 1
     for i in range(n_black):
         random.seed(seed + 1000 + i)
-        result, _plies, _dec = play_one(incumbent, candidate)
+        result, _plies, _dec = play_one(incumbent, candidate,
+                                        opening_temp_plies=opening_temp_plies)
         if result < 0:
             wins += 1
         elif result == 0:
