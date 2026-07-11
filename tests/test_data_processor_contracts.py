@@ -145,26 +145,31 @@ class ValueDiscountTests(unittest.TestCase):
             recs.append(r)
         return recs
 
-    def test_discount_slopes_toward_game_end(self):
-        fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in (1, 2, 3, 4)]
+    def test_ramp_inside_horizon_flat_beyond(self):
+        fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in range(1, 8)]
         recs = self._recs(fens, -1.0)
-        out = dp._discounted_results(recs, gamma=0.9)
-        self.assertAlmostEqual(out[0], -0.9 ** 3)
-        self.assertAlmostEqual(out[1], -0.9 ** 2)
-        self.assertAlmostEqual(out[2], -0.9)
-        self.assertAlmostEqual(out[3], -1.0)
+        out = dp._discounted_results(recs, horizon=3, floor=0.9)
+        g = 0.9 ** (1.0 / 3)
+        # positions >= 3 plies from the end: flat floor
+        for i in range(0, 4):
+            self.assertAlmostEqual(out[i], -0.9)
+        # last 3 plies ramp toward the result
+        self.assertAlmostEqual(out[4], -g ** 2)
+        self.assertAlmostEqual(out[5], -g)
+        self.assertAlmostEqual(out[6], -1.0)
 
-    def test_discount_segments_infile_duplicates(self):
+    def test_ramp_segments_infile_duplicates(self):
         fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in (1, 2, 3)]
         recs = self._recs(fens, -1.0) * 2  # x2 in-file duplication
-        out = dp._discounted_results(recs, gamma=0.9)
-        expected = [-0.9 ** 2, -0.9, -1.0] * 2
+        out = dp._discounted_results(recs, horizon=2, floor=0.9)
+        g = 0.9 ** 0.5
+        expected = [-0.9, -g, -1.0] * 2
         for got, want in zip(out, expected):
             self.assertAlmostEqual(got, want)
 
-    def test_gamma_one_is_identity(self):
+    def test_floor_one_is_identity(self):
         recs = self._recs(["8/8/8/8/8/1k1K4/8/8 b - - 0 1"] * 3, 1.0)
-        self.assertEqual(dp._discounted_results(recs, gamma=1.0), [1.0, 1.0, 1.0])
+        self.assertEqual(dp._discounted_results(recs, floor=1.0), [1.0, 1.0, 1.0])
 
 if __name__ == "__main__":
     unittest.main()

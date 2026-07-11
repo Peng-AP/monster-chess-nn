@@ -21,7 +21,7 @@ from config import (
     TENSOR_SHAPE, POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
-    RANDOM_SEED, VALUE_TARGET_GAMMA,
+    RANDOM_SEED, VALUE_TARGET_HORIZON, VALUE_TARGET_FLOOR,
 )
 # Re-exported for existing importers (evaluation.py, mcts.py, tests).
 from encoding import (  # noqa: F401
@@ -184,22 +184,26 @@ def _split_games_by_result(games, seed):
     return split
 
 
-def _discounted_results(records, gamma):
-    """Per-record game_result with a per-ply discount toward the game end.
+def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
+                        floor=VALUE_TARGET_FLOOR):
+    """game_result targets with a NEAR-MATE ramp: floor -> 1.0 over the last
+    `horizon` plies of the game; every earlier position gets the flat floor.
 
-    target[i] = game_result * gamma**(plies_to_end_of_segment). Gives the
-    scalar value head an urgency gradient: a win 5 plies away trains higher
-    than a win 50 plies away, so search in saturated won positions prefers
-    the faster mate instead of shuffling. gamma >= 1.0 disables (raw results).
+    Purpose is narrow (owner spec, 2026-07-11): a tiebreak so search at value
+    saturation prefers mate-in-1 over mate-in-3 instead of drifting or
+    suiciding. The flat plateau beyond the horizon is a uniform scale factor —
+    relative ordering of all other positions is untouched, so no other
+    behavior is modified (a global per-ply discount taxed Black's long wins;
+    v13 rejected). floor >= 1.0 disables.
 
     Segments: merge drivers duplicate scarce human games by repeating the
     records INSIDE one file (keeps game-level splits leak-free). A record
-    whose FEN equals the file's first FEN starts a new copy, so the discount
-    is computed within each copy — otherwise the first copy would be scored
-    as hundreds of plies from the end.
+    whose FEN equals the file's first FEN starts a new copy, so distance to
+    end is computed within each copy.
     """
-    if gamma >= 1.0:
+    if floor >= 1.0:
         return [rec.get("game_result", 0) for rec in records]
+    gamma = floor ** (1.0 / max(1, horizon))
     start_fen = records[0].get("fen")
     bounds = [i for i, rec in enumerate(records)
               if i == 0 or rec.get("fen") == start_fen]
@@ -207,11 +211,13 @@ def _discounted_results(records, gamma):
     out = [0.0] * len(records)
     for a, b in zip(bounds, bounds[1:]):
         for i in range(a, b):
-            out[i] = records[i].get("game_result", 0) * (gamma ** (b - 1 - i))
+            plies_to_end = min(b - 1 - i, horizon)
+            out[i] = records[i].get("game_result", 0) * (gamma ** plies_to_end)
     return out
 
 
-def _convert_games_to_arrays(games, augment, value_gamma=VALUE_TARGET_GAMMA):
+def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
+                             value_floor=VALUE_TARGET_FLOOR):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
@@ -219,7 +225,7 @@ def _convert_games_to_arrays(games, augment, value_gamma=VALUE_TARGET_GAMMA):
     policy_targets = []
 
     for game in tqdm(games, desc="Converting", leave=False):
-        discounted = _discounted_results(game["records"], value_gamma)
+        discounted = _discounted_results(game["records"], value_horizon, value_floor)
         for rec, gr in zip(game["records"], discounted):
             is_white = rec["current_player"] == "white"
             half_pending = bool(rec.get("half"))
@@ -258,7 +264,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      augment=True, seed=RANDOM_SEED, include_human=True,
                      max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
                      min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
-                     value_gamma=VALUE_TARGET_GAMMA):
+                     value_horizon=VALUE_TARGET_HORIZON,
+                     value_floor=VALUE_TARGET_FLOOR):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -296,11 +303,11 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  Games: train={len(train_games)}, val={len(val_games)}, test={len(test_games)}")
     print(f"  Processing positions (augment={augment})...")
 
-    if value_gamma < 1.0:
-        print(f"  Value targets: game_result discounted per ply (gamma={value_gamma})")
-    X_train, yv_train, yr_train, yp_train = _convert_games_to_arrays(train_games, augment, value_gamma)
-    X_val, yv_val, yr_val, yp_val = _convert_games_to_arrays(val_games, augment, value_gamma)
-    X_test, yv_test, yr_test, yp_test = _convert_games_to_arrays(test_games, augment, value_gamma)
+    if value_floor < 1.0:
+        print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 over last {value_horizon} plies")
+    X_train, yv_train, yr_train, yp_train = _convert_games_to_arrays(train_games, augment, value_horizon, value_floor)
+    X_val, yv_val, yr_val, yp_val = _convert_games_to_arrays(val_games, augment, value_horizon, value_floor)
+    X_test, yv_test, yr_test, yp_test = _convert_games_to_arrays(test_games, augment, value_horizon, value_floor)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
@@ -354,8 +361,10 @@ if __name__ == "__main__":
                         help="Drop nn_gen* games older than this many generations behind latest (<=0 disables)")
     parser.add_argument("--min-nonhuman-plies", type=int, default=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                         help="Drop non-human games shorter than this many plies (<=0 disables)")
-    parser.add_argument("--value-gamma", type=float, default=VALUE_TARGET_GAMMA,
-                        help="Per-ply discount on game_result targets (1.0 = off)")
+    parser.add_argument("--value-horizon", type=int, default=VALUE_TARGET_HORIZON,
+                        help="Plies from game end for the near-mate target ramp")
+    parser.add_argument("--value-floor", type=float, default=VALUE_TARGET_FLOOR,
+                        help="Plateau factor beyond the horizon (>=1.0 disables)")
     args = parser.parse_args()
     if args.max_generation_age is not None and args.max_generation_age < 0:
         raise ValueError("--max-generation-age must be >= 0")
@@ -370,5 +379,6 @@ if __name__ == "__main__":
         include_human=not args.exclude_human_games,
         max_generation_age=args.max_generation_age,
         min_nonhuman_plies=args.min_nonhuman_plies,
-        value_gamma=args.value_gamma,
+        value_horizon=args.value_horizon,
+        value_floor=args.value_floor,
     )
