@@ -123,8 +123,8 @@ def _allows_immediate_king_loss(game, action):
 
 
 def _swindle_override(game, action, val):
-    """Swindle mode (play-time only): in a lost position, never hand over the
-    king when a surviving alternative exists.
+    """Swindle mode (play-time only): never hand over the king when a
+    surviving alternative exists.
 
     v15 diagnosis (2026-07-12): a well-calibrated value head reads every move
     in a lost position as ~-0.98, so search picks among hopeless moves
@@ -134,7 +134,9 @@ def _swindle_override(game, action, val):
     allows an immediate king capture AND some legal action does not.
     Benchmark / arena / data generation never call this.
     """
-    if val > -0.85 or action is None:
+    # No eval gate: allowing your own king to be captured is never correct at
+    # ANY evaluation (the game simply ends), so the net is unconditional.
+    if action is None:
         return action
     if not _allows_immediate_king_loss(game, action):
         return action
