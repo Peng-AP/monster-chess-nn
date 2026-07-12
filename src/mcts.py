@@ -11,6 +11,52 @@ from config import (
 from evaluation import evaluate
 
 
+def _turn_completing(state):
+    """True when the action to be selected completes a turn: Black's move, or
+    White's SECOND half-move. White's first half may legally pass through
+    check (only the completed pair must leave the king safe), so the safety
+    override below must not fire on it."""
+    return (not state.is_white_turn) or getattr(state, "white_half_pending", False)
+
+
+def _hangs_king(state, action):
+    """True if, after this turn-completing action, the opponent can capture
+    the mover's king immediately."""
+    from evaluation import _white_threat_scan, _black_can_capture_king
+    tmp = state.clone()
+    apply_fn = getattr(tmp, "apply_search_action", None) or tmp.apply_action
+    apply_fn(action)
+    if tmp.is_terminal():
+        return False  # the action itself ended the game
+    if tmp.is_white_turn:
+        return _white_threat_scan(tmp)          # mover was Black
+    return _black_can_capture_king(tmp.board)   # mover was White
+
+
+def _king_safety_override(state, selected_action, children_info):
+    """Never hand the opponent an immediate king capture when a searched
+    alternative survives (owner directive 2026-07-12: engine-wide, so
+    training data, arena, and benchmark all inherit it).
+
+    Search normally avoids these via the eval threat clamps, but at value
+    saturation (all moves ~ -0.98) selection degenerates to noise and the
+    fastest mate gets gifted. The override re-ranks only among the search's
+    OWN children, by visit count, and touches nothing unless the chosen
+    action actually hangs the king. Cost: one threat scan per move in the
+    common case (<1ms).
+    """
+    if selected_action is None or not _turn_completing(state):
+        return selected_action
+    if not _hangs_king(state, selected_action):
+        return selected_action
+    for child, _key, _visits in sorted(children_info, key=lambda x: -x[2]):
+        if child.action == selected_action:
+            continue
+        if not _hangs_king(state, child.action):
+            return child.action
+    return selected_action  # every searched move loses the king — forced
+
+
 def _softmax_masked(logits, indices):
     """Softmax over a subset of logit indices, returning {index: prob}."""
     if not indices:
@@ -252,6 +298,8 @@ class MCTS:
                 idx = random.choices(range(len(children_info)), weights=probs, k=1)[0]
                 selected_action = children_info[idx][0].action
 
+        selected_action = _king_safety_override(root_state, selected_action,
+                                                children_info)
         return selected_action, action_probs, root.q_value
 
     # ------------------------------------------------------------------

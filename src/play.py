@@ -109,61 +109,6 @@ def format_eval(value):
     return f"  [{bar}] {label}"
 
 
-def _allows_immediate_king_loss(game, action):
-    """True if, after `action`, the opponent can capture the mover's king on
-    the very next turn (the observed despair-suicide)."""
-    from evaluation import _white_threat_scan, _black_can_capture_king
-    tmp = game.clone()
-    tmp.apply_action(action)
-    if tmp.is_terminal():
-        return False  # game over already; nothing to hang
-    if tmp.is_white_turn:
-        return _white_threat_scan(tmp)          # mover was Black
-    return _black_can_capture_king(tmp.board)   # mover was White
-
-
-def _swindle_override(game, action, val):
-    """Swindle mode (play-time only): never hand over the king when a
-    surviving alternative exists.
-
-    v15 diagnosis (2026-07-12): a well-calibrated value head reads every move
-    in a lost position as ~-0.98, so search picks among hopeless moves
-    indifferently and often hangs the king to the fastest mate. Training
-    labels can't fix this without re-taxing the winner (v13 lesson), so the
-    resistance rule lives at play time: keep the searched action unless it
-    allows an immediate king capture AND some legal action does not.
-    Benchmark / arena / data generation never call this.
-    """
-    # No eval gate: allowing your own king to be captured is never correct at
-    # ANY evaluation (the game simply ends), so the net is unconditional.
-    if action is None:
-        return action
-    if not _allows_immediate_king_loss(game, action):
-        return action
-    legal = game.get_legal_actions()
-    if not legal:
-        return action
-    if game.is_white_turn:
-        # The White pair oracle already sorts winning pairs first, then pairs
-        # that leave the king safe, and falls back to all pairs only when
-        # neither exists — so legal[0] IS the best survival candidate and the
-        # per-pair rescan below is redundant (it was the 1-3s/move cost in
-        # lost positions).
-        alt = legal[0]
-        return alt if not _allows_immediate_king_loss(game, alt) else action
-    for alt in legal:
-        tmp = game.clone()
-        tmp.apply_action(alt)
-        if tmp.is_terminal():
-            r = tmp.get_result()
-            if r < 0:
-                return alt  # winning capture for Black — take it
-            continue
-        if not _allows_immediate_king_loss(game, alt):
-            return alt
-    return action  # every move loses the king — forced
-
-
 def ai_select_full_action(engine, game, temperature, swindle=False):
     """Search half-moves but return a full atomic action for play/display.
 
@@ -172,8 +117,9 @@ def ai_select_full_action(engine, game, temperature, swindle=False):
     m2 — letting play.py keep applying atomic (m1, m2) pairs and rendering both moves
     together.  Black is already a single move (REWORK_PLAN.md Phase 3).
 
-    swindle=True enables the lost-position resistance override (human play
-    only — see _swindle_override).
+    swindle is accepted for backward compatibility and ignored: the
+    king-safety override now lives inside MCTS.get_best_action (engine-wide,
+    owner directive 2026-07-12), so every caller inherits it.
     """
     action, probs, val = engine.get_best_action(game, temperature=temperature)
     if action is None:
@@ -188,8 +134,6 @@ def ai_select_full_action(engine, game, temperature, swindle=False):
             action = (action, chess.Move.null())
         else:
             action = (action, action2)
-    if swindle:
-        action = _swindle_override(game, action, val)
     return action, probs, val
 
 
