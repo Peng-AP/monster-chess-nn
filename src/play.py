@@ -141,13 +141,23 @@ def _swindle_override(game, action, val):
     if not _allows_immediate_king_loss(game, action):
         return action
     legal = game.get_legal_actions()
+    if not legal:
+        return action
+    if game.is_white_turn:
+        # The White pair oracle already sorts winning pairs first, then pairs
+        # that leave the king safe, and falls back to all pairs only when
+        # neither exists — so legal[0] IS the best survival candidate and the
+        # per-pair rescan below is redundant (it was the 1-3s/move cost in
+        # lost positions).
+        alt = legal[0]
+        return alt if not _allows_immediate_king_loss(game, alt) else action
     for alt in legal:
         tmp = game.clone()
         tmp.apply_action(alt)
         if tmp.is_terminal():
             r = tmp.get_result()
-            if r != 0 and (r > 0) == game.is_white_turn:
-                return alt  # a winning action existed — take it
+            if r < 0:
+                return alt  # winning capture for Black — take it
             continue
         if not _allows_immediate_king_loss(game, alt):
             return alt
