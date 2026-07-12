@@ -109,13 +109,59 @@ def format_eval(value):
     return f"  [{bar}] {label}"
 
 
-def ai_select_full_action(engine, game, temperature):
+def _allows_immediate_king_loss(game, action):
+    """True if, after `action`, the opponent can capture the mover's king on
+    the very next turn (the observed despair-suicide)."""
+    from evaluation import _white_threat_scan, _black_can_capture_king
+    tmp = game.clone()
+    tmp.apply_action(action)
+    if tmp.is_terminal():
+        return False  # game over already; nothing to hang
+    if tmp.is_white_turn:
+        return _white_threat_scan(tmp)          # mover was Black
+    return _black_can_capture_king(tmp.board)   # mover was White
+
+
+def _swindle_override(game, action, val):
+    """Swindle mode (play-time only): in a lost position, never hand over the
+    king when a surviving alternative exists.
+
+    v15 diagnosis (2026-07-12): a well-calibrated value head reads every move
+    in a lost position as ~-0.98, so search picks among hopeless moves
+    indifferently and often hangs the king to the fastest mate. Training
+    labels can't fix this without re-taxing the winner (v13 lesson), so the
+    resistance rule lives at play time: keep the searched action unless it
+    allows an immediate king capture AND some legal action does not.
+    Benchmark / arena / data generation never call this.
+    """
+    if val > -0.85 or action is None:
+        return action
+    if not _allows_immediate_king_loss(game, action):
+        return action
+    legal = game.get_legal_actions()
+    for alt in legal:
+        tmp = game.clone()
+        tmp.apply_action(alt)
+        if tmp.is_terminal():
+            r = tmp.get_result()
+            if r != 0 and (r > 0) == game.is_white_turn:
+                return alt  # a winning action existed — take it
+            continue
+        if not _allows_immediate_king_loss(game, alt):
+            return alt
+    return action  # every move loses the king — forced
+
+
+def ai_select_full_action(engine, game, temperature, swindle=False):
     """Search half-moves but return a full atomic action for play/display.
 
     The engine now searches White's turn as two half-moves, so get_best_action
     returns a single move.  For White we search m1, apply it on a clone, then search
     m2 — letting play.py keep applying atomic (m1, m2) pairs and rendering both moves
     together.  Black is already a single move (REWORK_PLAN.md Phase 3).
+
+    swindle=True enables the lost-position resistance override (human play
+    only — see _swindle_override).
     """
     action, probs, val = engine.get_best_action(game, temperature=temperature)
     if action is None:
@@ -127,8 +173,11 @@ def ai_select_full_action(engine, game, temperature):
             return (action, chess.Move.null()), probs, val
         action2, _p2, _v2 = engine.get_best_action(tmp, temperature=temperature)
         if action2 is None:
-            return (action, chess.Move.null()), probs, val
-        return (action, action2), probs, val
+            action = (action, chess.Move.null())
+        else:
+            action = (action, action2)
+    if swindle:
+        action = _swindle_override(game, action, val)
     return action, probs, val
 
 
@@ -445,7 +494,7 @@ def main():
             print(f"  {DIM}AI ({side}) thinking...{RESET}", end="", flush=True)
             t0 = time.time()
             action, action_probs, root_value = ai_select_full_action(
-                engine, game, temperature=0.1,
+                engine, game, temperature=0.1, swindle=True,
             )
             elapsed = time.time() - t0
 
