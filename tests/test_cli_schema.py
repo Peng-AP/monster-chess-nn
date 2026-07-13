@@ -44,6 +44,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--max-generation-age", out)
         self.assertIn("--min-nonhuman-plies", out)
         self.assertIn("--exclude-human-games", out)
+        self.assertIn("--value-discount-mode", out)
 
     def test_data_generation_help_contains_temperature_flags(self):
         code, out = _run_help("data_generation.py")
@@ -51,6 +52,20 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--temperature-high", out)
         self.assertIn("--temperature-low", out)
         self.assertIn("--temperature-moves", out)
+        self.assertIn("--start-fen-source", out)
+
+    def test_promotion_probe_help_contains_separate_gate_thresholds(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "promotion_probe.py"), "--help"],
+            cwd=str(ROOT), capture_output=True, text=True, check=False,
+        )
+        out = (result.stdout or "") + (result.stderr or "")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--defender", out)
+        self.assertIn("--max-prevention-drop", out)
+        self.assertIn("--max-king-survival-drop", out)
+        self.assertIn("--max-score-drop", out)
+        self.assertIn("--enforce", out)
 
 if __name__ == "__main__":
     unittest.main()

@@ -95,6 +95,29 @@ class DataGenerationContracts(unittest.TestCase):
             self.assertEqual(len(fens), 1)
             self.assertEqual(stats.get("records_valid"), 2)
 
+    def test_load_start_fens_source_filter_excludes_black_runner_slice(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "starts.jsonl"
+            records = [
+                {
+                    "fen": "8/8/4P3/8/8/8/8/K6k b - - 0 1",
+                    "source": "promo_white_runner",
+                },
+                {
+                    "fen": "8/8/8/8/8/4p3/8/K6k w - - 0 1",
+                    "source": "promo_black_runner",
+                },
+            ]
+            with open(p, "w", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec) + "\n")
+
+            fens, stats = dg._load_start_fens(
+                file_path=str(p), source_filter="promo_white_runner")
+
+            self.assertEqual(fens, [records[0]["fen"]])
+            self.assertEqual(stats["records_source_filtered"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

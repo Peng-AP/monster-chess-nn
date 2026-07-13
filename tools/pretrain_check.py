@@ -29,6 +29,12 @@ from collections import defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+from config import (
+    VALUE_TARGET_DISCOUNT_MODE,
+    VALUE_TARGET_FLOOR,
+    VALUE_TARGET_HORIZON,
+)
+
 PHASES = [(13, 15, "open"), (8, 12, "mid"), (4, 7, "late"), (0, 3, "endg")]
 
 
@@ -85,6 +91,10 @@ def main():
     ap.add_argument("--diff-fail", type=float, default=0.15)
     ap.add_argument("--bias-fail", type=float, default=0.05,
                     help="max relative gap in mean |target| White-won vs Black-won")
+    ap.add_argument("--value-discount-mode", choices=["near_mate", "progress"],
+                    default=VALUE_TARGET_DISCOUNT_MODE)
+    ap.add_argument("--value-horizon", type=int, default=VALUE_TARGET_HORIZON)
+    ap.add_argument("--value-floor", type=float, default=VALUE_TARGET_FLOOR)
     args = ap.parse_args()
 
     failures, warnings = [], []
@@ -94,8 +104,13 @@ def main():
     src_positions = defaultdict(int)
     total_positions = 0
     from data_processor import _discounted_results
+    from promotion_data import is_successful_white_runner_prevention
     tgt_sum = {"white": 0.0, "black": 0.0}
     tgt_n = {"white": 0, "black": 0}
+    promo_records = 0
+    promo_black_runner_records = 0
+    promo_black_positions_without_weight = 0
+    promo_policy_weight_mismatches = 0
 
     for rel, records in _iter_games(args.merged_dir):
         top = rel.split("/", 1)[0] if rel else "(root)"
@@ -108,13 +123,33 @@ def main():
             g[2] += 1
         src_positions[top] += len(records)
         total_positions += len(records)
+        if top == "promo_races":
+            successful_prevention = is_successful_white_runner_prevention(records)
+            expected_black_weight = 1.0 if successful_prevention else 0.0
+            for rec in records:
+                promo_records += 1
+                if rec.get("start_source") == "promo_black_runner":
+                    promo_black_runner_records += 1
+                if (rec.get("current_player") == "black"
+                        and "policy_weight" not in rec):
+                    promo_black_positions_without_weight += 1
+                elif rec.get("current_player") == "black":
+                    actual = float(rec.get("policy_weight", 1.0))
+                    if abs(actual - expected_black_weight) > 1e-9:
+                        promo_policy_weight_mismatches += 1
         # label-transform preview (current processor settings). Normalized by
         # the raw label so ONLY the transform is measured — the +-0.5
         # move-limit labels are a deliberate choice, not a transform artifact,
         # and they skew Black-side by design.
         if result != 0:
             side = "black" if result < 0 else "white"
-            for t, rec in zip(_discounted_results(records), records):
+            transformed = _discounted_results(
+                records,
+                horizon=args.value_horizon,
+                floor=args.value_floor,
+                mode=args.value_discount_mode,
+            )
+            for t, rec in zip(transformed, records):
                 raw = rec.get("game_result", 0)
                 if raw:
                     tgt_sum[side] += abs(t) / abs(raw)
@@ -122,6 +157,30 @@ def main():
 
     print(f"=== pretrain_check: {args.merged_dir} ===")
     print(f"total positions: {total_positions}, sources: {dict(src_positions)}")
+
+    if promo_records:
+        if promo_black_runner_records:
+            failures.append(
+                f"generated Black-runner contamination: "
+                f"{promo_black_runner_records}/{promo_records} promo records"
+            )
+        else:
+            print(f"  OK  promo provenance: {promo_records} White-runner records, "
+                  "0 generated Black-runner records")
+        if promo_black_positions_without_weight:
+            failures.append(
+                f"promo policy masking absent on "
+                f"{promo_black_positions_without_weight} Black positions"
+            )
+        else:
+            print("  OK  promo policy weights explicit on every Black position")
+        if promo_policy_weight_mismatches:
+            failures.append(
+                f"promo policy-weight mismatch on "
+                f"{promo_policy_weight_mismatches} Black positions"
+            )
+        else:
+            print("  OK  promo policy weights match prevention outcomes")
 
     # 1. amplification purity
     for top, (n, bw, ww) in sorted(src_games.items()):

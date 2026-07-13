@@ -48,6 +48,7 @@ _train_side = "both"
 _opponent_sims = OPPONENT_SIMULATIONS
 _skip_check_positions = SKIP_CHECK_POSITIONS
 _start_fens = []
+_start_fen_source = None
 _curriculum_indices = None
 _temperature_high = TEMPERATURE_HIGH
 _temperature_low = TEMPERATURE_LOW
@@ -129,13 +130,14 @@ def _iter_start_fen_paths(file_path, dir_path):
 
 
 def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
-                     max_positions=0, seed=None):
-    """Load start FEN candidates from JSONL records with optional side filter."""
+                     source_filter=None, max_positions=0, seed=None):
+    """Load start FEN candidates with optional side and exact-source filters."""
     if not file_path and not dir_path:
         return [], {
             "files": 0,
             "records_total": 0,
             "records_valid": 0,
+            "records_source_filtered": 0,
             "records_kept": 0,
         }
 
@@ -146,6 +148,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
     all_fens = []
     records_total = 0
     records_valid = 0
+    records_source_filtered = 0
     files_used = 0
     for path in _iter_start_fen_paths(file_path=file_path, dir_path=dir_path):
         if not os.path.isfile(path):
@@ -164,6 +167,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
                 if isinstance(obj, str):
                     fen = obj
                     rec_side = _fen_turn_side(fen)
+                    rec_source = None
                 else:
                     fen = obj.get("fen") if isinstance(obj, dict) else None
                     if not fen:
@@ -174,9 +178,13 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
                     )
                     if rec_side not in ("white", "black"):
                         rec_side = _fen_turn_side(fen)
+                    rec_source = obj.get("source") if isinstance(obj, dict) else None
                 if rec_side is None:
                     continue
                 records_valid += 1
+                if source_filter is not None and rec_source != source_filter:
+                    records_source_filtered += 1
+                    continue
                 if side_filter != "any" and rec_side != side_filter:
                     continue
                 all_fens.append(fen)
@@ -189,6 +197,7 @@ def _load_start_fens(file_path=None, dir_path=None, side_filter="any",
         "files": files_used,
         "records_total": records_total,
         "records_valid": records_valid,
+        "records_source_filtered": records_source_filtered,
         "records_kept": len(all_fens),
     }
 
@@ -227,7 +236,7 @@ def _curriculum_indices_for_range(tier_min, tier_max):
 
 def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
-                 skip_check_positions, start_fens, curriculum_indices,
+                 skip_check_positions, start_fens, start_fen_source, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
                  record_all_plies, hybrid_eval=False,
                  root_noise=True, allow_early_stop=False):
@@ -235,6 +244,7 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
+    global _start_fen_source
     global _curriculum_indices
     global _temperature_high, _temperature_low, _temperature_moves, _record_all_plies, _hybrid_eval
     global _root_noise, _allow_early_stop
@@ -245,6 +255,7 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
     _opponent_sims = opponent_sims
     _skip_check_positions = skip_check_positions
     _start_fens = list(start_fens) if start_fens else []
+    _start_fen_source = start_fen_source
     _curriculum_indices = list(curriculum_indices) if curriculum_indices else None
     _temperature_high = float(temperature_high)
     _temperature_low = float(temperature_low)
@@ -387,6 +398,7 @@ def play_game(num_simulations, game_deadline=None):
                     "policy": {action.uci(): 1.0},
                     "current_player": "black",
                     "half": 0,
+                    "start_source": _start_fen_source,
                 })
             game.apply_search_action(action)
         else:
@@ -405,6 +417,7 @@ def play_game(num_simulations, game_deadline=None):
                     "policy": action_probs,
                     "current_player": "white" if is_white else "black",
                     "half": half,
+                    "start_source": _start_fen_source,
                 })
             game.apply_search_action(action)
 
@@ -545,6 +558,8 @@ def main():
     parser.add_argument("--start-fen-side", type=str, default="any",
                         choices=["any", "white", "black"],
                         help="Filter loaded start positions by side to move")
+    parser.add_argument("--start-fen-source", type=str, default=None,
+                        help="Keep only JSONL start records whose 'source' exactly matches")
     parser.add_argument("--start-fen-max-positions", type=int, default=0,
                         help="Cap loaded start positions (0 = no cap)")
     args = parser.parse_args()
@@ -632,6 +647,7 @@ def main():
         file_path=args.start_fen_file,
         dir_path=args.start_fen_dir,
         side_filter=args.start_fen_side,
+        source_filter=args.start_fen_source,
         max_positions=args.start_fen_max_positions,
         seed=args.seed,
     )
@@ -641,7 +657,8 @@ def main():
         print(
             f"Using start-position source: kept {len(start_fens)} FENs "
             f"(files={start_fen_stats['files']}, valid={start_fen_stats['records_valid']}, "
-            f"total={start_fen_stats['records_total']}, side={args.start_fen_side})"
+            f"total={start_fen_stats['records_total']}, side={args.start_fen_side}, "
+            f"source={args.start_fen_source or 'any'})"
         )
 
     if args.curriculum:
@@ -707,7 +724,8 @@ def main():
         initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
                   args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
-                  not args.keep_check_positions, start_fens, curriculum_indices,
+                  not args.keep_check_positions, start_fens, args.start_fen_source,
+                  curriculum_indices,
                   args.temperature_high, args.temperature_low, args.temperature_moves,
                   args.record_all_plies, args.hybrid_eval,
                   not args.no_root_noise, args.allow_early_stop),
@@ -852,6 +870,7 @@ def main():
                 "file": args.start_fen_file,
                 "dir": args.start_fen_dir,
                 "side_filter": args.start_fen_side,
+                "source_filter": args.start_fen_source,
                 "max_positions": int(args.start_fen_max_positions),
                 "loaded_positions": int(len(start_fens)),
                 "source_stats": start_fen_stats,
