@@ -19,7 +19,7 @@ src/
   encoding.py        # fen_to_tensor, policy encoding, mirror augmentation
   data_generation.py # self-play game generation (multiprocess)
   data_processor.py  # raw JSONL -> training tensors (flat, game-level split)
-  train.py           # dual-head resnet, game_result target, optional WDL head
+  train.py           # resnet policy + scalar/WDL/hybrid value training
   benchmark.py       # fixed heuristic-anchor yardstick (JSON history in benchmarks/)
   iterate.py         # loop: generate -> process -> train -> gate -> archive
   scripted_mate.py   # deterministic Black K+heavies conversion (demo games)
@@ -47,12 +47,16 @@ Process raw games into tensors:
 py -3 src/data_processor.py --raw-dir data/raw/my_run --output-dir data/processed/my_run --seed 42
 ```
 
-Train (outcome-grounded value target, WDL head):
+Train (outcome-grounded value target, hybrid WDL + progress value):
 
 ```bash
 py -3 src/train.py --data-dir data/processed/my_run --model-dir models/my_model \
-    --target game_result --value-head wdl --epochs 30 --seed 42
+    --target game_result --value-head hybrid --epochs 30 --seed 42
 ```
+
+For progress-aware targets, process with `--value-discount-mode progress`
+plus an explicit horizon and floor. Current 17-channel data encodes rank and
+pawn progress symmetrically; 15-channel v16/v17 checkpoints remain loadable.
 
 Benchmark against the fixed heuristic anchor (the project yardstick):
 
@@ -71,6 +75,36 @@ Verify the scripted-mate conversion algorithm vs MCTS White:
 ```bash
 py -3 src/verify_scripted_mate.py --games 16 --white-sims 200 --seed 7
 ```
+
+## v18 learning cleanup
+
+`overnight_human_v18.py` rebuilds the corpus without promotion injection. It
+keeps all v17 focus outcomes, includes each human game once, trains policy only
+from the eventual human winner in human games, and uses hybrid WDL + progress
+value learning. Its anchor and incumbent matches are informational, not hard
+specialist gates.
+
+## Historical v17 promotion experiment
+
+Generated promotion training is White-runner-only. The mixed probe file must
+always be source-filtered; generated `promo_black_runner` games are forbidden.
+
+```bash
+py -3 src/data_generation.py --num-games 160 --simulations 400 \
+    --start-fen-file data/start_fens/promo_races_probe.jsonl \
+    --start-fen-source promo_white_runner --record-all-plies \
+    --output-dir data/raw/promo_races_raw
+py -3 src/promotion_data.py data/raw/promo_races_raw data/raw/promo_races \
+    --expected-start-source promo_white_runner
+```
+
+Preparation keeps every outcome/value target, but gives failed Black-defense
+moves policy weight zero. `tools/pretrain_check.py` rejects Black-runner
+contamination or incorrect promotion policy weights. `tools/promotion_probe.py`
+compares prevention, defender-king survival, and game score separately.
+
+`overnight_human_v17.py` preserves that experiment for reproducibility. It is
+not the current training recipe.
 
 Play against a model: open `src/play.ipynb` (widget UI, saves games to
 `data/raw/human_games/`) or `py -3 src/play.py`.
