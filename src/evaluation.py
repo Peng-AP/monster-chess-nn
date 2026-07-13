@@ -394,6 +394,7 @@ class NNEvaluator:
         self.model, self.policy_head_channels = load_model_for_inference(
             model_path, self.device,
         )
+        self.input_channels = int(self.model.input_channels)
         # FP16 for faster inference on GPU
         if self.device.type == "cuda":
             self.model.half()
@@ -433,6 +434,7 @@ class NNEvaluator:
             game_state.fen(),
             is_white_turn=game_state.is_white_turn,
             half_pending=getattr(game_state, "white_half_pending", False),
+            input_channels=self.input_channels,
         )
         # (8, 8, C) -> (1, C, 8, 8) channels-first
         inp = self.torch.from_numpy(
@@ -468,6 +470,7 @@ class NNEvaluator:
         tensors = [self.fen_to_tensor(
             gs.fen(), is_white_turn=gs.is_white_turn,
             half_pending=getattr(gs, "white_half_pending", False),
+            input_channels=self.input_channels,
         ) for gs in game_states]
         batch_np = np.stack(tensors, axis=0).transpose(0, 3, 1, 2)
         batch = self.torch.from_numpy(batch_np).to(self.device)
@@ -506,6 +509,7 @@ class NNEvaluator:
                 tensors.append(self.fen_to_tensor(
                     gs.fen(), is_white_turn=gs.is_white_turn,
                     half_pending=getattr(gs, "white_half_pending", False),
+                    input_channels=self.input_channels,
                 ))
 
         if tensors:

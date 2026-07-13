@@ -20,6 +20,16 @@ from mcts import MCTS
 from evaluation import evaluate
 
 
+class _ReuseRecordingMCTS(MCTS):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.root_visits_before_search = []
+
+    def _run_sequential(self, root):
+        self.root_visits_before_search.append(root.visit_count)
+        return super()._run_sequential(root)
+
+
 def _atomic_white_finals(fen):
     """FENs reachable by applying each atomic safe (m1, m2) pair."""
     finals = set()
@@ -87,6 +97,21 @@ class HalfMoveContracts(unittest.TestCase):
         self.assertFalse(game.white_half_pending)
         self.assertFalse(game.is_white_turn)         # now Black
         self.assertEqual(game.turn_count, 1)
+
+    def test_second_half_reuses_first_search_subtree(self):
+        game = MonsterChessGame()
+        engine = _ReuseRecordingMCTS(
+            num_simulations=40, eval_fn=evaluate,
+            root_noise=False, allow_early_stop=False,
+        )
+
+        first, _probs, _value = engine.get_best_action(game, temperature=0.0)
+        game.apply_search_action(first)
+        self.assertTrue(game.white_half_pending)
+        engine.get_best_action(game, temperature=0.0)
+
+        self.assertEqual(engine.root_visits_before_search[0], 0)
+        self.assertGreater(engine.root_visits_before_search[1], 0)
 
     def test_first_half_king_capture_is_terminal(self):
         # White rook a8 can capture the Black king on h8 only after sliding — use a

@@ -202,8 +202,16 @@ CURRICULUM_FORCED_MAX_TIER = 2  # tiers <= this use forced labels; higher tiers 
 # Tensor encoding
 TURN_LAYER = 12
 MOVE_COUNT_LAYER = 13
-PAWN_ADVANCEMENT_LAYER = 14
-TENSOR_SHAPE = (8, 8, 15)
+# v16/v17 checkpoints used channel 14 as a White-only pawn-advancement
+# feature. New training uses a symmetric positional encoding; inference
+# detects legacy checkpoints from the stem weight shape and asks encoding.py
+# for the old 15-channel layout automatically.
+LEGACY_TENSOR_CHANNELS = 15
+LEGACY_PAWN_ADVANCEMENT_LAYER = 14
+RANK_COORD_LAYER = 14
+WHITE_PAWN_PROGRESS_LAYER = 15
+BLACK_PAWN_PROGRESS_LAYER = 16
+TENSOR_SHAPE = (8, 8, 17)
 
 # Policy head
 POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
@@ -245,9 +253,11 @@ VALUE_TARGET_HORIZON = 10   # plies from game end inside which the game_result
                             # side bias, no other behavior change (the global
                             # v13 discount taxed Black's long wins; rejected).
 VALUE_TARGET_FLOOR = 0.97   # plateau factor beyond the horizon (1.0 = off)
-VALUE_HEAD_MODE = "scalar"  # "scalar" or "wdl" (wdl = expected value from WDL logits)
+VALUE_TARGET_DISCOUNT_MODE = "near_mate"  # "near_mate" or full-game "progress"
+VALUE_HEAD_MODE = "scalar"  # "scalar", "wdl", or "hybrid"
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
+VALUE_HYBRID_PROGRESS_WEIGHT = 0.25  # scalar progress tie-break in hybrid inference
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Data retention (data_processor.py)

@@ -17,6 +17,7 @@ from config import (
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET,
     VALUE_HEAD_MODE, WDL_LOSS_WEIGHT, WDL_DRAW_EPSILON,
+    VALUE_HYBRID_PROGRESS_WEIGHT,
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
@@ -24,7 +25,7 @@ from config import (
     USE_SE_BLOCKS, SE_REDUCTION,
 )
 
-# Input channels = last dim of TENSOR_SHAPE (8, 8, 15)
+# Input channels = last dim of the current position encoding.
 IN_CHANNELS = TENSOR_SHAPE[2]
 
 
@@ -130,7 +131,7 @@ class ResidualBlock(nn.Module):
 
 
 class DualHeadNet(nn.Module):
-    """Dual-head ResNet: (N, 15, 8, 8) -> (value in [-1,1], policy logits[4096]).
+    """ResNet with outcome/progress value and policy heads.
 
     Shared backbone:
       Configurable stem and residual tower from config.py
@@ -141,6 +142,7 @@ class DualHeadNet(nn.Module):
     """
     def __init__(
         self,
+        input_channels=IN_CHANNELS,
         policy_head_channels=POLICY_HEAD_CHANNELS,
         stem_channels=STEM_CHANNELS,
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
@@ -149,8 +151,10 @@ class DualHeadNet(nn.Module):
         use_side_specialized_heads=False,
         use_wdl_head=False,
         value_head_mode=VALUE_HEAD_MODE,
+        hybrid_progress_weight=VALUE_HYBRID_PROGRESS_WEIGHT,
     ):
         super().__init__()
+        self.input_channels = int(input_channels)
         self.policy_head_channels = int(policy_head_channels)
         self.stem_channels = int(stem_channels)
         self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
@@ -159,18 +163,30 @@ class DualHeadNet(nn.Module):
         self.use_side_specialized_heads = bool(use_side_specialized_heads)
         self.use_wdl_head = bool(use_wdl_head)
         self.value_head_mode = str(value_head_mode)
+        self.hybrid_progress_weight = float(hybrid_progress_weight)
         if not self.residual_block_channels:
             raise ValueError("residual_block_channels must contain at least one block")
         if self.se_reduction <= 0:
             raise ValueError("se_reduction must be > 0")
-        if self.value_head_mode not in ("scalar", "wdl"):
-            raise ValueError("value_head_mode must be 'scalar' or 'wdl'")
-        if self.value_head_mode == "wdl" and not self.use_wdl_head:
-            raise ValueError("value_head_mode='wdl' requires use_wdl_head=True")
+        if self.input_channels <= 0:
+            raise ValueError("input_channels must be > 0")
+        if self.value_head_mode not in ("scalar", "wdl", "hybrid"):
+            raise ValueError("value_head_mode must be 'scalar', 'wdl', or 'hybrid'")
+        if self.value_head_mode in ("wdl", "hybrid") and not self.use_wdl_head:
+            raise ValueError(f"value_head_mode='{self.value_head_mode}' requires use_wdl_head=True")
+        if not (0.0 <= self.hybrid_progress_weight <= 1.0):
+            raise ValueError("hybrid_progress_weight must be in [0, 1]")
+        if self.value_head_mode == "hybrid":
+            # Marker is persisted in the state dict, allowing inference to
+            # distinguish hybrid checkpoints from legacy WDL checkpoints.
+            self.register_buffer(
+                "_hybrid_progress_weight",
+                torch.tensor(self.hybrid_progress_weight, dtype=torch.float32),
+            )
 
         # Stem
         self.stem = nn.Sequential(
-            nn.Conv2d(IN_CHANNELS, self.stem_channels, 3, padding=1, bias=False),
+            nn.Conv2d(self.input_channels, self.stem_channels, 3, padding=1, bias=False),
             nn.BatchNorm2d(self.stem_channels),
             nn.ReLU(),
         )
@@ -265,7 +281,7 @@ class DualHeadNet(nn.Module):
         return x, side_turn
 
     def _compute_heads(self, backbone, side_turn):
-        value = self.value_head(backbone)
+        scalar_value = self.value_head(backbone)
         policy = self._policy_logits(backbone, self.policy_conv, self.policy_fc)
         wdl_logits = self.wdl_head(backbone) if self.use_wdl_head else None
         if self.use_side_specialized_heads:
@@ -274,7 +290,7 @@ class DualHeadNet(nn.Module):
             value_black = self.value_head_black(backbone)
             policy_white = self._policy_logits(backbone, self.policy_conv_white, self.policy_fc_white)
             policy_black = self._policy_logits(backbone, self.policy_conv_black, self.policy_fc_black)
-            value = torch.where(white_mask, value_white, value_black)
+            scalar_value = torch.where(white_mask, value_white, value_black)
             policy = torch.where(
                 white_mask.expand(-1, POLICY_SIZE),
                 policy_white,
@@ -289,17 +305,29 @@ class DualHeadNet(nn.Module):
                     wdl_black,
                 )
 
-        if self.use_wdl_head and self.value_head_mode == "wdl":
-            value = _wdl_expectation_from_logits(wdl_logits)
+        value = scalar_value
+        if self.use_wdl_head:
+            wdl_value = _wdl_expectation_from_logits(wdl_logits)
+            if self.value_head_mode == "wdl":
+                value = wdl_value
+            elif self.value_head_mode == "hybrid":
+                weight = self._hybrid_progress_weight
+                value = (1.0 - weight) * wdl_value + weight * scalar_value
 
-        return value, policy, wdl_logits
+        return value, policy, wdl_logits, scalar_value
 
     def forward(self, x):
         backbone, side_turn = self._forward_backbone(x)
-        value, policy, _ = self._compute_heads(backbone, side_turn)
+        value, policy, _, _ = self._compute_heads(backbone, side_turn)
         return value, policy
 
     def forward_with_wdl(self, x):
+        backbone, side_turn = self._forward_backbone(x)
+        value, policy, wdl_logits, _ = self._compute_heads(backbone, side_turn)
+        return value, policy, wdl_logits
+
+    def forward_for_training(self, x):
+        """Return inference value plus the scalar progress prediction."""
         backbone, side_turn = self._forward_backbone(x)
         return self._compute_heads(backbone, side_turn)
 
@@ -314,6 +342,14 @@ def infer_policy_head_channels(state_dict):
     if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[0] > 0:
         return int(w.shape[0])
     return POLICY_HEAD_CHANNELS
+
+
+def infer_input_channels(state_dict):
+    """Infer the position encoding width from the checkpoint stem."""
+    w = state_dict.get("stem.0.weight")
+    if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[1] > 0:
+        return int(w.shape[1])
+    return IN_CHANNELS
 
 
 def infer_side_head_config(state_dict):
@@ -332,7 +368,9 @@ def infer_wdl_head_config(state_dict):
     )
     if not has_wdl:
         return False, "scalar"
-    # If WDL head tensors exist, treat this checkpoint as WDL mode.
+    if "_hybrid_progress_weight" in state_dict:
+        return True, "hybrid"
+    # Older WDL checkpoints have no hybrid marker.
     return True, "wdl"
 
 
@@ -380,6 +418,7 @@ def infer_se_config(state_dict):
 
 
 def build_model(
+    input_channels=IN_CHANNELS,
     policy_head_channels=POLICY_HEAD_CHANNELS,
     stem_channels=STEM_CHANNELS,
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
@@ -388,8 +427,10 @@ def build_model(
     use_side_specialized_heads=False,
     use_wdl_head=False,
     value_head_mode=VALUE_HEAD_MODE,
+    hybrid_progress_weight=VALUE_HYBRID_PROGRESS_WEIGHT,
 ):
     return DualHeadNet(
+        input_channels=input_channels,
         policy_head_channels=policy_head_channels,
         stem_channels=stem_channels,
         residual_block_channels=residual_block_channels,
@@ -398,18 +439,23 @@ def build_model(
         use_side_specialized_heads=use_side_specialized_heads,
         use_wdl_head=use_wdl_head,
         value_head_mode=value_head_mode,
+        hybrid_progress_weight=hybrid_progress_weight,
     )
 
 
 def load_model_for_inference(checkpoint_path, device):
     """Load model with architecture inferred from checkpoint."""
     state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    input_channels = infer_input_channels(state_dict)
     pol_ch = infer_policy_head_channels(state_dict)
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
     use_se_blocks, se_reduction = infer_se_config(state_dict)
     use_side_specialized_heads = infer_side_head_config(state_dict)
     use_wdl_head, value_head_mode = infer_wdl_head_config(state_dict)
+    hybrid_progress_weight = float(
+        state_dict.get("_hybrid_progress_weight", VALUE_HYBRID_PROGRESS_WEIGHT))
     model = build_model(
+        input_channels=input_channels,
         policy_head_channels=pol_ch,
         stem_channels=stem_ch,
         residual_block_channels=block_ch,
@@ -418,6 +464,7 @@ def load_model_for_inference(checkpoint_path, device):
         use_side_specialized_heads=use_side_specialized_heads,
         use_wdl_head=use_wdl_head,
         value_head_mode=value_head_mode,
+        hybrid_progress_weight=hybrid_progress_weight,
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -445,8 +492,16 @@ def load_data(data_dir):
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
     policies = np.load(os.path.join(data_dir, "policies.npy"))
-    splits = np.load(os.path.join(data_dir, "splits.npz"))
-    return positions, mcts_values, game_results, policies, splits
+    policy_weights_path = os.path.join(data_dir, "policy_weights.npy")
+    if os.path.exists(policy_weights_path):
+        policy_weights = np.load(policy_weights_path)
+    else:
+        # Backward compatibility with processed corpora created before policy
+        # masking existed: every record remains a policy teacher.
+        policy_weights = np.ones((len(policies),), dtype=np.float32)
+    with np.load(os.path.join(data_dir, "splits.npz")) as split_file:
+        splits = {name: split_file[name] for name in split_file.files}
+    return positions, mcts_values, game_results, policies, policy_weights, splits
 
 
 def to_side_perspective(values_white_perspective, positions):
@@ -476,7 +531,8 @@ def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
     return labels
 
 
-def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None, y_wdl=None):
+def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
+                 y_wdl=None, y_policy_weight=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
@@ -484,29 +540,48 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None, y_wd
     X_t = torch.from_numpy(X.transpose(0, 3, 1, 2))  # channels-first
     y_v = torch.from_numpy(y_val).unsqueeze(1)         # (N, 1)
     y_p = torch.from_numpy(y_pol)                      # (N, 4096)
+    if y_policy_weight is None:
+        y_policy_weight = np.ones((len(y_pol),), dtype=np.float32)
+    y_pw = torch.from_numpy(y_policy_weight).float()
     if y_wdl is None:
-        ds = TensorDataset(X_t, y_v, y_p)
+        ds = TensorDataset(X_t, y_v, y_p, y_pw)
     else:
         y_w = torch.from_numpy(y_wdl).long()
-        ds = TensorDataset(X_t, y_v, y_p, y_w)
+        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_w)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
                       pin_memory=True, num_workers=0, generator=generator)
 
 
 def _unpack_loader_batch(batch):
-    """Normalize dataloader batches to (X, y_value, y_policy, y_wdl_or_none)."""
+    """Normalize current and legacy batches, including policy weights."""
+    if len(batch) == 5:
+        return batch
     if len(batch) == 4:
-        X_b, yv_b, yp_b, yw_b = batch
-        return X_b, yv_b, yp_b, yw_b
+        X_b, yv_b, yp_b, fourth = batch
+        if fourth.dtype.is_floating_point:
+            return X_b, yv_b, yp_b, fourth, None
+        policy_weight = torch.ones((len(X_b),), dtype=torch.float32)
+        return X_b, yv_b, yp_b, policy_weight, fourth
     if len(batch) == 3:
         X_b, yv_b, yp_b = batch
-        return X_b, yv_b, yp_b, None
+        policy_weight = torch.ones((len(X_b),), dtype=torch.float32)
+        return X_b, yv_b, yp_b, policy_weight, None
     raise ValueError(f"Unexpected batch tuple length: {len(batch)}")
 
 
 def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
     """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5."""
     return torch.pow(torch.abs(pred - target), exponent).mean()
+
+
+def weighted_policy_cross_entropy(logits, targets, weights):
+    """Soft-target policy CE normalized over records enabled as teachers."""
+    losses = F.cross_entropy(logits, targets, reduction="none")
+    weights = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
+    total_weight = weights.sum()
+    if total_weight.item() <= 0:
+        return losses.sum() * 0.0
+    return (losses * weights).sum() / total_weight
 
 
 def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor):
@@ -531,7 +606,8 @@ def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor)
 
 
 def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm,
-                 use_wdl_head=False, wdl_loss_weight=0.0):
+                 use_wdl_head=False, wdl_loss_weight=0.0,
+                 value_head_mode="scalar"):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
@@ -540,20 +616,26 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
     n = 0
 
     for batch in loader:
-        X_b, yv_b, yp_b, yw_b = _unpack_loader_batch(batch)
+        X_b, yv_b, yp_b, ypw_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
+        ypw_b = ypw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
 
-        if use_wdl_head:
+        progress_pred = None
+        if value_head_mode == "hybrid":
+            value_pred, policy_pred, wdl_logits, progress_pred = (
+                model.forward_for_training(X_b))
+        elif use_wdl_head:
             value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
         else:
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
-        loss_val = _power_loss(value_pred, yv_b)
-        loss_pol = F.cross_entropy(policy_pred, yp_b)
+        value_loss_pred = progress_pred if progress_pred is not None else value_pred
+        loss_val = _power_loss(value_loss_pred, yv_b)
+        loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
         if (
@@ -587,7 +669,8 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
 
 
 @torch.no_grad()
-def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False):
+def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
+                wdl_loss_weight=0.0, value_head_mode="scalar"):
     model.eval()
     total_loss = 0.0
     total_val_loss = 0.0
@@ -600,24 +683,32 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False):
     n = 0
 
     for batch in loader:
-        X_b, yv_b, yp_b, yw_b = _unpack_loader_batch(batch)
+        X_b, yv_b, yp_b, ypw_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
+        ypw_b = ypw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
 
-        if use_wdl_head:
+        progress_pred = None
+        if value_head_mode == "hybrid":
+            value_pred, policy_pred, wdl_logits, progress_pred = (
+                model.forward_for_training(X_b))
+        elif use_wdl_head:
             value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
         else:
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
-        loss_val = _power_loss(value_pred, yv_b)
-        loss_pol = F.cross_entropy(policy_pred, yp_b)
+        value_loss_pred = progress_pred if progress_pred is not None else value_pred
+        loss_val = _power_loss(value_loss_pred, yv_b)
+        loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
         if use_wdl_head and wdl_logits is not None and yw_b is not None:
             loss_wdl = F.cross_entropy(wdl_logits, yw_b)
+            if wdl_loss_weight > 0:
+                loss = loss + wdl_loss_weight * loss_wdl
             preds = torch.argmax(wdl_logits, dim=1)
             total_wdl_correct += (preds == yw_b).sum().item()
             total_wdl_count += int(yw_b.numel())
@@ -668,7 +759,7 @@ def main():
                         choices=["game_result", "mcts_value"],
                         help=f"Value training target (default: {VALUE_TARGET})")
     parser.add_argument("--value-head", type=str, default=VALUE_HEAD_MODE,
-                        choices=["scalar", "wdl"],
+                        choices=["scalar", "wdl", "hybrid"],
                         help=f"Value head mode (default: {VALUE_HEAD_MODE})")
     parser.add_argument("--wdl-loss-weight", type=float, default=WDL_LOSS_WEIGHT,
                         help=f"CE weight for the WDL head (default: {WDL_LOSS_WEIGHT})")
@@ -692,6 +783,7 @@ def main():
         raise ValueError("--wdl-draw-epsilon must be >= 0")
     if args.value_head == "scalar" and args.wdl_loss_weight > 0:
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
+    use_wdl_mode = args.value_head in ("wdl", "hybrid")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -702,7 +794,8 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
-    positions, mcts_values, game_results, policies, splits = load_data(args.data_dir)
+    positions, mcts_values, game_results, policies, policy_weights, splits = load_data(
+        args.data_dir)
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -719,7 +812,7 @@ def main():
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
-    if args.value_head == "wdl":
+    if use_wdl_mode:
         losses = int((wdl_targets == 0).sum())
         draws = int((wdl_targets == 1).sum())
         wins = int((wdl_targets == 2).sum())
@@ -734,17 +827,20 @@ def main():
     model = build_model(
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
-        use_wdl_head=(args.value_head == "wdl"),
+        use_wdl_head=use_wdl_mode,
         value_head_mode=args.value_head,
     ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
+    print(f"Input channels: {model.input_channels}")
     print(f"Policy head channels: {model.policy_head_channels}")
     print(f"Stem channels: {model.stem_channels}")
     print(f"Residual blocks: {list(model.residual_block_channels)}")
     print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
     print(f"Side-specialized heads: {model.use_side_specialized_heads}")
     print(f"Value head mode: {model.value_head_mode} (wdl_head={model.use_wdl_head})")
+    if model.value_head_mode == "hybrid":
+        print(f"Hybrid progress weight: {model.hybrid_progress_weight:.2f}")
     resume_loaded_count = None
     resume_skipped = None
     if args.resume_from:
@@ -784,6 +880,7 @@ def main():
         "device": str(device),
         "args": vars(args),
         "model_params": total_params,
+        "input_channels": int(model.input_channels),
         "policy_head_channels": int(model.policy_head_channels),
         "stem_channels": int(model.stem_channels),
         "residual_block_channels": [int(x) for x in model.residual_block_channels],
@@ -791,6 +888,7 @@ def main():
         "use_se_blocks": bool(model.use_se_blocks),
         "se_reduction": int(model.se_reduction),
         "value_head_mode": str(model.value_head_mode),
+        "hybrid_progress_weight": float(model.hybrid_progress_weight),
         "use_wdl_head": bool(model.use_wdl_head),
         "wdl_draw_epsilon": float(args.wdl_draw_epsilon),
         "wdl_loss_weight": float(args.wdl_loss_weight),
@@ -843,7 +941,8 @@ def main():
             policies[val_idx],
             args.batch_size,
             shuffle=False,
-            y_wdl=wdl_targets[val_idx] if args.value_head == "wdl" else None,
+            y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
+            y_policy_weight=policy_weights[val_idx],
         )
 
         # Keep policy labels aligned with selected train indices.
@@ -854,24 +953,28 @@ def main():
             args.batch_size,
             shuffle=True,
             generator=train_gen,
-            y_wdl=wdl_targets[epoch_train_idx] if args.value_head == "wdl" else None,
+            y_wdl=wdl_targets[epoch_train_idx] if use_wdl_mode else None,
+            y_policy_weight=policy_weights[epoch_train_idx],
         )
 
         train_loss, train_v, train_p, train_wdl = _train_epoch(
             model, train_loader, optimizer, device, args.policy_loss_weight, args.grad_clip,
-            use_wdl_head=(args.value_head == "wdl"),
-            wdl_loss_weight=args.wdl_loss_weight if args.value_head == "wdl" else 0.0,
+            use_wdl_head=use_wdl_mode,
+            wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
+            value_head_mode=args.value_head,
         )
         val_loss, val_v, val_p, val_mae, val_mse, val_wdl, val_wdl_acc = _eval_epoch(
             model, val_loader, device, args.policy_loss_weight,
-            use_wdl_head=(args.value_head == "wdl"),
+            use_wdl_head=use_wdl_mode,
+            wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
+            value_head_mode=args.value_head,
         )
         if epoch > args.warmup_epochs:
             scheduler.step()
 
         lr = lr_used
         wdl_str = ""
-        if args.value_head == "wdl":
+        if use_wdl_mode:
             acc_str = f"{val_wdl_acc:.1%}" if val_wdl_acc is not None else "n/a"
             wdl_str = f"  wdl(train_ce={train_wdl:.4f} val_ce={val_wdl:.4f} val_acc={acc_str})"
         print(f"Epoch {epoch:3d}  "
@@ -915,11 +1018,14 @@ def main():
         policies[test_idx],
         args.batch_size,
         shuffle=False,
-        y_wdl=wdl_targets[test_idx] if args.value_head == "wdl" else None,
+        y_wdl=wdl_targets[test_idx] if use_wdl_mode else None,
+        y_policy_weight=policy_weights[test_idx],
     )
     test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc = _eval_epoch(
         model, test_loader, device, args.policy_loss_weight,
-        use_wdl_head=(args.value_head == "wdl"),
+        use_wdl_head=use_wdl_mode,
+        wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
+        value_head_mode=args.value_head,
     )
 
     print("\n--- Test set evaluation ---")
@@ -928,7 +1034,7 @@ def main():
     print(f"Value true MSE:   {test_mse:.4f}")
     print(f"Policy CE:  {test_p:.4f}")
     print(f"Value MAE:  {test_mae:.4f}")
-    if args.value_head == "wdl":
+    if use_wdl_mode:
         acc_str = f"{test_wdl_acc:.1%}" if test_wdl_acc is not None else "n/a"
         print(f"WDL CE:     {test_wdl:.4f}")
         print(f"WDL Acc:    {acc_str}")
@@ -939,7 +1045,7 @@ def main():
     all_vtrue = []
     with torch.no_grad():
         for batch in test_loader:
-            X_b, yv_b, _, _ = _unpack_loader_batch(batch)
+            X_b, yv_b, _, _, _ = _unpack_loader_batch(batch)
             vp, _ = model(X_b.to(device))
             all_vpreds.append(vp.cpu().numpy())
             all_vtrue.append(yv_b.numpy())

@@ -11,6 +11,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import data_processor as dp
+from config import (
+    BLACK_PAWN_PROGRESS_LAYER,
+    LEGACY_PAWN_ADVANCEMENT_LAYER,
+    RANK_COORD_LAYER,
+    WHITE_PAWN_PROGRESS_LAYER,
+)
 
 
 def _record(current_player, game_result):
@@ -97,20 +103,71 @@ class SplitAndConvertTests(unittest.TestCase):
 
     def test_convert_flat_no_weighting(self):
         games = self._games(2, -1)
-        X, y_value, y_result, y_policy = dp._convert_games_to_arrays(games, augment=False)
+        X, y_value, y_result, y_policy, y_policy_weight = dp._convert_games_to_arrays(
+            games, augment=False)
         self.assertEqual(len(X), 8)  # 2 games x 4 records, once each
         self.assertEqual(len(y_value), 8)
         self.assertEqual(len(y_result), 8)
         self.assertEqual(y_policy.shape[1], 4096)
+        self.assertEqual(y_policy_weight.tolist(), [1.0] * 8)
 
     def test_augment_doubles_positions_and_mirrors_policy(self):
         games = self._games(1, -1)
-        X, _v, _r, y_policy = dp._convert_games_to_arrays(games, augment=True)
+        X, _v, _r, y_policy, y_policy_weight = dp._convert_games_to_arrays(
+            games, augment=True)
         self.assertEqual(len(X), 8)  # 4 records x 2 (mirror)
         # h1h2 mirrored -> a1a2
         idx = dp.move_to_index(__import__("chess").Move.from_uci("h1h2"))
         midx = dp.mirror_move_index(idx)
         self.assertGreater(y_policy[1][midx], 0.0)
+        self.assertEqual(y_policy_weight.tolist(), [1.0] * 8)
+
+    def test_policy_mask_survives_conversion_and_mirroring(self):
+        games = self._games(1, -1)
+        games[0]["records"][0] = dict(games[0]["records"][0], policy_weight=0.0)
+
+        _X, _v, _r, _p, weights = dp._convert_games_to_arrays(games, augment=True)
+
+        self.assertEqual(weights[:4].tolist(), [0.0, 0.0, 1.0, 1.0])
+
+    def test_human_policy_teaches_only_eventual_human_winner(self):
+        winning_human = dict(
+            _record("black", -1.0), source="human_game", actor="human")
+        losing_ai = dict(
+            _record("white", -1.0), source="human_game", actor="ai")
+        losing_human = dict(
+            _record("white", -1.0), source="human_game", actor="human")
+
+        self.assertEqual(dp.policy_weight_for_record(winning_human), 1.0)
+        self.assertEqual(dp.policy_weight_for_record(losing_ai), 0.0)
+        self.assertEqual(dp.policy_weight_for_record(losing_human), 0.0)
+
+    def test_explicit_policy_weight_overrides_human_rule(self):
+        rec = dict(
+            _record("white", -1.0), source="human_game", actor="ai",
+            policy_weight=0.25,
+        )
+        self.assertEqual(dp.policy_weight_for_record(rec), 0.25)
+
+
+class EncodingTests(unittest.TestCase):
+    def test_current_encoding_has_symmetric_pawn_progress_and_rank(self):
+        fen = "7k/7P/8/8/8/8/p7/K7 w - - 0 1"
+        tensor = dp.fen_to_tensor(fen)
+
+        self.assertEqual(tensor.shape, (8, 8, 17))
+        self.assertAlmostEqual(tensor[6, 7, WHITE_PAWN_PROGRESS_LAYER], 5 / 6)
+        self.assertAlmostEqual(tensor[1, 0, BLACK_PAWN_PROGRESS_LAYER], 5 / 6)
+        self.assertAlmostEqual(tensor[0, 0, RANK_COORD_LAYER], -1.0)
+        self.assertAlmostEqual(tensor[7, 0, RANK_COORD_LAYER], 1.0)
+
+    def test_legacy_encoding_keeps_white_only_channel(self):
+        fen = "7k/7P/8/8/8/8/p7/K7 w - - 0 1"
+        tensor = dp.fen_to_tensor(fen, input_channels=15)
+
+        self.assertEqual(tensor.shape, (8, 8, 15))
+        self.assertAlmostEqual(tensor[6, 7, LEGACY_PAWN_ADVANCEMENT_LAYER], 5 / 6)
+        self.assertEqual(tensor[1, 0, LEGACY_PAWN_ADVANCEMENT_LAYER], 0.0)
 
 
 class ProcessRawDataSmokeTests(unittest.TestCase):
@@ -125,10 +182,12 @@ class ProcessRawDataSmokeTests(unittest.TestCase):
 
             X = np.load(out / "positions.npy")
             yr = np.load(out / "game_results.npy")
+            policy_weights = np.load(out / "policy_weights.npy")
             with np.load(out / "splits.npz") as splits:
                 total = len(splits["train"]) + len(splits["val"]) + len(splits["test"])
             self.assertEqual(len(X), 80)  # 10 games x 4 records x 2 augment
             self.assertEqual(len(yr), len(X))
+            self.assertEqual(policy_weights.tolist(), [1.0] * len(X))
             self.assertEqual(total, len(X))
             meta = json.loads((out / "split_game_ids.json").read_text())
             self.assertEqual(
@@ -170,6 +229,15 @@ class ValueDiscountTests(unittest.TestCase):
     def test_floor_one_is_identity(self):
         recs = self._recs(["8/8/8/8/8/1k1K4/8/8 b - - 0 1"] * 3, 1.0)
         self.assertEqual(dp._discounted_results(recs, floor=1.0), [1.0, 1.0, 1.0])
+
+    def test_progress_discount_continues_before_horizon(self):
+        fens = [f"8/8/8/8/8/{i}k1K4/8/8 b - - 0 {i}" for i in range(1, 8)]
+        recs = self._recs(fens, 1.0)
+        out = dp._discounted_results(
+            recs, horizon=3, floor=0.125, mode="progress")
+        # gamma=.5: the earliest record is six plies from the result.
+        self.assertAlmostEqual(out[0], 0.5 ** 6)
+        self.assertAlmostEqual(out[-1], 1.0)
 
 if __name__ == "__main__":
     unittest.main()

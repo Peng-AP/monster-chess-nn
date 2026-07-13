@@ -7,7 +7,9 @@ import numpy as np
 
 from config import (
     TENSOR_SHAPE, TURN_LAYER,
-    MOVE_COUNT_LAYER, PAWN_ADVANCEMENT_LAYER,
+    MOVE_COUNT_LAYER,
+    LEGACY_TENSOR_CHANNELS, LEGACY_PAWN_ADVANCEMENT_LAYER,
+    RANK_COORD_LAYER, WHITE_PAWN_PROGRESS_LAYER, BLACK_PAWN_PROGRESS_LAYER,
     POLICY_SIZE,
 )
 
@@ -28,17 +30,27 @@ PIECE_TO_LAYER = {
 }
 
 
-def fen_to_tensor(fen, is_white_turn=True, half_pending=False):
-    """Convert a FEN string to an (8, 8, 15) tensor.
+def fen_to_tensor(fen, is_white_turn=True, half_pending=False,
+                  input_channels=None):
+    """Convert a FEN string to the requested checkpoint encoding.
 
-    Layers:
+    Current 17-channel layers:
       0-11: piece positions (binary)
       12:   turn indicator (+1 White, -1 Black)
       13:   half-move indicator (1.0 on White's SECOND half-move, else 0.0)
-      14:   White pawn advancement gradient (0.0 at rank 2, 1.0 at rank 8)
+      14:   signed rank coordinate (-1.0 rank 1, +1.0 rank 8)
+      15:   White-pawn progress toward rank 8
+      16:   Black-pawn progress toward rank 1
+
+    Legacy 15-channel checkpoints retain their original White-only channel 14.
+    Selecting by channel count prevents an incompatible encoding from loading
+    silently while keeping v16/v17 available for matches and human play.
     """
     board = chess.Board(fen)
-    tensor = np.zeros(TENSOR_SHAPE, dtype=np.float32)
+    channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
+    if channels not in (LEGACY_TENSOR_CHANNELS, TENSOR_SHAPE[2]):
+        raise ValueError(f"Unsupported position encoding with {channels} channels")
+    tensor = np.zeros((8, 8, channels), dtype=np.float32)
 
     for square in chess.SQUARES:
         piece = board.piece_at(square)
@@ -57,11 +69,29 @@ def fen_to_tensor(fen, is_white_turn=True, half_pending=False):
     # half.  Legacy records without a half flag decode as 0.0 (backward compatible).
     tensor[:, :, MOVE_COUNT_LAYER] = 1.0 if half_pending else 0.0
 
-    # White pawn advancement gradient
+    if channels == LEGACY_TENSOR_CHANNELS:
+        # Exact v16/v17 layout.
+        for sq in board.pieces(chess.PAWN, chess.WHITE):
+            rank = chess.square_rank(sq)
+            file = chess.square_file(sq)
+            tensor[rank, file, LEGACY_PAWN_ADVANCEMENT_LAYER] = (rank - 1) / 6.0
+        return tensor
+
+    # Translation-aware rank position for every piece, then equal promotion
+    # progress features for both pawn colors. These are representation facts,
+    # not evaluation rules; the network learns what they mean from games.
+    for rank in range(8):
+        tensor[rank, :, RANK_COORD_LAYER] = (rank - 3.5) / 3.5
     for sq in board.pieces(chess.PAWN, chess.WHITE):
         rank = chess.square_rank(sq)
         file = chess.square_file(sq)
-        tensor[rank, file, PAWN_ADVANCEMENT_LAYER] = (rank - 1) / 6.0
+        tensor[rank, file, WHITE_PAWN_PROGRESS_LAYER] = np.clip(
+            (rank - 1) / 6.0, 0.0, 1.0)
+    for sq in board.pieces(chess.PAWN, chess.BLACK):
+        rank = chess.square_rank(sq)
+        file = chess.square_file(sq)
+        tensor[rank, file, BLACK_PAWN_PROGRESS_LAYER] = np.clip(
+            (6 - rank) / 6.0, 0.0, 1.0)
 
     return tensor
 

@@ -22,6 +22,7 @@ from config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
     RANDOM_SEED, VALUE_TARGET_HORIZON, VALUE_TARGET_FLOOR,
+    VALUE_TARGET_DISCOUNT_MODE,
 )
 # Re-exported for existing importers (evaluation.py, mcts.py, tests).
 from encoding import (  # noqa: F401
@@ -185,9 +186,16 @@ def _split_games_by_result(games, seed):
 
 
 def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
-                        floor=VALUE_TARGET_FLOOR):
-    """game_result targets with a NEAR-MATE ramp: floor -> 1.0 over the last
-    `horizon` plies of the game; every earlier position gets the flat floor.
+                        floor=VALUE_TARGET_FLOOR,
+                        mode=VALUE_TARGET_DISCOUNT_MODE):
+    """Build outcome-grounded scalar targets within each game segment.
+
+    ``near_mate`` preserves the v16/v17 target: floor -> 1.0 over the last
+    ``horizon`` plies and a flat floor before that.
+
+    ``progress`` uses the same floor-at-horizon parameterization but continues
+    the per-ply discount over the whole game. A faster win is worth more and a
+    delayed loss is less negative, while the sign remains the observed result.
 
     Purpose is narrow (owner spec, 2026-07-11): a tiebreak so search at value
     saturation prefers mate-in-1 over mate-in-3 instead of drifting or
@@ -201,6 +209,8 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     whose FEN equals the file's first FEN starts a new copy, so distance to
     end is computed within each copy.
     """
+    if mode not in ("near_mate", "progress"):
+        raise ValueError("value discount mode must be 'near_mate' or 'progress'")
     if floor >= 1.0:
         return [rec.get("game_result", 0) for rec in records]
     gamma = floor ** (1.0 / max(1, horizon))
@@ -211,21 +221,49 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     out = [0.0] * len(records)
     for a, b in zip(bounds, bounds[1:]):
         for i in range(a, b):
-            plies_to_end = min(b - 1 - i, horizon)
+            plies_to_end = b - 1 - i
+            if mode == "near_mate":
+                plies_to_end = min(plies_to_end, horizon)
             out[i] = records[i].get("game_result", 0) * (gamma ** plies_to_end)
     return out
 
 
+def policy_weight_for_record(rec):
+    """Return whether a record is a trustworthy policy teacher.
+
+    Explicit weights always win. Ordinary engine/self-play records remain
+    teachers. Human games are different: every position is valuable to the
+    value head, but only a move made by the eventual human winner becomes a
+    policy target. This prevents duplicated human traces from distilling the
+    losing AI's mistakes back into the next model.
+    """
+    if "policy_weight" in rec:
+        return float(rec["policy_weight"])
+    if rec.get("source") != "human_game":
+        return 1.0
+    if rec.get("actor") != "human":
+        return 0.0
+    result = float(rec.get("game_result", 0.0))
+    is_white = rec.get("current_player") == "white"
+    human_won = (is_white and result > 0) or ((not is_white) and result < 0)
+    return 1.0 if human_won else 0.0
+
+
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
-                             value_floor=VALUE_TARGET_FLOOR):
+                             value_floor=VALUE_TARGET_FLOOR,
+                             value_discount_mode=VALUE_TARGET_DISCOUNT_MODE):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
     game_results = []
     policy_targets = []
+    policy_weights = []
 
     for game in tqdm(games, desc="Converting", leave=False):
-        discounted = _discounted_results(game["records"], value_horizon, value_floor)
+        discounted = _discounted_results(
+            game["records"], value_horizon, value_floor,
+            mode=value_discount_mode,
+        )
         for rec, gr in zip(game["records"], discounted):
             is_white = rec["current_player"] == "white"
             half_pending = bool(rec.get("half"))
@@ -236,28 +274,33 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             # gr comes pre-discounted from _discounted_results.
             val = rec["mcts_value"]
             pol = policy_dict_to_target(rec["policy"], is_white)
+            pol_weight = policy_weight_for_record(rec)
 
             tensors.append(tensor)
             values.append(val)
             game_results.append(gr)
             policy_targets.append(pol)
+            policy_weights.append(pol_weight)
             if augment:
                 tensors.append(mirror_tensor(tensor))
                 values.append(val)
                 game_results.append(gr)
                 policy_targets.append(mirror_policy(pol))
+                policy_weights.append(pol_weight)
 
     if tensors:
         X = np.array(tensors, dtype=np.float32)
         y_value = np.array(values, dtype=np.float32)
         y_result = np.array(game_results, dtype=np.float32)
         y_policy = np.array(policy_targets, dtype=np.float32)
+        y_policy_weight = np.array(policy_weights, dtype=np.float32)
     else:
         X = np.zeros((0,) + TENSOR_SHAPE, dtype=np.float32)
         y_value = np.zeros((0,), dtype=np.float32)
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
-    return X, y_value, y_result, y_policy
+        y_policy_weight = np.zeros((0,), dtype=np.float32)
+    return X, y_value, y_result, y_policy, y_policy_weight
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -265,7 +308,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      max_generation_age=DATA_RETENTION_MAX_GENERATION_AGE,
                      min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                      value_horizon=VALUE_TARGET_HORIZON,
-                     value_floor=VALUE_TARGET_FLOOR):
+                     value_floor=VALUE_TARGET_FLOOR,
+                     value_discount_mode=VALUE_TARGET_DISCOUNT_MODE):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -304,21 +348,31 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  Processing positions (augment={augment})...")
 
     if value_floor < 1.0:
-        print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 over last {value_horizon} plies")
-    X_train, yv_train, yr_train, yp_train = _convert_games_to_arrays(train_games, augment, value_horizon, value_floor)
-    X_val, yv_val, yr_val, yp_val = _convert_games_to_arrays(val_games, augment, value_horizon, value_floor)
-    X_test, yv_test, yr_test, yp_test = _convert_games_to_arrays(test_games, augment, value_horizon, value_floor)
+        if value_discount_mode == "progress":
+            print(f"  Value targets: full-game progress discount "
+                  f"(factor {value_floor} at {value_horizon} plies)")
+        else:
+            print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 "
+                  f"over last {value_horizon} plies")
+    X_train, yv_train, yr_train, yp_train, ypw_train = _convert_games_to_arrays(
+        train_games, augment, value_horizon, value_floor, value_discount_mode)
+    X_val, yv_val, yr_val, yp_val, ypw_val = _convert_games_to_arrays(
+        val_games, augment, value_horizon, value_floor, value_discount_mode)
+    X_test, yv_test, yr_test, yp_test, ypw_test = _convert_games_to_arrays(
+        test_games, augment, value_horizon, value_floor, value_discount_mode)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
+    y_policy_weight = np.concatenate([ypw_train, ypw_val, ypw_test], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
     np.save(os.path.join(output_dir, "positions.npy"), X)
     np.save(os.path.join(output_dir, "mcts_values.npy"), y_value)
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
+    np.save(os.path.join(output_dir, "policy_weights.npy"), y_policy_weight)
 
     n_train, n_val, n_test = len(X_train), len(X_val), len(X_test)
     splits = {
@@ -335,6 +389,9 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             "test": sorted(test_ids),
             "retention": retention_summary,
             "augment": bool(augment),
+            "value_discount_mode": value_discount_mode,
+            "value_horizon": int(value_horizon),
+            "value_floor": float(value_floor),
             "total_positions": int(len(X)),
         }, f, indent=2)
 
@@ -343,6 +400,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  mcts_values.npy:  {y_value.shape}")
     print(f"  game_results.npy: {y_result.shape}")
     print(f"  policies.npy:     {y_policy.shape}")
+    print(f"  policy_weights.npy: {y_policy_weight.shape} "
+          f"(masked={int((y_policy_weight == 0).sum())})")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 
@@ -365,6 +424,9 @@ if __name__ == "__main__":
                         help="Plies from game end for the near-mate target ramp")
     parser.add_argument("--value-floor", type=float, default=VALUE_TARGET_FLOOR,
                         help="Plateau factor beyond the horizon (>=1.0 disables)")
+    parser.add_argument("--value-discount-mode", choices=["near_mate", "progress"],
+                        default=VALUE_TARGET_DISCOUNT_MODE,
+                        help="Near-mate tiebreak or full-game progress discount")
     args = parser.parse_args()
     if args.max_generation_age is not None and args.max_generation_age < 0:
         raise ValueError("--max-generation-age must be >= 0")
@@ -381,4 +443,5 @@ if __name__ == "__main__":
         min_nonhuman_plies=args.min_nonhuman_plies,
         value_horizon=args.value_horizon,
         value_floor=args.value_floor,
+        value_discount_mode=args.value_discount_mode,
     )

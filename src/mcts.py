@@ -231,6 +231,53 @@ class MCTS:
         self.allow_early_stop = allow_early_stop
         self._supports_batch = hasattr(self.eval_fn, 'batch_evaluate')
         self._has_policy = hasattr(self.eval_fn, 'evaluate_with_policy')
+        # Reuse only across White's first -> second half-move. Both nodes use
+        # White perspective, so accumulated Q values remain valid. Reuse across
+        # a side change would require rebasing every stored value and is avoided.
+        self._white_half_root = None
+        self._white_half_key = None
+
+    @staticmethod
+    def _state_key(state):
+        return (
+            state.fen(),
+            bool(state.is_white_turn),
+            bool(getattr(state, "white_half_pending", False)),
+        )
+
+    def _root_for_search(self, root_state):
+        key = self._state_key(root_state)
+        if self._white_half_root is not None and self._white_half_key == key:
+            root = self._white_half_root
+            self._white_half_root = None
+            self._white_half_key = None
+            return root
+        self._white_half_root = None
+        self._white_half_key = None
+        return MCTSNode(root_state.clone())
+
+    def _remember_white_continuation(self, root_state, selected_action,
+                                     children_info):
+        is_first_white_half = (
+            root_state.is_white_turn
+            and not getattr(root_state, "white_half_pending", False)
+            and not isinstance(selected_action, tuple)
+        )
+        if not is_first_white_half:
+            self._white_half_root = None
+            self._white_half_key = None
+            return
+        selected_child = next(
+            (child for child, _key, _visits in children_info
+             if child.action == selected_action),
+            None,
+        )
+        if selected_child is None:
+            return
+        selected_child.parent = None
+        selected_child.action = None
+        self._white_half_root = selected_child
+        self._white_half_key = self._state_key(selected_child.state)
 
     def _should_stop_early(self, root, sims_done):
         """Stop MCTS early if position is clearly decided or best move dominant."""
@@ -251,7 +298,7 @@ class MCTS:
 
     def get_best_action(self, root_state, temperature=1.0):
         """Run MCTS and return (selected_action, action_probs, root_value)."""
-        root = MCTSNode(root_state.clone())
+        root = self._root_for_search(root_state)
 
         if self._has_policy and self._supports_batch:
             self._run_batched_puct(root)
@@ -261,6 +308,8 @@ class MCTS:
             self._run_sequential(root)
 
         if not root.children:
+            self._white_half_root = None
+            self._white_half_key = None
             return None, {}, 0.0
 
         # Collect visit counts
@@ -300,6 +349,8 @@ class MCTS:
 
         selected_action = _king_safety_override(root_state, selected_action,
                                                 children_info)
+        self._remember_white_continuation(
+            root_state, selected_action, children_info)
         return selected_action, action_probs, root.q_value
 
     # ------------------------------------------------------------------
