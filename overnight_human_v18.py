@@ -6,10 +6,11 @@ Changes from v17:
   - each human game appears once, with policy trust decided centrally by
     data_processor.policy_weight_for_record;
   - symmetric 17-channel position encoding;
-  - hybrid WDL + progress value training;
+  - outcome-grounded WDL value training with only the narrow near-mate
+    tiebreak (no full-game progress objective);
   - post-training matches are informational and never promotion gates.
 
-Explicit owner go received 2026-07-13. Run with:
+Corrected replacement approved 2026-07-15. Run with:
     py -3 -u overnight_human_v18.py
 """
 import glob
@@ -44,8 +45,8 @@ INCUMBENT_PT = os.path.join("models", "fresh_start_v17", "best_value_net.pt")
 
 TRACE_GAME = os.path.join(
     HUMAN_DIR, "black_2026_07", "game_00015.jsonl")
-VALUE_HORIZON = 225
-VALUE_FLOOR = 0.5
+VALUE_HORIZON = 10
+VALUE_FLOOR = 0.97
 
 
 def log(msg):
@@ -163,7 +164,7 @@ def merge():
         "human_duplication": 1,
         "promotion_specific_games": 0,
         "position_encoding_channels": 17,
-        "value_discount_mode": "progress",
+        "value_discount_mode": "near_mate",
         "value_horizon": VALUE_HORIZON,
         "value_floor": VALUE_FLOOR,
     }
@@ -237,7 +238,7 @@ def main():
         "--reference", REFERENCE_DIR,
         "--min-purity", "0",
         "--max-dup", "2",
-        "--value-discount-mode", "progress",
+        "--value-discount-mode", "near_mate",
         "--value-horizon", str(VALUE_HORIZON),
         "--value-floor", str(VALUE_FLOOR),
         "--bias-fail", "0.25",
@@ -247,7 +248,7 @@ def main():
         "--raw-dir", MERGED_DIR,
         "--output-dir", PROCESSED_DIR,
         "--seed", "42",
-        "--value-discount-mode", "progress",
+        "--value-discount-mode", "near_mate",
         "--value-horizon", str(VALUE_HORIZON),
         "--value-floor", str(VALUE_FLOOR),
     ])
@@ -256,7 +257,7 @@ def main():
         "--data-dir", PROCESSED_DIR,
         "--model-dir", MODEL_DIR,
         "--target", "game_result",
-        "--value-head", "hybrid",
+        "--value-head", "wdl",
         "--epochs", "30",
         "--seed", "42",
     ])

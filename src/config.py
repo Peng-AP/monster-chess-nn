@@ -257,7 +257,11 @@ VALUE_TARGET_DISCOUNT_MODE = "near_mate"  # "near_mate" or full-game "progress"
 VALUE_HEAD_MODE = "scalar"  # "scalar", "wdl", or "hybrid"
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
-VALUE_HYBRID_PROGRESS_WEIGHT = 0.25  # scalar progress tie-break in hybrid inference
+# Progress remains an auxiliary training target in hybrid models, but it is
+# not blended into search. Full-game progress is inherently side-biased in
+# Monster Chess because Black's successful conversions are much longer than
+# White's; blending it taxed sound Black defenses in v18.
+VALUE_HYBRID_PROGRESS_WEIGHT = 0.0
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Data retention (data_processor.py)

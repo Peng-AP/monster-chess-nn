@@ -467,6 +467,15 @@ def load_model_for_inference(checkpoint_path, device):
         hybrid_progress_weight=hybrid_progress_weight,
     ).to(device)
     model.load_state_dict(state_dict)
+    if value_head_mode == 'hybrid':
+        # Keep progress as an auxiliary learned head, but do not blend the
+        # side-biased full-game target into search.
+        inference_weight = float(VALUE_HYBRID_PROGRESS_WEIGHT)
+        if not (0.0 <= inference_weight <= 1.0):
+            raise ValueError(
+                'hybrid progress inference weight must be in [0, 1]')
+        model._hybrid_progress_weight.fill_(inference_weight)
+        model.hybrid_progress_weight = inference_weight
     model.eval()
     return model, pol_ch
 

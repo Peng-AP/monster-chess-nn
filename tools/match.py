@@ -22,6 +22,13 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 _engines = {}
 
 
+def resolve_opening_temp_plies(model_b, requested):
+    '''Use sampled openings only when both opponents are neural models.'''
+    if requested is not None:
+        return int(requested)
+    return 16 if model_b else 0
+
+
 def _init_worker(model_a, model_b, sims):
     from benchmark import _build_engine
     _engines["a"], _ = _build_engine(model_a, sims)
@@ -50,7 +57,12 @@ def main():
     ap.add_argument("--opening-temp-plies", type=int, default=16)
     ap.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
+    # Heuristic tie-breaks already diversify anchor games. Only NN-vs-NN
+    # matches need sampled model openings by default.
+    ap.set_defaults(opening_temp_plies=None)
     args = ap.parse_args()
+    args.opening_temp_plies = resolve_opening_temp_plies(
+        args.model_b, args.opening_temp_plies)
 
     n_white = args.games // 2
     tasks = [(True, args.seed + i, args.opening_temp_plies) for i in range(n_white)]
