@@ -132,7 +132,9 @@ def main():
     ap.add_argument("--incumbent", required=True)
     ap.add_argument("--data-dir", required=True,
                     help="processed corpus dir (positions.npy etc.)")
-    ap.add_argument("--split", default="test", choices=["test", "val"])
+    ap.add_argument("--split", default="test", choices=["test", "val", "all"],
+                    help="'all' = every position; use on a corpus unseen by "
+                         "BOTH models (leakage-clean cross-evaluation)")
     ap.add_argument("--max-positions", type=int, default=4096)
     ap.add_argument("--batch-size", type=int, default=512)
     ap.add_argument("--enforce", action="store_true",
@@ -149,7 +151,10 @@ def main():
     weights_all = (np.load(pw_path) if os.path.exists(pw_path)
                    else np.ones((len(results),), dtype=np.float32))
     with np.load(os.path.join(args.data_dir, "splits.npz")) as f:
-        idx = f[args.split]
+        if args.split == "all":
+            idx = np.sort(np.concatenate([f[k] for k in f.files]))
+        else:
+            idx = f[args.split]
     if len(idx) > args.max_positions:
         idx = idx[np.linspace(0, len(idx) - 1, args.max_positions).astype(np.int64)]
 

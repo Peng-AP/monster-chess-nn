@@ -228,17 +228,20 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     return out
 
 
-def policy_weight_for_record(rec):
+def policy_weight_for_record(rec, mask_human_ai=True):
     """Return whether a record is a trustworthy policy teacher.
 
     Explicit weights always win. Ordinary engine/self-play records remain
-    teachers. Human games are different: every position is valuable to the
-    value head, but only a move made by the eventual human winner becomes a
-    policy target. This prevents duplicated human traces from distilling the
-    losing AI's mistakes back into the next model.
+    teachers. With mask_human_ai=True (v18-era behavior) human games only
+    teach policy through moves made by the eventual winning human. v16/v17
+    trained with mask_human_ai=False — every human-game record a teacher —
+    and both models that masked scored 4-7 points lower policy top-1, so
+    the v17-faithful mode stays available via --no-human-ai-mask.
     """
     if "policy_weight" in rec:
         return float(rec["policy_weight"])
+    if not mask_human_ai:
+        return 1.0
     if rec.get("source") != "human_game":
         return 1.0
     if rec.get("actor") != "human":
@@ -252,7 +255,7 @@ def policy_weight_for_record(rec):
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
                              value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                             input_channels=None):
+                             input_channels=None, mask_human_ai=True):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
@@ -276,7 +279,7 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             # gr comes pre-discounted from _discounted_results.
             val = rec["mcts_value"]
             pol = policy_dict_to_target(rec["policy"], is_white)
-            pol_weight = policy_weight_for_record(rec)
+            pol_weight = policy_weight_for_record(rec, mask_human_ai=mask_human_ai)
 
             tensors.append(tensor)
             values.append(val)
@@ -313,7 +316,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      value_horizon=VALUE_TARGET_HORIZON,
                      value_floor=VALUE_TARGET_FLOOR,
                      value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                     input_channels=None):
+                     input_channels=None, mask_human_ai=True):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -360,13 +363,13 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                   f"over last {value_horizon} plies")
     X_train, yv_train, yr_train, yp_train, ypw_train = _convert_games_to_arrays(
         train_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels)
+        input_channels=input_channels, mask_human_ai=mask_human_ai)
     X_val, yv_val, yr_val, yp_val, ypw_val = _convert_games_to_arrays(
         val_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels)
+        input_channels=input_channels, mask_human_ai=mask_human_ai)
     X_test, yv_test, yr_test, yp_test, ypw_test = _convert_games_to_arrays(
         test_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels)
+        input_channels=input_channels, mask_human_ai=mask_human_ai)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
@@ -438,6 +441,10 @@ if __name__ == "__main__":
     parser.add_argument("--channels", type=int, default=None,
                         help="Position encoding width (15 legacy or 17; "
                              "default: config TENSOR_SHAPE)")
+    parser.add_argument("--no-human-ai-mask", action="store_true",
+                        help="v16/v17-faithful policy weighting: human-game AI "
+                             "moves stay policy teachers (explicit weights "
+                             "still honored)")
     args = parser.parse_args()
     if args.max_generation_age is not None and args.max_generation_age < 0:
         raise ValueError("--max-generation-age must be >= 0")
@@ -456,4 +463,5 @@ if __name__ == "__main__":
         value_floor=args.value_floor,
         value_discount_mode=args.value_discount_mode,
         input_channels=args.channels,
+        mask_human_ai=not args.no_human_ai_mask,
     )
