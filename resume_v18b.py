@@ -12,6 +12,7 @@ Launch detached (survives session/app closure):
     Invoke-CimMethod -ClassName Win32_Process -MethodName Create ...
 """
 import ctypes
+import signal
 import sys
 
 import overnight_human_v18b as d
@@ -48,11 +49,15 @@ def main():
 
 
 if __name__ == "__main__":
+    # 13:12 launch was killed by a console control event (^C / window close,
+    # exit 0xC000013A). The wrapper ignores SIGINT so a stray event can't kill
+    # the chain silently; a killed child still surfaces as a logged abort.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     ctypes.windll.kernel32.SetThreadExecutionState(
         ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
     try:
         main()
-    except Exception as exc:
+    except BaseException as exc:
         d.log(f"CHAIN ABORTED: {exc!r}")
         sys.exit(1)
     finally:
