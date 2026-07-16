@@ -47,16 +47,18 @@ Process raw games into tensors:
 py -3 src/data_processor.py --raw-dir data/raw/my_run --output-dir data/processed/my_run --seed 42
 ```
 
-Train (outcome-grounded value target, hybrid WDL + progress value):
+Train (outcome-grounded WDL value):
 
 ```bash
 py -3 src/train.py --data-dir data/processed/my_run --model-dir models/my_model \
-    --target game_result --value-head hybrid --epochs 30 --seed 42
+    --target game_result --value-head wdl --epochs 30 --seed 42
 ```
 
-For progress-aware targets, process with `--value-discount-mode progress`
-plus an explicit horizon and floor. Current 17-channel data encodes rank and
-pawn progress symmetrically; 15-channel v16/v17 checkpoints remain loadable.
+Current v18 processing uses `--value-discount-mode near_mate` with horizon 10
+and floor 0.97. Full-game progress is not a training or search objective:
+Black's sound conversions are systematically longer than White's, which made
+that target side-biased. Current 17-channel data encodes rank and pawn progress
+symmetrically; 15-channel v16/v17 checkpoints remain loadable.
 
 Benchmark against the fixed heuristic anchor (the project yardstick):
 
@@ -76,13 +78,24 @@ Verify the scripted-mate conversion algorithm vs MCTS White:
 py -3 src/verify_scripted_mate.py --games 16 --white-sims 200 --seed 7
 ```
 
+## Model promotion
+
+Numbered models are promoted releases, not training-run counters. The incumbent
+keeps its version until a candidate demonstrates a concrete improvement through
+side-aware automated evidence and the project owner's final play-strength gate.
+A rejected candidate is archived without consuming the target version number.
+
+Automated matches establish eligibility only; they never promote a model by
+themselves. The currently running replacement remains a v18 candidate until
+owner approval, while v17 remains the incumbent.
+
 ## v18 learning cleanup
 
 `overnight_human_v18.py` rebuilds the corpus without promotion injection. It
 keeps all v17 focus outcomes, includes each human game once, trains policy only
-from the eventual human winner in human games, and uses hybrid WDL + progress
-value learning. Its anchor and incumbent matches are informational, not hard
-specialist gates.
+from the eventual human winner in human games, and uses outcome-grounded WDL
+learning with only a near-mate tiebreak. Its anchor and incumbent matches are
+informational, not hard specialist gates.
 
 ## Historical v17 promotion experiment
 
