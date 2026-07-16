@@ -99,6 +99,29 @@ def main():
 
     failures, warnings = [], []
 
+    # Both rejected v18 candidates shipped through a driver that weakened
+    # these thresholds and then failed in exactly the gated ways (v13 label
+    # bias, v14 focus pollution). Weakening is allowed but never silent.
+    weakened = []
+    if args.min_purity < ap.get_default("min_purity"):
+        weakened.append(f"min-purity {args.min_purity} < default "
+                        f"{ap.get_default('min_purity')}")
+    if args.max_dup > ap.get_default("max_dup"):
+        weakened.append(f"max-dup {args.max_dup} > default {ap.get_default('max_dup')}")
+    if args.diff_fail > ap.get_default("diff_fail"):
+        weakened.append(f"diff-fail {args.diff_fail} > default "
+                        f"{ap.get_default('diff_fail')}")
+    if args.bias_fail > ap.get_default("bias_fail"):
+        weakened.append(f"bias-fail {args.bias_fail} > default "
+                        f"{ap.get_default('bias_fail')}")
+    if weakened:
+        print("!" * 72)
+        print("!!! WEAKENED GATE: this run does NOT enforce the default corpus")
+        print("!!! failure gates. Every past weakening preceded a rejected model.")
+        for item in weakened:
+            print(f"!!!   {item}")
+        print("!" * 72)
+
     # Pass over the corpus once, bucketing by top-level source dir.
     src_games = defaultdict(lambda: [0, 0, 0])     # games, black wins, white wins
     src_positions = defaultdict(int)

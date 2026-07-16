@@ -251,7 +251,8 @@ def policy_weight_for_record(rec):
 
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
-                             value_discount_mode=VALUE_TARGET_DISCOUNT_MODE):
+                             value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
+                             input_channels=None):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
@@ -268,7 +269,8 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             is_white = rec["current_player"] == "white"
             half_pending = bool(rec.get("half"))
             tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white,
-                                   half_pending=half_pending)
+                                   half_pending=half_pending,
+                                   input_channels=input_channels)
             # mcts_value from data_generation is already from the
             # side-to-move perspective for both White and Black.
             # gr comes pre-discounted from _discounted_results.
@@ -295,7 +297,8 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_policy = np.array(policy_targets, dtype=np.float32)
         y_policy_weight = np.array(policy_weights, dtype=np.float32)
     else:
-        X = np.zeros((0,) + TENSOR_SHAPE, dtype=np.float32)
+        channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
+        X = np.zeros((0, 8, 8, channels), dtype=np.float32)
         y_value = np.zeros((0,), dtype=np.float32)
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
@@ -309,7 +312,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      min_nonhuman_plies=DATA_RETENTION_MIN_NONHUMAN_PLIES,
                      value_horizon=VALUE_TARGET_HORIZON,
                      value_floor=VALUE_TARGET_FLOOR,
-                     value_discount_mode=VALUE_TARGET_DISCOUNT_MODE):
+                     value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
+                     input_channels=None):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -355,11 +359,14 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 "
                   f"over last {value_horizon} plies")
     X_train, yv_train, yr_train, yp_train, ypw_train = _convert_games_to_arrays(
-        train_games, augment, value_horizon, value_floor, value_discount_mode)
+        train_games, augment, value_horizon, value_floor, value_discount_mode,
+        input_channels=input_channels)
     X_val, yv_val, yr_val, yp_val, ypw_val = _convert_games_to_arrays(
-        val_games, augment, value_horizon, value_floor, value_discount_mode)
+        val_games, augment, value_horizon, value_floor, value_discount_mode,
+        input_channels=input_channels)
     X_test, yv_test, yr_test, yp_test, ypw_test = _convert_games_to_arrays(
-        test_games, augment, value_horizon, value_floor, value_discount_mode)
+        test_games, augment, value_horizon, value_floor, value_discount_mode,
+        input_channels=input_channels)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
@@ -392,6 +399,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             "value_discount_mode": value_discount_mode,
             "value_horizon": int(value_horizon),
             "value_floor": float(value_floor),
+            "input_channels": int(X.shape[3]) if len(X) else None,
             "total_positions": int(len(X)),
         }, f, indent=2)
 
@@ -427,6 +435,9 @@ if __name__ == "__main__":
     parser.add_argument("--value-discount-mode", choices=["near_mate", "progress"],
                         default=VALUE_TARGET_DISCOUNT_MODE,
                         help="Near-mate tiebreak or full-game progress discount")
+    parser.add_argument("--channels", type=int, default=None,
+                        help="Position encoding width (15 legacy or 17; "
+                             "default: config TENSOR_SHAPE)")
     args = parser.parse_args()
     if args.max_generation_age is not None and args.max_generation_age < 0:
         raise ValueError("--max-generation-age must be >= 0")
@@ -444,4 +455,5 @@ if __name__ == "__main__":
         value_horizon=args.value_horizon,
         value_floor=args.value_floor,
         value_discount_mode=args.value_discount_mode,
+        input_channels=args.channels,
     )

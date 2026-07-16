@@ -677,6 +677,22 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
     )
 
 
+def _decisive_score(decisive):
+    """Promotion-relevant scalar from per-side decisive metrics.
+
+    min() over sides on both components: a checkpoint that collapses for one
+    color must not be rescued by the other (WDL-v18 lesson — aggregate
+    validation loss picked a checkpoint whose policy top-1 had regressed six
+    points and whose Black play collapsed).
+    """
+    sides = ("white", "black")
+    top1 = [decisive[f"policy_top1_{s}"] for s in sides]
+    sign = [decisive[f"sign_acc_{s}"] for s in sides]
+    if any(v is None for v in top1 + sign):
+        return None
+    return min(top1) + min(sign)
+
+
 @torch.no_grad()
 def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
                 wdl_loss_weight=0.0, value_head_mode="scalar"):
@@ -690,6 +706,9 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
     total_mae = 0.0
     total_mse = 0.0
     n = 0
+    # Decisive metrics: [correct, count] per (metric, side-to-move).
+    dec = {key: [0, 0] for key in (
+        "top1_white", "top1_black", "sign_white", "sign_black")}
 
     for batch in loader:
         X_b, yv_b, yp_b, ypw_b, yw_b = _unpack_loader_batch(batch)
@@ -722,6 +741,19 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
             total_wdl_correct += (preds == yw_b).sum().item()
             total_wdl_count += int(yw_b.numel())
 
+        white_turn = X_b[:, TURN_LAYER, 0, 0] > 0
+        pol_enabled = (ypw_b.reshape(-1) > 0) & (yp_b.sum(dim=1) > 0)
+        pol_correct = policy_pred.argmax(dim=1) == yp_b.argmax(dim=1)
+        val_nondraw = yv_b.reshape(-1) != 0
+        sign_correct = torch.sign(value_pred.reshape(-1)) == torch.sign(yv_b.reshape(-1))
+        for side_name, side_mask in (("white", white_turn), ("black", ~white_turn)):
+            pm = pol_enabled & side_mask
+            dec[f"top1_{side_name}"][0] += int((pol_correct & pm).sum())
+            dec[f"top1_{side_name}"][1] += int(pm.sum())
+            vm = val_nondraw & side_mask
+            dec[f"sign_{side_name}"][0] += int((sign_correct & vm).sum())
+            dec[f"sign_{side_name}"][1] += int(vm.sum())
+
         bs = X_b.size(0)
         total_loss += loss.item() * bs
         total_val_loss += loss_val.item() * bs
@@ -734,6 +766,12 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
     wdl_acc = None
     if total_wdl_count > 0:
         wdl_acc = total_wdl_correct / total_wdl_count
+    decisive = {}
+    for metric, out_name in (("top1", "policy_top1"), ("sign", "sign_acc")):
+        for side in ("white", "black"):
+            correct, count = dec[f"{metric}_{side}"]
+            decisive[f"{out_name}_{side}"] = correct / count if count else None
+    decisive["score"] = _decisive_score(decisive)
     return (
         total_loss / n,
         total_val_loss / n,
@@ -742,6 +780,7 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         total_mse / n,
         total_wdl_loss / n,
         wdl_acc,
+        decisive,
     )
 
 
@@ -774,6 +813,11 @@ def main():
                         help=f"CE weight for the WDL head (default: {WDL_LOSS_WEIGHT})")
     parser.add_argument("--wdl-draw-epsilon", type=float, default=WDL_DRAW_EPSILON,
                         help=f"Draw band for WDL labels, |target|<=eps (default: {WDL_DRAW_EPSILON})")
+    parser.add_argument("--select-metric", type=str, default="decisive",
+                        choices=["decisive", "val_loss"],
+                        help="Checkpoint selection: 'decisive' = min-over-sides "
+                             "policy top-1 + winner-sign on val (default); "
+                             "'val_loss' = legacy aggregate validation loss")
     args = parser.parse_args()
 
     if args.warmup_epochs < 0:
@@ -832,8 +876,11 @@ def main():
         )
     print(f"Policy loss weight: {args.policy_loss_weight}")
 
-    # Build model
+    # Build model. Input channels come from the processed data, not config:
+    # a 15-plane corpus trains a 15-plane model even when config default is 17.
+    data_channels = int(positions.shape[3])
     model = build_model(
+        input_channels=data_channels,
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
         use_wdl_head=use_wdl_mode,
@@ -876,7 +923,8 @@ def main():
     # Checkpoint setup
     os.makedirs(args.model_dir, exist_ok=True)
     checkpoint_path = os.path.join(args.model_dir, "best_value_net.pt")
-    best_val_loss = float("inf")
+    best_selection_value = float("inf")
+    best_epoch = None
     patience_counter = 0
     patience = 10
     run_id = time.strftime("%Y%m%d_%H%M%S")
@@ -972,7 +1020,8 @@ def main():
             wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
             value_head_mode=args.value_head,
         )
-        val_loss, val_v, val_p, val_mae, val_mse, val_wdl, val_wdl_acc = _eval_epoch(
+        (val_loss, val_v, val_p, val_mae, val_mse, val_wdl, val_wdl_acc,
+         val_decisive) = _eval_epoch(
             model, val_loader, device, args.policy_loss_weight,
             use_wdl_head=use_wdl_mode,
             wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
@@ -986,10 +1035,18 @@ def main():
         if use_wdl_mode:
             acc_str = f"{val_wdl_acc:.1%}" if val_wdl_acc is not None else "n/a"
             wdl_str = f"  wdl(train_ce={train_wdl:.4f} val_ce={val_wdl:.4f} val_acc={acc_str})"
+        dec_str = "  decisive(n/a)"
+        if val_decisive["score"] is not None:
+            dec_str = (
+                f"  decisive(top1 W={val_decisive['policy_top1_white']:.1%} "
+                f"B={val_decisive['policy_top1_black']:.1%} "
+                f"sign W={val_decisive['sign_acc_white']:.1%} "
+                f"B={val_decisive['sign_acc_black']:.1%})"
+            )
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{wdl_str}")
+              f"lr={lr:.1e}{wdl_str}{dec_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
             "train_samples": int(len(epoch_train_idx)),
@@ -1004,15 +1061,26 @@ def main():
             "val_value_mae": float(val_mae),
             "val_wdl_ce": float(val_wdl),
             "val_wdl_accuracy": float(val_wdl_acc) if val_wdl_acc is not None else None,
+            "val_decisive": {k: (float(v) if v is not None else None)
+                             for k, v in val_decisive.items()},
             "lr": float(lr),
         })
 
-        # Checkpoint
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        # Checkpoint selection. "decisive" maximizes min-over-sides policy
+        # top-1 + winner-sign; falls back to val_loss only if a side has no
+        # val samples. Lower selection value = better for both modes.
+        if args.select_metric == "decisive" and val_decisive["score"] is not None:
+            selection_value = -val_decisive["score"]
+            selection_desc = f"decisive_score={val_decisive['score']:.4f}"
+        else:
+            selection_value = val_loss
+            selection_desc = f"val_loss={val_loss:.4f}"
+        if selection_value < best_selection_value:
+            best_selection_value = selection_value
+            best_epoch = epoch
             patience_counter = 0
             torch.save(model.state_dict(), checkpoint_path)
-            print(f"  -> saved best model (val_loss={val_loss:.4f})")
+            print(f"  -> saved best model ({selection_desc})")
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -1030,7 +1098,8 @@ def main():
         y_wdl=wdl_targets[test_idx] if use_wdl_mode else None,
         y_policy_weight=policy_weights[test_idx],
     )
-    test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc = _eval_epoch(
+    (test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc,
+     test_decisive) = _eval_epoch(
         model, test_loader, device, args.policy_loss_weight,
         use_wdl_head=use_wdl_mode,
         wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
@@ -1047,6 +1116,11 @@ def main():
         acc_str = f"{test_wdl_acc:.1%}" if test_wdl_acc is not None else "n/a"
         print(f"WDL CE:     {test_wdl:.4f}")
         print(f"WDL Acc:    {acc_str}")
+    if test_decisive["score"] is not None:
+        print(f"Policy top-1 (enabled): W={test_decisive['policy_top1_white']:.1%} "
+              f"B={test_decisive['policy_top1_black']:.1%}")
+        print(f"Winner sign (non-draw): W={test_decisive['sign_acc_white']:.1%} "
+              f"B={test_decisive['sign_acc_black']:.1%}")
 
     # Value sign-accuracy
     model.eval()
@@ -1074,8 +1148,12 @@ def main():
         "wdl_ce": float(test_wdl),
         "wdl_accuracy": float(test_wdl_acc) if test_wdl_acc is not None else None,
         "winner_sign_accuracy_non_draw": float(acc) if non_draw.sum() > 0 else None,
+        "decisive": {k: (float(v) if v is not None else None)
+                     for k, v in test_decisive.items()},
     }
-    run_metadata["best_val_loss"] = float(best_val_loss)
+    run_metadata["select_metric"] = args.select_metric
+    run_metadata["best_selection_value"] = float(best_selection_value)
+    run_metadata["best_epoch"] = best_epoch
     run_metadata["checkpoint_path"] = checkpoint_path
     run_metadata["end_timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     with open(metadata_path, "w") as f:
