@@ -17,6 +17,7 @@ from mcts import (
     _m1_dooms_king,
     _oscillation_adjusted_visits,
     _own_previous_moves,
+    _selected_child_value,
     _white_first_half_override,
 )
 
@@ -124,3 +125,28 @@ def test_first_half_override_noop_on_second_half():
     game.apply_search_action(_mv("a1a2"))
     info = _children(("a2a1", 100),)
     assert _white_first_half_override(game, _mv("a2a1"), info) == _mv("a2a1")
+
+
+# ----------------------------------------------------------------------
+# Reported search value = selected child's Q, not the root average
+# ----------------------------------------------------------------------
+
+def _q_children(*triples):
+    """(uci, visits, q) -> children_info with q_value exposed."""
+    return [
+        (SimpleNamespace(action=_mv(u), visit_count=v, q_value=q), u, v)
+        for u, v, q in triples
+    ]
+
+
+def test_reported_value_is_selected_childs_q():
+    # proven mate on the selected child; root average diluted by exploration
+    info = _q_children(("h7h8", 300, 1.0), ("h7h6", 100, -0.2))
+    assert _selected_child_value(info, _mv("h7h8"), fallback=0.7) == 1.0
+    assert _selected_child_value(info, _mv("h7h6"), fallback=0.7) == -0.2
+
+
+def test_reported_value_falls_back_when_unvisited():
+    info = _q_children(("h7h8", 0, 0.0),)
+    assert _selected_child_value(info, _mv("h7h8"), fallback=0.42) == 0.42
+    assert _selected_child_value(info, _mv("a1a2"), fallback=0.42) == 0.42

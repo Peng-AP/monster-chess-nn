@@ -157,6 +157,25 @@ def _oscillation_adjusted_visits(state, children_info):
     ]
 
 
+def _selected_child_value(children_info, selected_action, fallback):
+    """Search value to report: the SELECTED child's Q, not the root average.
+
+    Root Q is a visit-weighted mean over every simulation, including the ones
+    spent refuting losing siblings — a proven mate reads ~+0.7 when a quarter
+    of the visits went to exploration (owner 2026-07-17: "put off by non-1
+    evals for mate positions when clearly the search can find it"). The
+    selected child's Q is the search's actual conclusion and sits at exactly
+    +-1.0 for proven king-capture lines. A root child's Q accumulates in the
+    root's side-to-move perspective (see _backpropagate), so no sign change.
+    """
+    for child, _key, _visits in children_info:
+        if child.action == selected_action:
+            if child.visit_count > 0:
+                return child.q_value
+            break
+    return fallback
+
+
 def _softmax_masked(logits, indices):
     """Softmax over a subset of logit indices, returning {index: prob}."""
     if not indices:
@@ -397,7 +416,11 @@ class MCTS:
         return False
 
     def get_best_action(self, root_state, temperature=1.0):
-        """Run MCTS and return (selected_action, action_probs, root_value)."""
+        """Run MCTS and return (selected_action, action_probs, search_value).
+
+        search_value is the selected child's Q (the search's conclusion about
+        the move actually played, side-to-move perspective), falling back to
+        the root average only when the child is unvisited."""
         root = self._root_for_search(root_state)
 
         if self._has_policy and self._supports_batch:
@@ -455,7 +478,8 @@ class MCTS:
                                                 children_info)
         self._remember_white_continuation(
             root_state, selected_action, children_info)
-        return selected_action, action_probs, root.q_value
+        return selected_action, action_probs, _selected_child_value(
+            children_info, selected_action, root.q_value)
 
     # ------------------------------------------------------------------
     # Sequential MCTS (heuristic eval, UCB1)
