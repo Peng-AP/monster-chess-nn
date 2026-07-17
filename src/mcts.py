@@ -2,6 +2,7 @@ import math
 import random
 from collections import defaultdict
 
+import chess
 import numpy as np
 
 from config import (
@@ -55,6 +56,105 @@ def _king_safety_override(state, selected_action, children_info):
         if not _hangs_king(state, child.action):
             return child.action
     return selected_action  # every searched move loses the king — forced
+
+
+def _m1_dooms_king(state, m1):
+    """True if after this first half-move EVERY legal second half hangs the
+    king. A winning m1 (king capture) is never doomed."""
+    tmp = state.clone()
+    tmp.apply_search_action(m1)
+    if tmp.is_terminal():
+        return False
+    for m2 in tmp.get_search_actions():
+        if not _hangs_king(tmp, m2):
+            return False
+    return True
+
+
+def _white_first_half_override(state, selected_action, children_info):
+    """A first half-move must keep at least one king-safe completion whenever
+    a searched alternative does.
+
+    The m2-level king-safety override cannot repair an m1 blunder: once the
+    first half walks into a pocket where every second half leaves the king
+    capturable, it sees "all moves lose — forced" and stands down. At value
+    saturation search picks exactly such m1s (owner game 2026-07-17: a
+    promoted queen checked the king and White stood still and let it take,
+    despite numerous safe pairs under other first moves). Common-case cost:
+    one clone + an early-exiting safe-m2 probe per White move.
+    """
+    if selected_action is None:
+        return selected_action
+    if not state.is_white_turn or getattr(state, "white_half_pending", False):
+        return selected_action
+    if not _m1_dooms_king(state, selected_action):
+        return selected_action
+    for child, _key, _visits in sorted(children_info, key=lambda x: -x[2]):
+        if child.action == selected_action:
+            continue
+        if not _m1_dooms_king(state, child.action):
+            return child.action
+    return selected_action  # every first move is doomed — genuinely mated
+
+
+OSCILLATION_VISIT_PENALTY = 0.10
+
+
+def _own_previous_moves(state):
+    """The side-to-move's recent moves, for oscillation detection.
+
+    Offsets follow the fixed push cycle (Black 1 push, White 2): at a Black
+    root the stack ends [..., B_prev, W_m1, W_m2]; at a White m2 root it ends
+    [..., W_m1_prev, W_m2_prev, B_prev, W_m1_this]. FEN-constructed positions
+    start with an empty stack — no history, no override — and history accrues
+    as the driver applies moves. A misaligned offset (null-m2 edge case) can
+    only surface an OPPONENT move, whose exact reversal is never a legal own
+    move (its from-square is occupied by the opponent), so false positives
+    are structurally excluded.
+    """
+    stack = state.board.move_stack
+    if state.is_white_turn:  # selecting White's second half
+        offsets = (-1, -3, -4)
+    else:
+        offsets = (-3,)
+    return [stack[i] for i in offsets if len(stack) >= -i]
+
+
+def _is_reversal(action, prev_moves):
+    """True when action exactly reverses one of prev_moves (A->B after B->A)."""
+    if not isinstance(action, chess.Move):
+        try:
+            action = chess.Move.from_uci(str(action))
+        except ValueError:
+            return False
+    return any(
+        action.from_square == prev.to_square
+        and action.to_square == prev.from_square
+        for prev in prev_moves
+    )
+
+
+def _oscillation_adjusted_visits(state, children_info):
+    """Visit counts with a mild discount on turn-completing moves that exactly
+    reverse the mover's own recent move (owner 2026-07-17: penalize, don't
+    forbid — sometimes going back IS best; and the pathology is PIECE
+    oscillation, since full-position repetition never recurs during a pawn
+    run). The discount only decides ties: at value saturation visits flatten
+    and the shuffle would win by noise; a reversal search genuinely prefers
+    (clearly more visits) still gets played. Selection-time bias only —
+    policy training targets keep the raw visit distribution.
+    """
+    visits = [info[2] for info in children_info]
+    if not _turn_completing(state):
+        return visits
+    prev = _own_previous_moves(state)
+    if not prev:
+        return visits
+    return [
+        v * (1.0 - OSCILLATION_VISIT_PENALTY)
+        if _is_reversal(info[0].action, prev) else v
+        for info, v in zip(children_info, visits)
+    ]
 
 
 def _softmax_masked(logits, indices):
@@ -333,12 +433,14 @@ class MCTS:
         else:
             action_probs = {info[1]: (info[2] + per_child) / denom for info in children_info}
 
-        # Temperature-based selection
+        # Temperature-based selection over oscillation-adjusted visit counts
+        # (action_probs above keeps the raw distribution for training).
+        adj_visits = _oscillation_adjusted_visits(root_state, children_info)
         if temperature < 0.01:
-            best = max(children_info, key=lambda x: x[2])
-            selected_action = best[0].action
+            best_i = max(range(len(children_info)), key=lambda i: adj_visits[i])
+            selected_action = children_info[best_i][0].action
         else:
-            weights = [max(info[2], 0) ** (1.0 / temperature) for info in children_info]
+            weights = [max(v, 0) ** (1.0 / temperature) for v in adj_visits]
             total_w = sum(weights)
             if total_w == 0:
                 selected_action = random.choice(children_info)[0].action
@@ -347,6 +449,8 @@ class MCTS:
                 idx = random.choices(range(len(children_info)), weights=probs, k=1)[0]
                 selected_action = children_info[idx][0].action
 
+        selected_action = _white_first_half_override(root_state, selected_action,
+                                                     children_info)
         selected_action = _king_safety_override(root_state, selected_action,
                                                 children_info)
         self._remember_white_continuation(
