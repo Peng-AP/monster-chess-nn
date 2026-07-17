@@ -818,6 +818,11 @@ def main():
                         help="Checkpoint selection: 'decisive' = min-over-sides "
                              "policy top-1 + winner-sign on val (default); "
                              "'val_loss' = legacy aggregate validation loss")
+    parser.add_argument("--stem-channels", type=int, default=STEM_CHANNELS,
+                        help=f"Stem width (default: {STEM_CHANNELS})")
+    parser.add_argument("--res-channels", type=str, default=None,
+                        help="Comma-separated residual block widths, e.g. "
+                             "'96,96,128,128' (default: config tower)")
     args = parser.parse_args()
 
     if args.warmup_epochs < 0:
@@ -879,8 +884,12 @@ def main():
     # Build model. Input channels come from the processed data, not config:
     # a 15-plane corpus trains a 15-plane model even when config default is 17.
     data_channels = int(positions.shape[3])
+    res_channels = (tuple(int(c) for c in args.res_channels.split(","))
+                    if args.res_channels else RESIDUAL_BLOCK_CHANNELS)
     model = build_model(
         input_channels=data_channels,
+        stem_channels=args.stem_channels,
+        residual_block_channels=res_channels,
         use_se_blocks=args.use_se_blocks,
         se_reduction=args.se_reduction,
         use_wdl_head=use_wdl_mode,
