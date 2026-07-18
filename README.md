@@ -86,16 +86,22 @@ side-aware automated evidence and the project owner's final play-strength gate.
 A rejected candidate is archived without consuming the target version number.
 
 Automated matches establish eligibility only; they never promote a model by
-themselves. The currently running replacement remains a v18 candidate until
-owner approval, while v17 remains the incumbent.
+themselves. v17 remains the incumbent; every v18 attempt so far is preserved
+under `models/rejected/`, and the active candidate (if any) lives in
+`models/candidates/`.
 
-## v18 learning cleanup
+## Repository layout
 
-`overnight_human_v18.py` rebuilds the corpus without promotion injection. It
-keeps all v17 focus outcomes, includes each human game once, trains policy only
-from the eventual human winner in human games, and uses outcome-grounded WDL
-learning with only a near-mate tiebreak. Its anchor and incumbent matches are
-informational, not hard specialist gates.
+- Root holds only the ACTIVE overnight driver and its report; every finished
+  driver, run report, and historical design doc moves to
+  `archive/{drivers,reports,docs}/` when its run concludes.
+- Model lifecycle dirs: `models/fresh_start_vN/` (numbered versions),
+  `models/candidates/` (in-flight), `models/rejected/` (failed automated
+  evidence or the owner gate), `models/experiments/` (probes, never
+  candidates).
+- The v18 campaign evidence (recovery/detox/ramp/capacity rejections, the
+  saturation diagnosis, marathon results) is in `archive/reports/` and
+  `benchmarks/`.
 
 ## Historical v17 promotion experiment
 
@@ -116,8 +122,8 @@ moves policy weight zero. `tools/pretrain_check.py` rejects Black-runner
 contamination or incorrect promotion policy weights. `tools/promotion_probe.py`
 compares prevention, defender-king survival, and game score separately.
 
-`overnight_human_v17.py` preserves that experiment for reproducibility. It is
-not the current training recipe.
+`archive/drivers/overnight_human_v17.py` preserves that experiment for
+reproducibility. It is not the current training recipe.
 
 Play against a model: open `src/play.ipynb` (widget UI, saves games to
 `data/raw/human_games/`) or `py -3 src/play.py`.
@@ -134,7 +140,7 @@ the loop history lives in `models/iterate_history.json`.
 
 ## History
 
-The engine went through a documented rework (`REWORK_PLAN.md`): search fix (D1),
+The engine went through a documented rework (`archive/docs/REWORK_PLAN.md`): search fix (D1),
 outcome-grounded value targets (D2), half-move factorization for White, a core
 rules correction (unconditional king capture, 2026-07-04), a side-to-move eval
 clamp fix (2026-07-05), and the Phase 5 deletion of the compensation machinery
