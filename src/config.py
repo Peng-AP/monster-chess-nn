@@ -257,11 +257,16 @@ VALUE_TARGET_DISCOUNT_MODE = "near_mate"  # "near_mate" or full-game "progress"
 VALUE_HEAD_MODE = "scalar"  # "scalar", "wdl", or "hybrid"
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
-# Progress remains an auxiliary training target in hybrid models, but it is
-# not blended into search. Full-game progress is inherently side-biased in
-# Monster Chess because Black's successful conversions are much longer than
-# White's; blending it taxed sound Black defenses in v18.
-VALUE_HYBRID_PROGRESS_WEIGHT = 0.0
+# Hybrid inference blend: value = (1-w)*WDL expectation + w*scalar head.
+# The rejected v18-progress candidate blended a FULL-GAME per-ply discount
+# (side-biased: Black's sound wins are much longer) and this was forced to 0.
+# The 2026-07-18 hybrid trains the scalar head on the END-ANCHORED ramp
+# (floor 0.5 / horizon 60) instead — side-symmetric in plies-to-end, and the
+# marathon showed that gradient fixes the flat-landscape shuffle (ramp anchor
+# 0.80 vs detox 0.30 on the same corpus). w=0.3 keeps WDL sharpness for
+# openings/material (pure-ramp vice: flat early values released the heuristic
+# prior's pawn-chucking, owner game 2026-07-18) while grading late progress.
+VALUE_HYBRID_PROGRESS_WEIGHT = 0.3
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # Data retention (data_processor.py)
