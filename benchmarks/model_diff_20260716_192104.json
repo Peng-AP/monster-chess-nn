@@ -1,0 +1,37 @@
+{
+  "candidate": "models\\candidates\\fresh_start_v18_recovery\\best_value_net.pt",
+  "incumbent": "models\\fresh_start_v17\\best_value_net.pt",
+  "data_dir": "data\\processed\\combined_v15",
+  "split": "test",
+  "positions": 4096,
+  "margin": 0.01,
+  "metrics": {
+    "candidate": {
+      "channels": 15,
+      "policy_ce": 2.5318237747659085,
+      "policy_top1": 0.27319854847071023,
+      "policy_top1_white": 0.2845138055222089,
+      "policy_top1_black": 0.2523914643119941,
+      "sign_acc": 0.909423828125,
+      "sign_acc_white": 0.9126539753639418,
+      "sign_acc_black": 0.903316866619619
+    },
+    "incumbent": {
+      "channels": 15,
+      "policy_ce": 2.4197959445065447,
+      "policy_top1": 0.31985484707102124,
+      "policy_top1_white": 0.33133253301320525,
+      "policy_top1_black": 0.29874908020603386,
+      "sign_acc": 0.912841796875,
+      "sign_acc_white": 0.9257185516983949,
+      "sign_acc_black": 0.8884968242766408
+    }
+  },
+  "failures": [
+    "policy_top1: 0.2732 vs incumbent 0.3199 (drop 0.0467 > margin 0.01)",
+    "policy_top1_white: 0.2845 vs incumbent 0.3313 (drop 0.0468 > margin 0.01)",
+    "policy_top1_black: 0.2524 vs incumbent 0.2987 (drop 0.0464 > margin 0.01)",
+    "sign_acc_white: 0.9127 vs incumbent 0.9257 (drop 0.0131 > margin 0.01)"
+  ],
+  "timestamp": "2026-07-16T19:21:04"
+}
