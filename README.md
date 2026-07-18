@@ -92,16 +92,16 @@ under `models/rejected/`, and the active candidate (if any) lives in
 
 ## Repository layout
 
-- Root holds only the ACTIVE overnight driver and its report; every finished
-  driver, run report, and historical design doc moves to
-  `archive/{drivers,reports,docs}/` when its run concludes.
+- Root holds only the ACTIVE overnight driver and its report. Finished
+  drivers, run reports, and historical design docs are deleted from the tree
+  when their run concludes — git history is the archive
+  (`git log --diff-filter=D --name-only` lists them;
+  `git show <commit>:<path>` retrieves one).
 - Model lifecycle dirs: `models/fresh_start_vN/` (numbered versions),
   `models/candidates/` (in-flight), `models/rejected/` (failed automated
   evidence or the owner gate), `models/experiments/` (probes, never
   candidates).
-- The v18 campaign evidence (recovery/detox/ramp/capacity rejections, the
-  saturation diagnosis, marathon results) is in `archive/reports/` and
-  `benchmarks/`.
+- Durable evidence (match/diff JSONs) stays in `benchmarks/`.
 
 ## Historical v17 promotion experiment
 
@@ -122,7 +122,7 @@ moves policy weight zero. `tools/pretrain_check.py` rejects Black-runner
 contamination or incorrect promotion policy weights. `tools/promotion_probe.py`
 compares prevention, defender-king survival, and game score separately.
 
-`archive/drivers/overnight_human_v17.py` preserves that experiment for
+`overnight_human_v17.py` (in git history) preserves that experiment for
 reproducibility. It is not the current training recipe.
 
 Play against a model: open `src/play.ipynb` (widget UI, saves games to
@@ -140,7 +140,7 @@ the loop history lives in `models/iterate_history.json`.
 
 ## History
 
-The engine went through a documented rework (`archive/docs/REWORK_PLAN.md`): search fix (D1),
+The engine went through a documented rework (`REWORK_PLAN.md`, in git history): search fix (D1),
 outcome-grounded value targets (D2), half-move factorization for White, a core
 rules correction (unconditional king capture, 2026-07-04), a side-to-move eval
 clamp fix (2026-07-05), and the Phase 5 deletion of the compensation machinery
