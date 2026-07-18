@@ -41,7 +41,17 @@ class V18RegressionTests(unittest.TestCase):
                 str(checkpoint), torch.device("cpu"))
 
         self.assertEqual(loaded.value_head_mode, "hybrid")
-        self.assertEqual(float(loaded._hybrid_progress_weight.item()), 0.0)
+        # The guard is the MECHANISM: a checkpoint's stored blend weight never
+        # survives loading — config VALUE_HYBRID_PROGRESS_WEIGHT decides. The
+        # rejected v18-progress blend was forced to 0 this way; the 2026-07-18
+        # hybrid deliberately sets a nonzero config weight for the
+        # end-anchored-ramp scalar head (owner-approved), so assert against
+        # config, not the historical 0.0.
+        from config import VALUE_HYBRID_PROGRESS_WEIGHT
+        self.assertNotEqual(float(loaded._hybrid_progress_weight.item()), 0.25)
+        self.assertAlmostEqual(
+            float(loaded._hybrid_progress_weight.item()),
+            float(VALUE_HYBRID_PROGRESS_WEIGHT), places=5)
 
     def test_anchor_match_defaults_to_no_opening_sampling(self):
         match_tool = _load_match_tool()
