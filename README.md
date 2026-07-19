@@ -15,6 +15,7 @@ src/
   config.py          # all tunables (~15 knobs) + curriculum start positions
   monster_chess.py   # rules, atomic (m1, m2) API + half-move search API
   mcts.py            # batched PUCT (NN) + sequential UCB1 (heuristic)
+  router.py          # phase router: one engine per turn by White pawn count
   evaluation.py      # heuristic eval, NNEvaluator, HybridEvaluator
   encoding.py        # fen_to_tensor, policy encoding, mirror augmentation
   data_generation.py # self-play game generation (multiprocess)
@@ -65,6 +66,11 @@ Benchmark against the fixed heuristic anchor (the project yardstick):
 ```bash
 py -3 src/benchmark.py --model models/my_model/best_value_net.pt --games 20 --sims 400
 ```
+
+Anywhere a `.pt` model path is accepted (benchmark, `tools/match.py`, the
+play.ipynb dropdown), a `router.json` phase-router spec is too — a composite
+engine that plays the opening with one checkpoint and the late game with
+another (see `src/router.py`; specs live in `models/experiments/*/`).
 
 Run one full loop generation with gated promotion:
 
