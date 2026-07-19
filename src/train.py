@@ -468,9 +468,12 @@ def load_model_for_inference(checkpoint_path, device):
     ).to(device)
     model.load_state_dict(state_dict)
     if value_head_mode == 'hybrid':
-        # Keep progress as an auxiliary learned head, but do not blend the
-        # side-biased full-game target into search.
-        inference_weight = float(VALUE_HYBRID_PROGRESS_WEIGHT)
+        # Blend weight is a load-time knob, never checkpoint-controlled.
+        # MONSTER_HYBRID_W overrides config for post-training sweeps (the two
+        # heads train independently of the blend, so one checkpoint can be
+        # evaluated at any weight without retraining).
+        inference_weight = float(os.environ.get(
+            "MONSTER_HYBRID_W", VALUE_HYBRID_PROGRESS_WEIGHT))
         if not (0.0 <= inference_weight <= 1.0):
             raise ValueError(
                 'hybrid progress inference weight must be in [0, 1]')
