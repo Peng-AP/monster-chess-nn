@@ -13,11 +13,22 @@ search, so values from the two models never mix inside one tree. The choice
 is sticky across White's m1 -> m2 half-moves, keeping the searched pair and
 the half-move tree reuse within a single engine.
 
+Routing is side-aware: Black's game is decided in the pawn phase (the cliff,
+2026-07-09), and the ramp checkpoint is the strongest pawn-phase Black on
+record — handing Black's opening to v17 measurably destroyed it (validation
+2026-07-20: Black 0.25-0.30 vs both parents). ``black_model`` therefore pins
+Black roots to one engine ("late" by default in the shipped spec); the phase
+rule applies to White roots.
+
 A router is described by a JSON spec (typically models/experiments/*/router.json):
 
     {"opening_model": "models/fresh_start_v17/best_value_net.pt",
      "late_model": "models/rejected/fresh_start_v18_ramp/best_value_net.pt",
-     "min_white_pawns": 3}
+     "min_white_pawns": 3,
+     "black_model": "late"}
+
+``black_model`` is "late", "opening", or "phase" (phase = route Black roots
+by pawn count like White; the rejected first design).
 
 benchmark._build_engine, tools/match.py, and play.ipynb accept the spec path
 anywhere a .pt model path is accepted.
@@ -33,13 +44,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class RouterMCTS:
     """Delegates get_best_action to one of two engines based on the root."""
 
-    def __init__(self, opening_engine, late_engine, min_white_pawns=3):
+    def __init__(self, opening_engine, late_engine, min_white_pawns=3,
+                 black_engine=None):
         self.opening_engine = opening_engine
         self.late_engine = late_engine
         self.min_white_pawns = int(min_white_pawns)
+        # Fixed engine for Black roots; None routes Black by phase like White.
+        self.black_engine = black_engine
         self._turn_engine = None
 
     def _phase_engine(self, state):
+        if self.black_engine is not None and not state.is_white_turn:
+            return self.black_engine
         wp = len(state.board.pieces(chess.PAWN, chess.WHITE))
         return self.opening_engine if wp >= self.min_white_pawns else self.late_engine
 
@@ -77,5 +93,10 @@ def load_router(spec_path, sims, root_noise=False, allow_early_stop=True):
         return MCTS(num_simulations=sims, eval_fn=NNEvaluator(path),
                     root_noise=root_noise, allow_early_stop=allow_early_stop)
 
-    return RouterMCTS(build("opening_model"), build("late_model"),
-                      min_white_pawns=spec.get("min_white_pawns", 3))
+    opening = build("opening_model")
+    late = build("late_model")
+    black = {"late": late, "opening": opening,
+             "phase": None}[spec.get("black_model", "phase")]
+    return RouterMCTS(opening, late,
+                      min_white_pawns=spec.get("min_white_pawns", 3),
+                      black_engine=black)

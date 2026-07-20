@@ -49,6 +49,17 @@ class RouterTests(unittest.TestCase):
         self.router.get_best_action(MonsterChessGame(NO_PAWN_FEN))
         self.assertEqual(len(self.late.calls), 1)
 
+    def test_black_engine_pins_black_roots_regardless_of_phase(self):
+        router = RouterMCTS(self.opening, self.late, min_white_pawns=3,
+                            black_engine=self.late)
+        black_full_pawns = MonsterChessGame(
+            "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 b kq - 0 1")
+        router.get_best_action(black_full_pawns)
+        self.assertEqual(len(self.late.calls), 1)
+        # White roots still follow the phase rule.
+        router.get_best_action(MonsterChessGame(START_FEN))
+        self.assertEqual(len(self.opening.calls), 1)
+
     def test_pending_second_half_sticks_with_the_turn_engine(self):
         # m1 routed to the opening engine; even if the m2 root's pawn count
         # were to cross the threshold, the same engine finishes the turn.
@@ -76,7 +87,8 @@ class RouterTests(unittest.TestCase):
             with open(spec, "w", encoding="utf-8") as f:
                 json.dump({"opening_model": "models/a.pt",
                            "late_model": os.path.join(td, "b.pt"),
-                           "min_white_pawns": 2}, f)
+                           "min_white_pawns": 2,
+                           "black_model": "late"}, f)
             seen = []
 
             def fake_evaluator(path):
@@ -90,6 +102,7 @@ class RouterTests(unittest.TestCase):
                          os.path.join(router_mod.ROOT, "models", "a.pt"))
         self.assertEqual(seen[1], os.path.join(td, "b.pt"))
         self.assertEqual(router.min_white_pawns, 2)
+        self.assertIs(router.black_engine, router.late_engine)
         self.assertEqual(router.opening_engine.num_simulations, 8)
         self.assertFalse(router.opening_engine.root_noise)
 
