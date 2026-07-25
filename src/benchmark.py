@@ -34,15 +34,7 @@ def _apply(game, action):
 
 
 def _build_engine(model_path, sims):
-    """Return (engine, label). NN engine if a model is given, else heuristic.
-
-    A .json path is a phase-router spec (see router.py): two models, one
-    chosen per turn by White's pawn count."""
-    if model_path and model_path.endswith(".json"):
-        from router import load_router
-        engine = load_router(model_path, sims)
-        name = os.path.basename(os.path.dirname(model_path)) or "router"
-        return engine, f"router:{name}"
+    """Return (engine, label). NN engine if a model is given, else heuristic."""
     if model_path:
         from evaluation import NNEvaluator
         eval_fn = NNEvaluator(model_path)

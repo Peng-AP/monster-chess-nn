@@ -156,10 +156,6 @@ strength are demonstrably decoupled in this project), `tools/heuristic_ab.py`
 (`tools/make_human_deck.py`, `tools/make_promo_deck.py`) that turn recorded games
 into targeted start-position decks.
 
-Anywhere a `.pt` path is accepted (benchmark, match, the notebook), a
-`router.json` phase-router spec is too: a composite engine that plays different
-game phases with different checkpoints (`src/router.py`).
-
 ### Model lifecycle
 
 Numbered models under `models/fresh_start_vN/` are promoted releases, not training
@@ -173,12 +169,12 @@ thresholds are never relaxed to let a candidate through.
 
 ```
 src/
-  config.py            # tunables + curriculum start positions
+  config.py            # tunables (build recipes documented at the top)
+  curriculum.py        # curriculum start positions and tier structure
   monster_chess.py     # rules: atomic (m1,m2) API + half-move search API
   mcts.py              # batched PUCT (NN) and sequential UCB1 (heuristic)
   evaluation.py        # heuristic eval, NNEvaluator, HybridEvaluator
   encoding.py          # board/move tensor encoding, mirror augmentation
-  router.py            # phase router (composite engines)
   data_generation.py   # multiprocess self-play generation
   data_processor.py    # raw JSONL -> training tensors, leak-free splits
   train.py             # network, training loop, checkpoint selection
@@ -190,7 +186,7 @@ tools/                 # matches, corpus gates, diffs, deck builders
 tests/                 # contract tests
 benchmarks/            # benchmark and match JSON history
 data/                  # raw games, processed tensors, start-position decks
-models/                # checkpoints (gitignored except router specs)
+models/                # checkpoints (gitignored)
 ```
 
 Finished experiment drivers and reports are removed from the tree when a run
