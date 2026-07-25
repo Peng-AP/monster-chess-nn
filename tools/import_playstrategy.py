@@ -43,7 +43,7 @@ import chess  # noqa: E402
 
 from config import STARTING_FEN  # noqa: E402
 from monster_chess import MonsterChessGame  # noqa: E402
-from play import parse_move  # noqa: E402
+from play import parse_move_candidates  # noqa: E402
 
 UA = {"User-Agent": "monster-chess-nn research (contact: perfpeng@gmail.com)",
       "Accept": "application/x-chess-pgn"}
@@ -116,9 +116,15 @@ def convert_game(headers, movetext, winner_only=True):
         played = []
         for san in sans:
             legal = game.get_search_actions()
-            move = parse_move(san, game.board, legal_set=legal)
-            if move is None:
+            cands = parse_move_candidates(san, game.board, legal_set=legal)
+            if len(cands) > 1:
+                # Two legal moves share this SAN once disambiguators are
+                # dropped; picking one would import a silently wrong game.
+                return None, (f"ambiguous SAN {san!r} in {token!r}: "
+                              f"{[m.uci() for m in cands]}")
+            if not cands:
                 return None, f"unparseable SAN {san!r} in {token!r}"
+            move = cands[0]
             played.append(move)
             game.apply_search_action(move)
 

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 import chess  # noqa: E402
 from config import STARTING_FEN  # noqa: E402
 from monster_chess import MonsterChessGame  # noqa: E402
-from play import parse_move  # noqa: E402
+from play import parse_move_candidates  # noqa: E402
 from import_playstrategy import movetext_tokens  # noqa: E402
 
 UA = {"User-Agent": "monster-chess-nn research (contact: perfpeng@gmail.com)",
@@ -63,9 +63,12 @@ def replay(movetext):
             return None, "moves after terminal", None
         for s in (token.split(",") if "," in token else [token]):
             legal = game.get_search_actions()
-            mv = parse_move(s, game.board, legal_set=legal)
-            if mv is None:
+            cands = parse_move_candidates(s, game.board, legal_set=legal)
+            if len(cands) > 1:
+                return None, f"ambiguous {s!r}", None
+            if not cands:
                 return None, f"unparseable {s!r}", None
+            mv = cands[0]
             uci.append(mv.uci())
             san.append(s)
             turn.append(t)

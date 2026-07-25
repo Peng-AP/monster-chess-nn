@@ -137,8 +137,8 @@ def ai_select_full_action(engine, game, temperature):
     return action, probs, val
 
 
-def parse_move(text, board, legal_set=None):
-    """Parse user input into a chess.Move. Accepts UCI (e2e4) or SAN (Nf3).
+def parse_move_candidates(text, board, legal_set=None):
+    """Every move the input could mean: [] is illegal, 2+ is ambiguous.
 
     legal_set: when provided, candidate moves are validated against it and a
     manual-SAN fallback runs over it.  parse_san rejects moves that are legal
@@ -147,6 +147,13 @@ def parse_move(text, board, legal_set=None):
     only works through the fallback.  King moves also accept the no-'x' and
     lowercase forms ("Kd4"/"kxd4") — 'k' is not a file letter, so this is
     unambiguous.
+
+    The fallback drops SAN's file/rank disambiguators ("Qca5" -> "Qa5"), so it
+    can match two legal moves at once — two queens bearing on one square is the
+    live case in promotion endgames.  Returning every match instead of the
+    first one keeps that from silently moving the wrong piece (it did: it
+    picked the wrong queen replaying playstrategy game D3p2sAyu).  A fully
+    disambiguated input still resolves, since board.san() emits the qualifier.
     """
     text = text.strip()
     valid = set(legal_set) if legal_set is not None else None
@@ -155,27 +162,28 @@ def parse_move(text, board, legal_set=None):
         move = chess.Move.from_uci(text)
         if valid is not None:
             if move in valid:
-                return move
+                return [move]
         elif move in board.pseudo_legal_moves or move in board.legal_moves:
-            return move
+            return [move]
     except (ValueError, chess.InvalidMoveError):
         pass
     # Try standard SAN
     try:
         move = board.parse_san(text)
         if valid is None or move in valid:
-            return move
+            return [move]
     except (ValueError, chess.InvalidMoveError, chess.AmbiguousMoveError):
         pass
     if valid is None:
-        return None
+        return []
     # Manual-SAN fallback over the true legal set (Monster Chess moves that
     # python-chess's standard-chess validator refuses).
     clean = text.rstrip('+#')
+    matches = []
     for move in valid:
         try:
             if board.san(move).rstrip('+#') == clean:
-                return move
+                return [move]  # board.san() is unique per move — exact hit
         except Exception:
             pass  # board.san can raise on king-capture moves
         piece = board.piece_at(move.from_square)
@@ -187,15 +195,39 @@ def parse_move(text, board, legal_set=None):
             manual = (chr(ord('a') + chess.square_file(move.from_square)) + 'x' + to_sq
                       if is_cap else to_sq)
             if manual == clean:
-                return move
+                matches.append(move)
         else:
             manual = piece.symbol().upper() + ('x' if is_cap else '') + to_sq
             if manual == clean:
-                return move
-            if piece.piece_type == chess.KING and clean.lower() in (
+                matches.append(move)
+            elif piece.piece_type == chess.KING and clean.lower() in (
                     "k" + to_sq, "kx" + to_sq):
-                return move
-    return None
+                matches.append(move)
+    return sorted(set(matches), key=lambda m: m.uci())
+
+
+def parse_move(text, board, legal_set=None):
+    """Parse user input into a chess.Move, or None if illegal OR ambiguous.
+
+    See parse_move_candidates: an input matching two legal moves resolves to
+    None rather than to an arbitrary one of them.
+    """
+    matches = parse_move_candidates(text, board, legal_set=legal_set)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _ambiguity_note(text, board, legal):
+    """Message naming the alternatives when input matched 2+ legal moves."""
+    matches = parse_move_candidates(text, board, legal_set=legal)
+    if len(matches) < 2:
+        return None
+    opts = []
+    for move in matches:
+        try:
+            opts.append(board.san(move).rstrip('+#'))
+        except Exception:
+            opts.append(move.uci())
+    return f"  Ambiguous — did you mean {' or '.join(opts)}?"
 
 
 def get_human_white_action(game):
@@ -210,6 +242,10 @@ def get_human_white_action(game):
             return "resign"
         m1 = parse_move(text, board, legal_set=legal_first)
         if m1 is None:
+            note = _ambiguity_note(text, board, legal_first)
+            if note:
+                print(note)
+                continue
             print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_first[:20])}")
             if len(legal_first) > 20:
                 print(f"  ... and {len(legal_first) - 20} more")
@@ -236,6 +272,10 @@ def get_human_white_action(game):
             return "resign"
         m2 = parse_move(text, board, legal_set=legal_second)
         if m2 is None:
+            note = _ambiguity_note(text, board, legal_second)
+            if note:
+                print(note)
+                continue
             print(f"  Invalid move. Legal moves: {', '.join(m.uci() for m in legal_second[:20])}")
             if len(legal_second) > 20:
                 print(f"  ... and {len(legal_second) - 20} more")
@@ -313,6 +353,10 @@ def get_human_black_action(game):
             return "resign"
         move = parse_move(text, game.board, legal_set=legal)
         if move is None or move not in legal:
+            note = _ambiguity_note(text, game.board, legal)
+            if note:
+                print(note)
+                continue
             print(f"  Invalid. Legal moves: {', '.join(m.uci() for m in legal[:20])}")
             if len(legal) > 20:
                 print(f"  ... and {len(legal) - 20} more")
