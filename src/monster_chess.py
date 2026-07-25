@@ -13,6 +13,13 @@ class MonsterChessGame:
       - Black has the full army, gets ONE move per turn.
       - A king capture ends the game (no check/checkmate — captures are legal).
       - No castling for White (only king on back rank).
+
+    Two rules where playstrategy.org's Monster differs from ours.  Both were
+    put to the owner on 2026-07-25 and both were decided in favour of the
+    behavior here, so they are settled, not open (tests/test_ruleset_divergences.py):
+      - En passant is conferred only by the LAST move of White's turn.
+      - White may not END its turn with its own king attacked (forced blunder,
+        where no option is safe, still allows it — see _get_white_actions).
     """
 
     def __init__(self, fen=STARTING_FEN):
