@@ -1,0 +1,190 @@
+"""Curriculum start positions and their tier structure.
+
+Split out of config.py (2026-07-25): this data block was ~180 of config.py's
+~300 lines and is consumed only by the self-play generator and two tools, so it
+was crowding the tunables everyone actually reads.
+
+Importers: src/data_generation.py, tools/generate_bruteforce.py,
+tools/heuristic_ab.py. config.py deliberately does NOT re-export these names —
+import them from here.
+"""
+
+# Curriculum endgame positions for Monster Chess.
+#
+# Key strategic principles for Black vs double-move king:
+#   - Need 3 heavy pieces to force capture: 2 rank/file barriers + 1 to
+#     cover the edge. With only 2 barriers the king jumps over in 2 moves.
+#   - 2 heavy pieces can ISOLATE the king to a strip (e.g. rank 1) by
+#     controlling 2 adjacent ranks/files from a distance the king can't
+#     reach in 2 moves.
+#   - A protected queen is untouchable: to capture a defended piece, White
+#     must start adjacent (take + escape). But a queen attacks all adjacent
+#     squares, so White can never end a turn next to it — meaning it can
+#     never START adjacent on the next turn to capture it.
+#   - All barrier pieces must stay far enough that the king (moving 2)
+#     cannot reach them.
+#
+# Forced result per tier: Tier 1-2 = -1.0, Tier 3-5 = -0.7
+# (see CURRICULUM_TIER_RESULTS below)
+CURRICULUM_FENS = [
+    # === TIER 1: Forced capture — unavoidable king loss ===
+    # Pattern: king in corner, 3 pieces covering all 3 reachable ranks/files
+    # from the far side (unreachable in 2 king moves).
+    # White has NO pawns — this is a pure endgame.
+    #
+    # Ka1: ranks 1,2,3 all covered. Every 2-move path lands on attacked sq.
+    "7k/8/8/8/8/7r/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh3
+    "4k3/8/8/8/8/7r/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh3 (Bk center)
+    # Kh1: mirror
+    "k7/8/8/8/8/r7/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra3
+    "4k3/8/8/8/8/r7/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra3
+    # Ka8: ranks 8,7,6 covered
+    "K6q/7r/7r/8/8/8/8/7k b - - 0 1",   # Ka8, Qh8+Rh7+Rh6
+    # Kh8: mirror
+    "q6K/r7/r7/8/8/8/8/k7 b - - 0 1",   # Kh8, Qa8+Ra7+Ra6
+    # File-based: king on a-file, pieces controlling files a,b,c from far rank
+    "K7/8/8/8/8/8/8/qrrk4 b - - 0 1",   # Ka8, Qa1+Rb1+Rc1
+    "7K/8/8/8/8/8/8/4krrq b - - 0 1",   # Kh8, Qh1+Rg1+Rf1
+
+    # === TIER 2: One move from forced capture ===
+    # Black needs to move one piece into position to complete the net.
+    # Still NO White pawns — pure endgame.
+    #
+    # Queen needs to come to rank 1 to seal the trap
+    "7k/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1, Rh2+Rh3 — Bk plays Qh1 idea
+    "k7/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1, Ra2+Ra3 — needs Qa1
+    # Rook needs to tighten from rank 4 to rank 3
+    "7k/8/8/8/7r/8/7r/K6q b - - 0 1",   # Ka1, Qh1+Rh2+Rh4 — Rh4->Rh3
+    "4k3/8/8/8/r7/8/r7/q6K b - - 0 1",   # Kh1, Qa1+Ra2+Ra4 — Ra4->Ra3
+    # Two rooks isolate king, queen approaching from distance
+    "4k2q/8/8/8/8/7r/7r/K7 b - - 0 1",   # Ka1, Rh2+Rh3, Qh8 coming down
+    "q3k3/8/8/8/8/r7/r7/7K b - - 0 1",   # Kh1, Ra2+Ra3, Qa8 coming down
+    # Rook on king's file, one rank away — delivers capture next move
+    "4k3/8/8/8/8/8/r7/K6r b - - 0 1",   # Ka1, Rh1 attacks rank 1, Ra2 blocks rank 2
+
+    # === TIER 3: Isolation — 2 pieces confine king to edge strip ===
+    # King trapped on rank 1, can slide but can't escape upward.
+    # White has PAWNS — distinguishes from normal opening positions.
+    #
+    "4k3/8/8/8/8/7r/7r/K1PP4 b - - 0 1",   # Ka1 confined, White still has pawns
+    "4k3/8/8/8/8/r7/r7/2PPK3 b - - 0 1",   # Ke1 confined, White has pawns
+    "4k3/8/8/8/8/7r/7r/3KP3 b - - 0 1",   # Kd1 confined, has pawn
+    # King trapped on a-file by file barriers, with pawns
+    "K1P5/8/8/8/8/8/1r6/1r2k3 b - - 0 1",   # Ka8 confined, has pawn
+    # Protected queen as immovable barrier (queen defended by rook)
+    "4k3/8/8/8/8/r3q3/8/K1P5 b - - 0 1",   # Qe3 defended by Ra3, White has pawn
+    "4k3/8/8/8/8/q3r3/8/4PK2 b - - 0 1",   # Qa3 defended by Re3, White has pawn
+
+    # === TIER 4: Overwhelming material, king near edge ===
+    # White has PAWNS — model must learn that even with pawns, this is lost.
+    # Q+2R
+    "4k3/8/8/8/q7/r7/r7/K1PP4 b - - 0 1",
+    "4k3/8/8/8/r7/r7/q7/2PPK3 b - - 0 1",
+    "4k3/8/8/8/r7/q7/r7/2PKP3 b - - 0 1",
+    # 2Q+R
+    "4k3/8/8/8/q7/q7/r7/2PKP3 b - - 0 1",
+    "4k3/8/8/8/r7/q7/q7/3KPP2 b - - 0 1",
+    # 4R vs king+pawns
+    "4k3/8/8/r7/r7/r7/r7/K1PP4 b - - 0 1",
+    "4k3/8/8/r7/r7/r7/r7/2PPK3 b - - 0 1",
+    # 3R vs king+pawns
+    "4k3/8/8/8/r7/r7/r7/2PKP3 b - - 0 1",
+
+    # === TIER 5: Mid-game Black advantage ===
+    # White has PAWNS — realistic mid-game where Black has promoted.
+    "4k3/8/8/8/8/q7/q7/2PPK3 b - - 0 1",   # 2 queens vs king+pawns
+    "r3k3/8/8/8/8/r7/q7/3KPP2 b - - 0 1",   # Q+2R vs king+pawns
+
+    # === TIER 6: Realistic mid-game — 1-2 pawns eliminated, king advanced ===
+    # Black has Q+2R (typical mid-game army) vs king+2-3 pawns.
+    # White king on ranks 3-5 using king+pawn combo strategy.
+    # Target: -0.5 (Black advantage, needs good technique to convert)
+    #
+    # 2 pawns, king in center
+    "r4rk1/pp1q1ppp/8/8/2P1K3/5P2/8/8 b - - 0 1",       # Ke4, Pc4+Pf3
+    "r3r1k1/pp3ppp/3q4/8/3P1K2/5P2/8/8 b - - 0 1",       # Kf4, Pd4+Pf3
+    "r4r1k/pp3ppp/8/q7/2P5/4KP2/8/8 b - - 0 1",          # Ke3, Pc4+Pf3, active Qa5
+    "r4rk1/pp2qppp/8/5K2/3P4/5P2/8/8 b - - 0 1",         # Kf5 advanced, Pd4+Pf3
+    # 3 pawns, pawn wall shielding king
+    "r2r2k1/pp3ppp/1q6/8/3KP3/2P2P2/8/8 b - - 0 1",      # Kd4, Pc3+Pe4+Pf3
+    "r2r2k1/pp2qppp/2b5/8/3P4/2PK1P2/8/8 b - - 0 1",     # Kd3, Pc3+Pd4+Pf3, Bc6
+    # 3 pawns, aggressive advance
+    "rr1q2k1/pp3ppp/8/3KP3/2P2P2/8/8/8 b - - 0 1",       # Kd5, Pc4+Pe5+Pf4
+    # 1 pawn, heavy Black advantage (3 eliminated)
+    "r4rk1/pb2qppp/8/8/4KP2/8/8/8 b - - 0 1",            # Ke4, Pf4 only, Bb7
+
+    # === TIER 7: Opening positions from human games (moves 2-7) ===
+    # Realistic early-game positions where Black survived/won.
+    # White to move — natural game flow: White double-moves, then Black responds.
+    # Target: -0.3 (slight Black edge, must learn defensive opening play)
+    #
+    # 4 pawns intact, early development
+    "rnbqkbnr/ppp1pppp/8/3p4/8/2P2P2/3PP3/4K3 w kq - 0 2",   # move 2, d5 reply
+    "r1bqkbnr/1ppppppp/2n5/p7/2P1P3/3P1P2/8/4K3 w kq - 0 3", # move 3, Nc6+a5
+    "r1bqkbnr/ppp1pppp/8/4p3/2P2P2/3PK3/8/8 w kq - 0 3",     # move 3, e5 center grab
+    "r1bqkbnr/1ppppppp/2n5/p7/5P2/8/3PP3/4K3 w kq - 0 3",    # move 3, Nc6+a5 alt
+    # 3 pawns (1 eliminated), mid-opening
+    "r1bqkbnr/1pp1pppp/2n1p3/p7/2P5/3P1P2/8/4K3 w kq - 0 4", # move 4, e6 solid
+    "r1bqkbnr/1pp1pppp/2n1p3/8/p1P2P2/3P4/5K2/8 w kq - 0 5", # move 5, Kf2 advance
+    "r2qkbnr/1pp1pppp/2n1b3/p7/8/2PP4/4K3/8 w kq - 0 5",     # move 5, Be6 developed
+    # 2 pawns (2 eliminated), White advancing
+    "r2qkbnr/1pp1pppp/2n1b3/8/p1P5/3P4/5K2/8 w kq - 0 6",    # move 6, Be6+Nc6 active
+    # 1 pawn (3 eliminated), king exposed
+    "r2qkbnr/1pp1pppp/4b3/8/p1Pn4/4K3/8/8 w kq - 0 7",       # move 7, Nd4 aggressive
+    "r1bqkbnr/1ppppppp/8/5P2/p2P4/8/8/4K3 w kq - 0 5",       # move 5, pawn push gambit
+
+    # === TIER 8: White overextension — isolated advanced pawns, king lagging ===
+    # White has pushed one or more pawns to rank 5-6 WITHOUT king support.
+    # Black can immediately capture the advanced pawn(s), winning material.
+    # Target: -0.4 (Black material gain, White king stranded, needs technique)
+    #
+    # Black queen can take d5 along d-file
+    "r2q1rk1/pp3ppp/8/3P4/8/8/2P1PP2/4K3 b - - 0 1",         # Pd5 hanging, Qd8xd5
+    # Black rook can take f5 along f-file (f7 clear)
+    "r2q1rk1/pp4pp/8/5P2/8/8/2PPP3/4K3 b - - 0 1",            # Pf5 hanging, Rf8xf5
+    # Two center pawns advanced, knight captures e5
+    "r2q1rk1/pp3ppp/2n5/3PP3/8/8/2P2P2/4K3 b - - 0 1",        # Pd5+Pe5, Nc6xe5
+    # Two flank pawns advanced, rook captures c5 along c-file
+    "2r1q1k1/pp3ppp/8/2PP4/8/8/4PP2/4K3 b - - 0 1",           # Pc5+Pd5, Rc8xc5
+    # Opening: full Black army vs advanced center pawns
+    "r1bqkb1r/pp2pppp/2n5/3PP3/8/8/2P2P2/4K3 b kq - 0 1",     # Nc6xe5 or Qd8xd5
+    # Pawn pushed to rank 6 (very advanced), queen captures
+    "r2q1rk1/pp3ppp/3P4/8/8/8/2P1PP2/4K3 b - - 0 1",          # Pd6 hanging, Qd8xd6
+    # Standard opening, White advanced d5 recklessly, full army response
+    "rnbqkbnr/ppp1pppp/8/3P4/8/8/2P1PP2/4K3 b kq - 0 1",      # Qd8xd5 immediate
+
+    # === TIER 9: White king coordination failure — king on rank 1-2, pawns on rank 3-4 ===
+    # White's pawns are advancing but king is stuck far behind.
+    # Training signal: "king on rank 1 with pawns on rank 4 = structural disadvantage."
+    # The heuristic's king-exposure and pawn-support terms will naturally produce
+    # games where White advances the king early as the winning plan.
+    # Target: -0.3 (Black slight structural advantage; White can recover with correct play)
+    #
+    # King on e1, center pawns c4+d4, support pawns e3+f3 — classic coordination lag
+    "rnbqkbnr/pppppppp/8/8/2PP4/4PP2/8/4K3 w kq - 0 1",       # Ke1, Pc4+Pd4+Pe3+Pf3
+    # King on e1, diagonal pawn formation c3+d4+e4+f3 — center heavy
+    "rnbqkbnr/pppppppp/8/8/3PP3/2P2P2/8/4K3 w kq - 0 1",       # Ke1, Pc3+Pd4+Pe4+Pf3
+    # King one step advanced to e2 but still too far back from rank 3-4 pawns
+    "rnbqkbnr/pppppppp/8/8/3PP3/2P2P2/4K3/8 w kq - 0 1",       # Ke2, Pc3+Pd4+Pe4+Pf3
+    # King off-center on d1, spread pawn formation c4+d3+e4+f3
+    "rnbqkbnr/pppppppp/8/8/2P1P3/3P1P2/8/3K4 w kq - 0 1",      # Kd1, Pc4+Pd3+Pe4+Pf3
+    # King on e1, double-rank split: c3+d3 on rank 3, e4+f4 on rank 4 — king can't catch up
+    "rnbqkbnr/pppppppp/8/8/4PP2/2PP4/8/4K3 w kq - 0 1",        # Ke1, Pc3+Pd3+Pe4+Pf4
+
+    # === TIER 10: Standard opening — full armies, both sides from move 1 ===
+    # The exact Monster Chess starting position.
+    # Training goal: teach both sides opening play from move 1.
+    # Target: 0.0 (contested; White has double-move advantage, Black has full army)
+    "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",         # Standard Monster Chess opening
+]
+
+# Value label per tier.  Only Tiers 1-2 are PROVABLY forced Black wins and keep a
+# forced label (-1.0); Tiers 3-10 now train on the LIVE game result regardless of the
+# --curriculum-live-results flag (REWORK_PLAN.md Phase 2.4).  The graded constants for
+# Tiers 3-10 (-0.7 ... 0.0) encoded a belief about position value as ground truth; an
+# asserted constant carries no move-level gradient, so it teaches "which side" without
+# "which moves".  The remaining values below are retained only for documentation of the
+# curriculum's original design intent and are NOT used as labels for Tiers 3-10.
+CURRICULUM_TIER_BOUNDARIES = [8, 15, 21, 29, 31, 39, 49, 56, 61]  # indices where tiers end
+CURRICULUM_TIER_VALUES = [-1.0, -1.0, -0.7, -0.7, -0.7, -0.5, -0.3, -0.4, -0.3, 0.0]  # per tier
+CURRICULUM_FORCED_MAX_TIER = 2  # tiers <= this use forced labels; higher tiers use live results

@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 from mcts import MCTS
 from evaluation import evaluate
 from benchmark import play_one, summarize_side, _build_engine
-from config import CURRICULUM_FENS, CURRICULUM_TIER_BOUNDARIES
+from curriculum import CURRICULUM_FENS, CURRICULUM_TIER_BOUNDARIES
 
 
 def fens_for_tiers(tiers):

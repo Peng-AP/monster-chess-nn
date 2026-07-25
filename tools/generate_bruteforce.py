@@ -29,11 +29,15 @@ import time
 
 import chess  # noqa: F401  (needed by MonsterChessGame)
 
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+# The tool lives in tools/ but imports project modules from src/. This was
+# previously `SRC_DIR = dirname(__file__)`, i.e. the tools dir, so every import
+# below raised ModuleNotFoundError and the script could not run at all.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(ROOT, "src")
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from config import CURRICULUM_FENS, CURRICULUM_TIER_BOUNDARIES
+from curriculum import CURRICULUM_FENS, CURRICULUM_TIER_BOUNDARIES
 from evaluation import evaluate
 from monster_chess import MonsterChessGame
 from mcts import MCTS
