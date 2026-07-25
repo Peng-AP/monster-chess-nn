@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -14,6 +15,8 @@ class PlayNotebookContracts(unittest.TestCase):
             notebook = json.load(f)
         cls.setup = ''.join(notebook['cells'][1]['source'])
         cls.play = ''.join(notebook['cells'][4]['source'])
+        cls.deck = ''.join(notebook['cells'][6]['source'])
+        cls.next_position = ''.join(notebook['cells'][7]['source'])
 
     def test_setup_reloads_channel_sensitive_inference_modules(self):
         for alias in (
@@ -49,6 +52,66 @@ class PlayNotebookContracts(unittest.TestCase):
         )
         self.assertIn('_selected_color = _color_dropdown.value', self.play)
         self.assertIn('play_loop(play_as=_selected_color', self.play)
+
+    def test_standard_game_saves_under_the_selected_color(self):
+        """White games must land in white_*, not the cell-1 SAVE_DIR default.
+
+        SAVE_DIR is built from the PLAY_AS constant ("black"), so a play_loop
+        call that omitted save_dir would file every White game the owner plays
+        into black_2026_07/ — silently misdirecting the scarcest data in the
+        project (9 White games vs 23 Black).
+        """
+        self.assertIn(
+            'play_loop(play_as=_selected_color, '
+            'save_dir=f"data/raw/human_games/{_selected_color}_2026_07")',
+            self.play,
+        )
+
+    # --- curriculum deck cells (6-7) ---------------------------------
+    # These bypassed a week of work unnoticed because nothing inspected them:
+    # a behind-the-cliff deck and a hardcoded v16 opponent that overwrote the
+    # dropdown cost the owner an entire session (2026-07-20, game_00048).
+
+    def test_deck_cell_uses_the_pawn_phase_deck(self):
+        """Starts must be in front of the cliff, where Black's gap lives."""
+        self.assertIn(
+            'DECK_FILE = "data/start_fens/cliff_deck_v1.jsonl"', self.deck)
+
+    def test_deck_cells_pin_no_stale_opponent(self):
+        for cell in (self.deck, self.next_position):
+            self.assertNotIn('fresh_start_v16', cell)
+
+    def test_next_position_never_overrides_a_manual_evaluator(self):
+        """The dropdown may only be filled in when it is still unset."""
+        assignments = re.findall(
+            r'^\s*_eval_dropdown\.value\s*=(?!=)', self.next_position,
+            flags=re.MULTILINE)
+        self.assertEqual(
+            len(assignments), 1,
+            'exactly one _eval_dropdown.value assignment expected')
+        self.assertRegex(
+            self.next_position,
+            r'if\s+_eval_dropdown\.value\s+is\s+None:\s*\n\s*'
+            r'_eval_dropdown\.value\s*=',
+            'the assignment must be guarded by an "is None" check',
+        )
+
+    def test_next_position_opponent_is_resolved_not_hardcoded(self):
+        """Printed opponent reflects the live selection, not a literal."""
+        self.assertIn('_OPP_CHAIN', self.next_position)
+        self.assertIn('os.path.exists(p)', self.next_position)
+        # every fallback target must also be a dropdown option, or assigning
+        # it raises TraitError instead of switching the engine
+        self.assertIn('_OPTIONS', self.next_position)
+        self.assertIn('p in _OPTIONS', self.next_position)
+
+    def test_auto_finishes_use_their_own_simulation_budget(self):
+        """auto_engine is heuristic (sequential UCB1); SIMULATIONS is for NN play."""
+        self.assertIn('AUTO_SIMULATIONS = 400', self.setup)
+        self.assertIn(
+            'auto_engine = MCTS(num_simulations=AUTO_SIMULATIONS, eval_fn=None,',
+            self.setup,
+        )
 
 
 if __name__ == '__main__':
