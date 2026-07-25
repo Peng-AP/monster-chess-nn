@@ -228,6 +228,17 @@ STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
 )  # deeper tower (stage F backbone scaling)
+# Value head geometry. The default head starts with global average pooling, so
+# it sees only per-channel means: measured effective rank of that vector is ~6
+# on both live checkpoints, against ~481 for the policy head's spatial input
+# (2026-07-25 audit). MCTS searches on the value signal, and the pawn phase --
+# where Black's whole deficit lives -- is exactly where board geometry matters
+# most. SPATIAL_VALUE_HEAD swaps in an AlphaZero-style head that keeps the 8x8
+# layout (conv 1x1 -> flatten -> FC). Costs ~529K params (~5% of the net).
+# Kept OFF by default: this is an A/B candidate, not a promoted change.
+SPATIAL_VALUE_HEAD = False
+VALUE_HEAD_CONV_CHANNELS = 32  # 1x1 bottleneck width for the spatial value head
+
 USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
 

@@ -23,6 +23,7 @@ from config import (
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
     POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
     USE_SE_BLOCKS, SE_REDUCTION,
+    SPATIAL_VALUE_HEAD, VALUE_HEAD_CONV_CHANNELS,
 )
 
 # Input channels = last dim of the current position encoding.
@@ -152,8 +153,12 @@ class DualHeadNet(nn.Module):
         use_wdl_head=False,
         value_head_mode=VALUE_HEAD_MODE,
         hybrid_progress_weight=VALUE_HYBRID_PROGRESS_WEIGHT,
+        spatial_value_head=SPATIAL_VALUE_HEAD,
+        value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
     ):
         super().__init__()
+        self.spatial_value_head = bool(spatial_value_head)
+        self.value_head_conv_channels = int(value_head_conv_channels)
         self.input_channels = int(input_channels)
         self.policy_head_channels = int(policy_head_channels)
         self.stem_channels = int(stem_channels)
@@ -168,6 +173,8 @@ class DualHeadNet(nn.Module):
             raise ValueError("residual_block_channels must contain at least one block")
         if self.se_reduction <= 0:
             raise ValueError("se_reduction must be > 0")
+        if self.value_head_conv_channels <= 0:
+            raise ValueError("value_head_conv_channels must be > 0")
         if self.input_channels <= 0:
             raise ValueError("input_channels must be > 0")
         if self.value_head_mode not in ("scalar", "wdl", "hybrid"):
@@ -237,6 +244,21 @@ class DualHeadNet(nn.Module):
         # No dropout (REWORK_PLAN.md Phase 2.2): heavy dropout on a small GAP feature
         # pushes predictions toward the batch mean (~0), which was a direct contributor
         # to flat value calibration.  Weight decay (build_optimizer) is the regularizer.
+        if self.spatial_value_head:
+            # Keeps the 8x8 layout instead of averaging it away. Index 0 is a
+            # Conv2d (the GAP variant's index 0 is a parameterless pool), so
+            # "value_head.0.weight" in a state dict identifies this variant.
+            return nn.Sequential(
+                nn.Conv2d(self.backbone_out_channels,
+                          self.value_head_conv_channels, 1, bias=False),
+                nn.BatchNorm2d(self.value_head_conv_channels),
+                nn.ReLU(),
+                nn.Flatten(),                                  # (N, Cv*64)
+                nn.Linear(self.value_head_conv_channels * 64, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+                nn.Tanh(),
+            )
         return nn.Sequential(
             nn.AdaptiveAvgPool2d(1),       # (N, C, 1, 1)
             nn.Flatten(),                  # (N, C)
@@ -360,6 +382,21 @@ def infer_side_head_config(state_dict):
     )
 
 
+def infer_spatial_value_head_config(state_dict):
+    """Infer whether the value head keeps spatial layout, and its width.
+
+    The spatial head begins with a Conv2d; the GAP head begins with a
+    parameterless AdaptiveAvgPool2d. So a 4-D ``value_head.0.weight`` is
+    present for one variant and absent for the other — an unambiguous marker
+    that needs no extra flag persisted in the checkpoint.
+    """
+    for key in ("value_head.0.weight", "value_head_white.0.weight"):
+        w = state_dict.get(key)
+        if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[0] > 0:
+            return True, int(w.shape[0])
+    return False, VALUE_HEAD_CONV_CHANNELS
+
+
 def infer_wdl_head_config(state_dict):
     """Infer whether WDL head exists in checkpoint."""
     has_wdl = any(
@@ -428,6 +465,8 @@ def build_model(
     use_wdl_head=False,
     value_head_mode=VALUE_HEAD_MODE,
     hybrid_progress_weight=VALUE_HYBRID_PROGRESS_WEIGHT,
+    spatial_value_head=SPATIAL_VALUE_HEAD,
+    value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
 ):
     return DualHeadNet(
         input_channels=input_channels,
@@ -440,6 +479,8 @@ def build_model(
         use_wdl_head=use_wdl_head,
         value_head_mode=value_head_mode,
         hybrid_progress_weight=hybrid_progress_weight,
+        spatial_value_head=spatial_value_head,
+        value_head_conv_channels=value_head_conv_channels,
     )
 
 
@@ -452,6 +493,7 @@ def load_model_for_inference(checkpoint_path, device):
     use_se_blocks, se_reduction = infer_se_config(state_dict)
     use_side_specialized_heads = infer_side_head_config(state_dict)
     use_wdl_head, value_head_mode = infer_wdl_head_config(state_dict)
+    spatial_value_head, value_conv_ch = infer_spatial_value_head_config(state_dict)
     hybrid_progress_weight = float(
         state_dict.get("_hybrid_progress_weight", VALUE_HYBRID_PROGRESS_WEIGHT))
     model = build_model(
@@ -465,6 +507,8 @@ def load_model_for_inference(checkpoint_path, device):
         use_wdl_head=use_wdl_head,
         value_head_mode=value_head_mode,
         hybrid_progress_weight=hybrid_progress_weight,
+        spatial_value_head=spatial_value_head,
+        value_head_conv_channels=value_conv_ch,
     ).to(device)
     model.load_state_dict(state_dict)
     if value_head_mode == 'hybrid':
@@ -814,6 +858,11 @@ def main():
                         help=f"Value head mode (default: {VALUE_HEAD_MODE})")
     parser.add_argument("--wdl-loss-weight", type=float, default=WDL_LOSS_WEIGHT,
                         help=f"CE weight for the WDL head (default: {WDL_LOSS_WEIGHT})")
+    parser.add_argument("--spatial-value-head", action="store_true",
+                        default=SPATIAL_VALUE_HEAD,
+                        help="Value head keeps the 8x8 layout (conv 1x1 -> "
+                             "flatten -> FC) instead of global average pooling. "
+                             "Adds ~529K params; A/B candidate, off by default")
     parser.add_argument("--wdl-draw-epsilon", type=float, default=WDL_DRAW_EPSILON,
                         help=f"Draw band for WDL labels, |target|<=eps (default: {WDL_DRAW_EPSILON})")
     parser.add_argument("--select-metric", type=str, default="decisive",
@@ -897,9 +946,11 @@ def main():
         se_reduction=args.se_reduction,
         use_wdl_head=use_wdl_mode,
         value_head_mode=args.value_head,
+        spatial_value_head=args.spatial_value_head,
     ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
+    print(f"Value head: {'spatial (8x8 preserved)' if model.spatial_value_head else 'GAP (channel means)'}")
     print(f"Input channels: {model.input_channels}")
     print(f"Policy head channels: {model.policy_head_channels}")
     print(f"Stem channels: {model.stem_channels}")
