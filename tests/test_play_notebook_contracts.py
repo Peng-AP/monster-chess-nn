@@ -105,6 +105,37 @@ class PlayNotebookContracts(unittest.TestCase):
         self.assertIn('_OPTIONS', self.next_position)
         self.assertIn('p in _OPTIONS', self.next_position)
 
+    # --- no duplicated logic between the notebook and play.py -------
+
+    def test_parse_move_is_imported_not_redefined(self):
+        """One definition, one behaviour.
+
+        The notebook used to carry a ~60-line copy that had drifted: with
+        legal_set=None it fell through to board.pseudo_legal_moves where
+        play.py returns None. Every notebook call passes an explicit
+        legal_set (asserted below), so importing is behaviour-preserving.
+        """
+        for cell in (self.setup, self.play, self.deck, self.next_position):
+            self.assertNotIn('def parse_move', cell)
+        self.assertIn('parse_move', self.play)
+        self.assertRegex(
+            self.play, r'from play import \([^)]*parse_move',
+            'parse_move must come from play.py',
+        )
+
+    def test_every_parse_move_call_supplies_a_legal_set(self):
+        calls = [line for line in self.play.split('\n') if 'parse_move(' in line
+                 and 'import' not in line]
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertIn('legal_set=', call)
+
+    def test_no_swindle_argument_survives(self):
+        """The parameter was accepted and ignored; the king-safety override
+        lives in MCTS.get_best_action and applies engine-wide."""
+        for cell in (self.setup, self.play):
+            self.assertNotIn('swindle', cell)
+
     def test_auto_finishes_use_their_own_simulation_budget(self):
         """auto_engine is heuristic (sequential UCB1); SIMULATIONS is for NN play."""
         self.assertIn('AUTO_SIMULATIONS = 400', self.setup)

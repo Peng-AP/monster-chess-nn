@@ -109,7 +109,7 @@ def format_eval(value):
     return f"  [{bar}] {label}"
 
 
-def ai_select_full_action(engine, game, temperature, swindle=False):
+def ai_select_full_action(engine, game, temperature):
     """Search half-moves but return a full atomic action for play/display.
 
     The engine now searches White's turn as two half-moves, so get_best_action
@@ -117,9 +117,9 @@ def ai_select_full_action(engine, game, temperature, swindle=False):
     m2 — letting play.py keep applying atomic (m1, m2) pairs and rendering both moves
     together.  Black is already a single move (REWORK_PLAN.md Phase 3).
 
-    swindle is accepted for backward compatibility and ignored: the
-    king-safety override now lives inside MCTS.get_best_action (engine-wide,
-    owner directive 2026-07-12), so every caller inherits it.
+    Lost-position resistance is not a parameter here: the king-safety override
+    lives inside MCTS.get_best_action (engine-wide, owner directive
+    2026-07-12), so every caller inherits it.
     """
     action, probs, val = engine.get_best_action(game, temperature=temperature)
     if action is None:
@@ -450,7 +450,7 @@ def main():
             print(f"  {DIM}AI ({side}) thinking...{RESET}", end="", flush=True)
             t0 = time.time()
             action, action_probs, root_value = ai_select_full_action(
-                engine, game, temperature=0.1, swindle=True,
+                engine, game, temperature=0.1,
             )
             elapsed = time.time() - t0
 
