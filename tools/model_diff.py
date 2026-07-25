@@ -42,6 +42,29 @@ from config import (
 )
 
 BLACK_PAWN_PLANE = 6  # encoding.PIECE_TO_LAYER[(PAWN, BLACK)]
+WHITE_PAWN_PLANE = 0  # encoding.PIECE_TO_LAYER[(PAWN, WHITE)]
+BLACK_KING_PLANE = 11  # last Black piece plane; 6..11 inclusive = Black's army
+
+# Planes 0-11 are the piece planes and are IDENTICAL in the 15- and 17-plane
+# layouts, so the opening filter below needs no channel conversion.
+OPENING_MIN_WHITE_PAWNS = 4   # White has lost no pawn yet
+OPENING_MIN_BLACK_MEN = 14    # Black has lost at most two men
+
+
+def opening_mask(positions, idx, chunk=8192,
+                 min_white_pawns=OPENING_MIN_WHITE_PAWNS,
+                 min_black_men=OPENING_MIN_BLACK_MEN):
+    """Boolean mask over ``idx`` selecting opening positions.
+
+    Read in chunks so a memory-mapped corpus is never materialized whole.
+    """
+    keep = np.zeros(len(idx), dtype=bool)
+    for i in range(0, len(idx), chunk):
+        block = np.asarray(positions[idx[i:i + chunk]])
+        white_pawns = block[..., WHITE_PAWN_PLANE].sum(axis=(1, 2))
+        black_men = block[..., BLACK_PAWN_PLANE:BLACK_KING_PLANE + 1].sum(axis=(1, 2, 3))
+        keep[i:i + chunk] = (white_pawns >= min_white_pawns) & (black_men >= min_black_men)
+    return keep
 
 
 def convert_channels(x, target_channels):
@@ -142,6 +165,11 @@ def main():
     ap.add_argument("--margin", type=float, default=0.01,
                     help="allowed drop vs incumbent on each gated metric")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
+    ap.add_argument("--opening-only", action="store_true",
+                    help=f"restrict to opening positions (>= "
+                         f"{OPENING_MIN_WHITE_PAWNS} White pawns and >= "
+                         f"{OPENING_MIN_BLACK_MEN} Black men). Applied BEFORE "
+                         f"--max-positions so the sample is not decimated first")
     args = ap.parse_args()
 
     positions = np.load(os.path.join(args.data_dir, "positions.npy"), mmap_mode="r")
@@ -155,6 +183,17 @@ def main():
             idx = np.sort(np.concatenate([f[k] for k in f.files]))
         else:
             idx = f[args.split]
+    # Filter BEFORE decimating: subsampling first would leave a handful of
+    # opening positions and produce a noise reading that looks like a result.
+    if args.opening_only:
+        before = len(idx)
+        idx = idx[opening_mask(positions, idx)]
+        if len(idx) == 0:
+            raise SystemExit(
+                f"--opening-only matched 0 of {before} positions in "
+                f"{args.data_dir}; nothing to compare")
+        print(f"--opening-only: {len(idx)} of {before} positions kept")
+
     if len(idx) > args.max_positions:
         idx = idx[np.linspace(0, len(idx) - 1, args.max_positions).astype(np.int64)]
 
@@ -191,6 +230,7 @@ def main():
         "incumbent": args.incumbent,
         "data_dir": args.data_dir,
         "split": args.split,
+        "opening_only": bool(args.opening_only),
         "positions": int(len(idx)),
         "margin": args.margin,
         "metrics": rows,

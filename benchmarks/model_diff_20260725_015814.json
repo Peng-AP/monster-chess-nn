@@ -1,0 +1,36 @@
+{
+  "candidate": "models/rejected/fresh_start_v18_ramp/best_value_net.pt",
+  "incumbent": "models/fresh_start_v17/best_value_net.pt",
+  "data_dir": "data/processed/eval_owner_white",
+  "split": "all",
+  "opening_only": true,
+  "positions": 140,
+  "margin": 0.01,
+  "metrics": {
+    "candidate": {
+      "channels": 15,
+      "policy_ce": 0.8676129477364677,
+      "policy_top1": 0.7857142857142857,
+      "policy_top1_white": 0.7857142857142857,
+      "policy_top1_black": null,
+      "sign_acc": 0.45714285714285713,
+      "sign_acc_white": 0.4714285714285714,
+      "sign_acc_black": 0.44285714285714284
+    },
+    "incumbent": {
+      "channels": 15,
+      "policy_ce": 1.4400907244001115,
+      "policy_top1": 0.6142857142857143,
+      "policy_top1_white": 0.6142857142857143,
+      "policy_top1_black": null,
+      "sign_acc": 0.5857142857142857,
+      "sign_acc_white": 0.42857142857142855,
+      "sign_acc_black": 0.7428571428571429
+    }
+  },
+  "failures": [
+    "sign_acc: 0.4571 vs incumbent 0.5857 (drop 0.1286 > margin 0.01)",
+    "sign_acc_black: 0.4429 vs incumbent 0.7429 (drop 0.3000 > margin 0.01)"
+  ],
+  "timestamp": "2026-07-25T01:58:14"
+}
