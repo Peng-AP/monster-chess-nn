@@ -205,18 +205,29 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     v13 rejected). floor >= 1.0 disables.
 
     Segments: merge drivers duplicate scarce human games by repeating the
-    records INSIDE one file (keeps game-level splits leak-free). A record
-    whose FEN equals the file's first FEN starts a new copy, so distance to
-    end is computed within each copy.
+    records INSIDE one file (keeps game-level splits leak-free), and distance
+    to end must be computed within each copy.
+
+    Preferred: records carry an explicit ``segment`` index (0, 1, 2, ...), and
+    a change in that value starts a new copy. Fallback, for the many existing
+    corpora written before the field existed: a record whose FEN equals the
+    file's first FEN starts a new copy. The FEN rule is a heuristic — a game
+    that genuinely revisits its own start position splits in the wrong place,
+    and the convention is invisible to anyone writing a new merge driver — so
+    new drivers should stamp ``segment``.
     """
     if mode not in ("near_mate", "progress"):
         raise ValueError("value discount mode must be 'near_mate' or 'progress'")
     if floor >= 1.0:
         return [rec.get("game_result", 0) for rec in records]
     gamma = floor ** (1.0 / max(1, horizon))
-    start_fen = records[0].get("fen")
-    bounds = [i for i, rec in enumerate(records)
-              if i == 0 or rec.get("fen") == start_fen]
+    if any("segment" in rec for rec in records):
+        bounds = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("segment") != records[i - 1].get("segment")]
+    else:
+        start_fen = records[0].get("fen")
+        bounds = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("fen") == start_fen]
     bounds.append(len(records))
     out = [0.0] * len(records)
     for a, b in zip(bounds, bounds[1:]):

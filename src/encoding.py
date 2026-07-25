@@ -154,10 +154,16 @@ def policy_dict_to_target(policy_dict, is_white):
     return target
 
 
+# Precomputed once: index i of a policy vector maps to _MIRROR_PERM[i] in the
+# mirrored vector. Replaces a 4096-iteration Python loop that ran per augmented
+# record — a real cost on multi-GB corpora, since every record is mirrored.
+# mirror_move_index stays as the definition (and for external callers).
+_MIRROR_PERM = np.array([mirror_move_index(i) for i in range(POLICY_SIZE)],
+                        dtype=np.intp)
+
+
 def mirror_policy(policy_vec):
     """Mirror a dense policy vector across the file axis."""
     mirrored = np.zeros_like(policy_vec)
-    for idx in range(POLICY_SIZE):
-        if policy_vec[idx] > 0:
-            mirrored[mirror_move_index(idx)] = policy_vec[idx]
+    mirrored[_MIRROR_PERM] = policy_vec
     return mirrored
