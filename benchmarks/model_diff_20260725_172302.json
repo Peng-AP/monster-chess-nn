@@ -1,0 +1,37 @@
+{
+  "candidate": "models/candidates/v18_ramp17_spatial\\best_value_net.pt",
+  "incumbent": "models/fresh_start_v17/best_value_net.pt",
+  "data_dir": "data/processed/combined_v17_r50h60",
+  "split": "test",
+  "opening_only": false,
+  "positions": 4096,
+  "margin": 0.01,
+  "metrics": {
+    "candidate": {
+      "channels": 15,
+      "policy_ce": 2.641202339561345,
+      "policy_top1": 0.35095764769355275,
+      "policy_top1_white": 0.3848446147296722,
+      "policy_top1_black": 0.2923416789396171,
+      "sign_acc": 0.919677734375,
+      "sign_acc_white": 0.9170386904761905,
+      "sign_acc_black": 0.9247159090909091
+    },
+    "incumbent": {
+      "channels": 15,
+      "policy_ce": 2.2498634406296363,
+      "policy_top1": 0.35689236579444295,
+      "policy_top1_white": 0.345679012345679,
+      "policy_top1_black": 0.37628865979381443,
+      "sign_acc": 0.93212890625,
+      "sign_acc_white": 0.9378720238095238,
+      "sign_acc_black": 0.9211647727272727
+    }
+  },
+  "failures": [
+    "policy_top1_black: 0.2923 vs incumbent 0.3763 (drop 0.0839 > margin 0.01)",
+    "sign_acc: 0.9197 vs incumbent 0.9321 (drop 0.0125 > margin 0.01)",
+    "sign_acc_white: 0.9170 vs incumbent 0.9379 (drop 0.0208 > margin 0.01)"
+  ],
+  "timestamp": "2026-07-25T17:23:02"
+}
