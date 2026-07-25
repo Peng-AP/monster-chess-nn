@@ -54,7 +54,6 @@ class TrainWdlContracts(unittest.TestCase):
             use_wdl_head=True,
             value_head_mode="wdl",
             use_se_blocks=False,
-            use_side_specialized_heads=False,
         )
         x = torch.zeros((3, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
         x[:, train.TURN_LAYER, :, :] = 1.0
@@ -73,32 +72,12 @@ class TrainWdlContracts(unittest.TestCase):
             use_wdl_head=False,
             value_head_mode="scalar",
             use_se_blocks=False,
-            use_side_specialized_heads=False,
         )
         x = torch.zeros((2, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
         value, policy, wdl = model.forward_with_wdl(x)
         self.assertEqual(tuple(value.shape), (2, 1))
         self.assertEqual(tuple(policy.shape), (2, train.POLICY_SIZE))
         self.assertIsNone(wdl)
-
-    def test_hybrid_head_keeps_outcome_and_progress_outputs(self):
-        model = train.build_model(
-            use_wdl_head=True,
-            value_head_mode="hybrid",
-            use_se_blocks=False,
-            use_side_specialized_heads=False,
-        )
-        x = torch.zeros((2, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
-        x[:, train.TURN_LAYER, :, :] = 1.0
-
-        value, policy, wdl, progress = model.forward_for_training(x)
-
-        self.assertEqual(tuple(value.shape), (2, 1))
-        self.assertEqual(tuple(policy.shape), (2, train.POLICY_SIZE))
-        self.assertEqual(tuple(wdl.shape), (2, 3))
-        self.assertEqual(tuple(progress.shape), (2, 1))
-        self.assertEqual(train.infer_wdl_head_config(model.state_dict()),
-                         (True, "hybrid"))
 
     def test_checkpoint_stem_infers_legacy_and_current_encodings(self):
         legacy = train.build_model(
@@ -110,7 +89,7 @@ class TrainWdlContracts(unittest.TestCase):
         current = train.build_model(
             input_channels=17,
             use_wdl_head=True,
-            value_head_mode="hybrid",
+            value_head_mode="wdl",
             use_se_blocks=False,
         )
 

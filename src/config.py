@@ -265,19 +265,9 @@ VALUE_TARGET_HORIZON = 10   # plies from game end inside which the game_result
                             # v13 discount taxed Black's long wins; rejected).
 VALUE_TARGET_FLOOR = 0.97   # plateau factor beyond the horizon (1.0 = off)
 VALUE_TARGET_DISCOUNT_MODE = "near_mate"  # "near_mate" or full-game "progress"
-VALUE_HEAD_MODE = "scalar"  # "scalar", "wdl", or "hybrid"
+VALUE_HEAD_MODE = "scalar"  # "scalar" or "wdl"
 WDL_LOSS_WEIGHT = 0.5       # auxiliary CE weight when VALUE_HEAD_MODE="wdl"
 WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
-# Hybrid inference blend: value = (1-w)*WDL expectation + w*scalar head.
-# The rejected v18-progress candidate blended a FULL-GAME per-ply discount
-# (side-biased: Black's sound wins are much longer) and this was forced to 0.
-# The 2026-07-18 hybrid trains the scalar head on the END-ANCHORED ramp
-# (floor 0.5 / horizon 60) instead — side-symmetric in plies-to-end, and the
-# marathon showed that gradient fixes the flat-landscape shuffle (ramp anchor
-# 0.80 vs detox 0.30 on the same corpus). w=0.3 keeps WDL sharpness for
-# openings/material (pure-ramp vice: flat early values released the heuristic
-# prior's pawn-chucking, owner game 2026-07-18) while grading late progress.
-VALUE_HYBRID_PROGRESS_WEIGHT = 0.3
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
 # The incumbent checkpoint. iterate.py used to promote to (and play.py default

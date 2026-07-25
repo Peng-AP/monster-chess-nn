@@ -24,34 +24,19 @@ def _load_match_tool():
 
 
 class V18RegressionTests(unittest.TestCase):
-    def test_hybrid_checkpoint_uses_progress_as_auxiliary_only_at_inference(self):
-        model = train.build_model(
-            input_channels=17,
-            policy_head_channels=2,
-            stem_channels=4,
-            residual_block_channels=(4,),
-            use_wdl_head=True,
-            value_head_mode="hybrid",
-            hybrid_progress_weight=0.25,
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            checkpoint = Path(tmp) / "legacy_v18.pt"
-            torch.save(model.state_dict(), checkpoint)
-            loaded, _ = train.load_model_for_inference(
-                str(checkpoint), torch.device("cpu"))
-
-        self.assertEqual(loaded.value_head_mode, "hybrid")
-        # The guard is the MECHANISM: a checkpoint's stored blend weight never
-        # survives loading — config VALUE_HYBRID_PROGRESS_WEIGHT decides. The
-        # rejected v18-progress blend was forced to 0 this way; the 2026-07-18
-        # hybrid deliberately sets a nonzero config weight for the
-        # end-anchored-ramp scalar head (owner-approved), so assert against
-        # config, not the historical 0.0.
-        from config import VALUE_HYBRID_PROGRESS_WEIGHT
-        self.assertNotEqual(float(loaded._hybrid_progress_weight.item()), 0.25)
-        self.assertAlmostEqual(
-            float(loaded._hybrid_progress_weight.item()),
-            float(VALUE_HYBRID_PROGRESS_WEIGHT), places=5)
+    def test_hybrid_value_head_mode_is_gone(self):
+        """Concluded dead end (2026-07-18): near-mate labels poison Black
+        whenever combined with the ramp, at any dose and in any order. The
+        mode was removed rather than left as a loaded gun; this pins it."""
+        with self.assertRaises(ValueError):
+            train.build_model(
+                input_channels=17,
+                policy_head_channels=2,
+                stem_channels=4,
+                residual_block_channels=(4,),
+                use_wdl_head=True,
+                value_head_mode="hybrid",
+            )
 
     def test_anchor_match_defaults_to_no_opening_sampling(self):
         match_tool = _load_match_tool()
