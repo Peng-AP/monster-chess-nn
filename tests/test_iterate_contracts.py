@@ -38,6 +38,34 @@ class GateTests(unittest.TestCase):
             incumbent_anchor_score=None, threshold=0.55, anchor_epsilon=0.05)
         self.assertTrue(ok)
 
+    def test_gate_rejects_a_one_sided_collapse_the_aggregate_hides(self):
+        """The exact shape that reached a playtest twice: a passing mean over
+        a collapsed color (router run 2 was White 0.35 / Black 0.80)."""
+        ok, reason = it.gate_passes(
+            arena_score=0.575, candidate_anchor_score=0.9,
+            incumbent_anchor_score=0.5, threshold=0.55, anchor_epsilon=0.05,
+            arena_side_scores={"white": 0.35, "black": 0.80})
+        self.assertFalse(ok)
+        self.assertIn("white", reason)
+        self.assertIn("per-side floor", reason)
+
+    def test_gate_allows_balanced_sides_above_the_floor(self):
+        ok, _reason = it.gate_passes(
+            arena_score=0.60, candidate_anchor_score=0.9,
+            incumbent_anchor_score=0.5, threshold=0.55, anchor_epsilon=0.05,
+            arena_side_scores={"white": 0.55, "black": 0.65})
+        self.assertTrue(ok)
+
+    def test_side_floor_is_not_weakenable_below_the_documented_bar(self):
+        """Gates are never relaxed to let a recipe through (repo rule)."""
+        self.assertGreaterEqual(it.ARENA_SIDE_FLOOR, 0.40)
+
+    def test_run_arena_reports_per_side_scores(self):
+        import inspect
+        doc = inspect.getdoc(it.run_arena)
+        self.assertIn("white", doc)
+        self.assertIn("black", doc)
+
 
 class HelperTests(unittest.TestCase):
     def test_next_generation_counts_nn_gen_dirs(self):

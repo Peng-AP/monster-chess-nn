@@ -280,6 +280,12 @@ WDL_DRAW_EPSILON = 0.05     # |target| <= eps is treated as draw for WDL labels
 VALUE_HYBRID_PROGRESS_WEIGHT = 0.3
 MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")), "models")
 
+# The incumbent checkpoint. iterate.py used to promote to (and play.py default
+# to) models/best_value_net.pt, which has never existed — so play.py silently
+# fell back to the heuristic and a fresh iterate.py run would believe there was
+# no incumbent at all. Both now resolve the real one through this constant.
+INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v17", "best_value_net.pt")
+
 # Data retention (data_processor.py)
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)
 DATA_RETENTION_MIN_NONHUMAN_PLIES = 4   # drop non-human games shorter than this many plies (<=0 disables)

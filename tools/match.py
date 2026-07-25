@@ -54,12 +54,13 @@ def main():
     ap.add_argument("--games", type=int, default=20, help="total games (half per color)")
     ap.add_argument("--sims", type=int, default=400)
     ap.add_argument("--seed", type=int, default=20260704)
-    ap.add_argument("--opening-temp-plies", type=int, default=16)
+    # Left as None so resolve_opening_temp_plies() can pick the default from the
+    # opponent: heuristic tie-breaks already diversify anchor games, so only
+    # NN-vs-NN matches need sampled model openings.
+    ap.add_argument("--opening-temp-plies", type=int, default=None,
+                    help="default: 16 for NN-vs-NN, 0 vs the heuristic anchor")
     ap.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
-    # Heuristic tie-breaks already diversify anchor games. Only NN-vs-NN
-    # matches need sampled model openings by default.
-    ap.set_defaults(opening_temp_plies=None)
     args = ap.parse_args()
     args.opening_temp_plies = resolve_opening_temp_plies(
         args.model_b, args.opening_temp_plies)

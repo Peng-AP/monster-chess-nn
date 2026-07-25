@@ -8,12 +8,14 @@ generation per cycle:
                  black-focus games from backward-chained Black-won starts.
   2. process   — flat conversion (data_processor.py) over data/raw with a
                  bounded generation-age window.
-  3. train     — game_result target, WDL head (train.py).
+  3. train     — game_result target, WDL head (train.py). NOTE: --value-head
+                 wdl is the v17 recipe; if the end-anchored ramp recipe wins
+                 a promotion, this step must be updated to match it.
   4. gate      — candidate must (a) score >= --gate-threshold against the
                  incumbent over --arena-games at temperature 0, both colors,
                  no noise, and (b) not regress against the heuristic anchor
                  (benchmark.py score >= incumbent's anchor score - epsilon).
-  5. archive   — promoted candidate becomes models/best_value_net.pt; every
+  5. archive   — promoted candidate becomes config.INCUMBENT_MODEL; every
                  candidate and its gate report are kept under
                  models/candidates/gen_<N>/.
 
@@ -34,10 +36,15 @@ from config import (
     ITERATE_ARENA_GAMES, ITERATE_ARENA_SIMS, ITERATE_GATE_THRESHOLD,
     ITERATE_ANCHOR_GAMES, ITERATE_ANCHOR_EPSILON,
     ITERATE_MAX_GENERATION_AGE, ITERATE_EPOCHS, RANDOM_SEED,
+    INCUMBENT_MODEL,
 )
 
+# Law: every head-to-head bar carries a per-side floor. Aggregates have
+# twice masked a one-sided collapse in this project.
+ARENA_SIDE_FLOOR = 0.40
+
 PY = sys.executable
-INCUMBENT_PT = os.path.join(MODEL_DIR, "best_value_net.pt")
+INCUMBENT_PT = INCUMBENT_MODEL
 HISTORY_PATH = os.path.join(MODEL_DIR, "iterate_history.json")
 
 
@@ -84,7 +91,10 @@ def run_arena(candidate_path, incumbent_path, games, sims, seed,
     seeded "game" replays identically and the arena silently scores a single
     game N times. Temp-diversified openings restore a real sample.
 
-    Returns candidate score in [0, 1].
+    Returns (overall_score, {"white": score, "black": score}), each in [0, 1].
+    The per-side split is not decoration: aggregates have twice hidden a
+    one-sided collapse in this project (v18-WDL, and a router run whose
+    "0.575 PASS" was White 0.35 / Black 0.80). gate_passes() floors each side.
     """
     import random
     from benchmark import play_one, _build_engine
@@ -94,24 +104,30 @@ def run_arena(candidate_path, incumbent_path, games, sims, seed,
 
     n_white = games // 2
     n_black = games - n_white
-    wins = draws = 0
+    side_wins = {"white": 0.0, "black": 0.0}
     for i in range(n_white):
         random.seed(seed + i)
         result, _plies, _dec = play_one(candidate, incumbent,
                                         opening_temp_plies=opening_temp_plies)
         if result > 0:
-            wins += 1
+            side_wins["white"] += 1
         elif result == 0:
-            draws += 1
+            side_wins["white"] += 0.5
     for i in range(n_black):
         random.seed(seed + 1000 + i)
         result, _plies, _dec = play_one(incumbent, candidate,
                                         opening_temp_plies=opening_temp_plies)
         if result < 0:
-            wins += 1
+            side_wins["black"] += 1
         elif result == 0:
-            draws += 1
-    return (wins + 0.5 * draws) / games if games else 0.0
+            side_wins["black"] += 0.5
+
+    side_scores = {
+        "white": side_wins["white"] / n_white if n_white else None,
+        "black": side_wins["black"] / n_black if n_black else None,
+    }
+    overall = (side_wins["white"] + side_wins["black"]) / games if games else 0.0
+    return overall, side_scores
 
 
 def run_anchor(model_path, games, sims, seed):
@@ -123,14 +139,26 @@ def run_anchor(model_path, games, sims, seed):
 
 
 def gate_passes(arena_score, candidate_anchor_score, incumbent_anchor_score,
-                threshold, anchor_epsilon):
+                threshold, anchor_epsilon, arena_side_scores=None,
+                side_floor=ARENA_SIDE_FLOOR):
     """Promotion gate: beat the incumbent AND don't regress vs the anchor.
 
     incumbent_anchor_score may be None (no incumbent baseline recorded yet) —
-    then only the arena test applies.
+    then only the anchor test is skipped.
+
+    arena_side_scores ({"white": s, "black": s}) additionally floors EACH side:
+    an aggregate can pass while one color has collapsed, which is how two
+    rejected candidates reached a playtest. Omitted (None) only for callers
+    that have no split to offer.
     """
     if arena_score < threshold:
         return False, f"arena {arena_score:.3f} < threshold {threshold:.3f}"
+    if arena_side_scores:
+        for side, score in sorted(arena_side_scores.items()):
+            if score is not None and score < side_floor:
+                return False, (f"arena {side} {score:.3f} < per-side floor "
+                               f"{side_floor:.3f} (aggregate {arena_score:.3f} "
+                               f"would have passed)")
     if incumbent_anchor_score is not None:
         floor = incumbent_anchor_score - anchor_epsilon
         if candidate_anchor_score < floor:
@@ -222,13 +250,17 @@ def run_generation(args):
 
     # 5. gate
     arena_score = None
+    arena_side_scores = None
     if incumbent:
         print(f"Arena: candidate vs incumbent, {args.arena_games} games "
               f"@{args.arena_sims} sims")
-        arena_score = run_arena(candidate_pt, incumbent,
-                                games=args.arena_games, sims=args.arena_sims,
-                                seed=args.seed + gen * 977)
-        print(f"Arena score: {arena_score:.3f}")
+        arena_score, arena_side_scores = run_arena(
+            candidate_pt, incumbent,
+            games=args.arena_games, sims=args.arena_sims,
+            seed=args.seed + gen * 977)
+        print(f"Arena score: {arena_score:.3f} "
+              f"(White {arena_side_scores['white']}, "
+              f"Black {arena_side_scores['black']})")
     print(f"Anchor benchmark: {args.anchor_games} games @{args.arena_sims} sims")
     anchor_score, anchor_report = run_anchor(candidate_pt,
                                              games=args.anchor_games,
@@ -240,7 +272,8 @@ def run_generation(args):
     incumbent_anchor = _latest_incumbent_anchor_score(history)
     if incumbent:
         promoted, reason = gate_passes(arena_score, anchor_score, incumbent_anchor,
-                                       args.gate_threshold, args.anchor_epsilon)
+                                       args.gate_threshold, args.anchor_epsilon,
+                                       arena_side_scores=arena_side_scores)
     else:
         promoted, reason = True, "no incumbent — first model promotes unconditionally"
 
@@ -251,6 +284,7 @@ def run_generation(args):
         "candidate_path": candidate_pt,
         "incumbent_path": incumbent,
         "arena_score": arena_score,
+        "arena_side_scores": arena_side_scores,
         "candidate_anchor_score": anchor_score,
         "candidate_anchor_report": anchor_report,
         "incumbent_anchor_score": incumbent_anchor,

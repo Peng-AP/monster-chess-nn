@@ -10,13 +10,13 @@ Two evaluation modes:
               Does not call the neural network.
 
 Usage (full calibration matrix — takes 1-4 hours):
-  py -3 src/generate_bruteforce.py --calibrate --games 12
+  py -3 tools/generate_bruteforce.py --calibrate --games 12
 
 Usage (single cell, for quick checks):
-  py -3 src/generate_bruteforce.py --tiers 4 5 --sims 1000 --mode heuristic --games 20
+  py -3 tools/generate_bruteforce.py --tiers 4 5 --sims 1000 --mode heuristic --games 20
 
 Usage (save training data after calibration confirms viability):
-  py -3 src/generate_bruteforce.py --tiers 4 5 6 --sims 1000 --mode heuristic \\
+  py -3 tools/generate_bruteforce.py --tiers 4 5 6 --sims 1000 --mode heuristic \\
       --games 100 --output-dir data/raw/calibration_heuristic_t456_s1000
 """
 

@@ -15,7 +15,7 @@ import time
 
 import chess
 
-from config import MCTS_SIMULATIONS, MODEL_DIR, RAW_DATA_DIR
+from config import MCTS_SIMULATIONS, RAW_DATA_DIR, INCUMBENT_MODEL
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 
@@ -336,7 +336,7 @@ def main():
     parser.add_argument("--color", choices=["white", "black"], default="black",
                         help="Your color (default: black)")
     parser.add_argument("--model", type=str, default=None,
-                        help="Path to model file (default: models/best_value_net.pt)")
+                        help="Path to model file (default: the incumbent, models/fresh_start_v17/best_value_net.pt)")
     parser.add_argument("--heuristic", action="store_true",
                         help="Use heuristic evaluation instead of NN")
     parser.add_argument("--sims", type=int, default=MCTS_SIMULATIONS,
@@ -351,7 +351,7 @@ def main():
     eval_fn = None
     heuristic_eval = None
     if not args.heuristic:
-        model_path = args.model or os.path.join(MODEL_DIR, "best_value_net.pt")
+        model_path = args.model or INCUMBENT_MODEL
         if os.path.exists(model_path):
             from evaluation import NNEvaluator
             print(f"Loading model: {model_path}")
@@ -369,7 +369,7 @@ def main():
     human_is_white = args.color == "white"
     session_id = time.strftime("%Y%m%d_%H%M%S")
     ai_color = "black" if human_is_white else "white"
-    model_used = args.model or os.path.join(MODEL_DIR, "best_value_net.pt")
+    model_used = args.model or INCUMBENT_MODEL
 
     print(f"\n{'='*50}")
     print(f"  MONSTER CHESS")

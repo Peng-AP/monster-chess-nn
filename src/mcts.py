@@ -423,10 +423,11 @@ class MCTS:
         the root average only when the child is unvisited."""
         root = self._root_for_search(root_state)
 
+        # Every batching evaluator also exposes a policy head (NNEvaluator,
+        # HybridEvaluator); the heuristic evaluator is a plain function with
+        # neither. So batching without policy priors has no reachable caller.
         if self._has_policy and self._supports_batch:
             self._run_batched_puct(root)
-        elif self._supports_batch:
-            self._run_batched(root)
         else:
             self._run_sequential(root)
 
@@ -516,41 +517,6 @@ class MCTS:
     # ------------------------------------------------------------------
     # Batched MCTS without policy (NN value only, UCB1)
     # ------------------------------------------------------------------
-
-    def _run_batched(self, root):
-        sims_done = 0
-        while sims_done < self.num_simulations:
-            if self.allow_early_stop and self._should_stop_early(root, sims_done):
-                break
-            batch_needs_eval = []
-            batch_terminal = []
-            batch_count = min(self.batch_size, self.num_simulations - sims_done)
-
-            for _ in range(batch_count):
-                node = self._select_ucb(root)
-                if node.state.is_terminal():
-                    batch_terminal.append((node, node.state.get_result()))
-                    continue
-                child = node.expand_one()
-                if child is None:
-                    batch_terminal.append((node, self.eval_fn(node.state)))
-                    continue
-                if child.state.is_terminal():
-                    batch_terminal.append((child, child.state.get_result()))
-                else:
-                    self._apply_virtual_loss(child)
-                    batch_needs_eval.append(child)
-
-            if batch_needs_eval:
-                states = [leaf.state for leaf in batch_needs_eval]
-                values = self.eval_fn.batch_evaluate(states)
-                for leaf, value in zip(batch_needs_eval, values):
-                    self._revert_virtual_loss(leaf)
-                    self._backpropagate(leaf, value)
-
-            for leaf, value in batch_terminal:
-                self._backpropagate(leaf, value)
-            sims_done += batch_count
 
     # ------------------------------------------------------------------
     # Batched MCTS with PUCT + policy head
@@ -700,10 +666,6 @@ class MCTS:
                 actions_and_priors.append((pair, p_each))
 
         return actions_and_priors
-
-    # Backwards-compatible alias (older imports / tests may reference this name).
-    def _black_priors(self, legal_actions, policy_logits):
-        return self._single_move_priors(legal_actions, policy_logits)
 
     # ------------------------------------------------------------------
     # Shared helpers

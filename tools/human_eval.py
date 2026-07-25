@@ -15,8 +15,8 @@ import json
 import os
 import time
 
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SRC_DIR)
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(TOOLS_DIR)
 
 
 def _result_bucket(value):

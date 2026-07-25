@@ -6,7 +6,7 @@ import random
 import signal
 import time
 from collections import Counter
-from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 
@@ -19,23 +19,6 @@ from config import (
 )
 from monster_chess import MonsterChessGame
 from mcts import MCTS
-
-def _kill_workers(executor):
-    """Force-kill any lingering worker processes after shutdown."""
-    # ProcessPoolExecutor stores workers in _processes (dict of pid -> process)
-    procs = getattr(executor, '_processes', None)
-    if not procs:
-        return
-    for pid, proc in list(procs.items()):
-        if proc.is_alive():
-            try:
-                os.kill(pid, signal.SIGTERM)
-                proc.join(timeout=3)
-                if proc.is_alive():
-                    os.kill(pid, 9)  # SIGKILL
-            except (OSError, ProcessLookupError):
-                pass
-
 
 # Global variables set by each worker process
 _eval_fn = None
@@ -756,7 +739,7 @@ def main():
                 for future in as_completed(futures, timeout=total_timeout):
                     try:
                         game_id, _sim_used, records, elapsed, aborted = future.result()
-                    except (BrokenExecutor, Exception) as e:
+                    except Exception as e:
                         gid = futures[future]
                         tqdm.write(f"  Game {gid}: FAILED ({e}), skipping")
                         failed_games += 1
@@ -796,8 +779,8 @@ def main():
                 pbar.update(hung)
     finally:
         # Snapshot _processes BEFORE shutdown — shutdown(wait=False) clears the
-        # internal dict, leaving _kill_workers() nothing to iterate over and
-        # producing zombie workers that block the next subprocess pool.
+        # internal dict, leaving nothing to iterate over and producing zombie
+        # workers that block the next subprocess pool.
         _procs_snapshot = dict(getattr(executor, '_processes', {}))
         executor.shutdown(wait=False, cancel_futures=True)
         for pid, proc in _procs_snapshot.items():
