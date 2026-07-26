@@ -18,6 +18,14 @@ with outcome labels: policy is a one-hot on the move actually played, and
 mcts_value is 0.0 (unused unless VALUE_TARGET="mcts_value", which is not the
 recipe). Do not read these as if they carried search information.
 
+Record granularity (changed 2026-07-26): a White turn emits TWO half-move
+records, `half` 0 and 1, like the self-play sources. It previously emitted one
+record per turn with a "m1,m2" policy key, which policy_dict_to_target
+marginalizes to m1 — so White's second move was imported and then discarded.
+The owner's notebook-written human games are still one-per-turn and cannot be
+fixed retroactively (no m2 distribution was ever saved); a PGN has the m2 that
+was actually played, so here the information exists.
+
 By default only the WINNER's moves teach policy, mirroring the anti-echo rule
 for human games (policy_weight_for_record): a loser's moves in a mismatched
 pairing are not demonstrations worth imitating. --all-moves overrides.
@@ -89,11 +97,47 @@ def movetext_tokens(movetext):
     return [t for t in body.split() if t and t not in RESULT_MAP and t != "*"]
 
 
+def _emit_turn(records, game_before, is_white, played, result):
+    """Append the records for one replayed turn.
+
+    White's turn becomes TWO half-move records (`half` 0 and 1), matching the
+    self-play sources rather than the notebook's one-per-turn human format.
+
+    Why not one pair record: `policy_dict_to_target` marginalizes "m1,m2" down
+    to m1, so a pair record teaches the first move and silently discards the
+    second — in a variant whose whole character is the second move. The
+    notebook's human games are stuck that way (it only ever saved a visit
+    distribution for m1), but a PGN gives us the m2 actually played, so here
+    the information exists and there is no reason to throw it away.
+
+    The second record's FEN is taken after m1 with White still to move, which is
+    exactly the state `half_pending=True` encodes.
+    """
+    if not is_white:
+        records.append({
+            "fen": game_before.board.fen(), "mcts_value": 0.0,
+            "current_player": "black", "source": "playstrategy",
+            "actor": "human", "game_result": result,
+            "policy": {played[0].uci(): 1.0},
+        })
+        return
+
+    state = game_before.clone()
+    for half, move in enumerate(played[:2]):
+        records.append({
+            "fen": state.board.fen(), "mcts_value": 0.0,
+            "current_player": "white", "half": half,
+            "source": "playstrategy", "actor": "human",
+            "game_result": result,
+            "policy": {move.uci(): 1.0},
+        })
+        state.apply_search_action(move)
+
+
 def convert_game(headers, movetext, winner_only=True):
     """Replay a PGN game through our rules; return (records, error).
 
-    One record per TURN (White's turn is the atomic m1,m2 pair), matching what
-    the notebook writes for human games.
+    White turns emit two half-move records; see _emit_turn.
     """
     result = RESULT_MAP.get(headers.get("Result"))
     if result is None:
@@ -108,7 +152,7 @@ def convert_game(headers, movetext, winner_only=True):
         if game.is_terminal():
             return None, "moves remain after terminal position"
         is_white = game.is_white_turn
-        fen_before = game.fen() if callable(getattr(game, "fen", None)) else game.board.fen()
+        state_before = game.clone()
         sans = token.split(",") if "," in token else [token]
         if is_white and len(sans) > 2:
             return None, f"White token with {len(sans)} moves: {token!r}"
@@ -128,22 +172,7 @@ def convert_game(headers, movetext, winner_only=True):
             played.append(move)
             game.apply_search_action(move)
 
-        if is_white:
-            m1 = played[0]
-            m2 = played[1] if len(played) > 1 else chess.Move.null()
-            action_str = f"{m1.uci()},{m2.uci()}"
-        else:
-            action_str = played[0].uci()
-
-        records.append({
-            "fen": fen_before,
-            "mcts_value": 0.0,               # PGN carries no search value
-            "current_player": "white" if is_white else "black",
-            "source": "playstrategy",
-            "actor": "human",
-            "game_result": result,
-            "policy": {action_str: 1.0},     # one-hot on the move actually played
-        })
+        _emit_turn(records, state_before, is_white, played, result)
 
     if not records:
         return None, "no moves"
@@ -173,23 +202,13 @@ def convert_from_bundle(g, winner_only=True):
         if game.is_terminal():
             return None, "moves after terminal"
         is_white = game.is_white_turn
-        fen_before = game.board.fen()
+        state_before = game.clone()
         played = []
         for u in turns[t]:
             mv = chess.Move.from_uci(u)
             played.append(mv)
             game.apply_search_action(mv)
-        if is_white:
-            m2 = played[1] if len(played) > 1 else chess.Move.null()
-            action = f"{played[0].uci()},{m2.uci()}"
-        else:
-            action = played[0].uci()
-        records.append({
-            "fen": fen_before, "mcts_value": 0.0,
-            "current_player": "white" if is_white else "black",
-            "source": "playstrategy", "actor": "human",
-            "game_result": result, "policy": {action: 1.0},
-        })
+        _emit_turn(records, state_before, is_white, played, result)
     if not records:
         return None, "no moves"
     if winner_only and result != 0:
