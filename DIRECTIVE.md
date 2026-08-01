@@ -22,12 +22,47 @@ threshold moves. Ever.
 | training epoch (v18 recipe) | 8.25 min | **~10–16 s** (measured 2026-08-01: load+epoch+val+test = 16.0 s) | ~40–50× |
 | 30-epoch run | ~4.5 h | **~6–8 min** | " |
 | 80-epoch run | ~11 h (never affordable) | **~15–20 min** | " |
-| 20-game match @400 sims | 34–60 min | smoke in flight; fill in below | TBD |
+| full-length game @400 sims, 1 worker | ~10 min¹ | **121 s** (was 631 s before the clone fix) | ~5× |
+| aggregate match throughput @400 sims | — | **7.1 decisions/s** at 8 workers | — |
+| full 100-game gate (3 legs) | ~3 days | **see §0.1** | — |
+
+¹ the old box's recorded `sec_per_decision ~1.3` came from `benchmark.py`
+anchor runs, which are cheaper per decision than NN-vs-NN; it is not a like
+for like comparison and the CPU-box game figure was never measured directly.
 
 Every "we can only afford one arm" constraint in the project's history is void.
 The campaign below is designed for the new economics: **factorial arms instead
 of single recipes, 40-game gates instead of 10, and reinforcement cycles that
 were never affordable on CPU.**
+
+## 0.1 The match bottleneck was a bug, not the hardware (2026-08-01)
+
+The GPU barely matters to match cost. Profiling one late-game decision at 400
+sims: **18.6 s of 22.6 s was `chess.Board.copy()`** — python-chess copies the
+*entire* move stack, one `copy.copy` per ply (3.0M calls), and MCTS clones once
+per node expansion. NN forward was 0.63 s, **2.8%**. Clone cost grew with game
+length, which is why late-game decisions cost ~5× opening ones and why the
+games that reach the 150-turn cap — the common case in NN-vs-NN — were the
+expensive ones.
+
+`MonsterChessGame.clone` now copies `CLONE_HISTORY_PLIES = 8` plies instead of
+all of them. Only `mcts._own_previous_moves` reads history, at offsets
+−1/−3/−4. **Verified move-for-move identical**, not just same-result: the same
+seeded 225-ply game replays with an identical move list, `563 s → 121 s`
+(4.64×); two shorter games likewise identical (1.31×, 1.50× — less history to
+copy). `tests/test_clone_history_depth.py` pins the depth against the offsets.
+
+This is why the five-arm Phase 3 budget survives. At the old clone cost a
+100-game gate was ~8 h per candidate and the five arms ~40 h.
+
+**Also fixed: every worker default was set to crash this box.** 14 workers dies
+during CUDA init with `fatal : Memory allocation failure` and leaves 14
+orphaned ~1.4 GB processes. `data_generation.py` defaulted to `os.cpu_count()`
+= 16, `tools/promotion_probe.py` and `tools/match.py` to `cpu_count() - 2` =
+14 — so M2 tonight and the Phase 2 self-play generation would both have hit it
+unattended. All three now share `config.DEFAULT_GAME_WORKERS = 8`, pinned by
+`tests/test_worker_defaults.py`. Throughput plateaus there anyway: 4 workers
+5.39 decisions/s, 8 → 7.11, 12 → 7.38.
 
 Calibration artifacts: `scratchpad gpu_epoch_bench` (epoch-1 losses reproduce
 the v18 gap arm's recorded CPU trajectory within nondeterminism noise — train
@@ -51,12 +86,14 @@ ramp itself — its gate results stand.
 - [x] `--patience` added to `train.py` (default 10, recorded in the run
       manifest via `vars(args)`). 166/166 tests green.
 - [x] GPU training calibration (above).
-- [ ] Match calibration: 2-game smoke → derive games/hour; then **fix the gate
-      protocol at 20 games per side per leg** (§7.3 resolved: n=10 provably
-      cannot separate signal from noise; the 0.40 floor is untouched). Encode
-      the whole protocol in one committed driver (`tools/gate.py` or similar)
-      so every arm gets identical legs and the match-vs-benchmark JSON schema
-      trap (HANDOFF §10.1) is solved once.
+- [x] Match calibration: **179 games/hour**, so a full 100-game gate is
+      **34 min** and five Phase 3 arms cost ~2.8 h. Protocol fixed at 20 games
+      per side per leg; the 0.40 floor untouched. `tools/gate.py` runs all
+      three legs through the single `match.run_match` schema, keeps the
+      thresholds as constants no CLI flag can reach, and cannot report PASS
+      from a rehearsal. See `PHASE0_REPORT.md` — the calibration run doubled as
+      a real gate on the sparring partner and **its 0.70 h2h did not replicate
+      at n=20/side (0.575)**, which is §7.3 demonstrating itself.
 
 ## 2. Phase 1 — decisive measurements (first GPU day)
 

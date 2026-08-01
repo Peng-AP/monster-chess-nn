@@ -1,0 +1,134 @@
+{
+  "candidate": "fresh_start_v17",
+  "model": "models\\fresh_start_v17\\best_value_net.pt",
+  "protocol": "full",
+  "binding": true,
+  "verdict": "FAIL",
+  "raw_verdict": "FAIL",
+  "failures": [
+    "vs_ramp white leg 0.3000 < 0.40",
+    "vs_ramp black leg 0.2500 < 0.40"
+  ],
+  "thresholds": {
+    "per_side_floor": 0.4,
+    "v17_aggregate_min_exclusive": 0.5,
+    "sims": 400
+  },
+  "per_side_totals_across_legs": {
+    "white": {
+      "points": 24.5,
+      "games": 50,
+      "score": 0.49,
+      "se_points": 3.54
+    },
+    "black": {
+      "points": 18.0,
+      "games": 50,
+      "score": 0.36,
+      "se_points": 3.54
+    }
+  },
+  "legs": {
+    "vs_v17": {
+      "match": "fresh_start_v17 vs fresh_start_v17",
+      "name_a": "fresh_start_v17",
+      "name_b": "fresh_start_v17",
+      "games": 40,
+      "sims": 400,
+      "seed": 20260801,
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.5125,
+      "a_as_white": {
+        "games": 20,
+        "wins": 11,
+        "losses": 8,
+        "draws": 1,
+        "score": 0.575,
+        "mean_plies": 136.15,
+        "mean_plies_when_won": 63.45,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 9,
+        "losses": 11,
+        "draws": 0,
+        "score": 0.45,
+        "mean_plies": 122.5,
+        "mean_plies_when_won": 194.67,
+        "mean_plies_when_lost": 63.45
+      },
+      "elapsed_sec": 630.5,
+      "timestamp": "2026-08-01T18:45:01"
+    },
+    "vs_ramp": {
+      "match": "fresh_start_v17 vs fresh_start_v18_ramp",
+      "name_a": "fresh_start_v17",
+      "name_b": "fresh_start_v18_ramp",
+      "games": 40,
+      "sims": 400,
+      "seed": 20260901,
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.275,
+      "a_as_white": {
+        "games": 20,
+        "wins": 6,
+        "losses": 14,
+        "draws": 0,
+        "score": 0.3,
+        "mean_plies": 185.45,
+        "mean_plies_when_won": 93.17,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 5,
+        "losses": 15,
+        "draws": 0,
+        "score": 0.25,
+        "mean_plies": 87.3,
+        "mean_plies_when_won": 225.0,
+        "mean_plies_when_lost": 41.4
+      },
+      "elapsed_sec": 1036.5,
+      "timestamp": "2026-08-01T19:02:18"
+    },
+    "anchor": {
+      "match": "fresh_start_v17 vs heuristic",
+      "name_a": "fresh_start_v17",
+      "name_b": "heuristic",
+      "games": 20,
+      "sims": 400,
+      "seed": 20261001,
+      "opening_temp_plies": 0,
+      "workers": 8,
+      "a_score": 0.55,
+      "a_as_white": {
+        "games": 10,
+        "wins": 7,
+        "losses": 3,
+        "draws": 0,
+        "score": 0.7,
+        "mean_plies": 175.9,
+        "mean_plies_when_won": 154.86,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 10,
+        "wins": 4,
+        "losses": 6,
+        "draws": 0,
+        "score": 0.4,
+        "mean_plies": 141.3,
+        "mean_plies_when_won": 207.75,
+        "mean_plies_when_lost": 97.0
+      },
+      "elapsed_sec": 186.6,
+      "timestamp": "2026-08-01T19:05:24"
+    }
+  },
+  "seed": 20260801,
+  "timestamp": "2026-08-01T19:05:24"
+}
