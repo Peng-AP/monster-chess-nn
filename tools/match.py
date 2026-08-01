@@ -19,15 +19,9 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-_engines = {}
+from config import DEFAULT_GAME_WORKERS  # noqa: E402  (needs the sys.path above)
 
-# Worker default. NOT cpu_count-2: on the 5060 Ti box 14 workers dies with
-# "fatal : Memory allocation failure" during CUDA init and leaves 14 orphaned
-# ~1.4 GB processes behind. Measured aggregate throughput at 400 sims
-# (2026-08-01, scratchpad contention_bench) plateaus well before that --
-# 4 workers 5.39 decisions/s, 8 workers 7.11, 12 workers 7.38 -- so 8 buys
-# the whole win, keeps VRAM at ~3 GB, and leaves the box usable.
-DEFAULT_WORKERS = 8
+_engines = {}
 
 
 def resolve_opening_temp_plies(model_b, requested):
@@ -65,7 +59,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     confusing the two has cost a whole gate run before (HANDOFF SS10.1).
     """
     opening_temp_plies = resolve_opening_temp_plies(model_b, opening_temp_plies)
-    workers = workers or DEFAULT_WORKERS
+    workers = workers or DEFAULT_GAME_WORKERS
 
     n_white = games // 2
     tasks = [(True, seed + i, opening_temp_plies) for i in range(n_white)]
@@ -113,7 +107,7 @@ def main():
     # NN-vs-NN matches need sampled model openings.
     ap.add_argument("--opening-temp-plies", type=int, default=None,
                     help="default: 16 for NN-vs-NN, 0 vs the heuristic anchor")
-    ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     args = ap.parse_args()
 

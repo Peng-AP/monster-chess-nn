@@ -15,6 +15,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+from config import DEFAULT_GAME_WORKERS  # noqa: E402
 from promotion_probe import (  # noqa: E402
     compare_probe_reports,
     play_probe_game,
@@ -91,7 +92,7 @@ def main():
     parser.add_argument("--defender", choices=("white", "black"), required=True)
     parser.add_argument("--sims", type=int, default=400)
     parser.add_argument("--seed", type=int, default=20260704)
-    parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
+    parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--max-plies", type=int, default=600)
     parser.add_argument("--max-prevention-drop", type=float, default=0.0)
     parser.add_argument("--max-king-survival-drop", type=float, default=0.0)

@@ -158,6 +158,20 @@ BARRIER_RANK_FILE_WEIGHT = 0.12     # bonus per barrier rank/file between king a
 PIECE_SAFETY_BONUS = 0.08           # bonus per Black heavy piece at safe distance (>= 3) from White king
 BLACK_KING_EXPOSURE_PENALTY = 0.04  # penalty per square adjacent to Black king attacked by White
 
+# Default worker count for anything that plays games in a process pool.
+#
+# NOT os.cpu_count() and not cpu_count()-2. On the 5060 Ti box every worker
+# builds its own CUDA context, and 14 of them dies at init with
+# "fatal : Memory allocation failure", leaving orphaned ~1.4 GB processes
+# behind -- the zombie-worker pattern that has cost this project runs before.
+# Measured aggregate throughput at 400 sims (2026-08-01) plateaus long before
+# the crash anyway: 4 workers 5.39 decisions/s, 8 workers 7.11, 12 workers
+# 7.38. Eight buys the whole win and leaves the box usable while it runs.
+#
+# Every --workers flag still overrides this; it is the default that matters,
+# because the default is what an unattended overnight driver uses.
+DEFAULT_GAME_WORKERS = 8
+
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "raw")

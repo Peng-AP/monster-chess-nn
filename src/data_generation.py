@@ -13,7 +13,7 @@ from tqdm import tqdm
 from config import (
     MCTS_SIMULATIONS, NUM_GAMES, OPPONENT_SIMULATIONS,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
-    RAW_DATA_DIR,
+    RAW_DATA_DIR, DEFAULT_GAME_WORKERS,
     SKIP_CHECK_POSITIONS, MAX_GAME_TURNS,
 )
 from curriculum import (
@@ -495,7 +495,7 @@ def main():
                         help="Maximum simulations per game (default: --simulations)")
     parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
     parser.add_argument("--workers", type=int, default=None,
-                        help="Number of parallel workers (default: CPU count)")
+                        help=f"Number of parallel workers (default: {DEFAULT_GAME_WORKERS})")
     parser.add_argument("--use-model", type=str, default=None,
                         help="Path to trained .pt model for NN evaluation")
     parser.add_argument("--hybrid-eval", action="store_true",
@@ -595,7 +595,7 @@ def main():
     else:
         curriculum_indices = None
 
-    workers = args.workers or os.cpu_count()
+    workers = args.workers or DEFAULT_GAME_WORKERS
     model_path = args.use_model
     opponent_model_path = args.opponent_model
     opponent_pool_paths = []
