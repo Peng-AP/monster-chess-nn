@@ -734,6 +734,8 @@ def main():
     parser.add_argument("--data-dir", type=str, default=PROCESSED_DATA_DIR)
     parser.add_argument("--model-dir", type=str, default=MODEL_DIR)
     parser.add_argument("--epochs", type=int, default=EPOCHS)
+    parser.add_argument("--patience", type=int, default=10,
+                        help="Early-stopping patience in non-improving epochs (default: 10)")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
     parser.add_argument("--policy-loss-weight", type=float, default=POLICY_LOSS_WEIGHT,
@@ -884,7 +886,7 @@ def main():
     best_selection_value = float("inf")
     best_epoch = None
     patience_counter = 0
-    patience = 10
+    patience = args.patience
     run_id = time.strftime("%Y%m%d_%H%M%S")
     metadata_path = os.path.join(args.model_dir, f"train_run_{run_id}.json")
     run_metadata = {
