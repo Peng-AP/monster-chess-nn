@@ -157,7 +157,22 @@ of the corrected +0.10 to +0.13. (2) `NNEvaluator.evaluate_with_policy` returns
 a **White**-perspective value while a root child's Q is **root side-to-move** —
 mixing them flips the sign of the headline. Everything above is Black-POV.
 
-**M3 — PARTIAL, paused 2026-08-01 by owner. Resume here.**
+**M3 — DONE 2026-08-02: ramp's Black-optimism is MISCALIBRATION, not insight.**
+
+Each model played Black itself over the same 400 positions against the same
+White. **Conversion is identical — ramp 20.75%, v17 19.75% (n=400, ~0.5 SE
+apart) — while their predictions sit 0.41 apart.** Ramp's calibration error is
++0.518 against v17's +0.130. It converts no better; it just believes it is
+better off.
+
+**Consequence, and the decision this measurement existed to make: D3's cliff
+self-play must not take value targets from ramp.** It remains a legitimate
+opponent (games labelled by outcome, not beliefs) and remains the gate bar —
+being miscalibrated about Black is not the same as being weak, and it still
+beats v17 ~0.65. Full write-up and the discarded first referee in
+`OVERNIGHT_REPORT.md` §2.
+
+_Original specification and the partial state, kept for the record:_
 
 §4.5's ordering **reproduced on an independent deck**: mean predicted value
 (Black POV) ramp −0.129, dup1 −0.377, gap −0.399, v17 −0.537, against the

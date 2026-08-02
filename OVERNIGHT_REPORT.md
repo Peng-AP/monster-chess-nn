@@ -20,9 +20,46 @@ no gate threshold was moved.
 
 ---
 
-## 2. M3 — is ramp's Black-optimism insight or miscalibration?
+## 2. M3 — ramp's Black-optimism is miscalibration. Answered.
 
-_Filled in as referees land. Run 1 (ramp-as-Black) is in DIRECTIVE §M3._
+§4.5 asked whether ramp's unusually optimistic value for Black in
+promotion-defense positions is insight or error. It is error, and the
+experiment that settles it is a controlled one: **each model plays Black
+itself, from the same 400 positions, against the same White.**
+
+| model | mean predicted (Black POV) | mean realized | bias | Black conversion |
+|---|---|---|---|---|
+| ramp | **−0.129** | −0.647 | **+0.518** | **20.75%** |
+| v17 | **−0.537** | −0.667 | **+0.130** | **19.75%** |
+
+The two models convert at the same rate — 1 point apart on n=400, about half a
+standard error — while their beliefs sit 0.41 apart. Ramp is not seeing
+something v17 misses. It converts no better and simply believes it is better
+off, with four times v17's calibration error.
+
+Artifacts: `benchmarks/promotion_defense_outcomes_rampblack_20260801_214726.json`,
+`..._v17black_*.json`.
+
+**Why the first attempt at this was worthless, and worth remembering.** The
+referee originally specified was heuristic-vs-heuristic. It converts Black in
+**3 of 400** positions (0.75%), so every predicted band mapped to realized
+−1.00 and the table showed all four models wildly optimistic with ramp worst.
+That reading was unusable: a referee too weak to convert cannot distinguish "the
+model is wrong" from "the model is right and the referee cannot play." Only
+when the model plays its own Black does the comparison mean anything. Kept as
+`promotion_defense_outcomes_20260801_210716.json`.
+
+**Caveat that survives the result.** Heuristic-White is weak, so ~20%
+overstates conversion against real opposition and the *magnitude* of both
+biases is a floor, not a measurement. The comparison between models is sound —
+identical positions, identical White. The strong-White ceiling
+(`--playout-white ramp --playout-black ramp`) was queued and dropped when the
+direction was settled; it can only push realized value further below prediction.
+
+**Consequence for Phase 2.** Ramp stays a legitimate *opponent* — its games are
+labelled by outcome, not by its beliefs — but **its search values are not
+trustworthy training signal**, so D3's cliff self-play should not take value
+targets from ramp. This was the decision M3 existed to make.
 
 ---
 
