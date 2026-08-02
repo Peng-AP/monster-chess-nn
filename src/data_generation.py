@@ -425,8 +425,19 @@ def play_game(num_simulations, game_deadline=None):
             result = game.get_result()
     else:
         result = game.get_result()
-    for rec in records:
+    for i, rec in enumerate(records):
         rec["game_result"] = result
+        # Distance to the real end of THIS game, stamped now while it is known.
+        #
+        # data_processor._discounted_results otherwise infers it positionally,
+        # as (last index in segment - i), which is correct only for a game
+        # recorded whole. Any consumer that drops records -- filtering to a
+        # phase, truncating a tail -- silently relabels every survivor, because
+        # the new last record then reads as the finish and gets a full-strength
+        # target. Stamping it makes those operations safe; the processor
+        # prefers this field and falls back to the positional rule for the many
+        # corpora written before it existed.
+        rec["plies_to_end"] = len(records) - 1 - i
 
     return records, False
 

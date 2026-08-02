@@ -232,7 +232,14 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     out = [0.0] * len(records)
     for a, b in zip(bounds, bounds[1:]):
         for i in range(a, b):
-            plies_to_end = b - 1 - i
+            # Preferred: an explicit distance stamped at generation time.
+            # The positional fallback below is correct only for a game recorded
+            # whole, so any consumer that drops records (filtering to a phase,
+            # truncating a tail) silently relabels the survivors -- the new last
+            # record reads as the finish and takes a full-strength target.
+            # tests/test_ramp_label_positional.py pins that hazard.
+            explicit = records[i].get("plies_to_end")
+            plies_to_end = int(explicit) if explicit is not None else b - 1 - i
             if mode == "near_mate":
                 plies_to_end = min(plies_to_end, horizon)
             out[i] = records[i].get("game_result", 0) * (gamma ** plies_to_end)

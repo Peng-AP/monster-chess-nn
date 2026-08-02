@@ -73,5 +73,68 @@ class TestTruncationRewritesLabels(unittest.TestCase):
             self.assertNotAlmostEqual(filtered[slot], full[original], places=3)
 
 
+class TestExplicitPliesToEndMakesFilteringSafe(unittest.TestCase):
+    """The fix: stamp the distance at generation time, then dropping is safe.
+
+    This is what unblocks D3. Generating cliff self-play produces only ~9.5%
+    pawn-phase records by count because games leave the phase and the tail is
+    long; the density target needs filtering, and filtering was unsafe.
+    """
+
+    @staticmethod
+    def stamped(n, result=-1.0):
+        return [{"fen": f"fen{i}", "game_result": result,
+                 "plies_to_end": n - 1 - i} for i in range(n)]
+
+    def test_explicit_field_reproduces_the_positional_labels(self):
+        # A whole game must be labelled identically either way, or every
+        # existing corpus stops being comparable to a regenerated one.
+        plain = _discounted_results(records(40), horizon=60, floor=0.5)
+        stamped = _discounted_results(self.stamped(40), horizon=60, floor=0.5)
+        for a, b in zip(plain, stamped):
+            self.assertAlmostEqual(a, b, places=12)
+
+    def test_dropping_the_tail_no_longer_relabels_survivors(self):
+        full = self.stamped(40)
+        truncated = _discounted_results(full[:20], horizon=60, floor=0.5)
+        whole = _discounted_results(full, horizon=60, floor=0.5)
+        for i in range(20):
+            self.assertAlmostEqual(whole[i], truncated[i], places=12)
+
+    def test_filtering_out_the_middle_is_safe_too(self):
+        full = self.stamped(40)
+        whole = _discounted_results(full, horizon=60, floor=0.5)
+        keep = [0, 5, 11, 19, 33]
+        filtered = _discounted_results([full[i] for i in keep],
+                                       horizon=60, floor=0.5)
+        for slot, original in enumerate(keep):
+            self.assertAlmostEqual(filtered[slot], whole[original], places=12)
+
+    def test_the_last_surviving_record_is_not_promoted_to_a_finish(self):
+        full = self.stamped(40)
+        truncated = _discounted_results(full[:20], horizon=60, floor=0.5)
+        # Without the stamp this read -1.0; it is mid-game and must stay so.
+        self.assertLess(abs(truncated[-1]), 0.95)
+
+    def test_a_corpus_without_the_field_is_unaffected(self):
+        # Every corpus on disk predates this. Absent field -> old behaviour.
+        self.assertNotIn("plies_to_end", records(5)[0])
+        out = _discounted_results(records(5), horizon=60, floor=0.5)
+        self.assertAlmostEqual(out[-1], -1.0, places=12)
+
+    def test_segments_still_work_with_the_field_present(self):
+        # Duplicated human games repeat records in one file; the stamp must
+        # not disturb per-copy handling.
+        seg = []
+        for copy in range(3):
+            for rec in self.stamped(10):
+                rec = dict(rec, segment=copy)
+                seg.append(rec)
+        out = _discounted_results(seg, horizon=60, floor=0.5)
+        first = out[:10]
+        for copy in range(1, 3):
+            self.assertEqual(out[copy * 10:(copy + 1) * 10], first)
+
+
 if __name__ == "__main__":
     unittest.main()
