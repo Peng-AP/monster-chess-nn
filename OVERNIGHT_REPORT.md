@@ -289,14 +289,52 @@ The promotion-defense probe, same 400 positions as M2:
 ramp's optimism was miscalibration, not insight. That is exactly the pattern
 that would show up in a playtest as "it thinks it is fine when it is not."
 
-There is a real possibility this is the belief contamination §7.1 predicted:
-B is the arm that took ps_monster's outcome labels into its value head, and
-those labels come from 1600-blitz games. K, which saw the same games with
-`value_weight=0`, sits at −0.154. **If that is what this is, the D2 fork does
-have an answer after all — B plays better today but carries the belief defect,
-and K does not.** Measurement in flight: B's and K's realized conversion on
-that deck, which converts the number above into a calibration error the same
-way M3 did for ramp.
+### 6.3 The D2 fork, answered: the value labels buy strength and cost calibration
+
+Turning those predictions into calibration errors the way M3 did — each model
+plays Black itself, same deck, same White:
+
+| model | predicted | realized | **bias** | conversion |
+|---|---|---|---|---|
+| ramp | −0.129 | −0.647 | +0.518 | 0.207 |
+| v17 | −0.537 | −0.667 | +0.130 | 0.198 |
+| **B** | +0.028 | −0.255 | **+0.283** | **0.405** |
+| **K** | −0.154 | −0.273 | **+0.119** | 0.395 |
+
+Read carefully, because the naive reading of §6.2 was wrong:
+
+* **B's optimism is largely earned.** It converts 0.405 against ramp's 0.207 —
+  roughly double — so a much higher value is partly justified. Its bias is
+  +0.283, about half ramp's.
+* **But K converts the same** — 0.395 vs 0.405, a difference of 0.01 on n=200
+  against SE ≈ 0.035, indistinguishable — **with less than half the
+  calibration error** (+0.119 vs +0.283). K is the best-calibrated model
+  measured, marginally better even than v17, while converting twice as often.
+
+Same positions, same opponent, same conversion, very different beliefs. That
+is exactly the M3 logic applied to K vs B, and it isolates the effect of the
+value labels: **taking ps_monster's outcome labels into the value head does not
+improve conversion; it inflates optimism.**
+
+So §7.1's fork has an answer, and it is not the clean one either side
+predicted:
+
+| | K (policy only) | B (full value) |
+|---|---|---|
+| beats ramp at the gate | yes, 0.7125 pooled | yes, 0.7625 pooled |
+| Black leg vs ramp | **0.700** | 0.650 |
+| head-to-head | loses 0.35 | **wins 0.65** |
+| cliff conversion | 0.473 | **0.527** |
+| promotion-defense conversion | 0.395 | 0.405 |
+| **calibration error** | **+0.119** | +0.283 |
+
+**B wins more games today; K believes the truth.** Which matters more is an
+owner call, and there is a specific reason to think it is not obvious: ramp was
+rejected for *play* faults — gifting pawns in the opening, missing a
+promotion — of the kind an over-optimistic value head produces. The D1 pipeline
+that makes K expressible is therefore load-bearing, not merely available.
+
+Artifacts: `benchmarks/promotion_defense_outcomes_pd_{B,K}_*.json`.
 
 ---
 
