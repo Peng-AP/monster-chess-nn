@@ -252,6 +252,52 @@ positions ramp loses, from identical starts against an identical opponent.
 
 Artifacts: `benchmarks/promotion_defense_outcomes_cliff_*.json`.
 
+### 6.1 K vs B, decided by playing them against each other
+
+Comparing two models through their scores against a third is weak. A direct
+match is not, and it separates them where the gate and the cliff deck both
+returned nulls — **B beats K 0.65–0.35 over 40 games**, and B is better on
+*both* sides:
+
+| | as White | as Black |
+|---|---|---|
+| B | **0.95** | **0.35** |
+| K | 0.65 | 0.05 |
+
+(Each figure is against the other model's opposite side.) Note both models are
+far stronger as White than Black even against each other — the standing White
+bias, unchanged.
+
+This does not overturn §5's null; it refines it. K and B are close enough that
+40 games against ramp could not order them, and 40 games against *each other*
+could. **B is the leading candidate.**
+
+Artifact: `benchmarks/match_v19_K_vs_v19_B_20260802_041900.json`.
+
+### 6.2 A flaw in the leading candidate: B is the most optimistic model yet
+
+The promotion-defense probe, same 400 positions as M2:
+
+| model | capture rate | mean value (Black POV) |
+|---|---|---|
+| control | 0.593 | −0.408 |
+| K | 0.605 | −0.154 |
+| **B** | 0.588 | **+0.028** |
+| _ramp, for reference_ | 0.585 | −0.129 |
+
+**B is more optimistic about Black than ramp was** — and M3 established that
+ramp's optimism was miscalibration, not insight. That is exactly the pattern
+that would show up in a playtest as "it thinks it is fine when it is not."
+
+There is a real possibility this is the belief contamination §7.1 predicted:
+B is the arm that took ps_monster's outcome labels into its value head, and
+those labels come from 1600-blitz games. K, which saw the same games with
+`value_weight=0`, sits at −0.154. **If that is what this is, the D2 fork does
+have an answer after all — B plays better today but carries the belief defect,
+and K does not.** Measurement in flight: B's and K's realized conversion on
+that deck, which converts the number above into a calibration error the same
+way M3 did for ramp.
+
 ---
 
 ## 7. Open, unchanged
