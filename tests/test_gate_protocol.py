@@ -37,9 +37,9 @@ def leg(white, black, games=40):
 
 def healthy():
     """A candidate that has cleared everything, confirmation leg included."""
-    return {"vs_ramp": leg(0.60, 0.55), "vs_v17": leg(0.70, 0.60),
+    return {"vs_v19": leg(0.60, 0.55), "vs_ramp": leg(0.70, 0.60),
             "anchor": leg(0.80, 0.50, games=20),
-            "vs_ramp_confirm": leg(0.60, 0.55)}
+            "vs_v19_confirm": leg(0.60, 0.55)}
 
 
 class TestThresholds(unittest.TestCase):
@@ -47,11 +47,13 @@ class TestThresholds(unittest.TestCase):
         self.assertEqual(gate.PER_SIDE_FLOOR, 0.40)
         self.assertEqual(gate.AGGREGATE_MIN, 0.50)
 
-    def test_the_bar_is_ramp_not_the_incumbent(self):
+    def test_the_bar_is_the_strongest_model_on_record(self):
         # Owner 2026-08-01: every model must be definitively better than the
-        # last, and the last is ramp -- not v17, which merely holds the number.
-        self.assertEqual(gate.BAR, "vs_ramp")
-        self.assertIn("vs_ramp", gate.AGGREGATE_LEGS)
+        # last. 'The last' was ramp while ramp was strongest; v19 beat it on
+        # 2026-08-02, so the bar moved with the rule.
+        self.assertEqual(gate.BAR, "vs_v19")
+        self.assertIn("vs_v19", gate.AGGREGATE_LEGS)
+        self.assertIn("fresh_start_v19", gate.INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):
@@ -72,27 +74,25 @@ class TestThresholds(unittest.TestCase):
 
 
 class TestTheBar(unittest.TestCase):
-    def test_losing_to_ramp_fails_however_good_the_rest_is(self):
-        # v17's own numbers: it beats the anchor and ties itself, and scores
-        # 0.275 against ramp. Under the owner's rule that is not a candidate.
+    def test_losing_to_the_bar_fails_however_good_the_rest_is(self):
         legs = healthy()
-        legs["vs_ramp"] = leg(0.30, 0.25)
+        legs["vs_v19"] = leg(0.30, 0.25)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_ramp" in f for f in failures), failures)
+        self.assertTrue(any("vs_v19" in f for f in failures), failures)
 
-    def test_beating_the_incumbent_is_not_enough(self):
-        # Comfortably past v17 and the anchor, but only level with ramp.
+    def test_level_with_the_bar_is_not_enough(self):
+        # Comfortably past ramp and the anchor, but only level with the bar.
         legs = healthy()
-        legs["vs_ramp"] = leg(0.55, 0.45)
-        self.assertEqual(legs["vs_ramp"]["a_score"], 0.50)
+        legs["vs_v19"] = leg(0.55, 0.45)
+        self.assertEqual(legs["vs_v19"]["a_score"], 0.50)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_ramp aggregate" in f for f in failures), failures)
+        self.assertTrue(any("vs_v19 aggregate" in f for f in failures), failures)
 
     def test_an_unplayed_bar_leg_cannot_pass(self):
         legs = healthy()
-        del legs["vs_ramp"]
+        del legs["vs_v19"]
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
         self.assertTrue(any("not played" in f for f in failures), failures)
@@ -101,10 +101,10 @@ class TestTheBar(unittest.TestCase):
         # The first bar leg passed; the replay on fresh openings did not.
         # "Definitively better" means both, or it is one lucky opening set.
         legs = healthy()
-        legs["vs_ramp_confirm"] = leg(0.50, 0.45)
+        legs["vs_v19_confirm"] = leg(0.50, 0.45)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_ramp_confirm" in f for f in failures), failures)
+        self.assertTrue(any("vs_v19_confirm" in f for f in failures), failures)
 
     def test_confirmation_uses_a_different_opening_seed(self):
         # Replaying the same seeds would confirm nothing -- it is the sampled
@@ -116,9 +116,9 @@ class TestTheBar(unittest.TestCase):
 
 class TestFailures(unittest.TestCase):
     def test_dup1_case_fails_on_both_counts(self):
-        # vs_v17 0.50 aggregate with a 0.35 Black leg: the real rejected run.
+        # 0.50 aggregate with a 0.35 Black leg: the real rejected run.
         legs = healthy()
-        legs["vs_v17"] = leg(0.65, 0.35)
+        legs["vs_ramp"] = leg(0.65, 0.35)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
         self.assertTrue(any("black" in f for f in failures), failures)
@@ -127,8 +127,8 @@ class TestFailures(unittest.TestCase):
     def test_aggregate_exactly_at_the_line_fails(self):
         # "must beat 0.50" is strict; 0.50 is not beating it.
         legs = healthy()
-        legs["vs_v17"] = leg(0.60, 0.40)
-        self.assertEqual(legs["vs_v17"]["a_score"], 0.50)
+        legs["vs_ramp"] = leg(0.60, 0.40)
+        self.assertEqual(legs["vs_ramp"]["a_score"], 0.50)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
         self.assertTrue(any("aggregate" in f for f in failures), failures)
@@ -143,14 +143,14 @@ class TestFailures(unittest.TestCase):
     def test_side_collapse_fails_behind_a_healthy_aggregate(self):
         # 0.95 White / 0.30 Black aggregates to a respectable 0.625.
         legs = healthy()
-        legs["vs_ramp"] = leg(0.95, 0.30)
-        self.assertGreater(legs["vs_ramp"]["a_score"], 0.60)
+        legs["vs_v19"] = leg(0.95, 0.30)
+        self.assertGreater(legs["vs_v19"]["a_score"], 0.60)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_ramp black" in f for f in failures), failures)
+        self.assertTrue(any("vs_v19 black" in f for f in failures), failures)
 
     def test_every_leg_is_checked_not_just_the_incumbent(self):
-        for name in ("vs_v17", "vs_ramp", "anchor"):
+        for name in ("vs_v19", "vs_ramp", "anchor"):
             legs = healthy()
             games = legs[name]["a_as_white"]["games"] * 2
             legs[name] = leg(0.30, 0.90, games=games)
@@ -159,24 +159,42 @@ class TestFailures(unittest.TestCase):
             self.assertTrue(any(f"{name} white" in f for f in failures), failures)
 
 
+class TestConfirmationTargetsTheBar(unittest.TestCase):
+    def test_confirmation_leg_name_matches_the_bar(self):
+        # A confirmation that replays a DIFFERENT opponent confirms nothing.
+        # This regressed the moment the bar moved from ramp to v19.
+        self.assertTrue(gate.CONFIRM_LEG.startswith(gate.BAR), gate.CONFIRM_LEG)
+
+    def test_confirmation_opponent_is_the_bar_opponent(self):
+        source = (ROOT / "tools" / "gate.py").read_text(encoding="utf-8")
+        self.assertIn("bar_spec = {n: (o, g) for n, o, g in spec}[BAR]", source)
+        self.assertNotIn("play(CONFIRM_LEG, SPARRING", source)
+
+
 class TestConfirmationWiring(unittest.TestCase):
     """run_gate's confirmation branch, without playing games.
 
     HANDOFF SS10.1: rehearse the whole chain. A branch that only executes for a
     passing candidate would otherwise first run months from now, on the one
     result anybody cares about.
+
+    Everything below is written against gate.BAR / gate.CONFIRM_LEG rather than
+    literal leg names, so moving the bar cannot leave these tests asserting
+    something that no longer exists.
     """
 
     def run_with(self, scores):
-        """Drive run_gate with a stub match, returning (result, seeds played)."""
+        """Drive run_gate with a stub match, returning (result, legs played)."""
         import match
         played = []
+        spec = {n: o for n, o, _g in gate.QUICK_LEGS}
 
         def fake_run_match(model_a, model_b, games, sims, seed, *a, **kw):
-            name = ("anchor" if model_b is None
-                    else "vs_ramp" if "ramp" in model_b else "vs_v17")
-            if name == "vs_ramp" and any(s == "vs_ramp" for s, _ in played):
-                name = "vs_ramp_confirm"
+            name = next((n for n, o in spec.items() if o == model_b), None)
+            if name is None:
+                raise AssertionError(f"unexpected opponent {model_b!r}")
+            if name == gate.BAR and any(s == gate.BAR for s, _ in played):
+                name = gate.CONFIRM_LEG
             played.append((name, seed))
             white, black = scores[name]
             out = leg(white, black, games)
@@ -190,32 +208,45 @@ class TestConfirmationWiring(unittest.TestCase):
         finally:
             match.run_match = real
 
+    @staticmethod
+    def _scores(bar, confirm):
+        s = {n: (0.70, 0.60) for n, _o, _g in gate.QUICK_LEGS}
+        s["anchor"] = (0.80, 0.50)
+        s[gate.BAR] = bar
+        s[gate.CONFIRM_LEG] = confirm
+        return s
+
     def test_passing_candidate_gets_a_confirmation_on_a_new_seed(self):
-        scores = {"vs_ramp": (0.60, 0.55), "vs_v17": (0.70, 0.60),
-                  "anchor": (0.80, 0.50), "vs_ramp_confirm": (0.60, 0.55)}
-        out, played = self.run_with(scores)
+        out, played = self.run_with(self._scores((0.60, 0.55), (0.60, 0.55)))
         names = [n for n, _s in played]
-        self.assertIn("vs_ramp_confirm", names)
+        self.assertIn(gate.CONFIRM_LEG, names)
         self.assertTrue(out["confirmed"])
         seeds = dict(played)
-        self.assertNotEqual(seeds["vs_ramp_confirm"], seeds["vs_ramp"])
+        self.assertNotEqual(seeds[gate.CONFIRM_LEG], seeds[gate.BAR])
         self.assertEqual(out["raw_verdict"], "PASS")
 
+    def test_confirmation_replays_the_bar_opponent_not_another_one(self):
+        # The bug this catches: bar moves, confirmation keeps replaying the old
+        # opponent, and a candidate is "confirmed" against something it was
+        # never required to beat.
+        out, played = self.run_with(self._scores((0.60, 0.55), (0.60, 0.55)))
+        bar_opponent = {n: o for n, o, _g in gate.QUICK_LEGS}[gate.BAR]
+        self.assertIn(gate.CONFIRM_LEG, [n for n, _s in played])
+        self.assertEqual(out["legs"][gate.CONFIRM_LEG]["name_b"],
+                         gate.CONFIRM_LEG)
+        self.assertIsNotNone(bar_opponent)
+
     def test_failing_candidate_does_not_spend_time_confirming(self):
-        scores = {"vs_ramp": (0.30, 0.25), "vs_v17": (0.70, 0.60),
-                  "anchor": (0.80, 0.50), "vs_ramp_confirm": (0.60, 0.55)}
-        out, played = self.run_with(scores)
-        self.assertNotIn("vs_ramp_confirm", [n for n, _s in played])
+        out, played = self.run_with(self._scores((0.30, 0.25), (0.60, 0.55)))
+        self.assertNotIn(gate.CONFIRM_LEG, [n for n, _s in played])
         self.assertFalse(out["confirmed"])
         self.assertEqual(out["raw_verdict"], "FAIL")
 
     def test_a_failed_confirmation_flips_the_verdict(self):
-        scores = {"vs_ramp": (0.60, 0.55), "vs_v17": (0.70, 0.60),
-                  "anchor": (0.80, 0.50), "vs_ramp_confirm": (0.40, 0.40)}
-        out, played = self.run_with(scores)
-        self.assertIn("vs_ramp_confirm", [n for n, _s in played])
+        out, played = self.run_with(self._scores((0.60, 0.55), (0.40, 0.40)))
+        self.assertIn(gate.CONFIRM_LEG, [n for n, _s in played])
         self.assertEqual(out["raw_verdict"], "FAIL")
-        self.assertTrue(any("vs_ramp_confirm" in f for f in out["failures"]),
+        self.assertTrue(any(gate.CONFIRM_LEG in f for f in out["failures"]),
                         out["failures"])
 
 
@@ -238,7 +269,7 @@ class TestRehearsalCannotPass(unittest.TestCase):
 
     def test_full_protocol_is_twenty_per_side_against_both_models(self):
         games = {n: g for n, _o, g in gate.FULL_LEGS}
-        self.assertEqual(games["vs_v17"], 40)
+        self.assertEqual(games["vs_v19"], 40)
         self.assertEqual(games["vs_ramp"], 40)
 
     def test_rehearsal_verdict_is_never_pass(self):

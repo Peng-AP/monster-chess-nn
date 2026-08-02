@@ -12,12 +12,12 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
-* **The bar is `fresh_start_v18_ramp`, not the incumbent** (owner, 2026-08-01:
-  "Every model should be better than the last, definitively. Last should be
-  ramp."). A candidate must beat ramp on aggregate, clear the per-side floor on
-  every leg, and then beat ramp *again* on a fresh opening seed. This is a hard
-  bar on purpose: v17 scores 0.275 against ramp, so passing means being far
-  stronger than the current incumbent, which is the point.
+* **The bar is the incumbent, `fresh_start_v19`** (owner, 2026-08-01: "Every
+  model should be better than the last, definitively. Last should be ramp.").
+  It was ramp until 2026-08-02, when v19 was promoted for beating it. A
+  candidate must beat v19 on aggregate, clear the per-side floor on every leg,
+  and then beat v19 *again* on a fresh opening seed. `fresh_start_v18_ramp`
+  remains a floor-bearing leg -- a distinct style, and free to keep.
 * Per-side scores are the verdict; aggregates are reported but never decide a
   leg. Aggregates masking a per-side collapse has burned this project four
   times (law 8).
@@ -47,16 +47,18 @@ SIMS = 400
 # Owner, 2026-08-01: "Every model should be better than the last, definitively.
 # Last should be ramp."
 #
-# So the bar is fresh_start_v18_ramp, not the incumbent. v17 holds the version
-# number because ramp was owner-rejected for its play, but ramp is the
-# strongest engine on record (it beats v17 ~0.65 over 100 games) and a v19
-# candidate has to beat *it*. Both model legs must clear the aggregate; a
-# candidate that beats ramp will beat v17 anyway, so keeping v17 costs nothing
-# and catches anything strange.
-BAR = "vs_ramp"
-AGGREGATE_LEGS = ("vs_ramp", "vs_v17")
+# Until 2026-08-02 the bar was fresh_start_v18_ramp: v17 held the version
+# number, but ramp was the strongest engine on record, so a candidate had to
+# beat *it*.
+# 2026-08-02: v19 promoted, so "the last" is no longer ramp -- v19 beat it
+# (0.7125 pooled over 40 games/side). The bar moves with the rule, not with
+# sentiment: a candidate must now beat the INCUMBENT, and ramp stays as a
+# second floor-bearing opponent because it is a distinct playing style and
+# costs nothing to keep. This STRENGTHENS the gate; no threshold moved.
+BAR = "vs_v19"
+AGGREGATE_LEGS = ("vs_v19", "vs_ramp")
 
-INCUMBENT = os.path.join(ROOT, "models", "fresh_start_v17", "best_value_net.pt")
+INCUMBENT = os.path.join(ROOT, "models", "fresh_start_v19", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -65,18 +67,18 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_ramp_confirm"
+CONFIRM_LEG = "vs_v19_confirm"
 CONFIRM_SEED_OFFSET = 424242
 
 # (leg name, opponent path or None for the heuristic anchor, games)
 FULL_LEGS = [
+    ("vs_v19", INCUMBENT, 40),
     ("vs_ramp", SPARRING, 40),
-    ("vs_v17", INCUMBENT, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
+    ("vs_v19", INCUMBENT, 4),
     ("vs_ramp", SPARRING, 4),
-    ("vs_v17", INCUMBENT, 4),
     ("anchor", None, 2),
 ]
 
@@ -159,10 +161,13 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS):
     # confirmation leg -- there is nothing to confirm about a failure, and the
     # 23 minutes are better spent on the next arm.
     if verdict == "PASS":
-        bar_games = dict((n, g) for n, _o, g in spec)[BAR]
+        # Replay the BAR leg specifically -- look its opponent up rather than
+        # naming one, so moving the bar can never leave this confirming the
+        # wrong model (it did, briefly, when the bar moved from ramp to v19).
+        bar_spec = {n: (o, g) for n, o, g in spec}[BAR]
         print("[gate] provisional PASS -- replaying the bar leg on a fresh "
               "opening seed", flush=True)
-        play(CONFIRM_LEG, SPARRING, bar_games, seed + CONFIRM_SEED_OFFSET)
+        play(CONFIRM_LEG, bar_spec[0], bar_spec[1], seed + CONFIRM_SEED_OFFSET)
         verdict, failures, totals = evaluate_legs(legs)
 
     binding = protocol == "full"
