@@ -61,6 +61,11 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     opening_temp_plies = resolve_opening_temp_plies(model_b, opening_temp_plies)
     workers = workers or DEFAULT_GAME_WORKERS
 
+    # SEED SEPARATION: per-game seeds are seed+i and seed+1000+i, so two runs
+    # whose seeds differ by less than ~1000+games/2 replay overlapping games.
+    # Seeds one apart share 19 of 20 -- a "fresh seed" re-run then reproduces
+    # the first result exactly and looks like reassuring agreement. Space
+    # independent samples by 100000 or more. tests/test_match_seed_separation.py
     n_white = games // 2
     tasks = [(True, seed + i, opening_temp_plies) for i in range(n_white)]
     tasks += [(False, seed + 1000 + i, opening_temp_plies)
