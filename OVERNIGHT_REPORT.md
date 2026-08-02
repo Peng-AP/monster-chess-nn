@@ -479,8 +479,23 @@ rule was measured on v17-era models and B shows no high-sim pathology to 1600.
 
 **The next lever is arm S**, not more policy data. §7 says the knowledge is
 already in there and search extracts it, so the payoff is in sharper value
-targets. D3's generation is the first step; regenerate at 1600 sims when there
-is a night for it.
+targets. But §8.1 changed what "the first step" is — the machine work now runs
+in this order, and the first item gates everything after it:
+
+1. **The label-safe truncation fix.** Truncate generation itself (stop
+   recording once wP<3) or teach the label builder about truncation; a filter
+   applied after the fact silently rewrites the ramp labels of the surviving
+   records. `tests/test_ramp_label_positional.py` pins the hazard so a naive
+   fix fails loudly. Nothing below is worth a night until this is in.
+2. **Regenerate cliff self-play at 1600 sims, v17 values, truncated** (~4 h
+   unattended). The 89-game 400-sim batch in `data/raw/nn_v19_cliff_selfplay`
+   is superseded — **do not merge it as-is**: 9.5% pawn-phase density by
+   record, and White won 63 of 89 games.
+3. **Train and gate S, then KS, on the regenerated data.** §8.2's KS leg is
+   not the value-sharpness verdict; it tested the broken batch and showed
+   exactly what §8.1 predicts.
+4. **Arm C and Phase 4 stay queued behind S.** Capacity gets measured on the
+   best corpus, not before it exists.
 
 **The question I could not answer and you can.** Ramp trained on
 `combined_v16`; every v18 arm that lost to it trained on `combined_v17`; the

@@ -402,9 +402,12 @@ Steps against the noise floor (SE 0.079 on a pooled 40-game leg): owner games
 what architecture (§4.2, a measured null) and duplication (§4.1) never did.**
 
 Still unrun: **S** (cliff self-play — deck built, `data/start_fens/cliff_starts_v2.jsonl`,
-412 starts; generation must take values from v17, not ramp, per M3),
-**KS**, and **C** (capacity; report *tower* params, not total — v18_cap moved
-total by 8% because `policy_fc` is 81.5% of the model).
+412 starts; generation must take values from v17, not ramp, per M3, and **waits
+on the D3 label-safe truncation fix** — the 400-sim batch as generated left
+density at 9.5% and a KS preliminary on it showed no gain, OVERNIGHT_REPORT
+§8), **KS** (gated after S regenerates; the §8.2 bar leg does not count), and
+**C** (capacity; report *tower* params, not total — v18_cap moved total by 8%
+because `policy_fc` is 81.5% of the model).
 
 _Original arm specification:_
 
