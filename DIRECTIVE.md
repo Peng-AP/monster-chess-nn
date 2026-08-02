@@ -194,7 +194,8 @@ records with search-grounded values. Steps:
    games are labeled by outcome, not by its beliefs). Volume target: lift the
    merged corpus's wP≥3 share from 9.4% to **25–30%**.
 
-**D4 — owner-game intake. Bigger than it looked: 25 games, not 2.** Audited
+**D4 — owner-game intake. DONE 2026-08-01. Bigger than it looked: 27 games,
+not 2** (25 from March plus the 2 known July orphans). Audited
 2026-08-01 by content (corpus files store the newer games at 6× in-file
 duplication, so filename and record-count matching both lie). Owner games on
 this box that **no corpus contains**:
@@ -216,6 +217,20 @@ pawn phase; these are 27% and 93%, and the 21 Black games are 21 more instances
 of the owner *converting* the phase Black converts 7–14% of — the existence
 proof D3 wants cliff starts from. Against a human set of 96 games, this is a
 26% increase.
+
+**Folded in** by `tools/add_owner_games.py` at 6× duplication (matching the
+multiple the newer human games already carry, so the new corpus differs from
+`combined_v17` by exactly "these 27 games were added"):
+
+```
+data/raw/combined_v19_base            human_games 96 -> 123 files
+data/processed/combined_v19_base_r50h60   (ramp floor 0.5 / horizon 60, 15ch, seed 42)
+```
+
+`combined_v17` is untouched — v17, ramp and every v18 arm trained on it, and
+mutating it would make those runs irreproducible. **`combined_v19_base` is the
+new base every Phase 3 arm builds on**; the K/B/S/KS merges stack on top of it,
+not on combined_v17.
 
 The `game_00013` hand-corrected label is included as documented — **owner: say
 the word if you do not bless the §7.4 precedent and it comes out.**
