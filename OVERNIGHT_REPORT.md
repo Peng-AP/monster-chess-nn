@@ -209,9 +209,48 @@ Artifacts: `benchmarks/gate_v19_{control,O,K,B}_*.json`,
 
 ---
 
-## 6. M4 — cliff conversion vs search depth
+## 6. The cliff moved — and it is not just opening knowledge
 
-_Pending._
+The gate could have been won on openings alone (16 sampled plies, and
+ps_monster is 829 games of human openings). This separates them: every model
+plays **Black** from the same 150 pawn-phase starts against the same heuristic
+White. No opening is involved — these are mid-game positions.
+
+| model as Black | conversion | mean realized (Black POV) | mean plies |
+|---|---|---|---|
+| v17 | 0.280 | −0.533 | 104 |
+| control | 0.327 | −0.457 | 103 |
+| ramp | 0.347 | −0.417 | 112 |
+| K | **0.473** | −0.150 | 100 |
+| B | **0.527** | −0.023 | 117 |
+
+SE is 0.041 per model, so 0.058 on a difference:
+
+| comparison | Δ | in SE |
+|---|---|---|
+| B − ramp | +0.180 | **3.1** |
+| K − ramp | +0.126 | **2.2** |
+| B − control | +0.200 | 3.4 |
+| B − K | +0.054 | 0.9 |
+| control − v17 | +0.047 | 0.8 |
+
+So the pawn-phase gain is real and it is not an opening artifact. B converts
+positions ramp loses, from identical starts against an identical opponent.
+
+**Two things this does not say, and both matter.**
+
+1. **These absolute rates are not law 1's 7–14%.** The deck is harvested from
+   games Black *won* (`--require-black-win`), so it over-represents winnable
+   positions by construction, and heuristic-White is weak. Both inflate every
+   number in the table. The deck exists to compare models on identical
+   positions, which it does fairly; it is not an estimate of how often Black
+   converts in general, and it must not be quoted as one.
+2. **B vs K is still a null** (0.9 SE here, 0.6 SE at the gate). Two
+   independent measurements agreeing that they cannot be separated is worth
+   more than either alone — but it is agreement on "cannot separate", not on
+   "equal".
+
+Artifacts: `benchmarks/promotion_defense_outcomes_cliff_*.json`.
 
 ---
 
