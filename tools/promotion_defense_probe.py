@@ -127,10 +127,10 @@ def _probe_one(entry):
     return rows
 
 
-def _init_outcomes(white_model, black_model, sims):
+def _init_outcomes(white_model, black_model, white_sims, black_sims):
     from benchmark import _build_engine
-    _state["white"], _ = _build_engine(white_model, sims)
-    _state["black"], _ = _build_engine(black_model, sims)
+    _state["white"], _ = _build_engine(white_model, white_sims)
+    _state["black"], _ = _build_engine(black_model, black_sims)
 
 
 def _play_out(task):
@@ -187,6 +187,12 @@ def main():
                     help="outcomes mode: model for White (default: heuristic)")
     ap.add_argument("--playout-black", default=None, metavar="PATH",
                     help="outcomes mode: model for Black (default: heuristic)")
+    ap.add_argument("--white-sims", type=int, default=None,
+                    help="outcomes mode: White's simulations (default: --sims). "
+                         "Sweeping --sims alone would strengthen BOTH players "
+                         "and confound a search-depth curve.")
+    ap.add_argument("--black-sims", type=int, default=None,
+                    help="outcomes mode: Black's simulations (default: --sims)")
     ap.add_argument("--label", default=None,
                     help="tag for the outcomes artifact filename")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
@@ -232,11 +238,13 @@ def main():
         tasks = [(e["fen"], args.seed + i) for i, e in enumerate(deck)]
         def who(path):
             return os.path.basename(os.path.dirname(path)) if path else "heuristic"
-        print(f"playout: White={who(args.playout_white)} "
-              f"Black={who(args.playout_black)} @ {args.sims} sims")
+        white_sims = args.white_sims or args.sims
+        black_sims = args.black_sims or args.sims
+        print(f"playout: White={who(args.playout_white)}@{white_sims} "
+              f"Black={who(args.playout_black)}@{black_sims} sims")
         with mp.Pool(args.workers, initializer=_init_outcomes,
                      initargs=(args.playout_white, args.playout_black,
-                               args.sims)) as pool:
+                               white_sims, black_sims)) as pool:
             outcomes = pool.map(_play_out, tasks)
         black_wins = sum(1 for o in outcomes if o["result"] < 0)
         payload = {
@@ -244,6 +252,8 @@ def main():
             "deck": os.path.relpath(args.deck, ROOT).replace("\\", "/"),
             "white_player": who(args.playout_white),
             "black_player": who(args.playout_black),
+            "white_sims": white_sims,
+            "black_sims": black_sims,
             "black_win_rate": round(black_wins / len(outcomes), 4) if outcomes else None,
             "mean_plies": round(statistics.fmean(o["plies"] for o in outcomes), 1),
             "outcomes": outcomes,
