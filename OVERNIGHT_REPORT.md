@@ -12,11 +12,29 @@ no gate threshold was moved.
 
 | # | work | status |
 |---|---|---|
-| 1 | M3 referees (v17-as-Black; ramp-both-sides deferred) | see §2 |
+| 1 | M3 referees | done — ramp's optimism is miscalibration, §2 |
 | 2 | D1 value-weight pipeline | done, §3 |
 | 3 | D2 Merge-K / Merge-B corpora | done, §4 |
-| 4 | Phase 3 corpus ladder: control → O → K → B | see §5 |
-| 5 | M4 cliff-vs-sims curve | see §6 |
+| 4 | Phase 3 corpus ladder: control → O → K → B | **3 of 4 beat the bar**, §5 |
+| 5 | Cliff conversion, K-vs-B, calibration | done, §6 |
+| 6 | M4 cliff-vs-sims curve | done — **the cliff is search-limited**, §7 |
+| 7 | D3 cliff self-play generation | launched, time-boxed, §8 |
+
+### The three findings that matter
+
+1. **Data moved what architecture never did.** A control arm on `combined_v17`
+   reproduced the historical 0.300 Black leg against ramp exactly; adding your
+   27 uncorpused games took it to 0.450, and ps_monster to 0.650–0.700. The
+   v18 programme's architecture and duplication levers were measured nulls;
+   the corpus was the variable all along.
+2. **ps_monster's value labels buy game strength and cost calibration.** K and
+   B convert identically while B's value head is 2.4× more miscalibrated.
+3. **The cliff is now search-limited, not knowledge-limited.** B converts
+   0.36 → 0.84 as its search grows 200 → 1600. The knowledge is in there; 400
+   sims does not extract it.
+
+**Nothing is promoted.** Two arms meet both of the owner's criteria and are
+waiting on his playtest.
 
 ---
 
@@ -338,7 +356,58 @@ Artifacts: `benchmarks/promotion_defense_outcomes_pd_{B,K}_*.json`.
 
 ---
 
-## 7. Open, unchanged
+## 7. M4 — the cliff is search-limited
+
+B plays Black from the same 100 cliff starts while **only Black's search
+varies**; White is fixed at heuristic@400. (The probe originally applied one
+`--sims` to both players, which would have strengthened White alongside Black
+and made the curve meaningless; it now takes `--white-sims`/`--black-sims`.)
+
+| Black sims | conversion | SE |
+|---|---|---|
+| 200 | 0.360 | 0.050 |
+| 400 | 0.520 | 0.050 |
+| 800 | 0.670 | 0.050 |
+| 1600 | **0.840** | 0.050 |
+
++0.48 across an 8× range, monotone, ~10 SE. By the directive's own reading
+rule this is the "knowledge is present, search-limited" branch: **the data
+offensive should now target value sharpness — arm S, cliff self-play — rather
+than more policy teaching.**
+
+**What the curve does not say.** White is held at 400 sims while Black climbs
+to 1600, so part of the rise is simply Black outsearching White. It does not
+mean B at 1600 beats a *strong* White at 1600. The finding is about where B's
+ceiling sits relative to what 400 sims extracts, which is what "search-limited"
+means and what decides the next lever.
+
+**A side observation worth checking.** The standing rule is that the owner
+should play at 800 sims and never more, because the model was "measurably worse
+at 2000–5000". B shows no such pathology up to 1600 — it improves monotonically
+throughout. That warning was measured on v17-era models; it may not transfer to
+these arms. Untested above 1600, so the 800-sim playtest rule stands until
+someone measures it.
+
+Artifacts: `benchmarks/promotion_defense_outcomes_m4_B_s{200,400,800,1600}_*.json`.
+
+## 8. D3 — cliff self-play, launched and time-boxed
+
+Deck: `data/start_fens/cliff_starts_v2.jsonl`, 412 wP≥3 starts from games Black
+won (200 ps_monster / 212 owner, wP 3 and 4 evenly split). An uncapped sample
+came out 89% ps_monster and buried the owner's own conversions, which are the
+existence proof the deck is for; `--cap-per-source` fixes it.
+
+Generation is **v17 vs v17 at 400 sims**, into
+`data/raw/nn_v19_cliff_selfplay`. Two deliberate choices:
+
+* **v17, not ramp, produces the values** — M3 measured ramp at +0.518
+  calibration error, so its search values are not trustworthy training signal.
+  v17 is the best-calibrated model available (+0.130).
+* **400 sims is a time-box, not the right answer.** The directive specifies
+  1600 and §7 has just shown why sharper search matters; 1600 would need ~4 h
+  and the window was ~1 h. **A future run should regenerate at 1600.**
+
+## 9. Open, unchanged
 
 - **The v16/v17 corpus confound.** Ramp trained on `combined_v16`; all three
   v18 arms that died on its Black leg trained on `combined_v17`; the whole
