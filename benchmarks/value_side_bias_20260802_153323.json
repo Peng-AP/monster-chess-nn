@@ -1,0 +1,27 @@
+{
+  "positions": 3000,
+  "test_games": 120,
+  "raw_dir": "data/raw/combined_v19_B",
+  "data_dir": "data/processed/combined_v19_B_r50h60",
+  "seed": 0,
+  "value_floor": 0.5,
+  "value_horizon": 60,
+  "convention": "bias = predicted - outcome-grounded target, White POV; positive means the model favours White",
+  "models": {
+    "K_v19": {
+      "white_to_move_bias": -0.0199,
+      "black_to_move_bias": -0.0282,
+      "side_gap": 0.0082,
+      "n_white": 1923,
+      "n_black": 1077
+    },
+    "C": {
+      "white_to_move_bias": 0.0229,
+      "black_to_move_bias": -0.0173,
+      "side_gap": 0.0402,
+      "n_white": 1923,
+      "n_black": 1077
+    }
+  },
+  "timestamp": "2026-08-02T15:33:23"
+}
