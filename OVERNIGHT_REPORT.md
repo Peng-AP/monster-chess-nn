@@ -433,6 +433,31 @@ Generation is **v17 vs v17 at 400 sims**, into
   1600 and §7 has just shown why sharper search matters; 1600 would need ~4 h
   and the window was ~1 h. **A future run should regenerate at 1600.**
 
+### 8.2 Arm KS — a preliminary negative, consistent with 8.1
+
+`combined_v19_K` + the 89 generated games, same frozen recipe (best epoch 12,
+early stop 22). Then **only the bar leg**, on the same seed the gate uses for
+it — so this is directly comparable to K's primary bar leg, *identical
+openings*:
+
+| | vs ramp | White | Black |
+|---|---|---|---|
+| K | 0.725 | 0.65 | **0.80** |
+| KS | 0.6875 | 0.775 | **0.60** |
+
+**This is one 40-game leg, not a gate verdict, and it is explicitly labelled as
+such** — §5.1 showed a single leg of a fixed matchup swinging 0.15. The
+aggregate difference is 0.5 SE (nothing); the Black difference is 1.8 SE
+(suggestive of a regression, not proof of one).
+
+What it does support: the cliff self-play **as generated** did not help. That
+is what 8.1 predicts — 6,219 records at 9.5% pawn-phase density, in which White
+won 63 of 89 games, added to a corpus whose problem is Black. Fix the density
+and the truncation-label issue before judging the value-sharpness hypothesis;
+this run does not test it fairly.
+
+Artifact: `benchmarks/match_v19_KS_vs_fresh_start_v18_ramp_20260802_072327.json`.
+
 ## 9. Where to pick this up
 
 **Two candidates are ready for your playtest.** Both clear the gate twice on
