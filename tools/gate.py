@@ -12,6 +12,12 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
+* **The bar is `fresh_start_v18_ramp`, not the incumbent** (owner, 2026-08-01:
+  "Every model should be better than the last, definitively. Last should be
+  ramp."). A candidate must beat ramp on aggregate, clear the per-side floor on
+  every leg, and then beat ramp *again* on a fresh opening seed. This is a hard
+  bar on purpose: v17 scores 0.275 against ramp, so passing means being far
+  stronger than the current incumbent, which is the point.
 * Per-side scores are the verdict; aggregates are reported but never decide a
   leg. Aggregates masking a per-side collapse has burned this project four
   times (law 8).
@@ -35,23 +41,43 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 # --- The protocol. Constants on purpose; see the module docstring. ---
 PER_SIDE_FLOOR = 0.40
-V17_AGGREGATE_MIN = 0.50          # must be strictly beaten
+AGGREGATE_MIN = 0.50              # must be strictly beaten
 SIMS = 400
+
+# Owner, 2026-08-01: "Every model should be better than the last, definitively.
+# Last should be ramp."
+#
+# So the bar is fresh_start_v18_ramp, not the incumbent. v17 holds the version
+# number because ramp was owner-rejected for its play, but ramp is the
+# strongest engine on record (it beats v17 ~0.65 over 100 games) and a v19
+# candidate has to beat *it*. Both model legs must clear the aggregate; a
+# candidate that beats ramp will beat v17 anyway, so keeping v17 costs nothing
+# and catches anything strange.
+BAR = "vs_ramp"
+AGGREGATE_LEGS = ("vs_ramp", "vs_v17")
 
 INCUMBENT = os.path.join(ROOT, "models", "fresh_start_v17", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
-# (leg name, opponent path or None for the heuristic anchor, games, decides_aggregate)
+# "Definitively" has a measured meaning here. Two independent 40-game samples
+# of the SAME matchup (ramp vs v17) came out 0.575 and 0.725 on 2026-08-01 --
+# per-leg variance is dominated by the sampled opening set, so one leg above
+# 0.50 is not a definitive anything. A candidate that passes therefore replays
+# the bar leg on a different opening seed and must clear it twice.
+CONFIRM_LEG = "vs_ramp_confirm"
+CONFIRM_SEED_OFFSET = 424242
+
+# (leg name, opponent path or None for the heuristic anchor, games)
 FULL_LEGS = [
-    ("vs_v17", INCUMBENT, 40, True),
-    ("vs_ramp", SPARRING, 40, False),
-    ("anchor", None, 20, False),
+    ("vs_ramp", SPARRING, 40),
+    ("vs_v17", INCUMBENT, 40),
+    ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v17", INCUMBENT, 4, True),
-    ("vs_ramp", SPARRING, 4, False),
-    ("anchor", None, 2, False),
+    ("vs_ramp", SPARRING, 4),
+    ("vs_v17", INCUMBENT, 4),
+    ("anchor", None, 2),
 ]
 
 
@@ -76,10 +102,16 @@ def evaluate_legs(legs):
             elif score < PER_SIDE_FLOOR:
                 failures.append(
                     f"{name} {label} leg {score:.4f} < {PER_SIDE_FLOOR:.2f}")
-    v17 = legs.get("vs_v17")
-    if v17 is not None and v17["a_score"] <= V17_AGGREGATE_MIN:
-        failures.append(
-            f"vs_v17 aggregate {v17['a_score']:.4f} <= {V17_AGGREGATE_MIN:.2f}")
+    for name in AGGREGATE_LEGS + (CONFIRM_LEG,):
+        leg = legs.get(name)
+        if leg is not None and leg["a_score"] <= AGGREGATE_MIN:
+            failures.append(
+                f"{name} aggregate {leg['a_score']:.4f} <= {AGGREGATE_MIN:.2f}")
+
+    # The bar leg is not optional. A run that never played it cannot pass,
+    # however good the rest looks.
+    if legs.get(BAR) is None:
+        failures.append(f"{BAR} leg was not played")
 
     # Process note SS12: read the per-side totals across ALL legs against the
     # noise floor before believing any direction. A single leg moving is one
@@ -105,21 +137,34 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS):
     from match import run_match
 
     legs = {}
-    for i, (name, opponent, games, _agg) in enumerate(spec):
+
+    def play(name, opponent, games, leg_seed):
         print(f"[gate] leg {name}: {games} games vs "
               f"{os.path.basename(os.path.dirname(opponent)) if opponent else 'heuristic'}",
               flush=True)
         t0 = time.time()
-        # Distinct seed per leg so the legs are independent samples rather than
-        # the same openings replayed against three opponents.
-        legs[name] = run_match(model, opponent, games, sims, seed + 100 * i,
+        legs[name] = run_match(model, opponent, games, sims, leg_seed,
                                workers=workers)
         print(f"[gate]   {name}: a_score={legs[name]['a_score']} "
               f"W={legs[name]['a_as_white']['score']} "
               f"B={legs[name]['a_as_black']['score']} "
               f"({time.time() - t0:.0f}s)", flush=True)
 
+    for i, (name, opponent, games) in enumerate(spec):
+        play(name, opponent, games, seed + 100 * i)
+
     verdict, failures, totals = evaluate_legs(legs)
+
+    # Only a candidate that has already cleared everything earns the
+    # confirmation leg -- there is nothing to confirm about a failure, and the
+    # 23 minutes are better spent on the next arm.
+    if verdict == "PASS":
+        bar_games = dict((n, g) for n, _o, g in spec)[BAR]
+        print("[gate] provisional PASS -- replaying the bar leg on a fresh "
+              "opening seed", flush=True)
+        play(CONFIRM_LEG, SPARRING, bar_games, seed + CONFIRM_SEED_OFFSET)
+        verdict, failures, totals = evaluate_legs(legs)
+
     binding = protocol == "full"
     return {
         "candidate": os.path.basename(os.path.dirname(model)),
@@ -129,9 +174,12 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS):
         "verdict": verdict if binding else "REHEARSAL",
         "raw_verdict": verdict,
         "failures": failures,
+        "bar": BAR,
+        "confirmed": CONFIRM_LEG in legs,
         "thresholds": {
             "per_side_floor": PER_SIDE_FLOOR,
-            "v17_aggregate_min_exclusive": V17_AGGREGATE_MIN,
+            "aggregate_min_exclusive": AGGREGATE_MIN,
+            "aggregate_legs": list(AGGREGATE_LEGS),
             "sims": sims,
         },
         "per_side_totals_across_legs": totals,

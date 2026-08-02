@@ -203,11 +203,23 @@ M1 (80/10 if headroom is real, else 30/10). Naming: `models/candidates/v19_*`.
 Five arms ≈ 2 hours of training total at GPU rates. The budget lives in the
 gates, not the training — which is exactly how it should be.
 
-**Gate protocol, every arm identically** (committed driver from Phase 0):
+**Gate protocol, every arm identically** — `py -3 tools/gate.py --model ...`:
+- **vs `fresh_start_v18_ramp` — the bar** — 40 games (20/side), 400 sims
 - vs `fresh_start_v17` — 40 games (20/side), 400 sims
-- vs `fresh_start_v18_ramp` — 40 games (20/side), 400 sims
 - heuristic anchor — 20 games, 400 sims
-- Per-side floor **0.40** on every leg, aggregate must beat 0.50 vs v17.
+- **confirmation**: a candidate that clears all of the above replays the bar
+  leg on a fresh opening seed and must clear it again (+23 min, passing
+  candidates only).
+- Per-side floor **0.40** on every leg; aggregate must beat 0.50 on **both**
+  model legs.
+
+**Owner, 2026-08-01: "Every model should be better than the last,
+definitively. Last should be ramp."** The bar is ramp, not the incumbent —
+v17 holds the version number, ramp holds the strength. This is a hard bar:
+v17 itself scores **0.275** against ramp. Arms will die here while comfortably
+beating the incumbent, and that is the intent. The confirmation leg exists
+because two independent 40-game reads of one fixed matchup came out 0.575 and
+0.725 (PHASE0_REPORT §5.1) — one leg over 0.50 is not "definitively".
 - **Read per process note §12:** total per-side scores across all legs against
   the noise floor (SE ≈ √(n·0.25)) before believing any direction. n=20/side
   halves the false-floor-trip rate that §4.1 demonstrated at n=10.

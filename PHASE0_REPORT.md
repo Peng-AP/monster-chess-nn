@@ -6,8 +6,8 @@ done. Getting there turned up a performance bug worth more than the
 calibration, and three worker defaults that would each have crashed an
 unattended run.
 
-**One decision is waiting on the owner: §6.3, what the `vs_ramp` floor means.**
-Nothing was changed pending it.
+**Owner decision, taken and encoded (§6.3): the bar is `fresh_start_v18_ramp`,
+and a candidate must clear it twice on different openings.**
 
 Evidence: `benchmarks/gate_fresh_start_v18_ramp_20260801_183353.json`,
 `benchmarks/gate_fresh_start_v17_20260801_190524.json`,
@@ -194,30 +194,36 @@ read exactly 0.40 there; `tests/test_gate_protocol.py` pins that 0.40 passes.)
 So the answer to §5.4's question is yes: the protocol is satisfiable as
 written, and ramp's 0.20 is a genuine deficiency rather than an impossible bar.
 
-**6.3 The decision: what the `vs_ramp` floor means.** The incumbent scores
+**6.3 DECIDED (owner, 2026-08-01): the bar is ramp.** *"Every model should be
+better than the last, definitively. Last should be ramp."*
+
+Encoded in `tools/gate.py`, which now:
+
+- makes **`vs_ramp` the decisive leg** — its aggregate must beat 0.50, and it
+  is played first so a run that dies partway still has the leg that matters;
+- keeps the aggregate requirement on `vs_v17` too (free: anything beating ramp
+  beats v17) and the 0.40 per-side floor on every leg, unchanged;
+- adds a **confirmation leg**: a candidate that clears everything replays the
+  bar leg on a fresh opening seed and must clear it again. This is what
+  "definitively" costs, and §5.1 is why it exists — one 40-game leg of a fixed
+  matchup swung 0.575 to 0.725, so a single reading above 0.50 confirms
+  nothing. Only passing candidates pay the extra 23 minutes.
+
+`fresh_start_v18_ramp` stays in `models/rejected/` and stays unpromoted — it
+holds no version number, it is only the strength bar. The original discussion
+that this replaces is kept below because it records what the incumbent's
+numbers were when the decision was taken.
+
+**The old open question.** The incumbent scores
 **0.275** against the sparring partner. The protocol requires every v19
 candidate to reach **0.40 on each side** of that leg. That is not a small
 step up from the incumbent — it is a demand that a candidate be far stronger
 against ramp than v17 has ever been, and dup1 was already partly rejected on
 these legs.
 
-Three readings, all consistent with never weakening a threshold:
-
-1. **As written** — the floor governs every leg of every opponent, ramp
-   included. Fine, but expect arms to die on `vs_ramp` while beating the
-   incumbent, and expect that to be uninformative about the cliff.
-2. **Ramp is a reported opponent, not a floor-bearing one** — the floor governs
-   `vs_v17` and the anchor; the ramp legs are measured and reported, and a
-   candidate is not failed on them alone. This keeps every existing threshold
-   untouched and only settles *which* legs they apply to, which the directive
-   never actually specified.
-3. **Keep it and accept it as the bar for v19** — the campaign's stated goal is
-   a model good enough to beat the owner, and ramp is the strongest engine on
-   record.
-
-**This is the owner's call and nothing was changed pending it.** `gate.py`
-implements reading 1 today. If reading 2 is wanted it is a one-line change to
-which legs `evaluate_legs` enforces, plus a test.
+The owner's answer was the strict one, and stronger: ramp is not just
+floor-bearing, it is *the* bar. Expect arms to die on `vs_ramp` while beating
+the incumbent — that is now the intended behaviour, not a symptom.
 
 **6.4 Both engines are weaker as Black.** Per-side totals across all legs:
 v17 White 0.49 / Black 0.36; ramp White 0.66 / Black 0.39. Law 1, unmoved, now
