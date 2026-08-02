@@ -123,19 +123,87 @@ re-rolling it. Gate at 20/side. Two possible worlds:
   Phase 3 arm inherits the 80/10 budget.** At 15 min/run this costs nothing to
   know.
 
-**M2 — MCTS promotion-defense probe at population scale (HANDOFF §8.1).** The
-§4.4 refused-capture failure lives in Q, not priors; the static probe measured
-priors. Run the 400-position deck through **search** (400 sims, no noise) for
-dup1/gap/ramp/v17: capture-chosen rate, Q(capture) vs Q(best-refusal) per
-model. Output: whether dup1's n=1 failure is a population defect, and a
-reusable promotion-defense eval deck for Phase 3 reporting.
+**M2 — DONE 2026-08-01: dup1's refusal is not a population defect.** 400
+positions through search (400 sims, no noise), all four models. Evidence:
+`benchmarks/promotion_defense_search_20260801_210436.json`.
 
-**M3 — ramp optimism audit (HANDOFF §4.5).** Same 400 positions: calibration
-of predicted value vs realized outcome (bucket predictions, plot realized win
-rate). Ramp reads +0.58 for Black with a White pawn on b7; if that is
-miscalibration, ramp remains a fine *opponent* but its self-play data would be
-value-tainted — which decides whether Phase 2's self-play uses v17, ramp, or
-both as players.
+| model | capture rate | capture never visited | refused despite higher capture Q | mean value (Black POV) |
+|---|---|---|---|---|
+| v17 | **0.565** | 83 | 12 | −0.537 |
+| ramp | 0.585 | 67 | 10 | **−0.129** |
+| gap | 0.603 | 65 | 10 | −0.399 |
+| dup1 | 0.595 | 57 | 13 | −0.377 |
+
+dup1 is mid-pack on every column and the **incumbent** is the worst — lowest
+capture rate, most positions where search never visits the capture at all.
+§4.4 closes: the failure was n=1, now confirmed in Q and not only in priors.
+
+The probe reproduces the §4.4 anchor position to four decimals (capture priors
+dup1 0.0908 / gap 0.1149 / ramp 0.1169 / v17 0.5835 against the recorded
+0.0907 / 0.1147 / 0.1172 / 0.5834, and dup1 alone plays `a8b8`), which is what
+licenses trusting the rest of the run.
+
+Deck and probe are committed — `tools/make_promotion_defense_deck.py`,
+`data/start_fens/promotion_defense_deck_v1.jsonl` (400 of 960 qualifying
+positions), `tools/promotion_defense_probe.py`. The original deck lived in a
+scratchpad on the old box and is gone, so absolute values are **not**
+comparable to the recorded §4.4/§4.5 numbers; orderings are.
+
+**Two metric bugs were found and fixed mid-run; both would have inverted a
+conclusion.** (1) `MCTSNode.q_value` returns 0.0 for an unvisited child, and Q
+here is mostly negative, so "best non-capture" read 0.0 in nearly every
+position — the first pass showed a negative mean Q gap, i.e. the exact opposite
+of the corrected +0.10 to +0.13. (2) `NNEvaluator.evaluate_with_policy` returns
+a **White**-perspective value while a root child's Q is **root side-to-move** —
+mixing them flips the sign of the headline. Everything above is Black-POV.
+
+**M3 — PARTIAL, paused 2026-08-01 by owner. Resume here.**
+
+§4.5's ordering **reproduced on an independent deck**: mean predicted value
+(Black POV) ramp −0.129, dup1 −0.377, gap −0.399, v17 −0.537, against the
+recorded ramp −0.02 / dup1 −0.33 / gap −0.35 / v17 −0.47. Ramp is by far the
+most Black-optimistic, and it is now the bar.
+
+**The first ground truth was invalid and is kept only as a cautionary
+artifact** (`promotion_defense_outcomes_20260801_210716.json`). Heuristic on
+both sides converts Black in **3 of 400** positions (0.75%), so every predicted
+band maps to realized −1.00 and the calibration discriminates nothing. It would
+have produced a confident table declaring all four models wildly optimistic —
+equally consistent with the models being right and the referee being unable to
+play Black. **A referee too weak to convert cannot adjudicate optimism about
+converting.**
+
+**Referee run 1 of 3 done** (`..._outcomes_rampblack_20260801_214726.json`):
+ramp itself as Black vs heuristic White, 400 positions, 400 sims, 37.5 min.
+
+| | |
+|---|---|
+| Black conversion | **0.2075** (vs 0.0075 under heuristic-Black — 28×) |
+| outcomes | 314 losses, 56 Black-dominant draws, 27 wins, 3 draws |
+| mean realized (Black POV) | **−0.647** |
+| ramp's mean prediction | **−0.129** |
+
+Ramp is measured against *its own play*, against a White weak enough to
+flatter Black, and still reads **+0.52 optimistic**. That points at §4.5 being
+miscalibration rather than insight — but see the caveat below before acting.
+
+**Not yet run** (each ~37.5 min, the third slower because it is NN-vs-NN):
+- `--playout-black models/fresh_start_v17/...` — does the M2 ordering survive
+  contact with realized outcomes? v17 predicts −0.537; if it converts near
+  that it is calibrated and ramp is not.
+- `--playout-white ramp --playout-black ramp` — the strong-White ceiling. Can
+  only push realized value further below prediction, so it sharpens the
+  magnitude and cannot flip the direction.
+
+**Caveat that must survive the pause:** heuristic-White is weak, so 0.2075
+*overstates* what Black converts against real opposition. The conclusion
+"ramp's value head is miscalibrated" is well supported in direction; the
+magnitude is not pinned until a strong White is measured.
+
+**What this decides:** whether Phase 2's D3 cliff self-play may use ramp as a
+player. If ramp's value head is miscalibrated, it stays a fine *opponent*
+(games labelled by outcome, not by its beliefs) but its search values are not
+trustworthy training signal.
 
 **M4 — cliff-vs-sims conversion curve.** From the cliff deck (see D3), Black
 conversion rate at 200/400/800/1600/3200 sims, v17 and ramp, vs both

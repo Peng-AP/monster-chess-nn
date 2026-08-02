@@ -87,17 +87,25 @@ def _probe_one(entry):
         oth_q = oth_visits = None
         total_visits = sum(c.visit_count for c in root.children) or 1
         cap_visit_share = 0.0
+        cap_seen = False
         for child in root.children:
             uci = child.action.uci() if isinstance(child.action, chess.Move) else str(child.action)
             is_cap = uci in captures
+            # MCTSNode.q_value returns 0.0 for an UNVISITED child. Most Q here
+            # is negative, so including unvisited children makes "best other"
+            # 0.0 in almost every position and the comparison meaningless.
+            # Only visited children carry a search opinion.
+            visited = child.visit_count > 0
             q = child.q_value
             if is_cap:
+                cap_seen = True
                 cap_visit_share += child.visit_count / total_visits
-                if cap_q is None or q > cap_q:
+                if visited and (cap_q is None or q > cap_q):
                     cap_q, cap_visits, cap_prior = q, child.visit_count, child.prior
-            else:
-                if oth_q is None or q > oth_q:
-                    oth_q, oth_visits = q, child.visit_count
+                if cap_prior is None:
+                    cap_prior = child.prior
+            elif visited and (oth_q is None or q > oth_q):
+                oth_q, oth_visits = q, child.visit_count
 
         action, _probs, search_value = engine.get_best_action(game, temperature=0.0)
         chosen = action.uci() if isinstance(action, chess.Move) else str(action)
@@ -113,21 +121,23 @@ def _probe_one(entry):
             "visits_best_other": oth_visits,
             "prior_capture": None if cap_prior is None else round(float(cap_prior), 4),
             "capture_visit_share": round(cap_visit_share, 4),
+            "capture_visited": cap_visits is not None,
+            "capture_offered": cap_seen,
         }
     return rows
 
 
-def _init_outcomes(sims):
+def _init_outcomes(white_model, black_model, sims):
     from benchmark import _build_engine
-    _state["heuristic"], _ = _build_engine(None, sims)
+    _state["white"], _ = _build_engine(white_model, sims)
+    _state["black"], _ = _build_engine(black_model, sims)
 
 
 def _play_out(task):
     from benchmark import play_one
     fen, seed = task
     random.seed(seed)
-    engine = _state["heuristic"]
-    result, plies, _dec = play_one(engine, engine, start_fen=fen)
+    result, plies, _dec = play_one(_state["white"], _state["black"], start_fen=fen)
     return {"fen": fen, "result": result, "plies": plies}
 
 
@@ -138,8 +148,12 @@ def summarize(rows_by_model):
         chose = sum(1 for r in rows if r["chose_capture"])
         gaps = [r["q_capture"] - r["q_best_other"] for r in rows
                 if r["q_capture"] is not None and r["q_best_other"] is not None]
-        declined = [r for r in rows if not r["chose_capture"]
-                    and r["q_capture"] is not None and r["q_best_other"] is not None]
+        # Only the positions where search actually formed an opinion on both
+        # options can say anything about *why* a refusal happened.
+        judged = [r for r in rows if r["q_capture"] is not None
+                  and r["q_best_other"] is not None]
+        refused_despite_better_q = [r for r in judged if not r["chose_capture"]
+                                    and r["q_capture"] > r["q_best_other"]]
         out[name] = {
             "positions": n,
             "chose_capture": chose,
@@ -151,8 +165,10 @@ def summarize(rows_by_model):
                 statistics.fmean(r["search_value_black"] for r in rows), 4) if n else None,
             "mean_prior_capture": round(statistics.fmean(
                 r["prior_capture"] for r in rows if r["prior_capture"] is not None), 4),
+            "positions_with_both_q": len(judged),
             "mean_q_gap_capture_minus_other": round(statistics.fmean(gaps), 4) if gaps else None,
-            "declined_with_q_margin": len(declined),
+            "capture_unvisited": sum(1 for r in rows if not r["capture_visited"]),
+            "refused_despite_higher_capture_q": len(refused_despite_better_q),
         }
     return out
 
@@ -167,6 +183,12 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260801)
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
+    ap.add_argument("--playout-white", default=None, metavar="PATH",
+                    help="outcomes mode: model for White (default: heuristic)")
+    ap.add_argument("--playout-black", default=None, metavar="PATH",
+                    help="outcomes mode: model for Black (default: heuristic)")
+    ap.add_argument("--label", default=None,
+                    help="tag for the outcomes artifact filename")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     args = ap.parse_args()
 
@@ -208,14 +230,20 @@ def main():
         stem = "promotion_defense_search"
     else:
         tasks = [(e["fen"], args.seed + i) for i, e in enumerate(deck)]
+        def who(path):
+            return os.path.basename(os.path.dirname(path)) if path else "heuristic"
+        print(f"playout: White={who(args.playout_white)} "
+              f"Black={who(args.playout_black)} @ {args.sims} sims")
         with mp.Pool(args.workers, initializer=_init_outcomes,
-                     initargs=(args.sims,)) as pool:
+                     initargs=(args.playout_white, args.playout_black,
+                               args.sims)) as pool:
             outcomes = pool.map(_play_out, tasks)
         black_wins = sum(1 for o in outcomes if o["result"] < 0)
         payload = {
             "mode": "outcomes", "sims": args.sims, "positions": len(deck),
             "deck": os.path.relpath(args.deck, ROOT).replace("\\", "/"),
-            "player": "heuristic both sides",
+            "white_player": who(args.playout_white),
+            "black_player": who(args.playout_black),
             "black_win_rate": round(black_wins / len(outcomes), 4) if outcomes else None,
             "mean_plies": round(statistics.fmean(o["plies"] for o in outcomes), 1),
             "outcomes": outcomes,
@@ -223,6 +251,8 @@ def main():
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         stem = "promotion_defense_outcomes"
+        if args.label:
+            stem += f"_{args.label}"
 
     os.makedirs(args.out_dir, exist_ok=True)
     path = os.path.join(args.out_dir,
