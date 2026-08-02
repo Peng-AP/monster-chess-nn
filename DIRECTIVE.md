@@ -249,8 +249,27 @@ pin: default all-ones (bit-identical behavior on old corpora), zero-weight
 records contribute zero value gradient. This makes "teach policy, not value"
 expressible — the capability HANDOFF said was "bounded; not yet scoped."
 
-**D2 — ps_monster merges, both forks.** The knowledge-vs-belief fork stops
-being a debate and becomes an A/B:
+**D2 — DONE 2026-08-02. ps_monster is the lever, and the fork has a nuanced
+answer: the value labels buy game strength and cost calibration.**
+
+Both arms beat the bar. Against ramp, pooled over the bar leg and its
+confirmation (40 games/side): **K 0.7125 aggregate (Black 0.700), B 0.7625
+(Black 0.650)**, against a control on `combined_v17` that scored 0.425 with a
+Black leg of **0.300** — the identical 0.30 the v18 gap/spatial/dup1 arms died
+on. Cliff conversion rose from ramp's 0.347 to K 0.473 / B 0.527.
+
+Then the fork itself, isolated: on the promotion-defense deck K and B convert
+**identically** (0.395 vs 0.405, n=200, SE 0.035) while B's value head is
+**+0.283 miscalibrated against K's +0.119**. Same positions, same opponent,
+same results, different beliefs. Head-to-head B beats K 0.65–0.35.
+
+So: ps_monster's outcome labels do not improve conversion, they inflate
+optimism — and B nonetheless wins more games. Full tables in
+`OVERNIGHT_REPORT.md` §5–6. **Which to prefer is an owner call**, sharpened by
+the fact that ramp was rejected for exactly the sort of play faults an
+over-optimistic value head produces.
+
+_Original specification, kept for the record:_
 - **Merge-K (knowledge):** combined_v17 + ps_monster at 1×, ps records
   `value_weight=0` — 43,939 records of policy-only teaching, 41.2% pawn phase,
   829 games of opening structures the corpus has never seen, zero risk of
@@ -322,6 +341,28 @@ the word if you do not bless the §7.4 precedent and it comes out.**
 
 All arms: ramp labels (r50h60), scalar head, 15ch, seed 42, epoch budget from
 M1 (80/10 if headroom is real, else 30/10). Naming: `models/candidates/v19_*`.
+
+**RUN 2026-08-02.** The ladder was built on `combined_v19_base` (v17 + the 27
+owner games), not `combined_v17`, and a `control` rung was added so each step
+attributes one change. Results — verdicts are from `tools/gate.py`, unmodified:
+
+| arm | corpus | verdict | vs ramp pooled (W/B) | Black, all legs |
+|---|---|---|---|---|
+| control | combined_v17 | **FAIL** | 0.550 / **0.300** | 0.440 |
+| **O** | + 27 owner games | **PASS** | 0.775 / 0.450 | 0.500 |
+| **K** | + ps(value_weight 0) | **PASS** | 0.725 / **0.700** | 0.671 |
+| **B** | + ps(full value) | **PASS** | **0.875** / 0.650 | 0.686 |
+
+Steps against the noise floor (SE 0.079 on a pooled 40-game leg): owner games
++0.150 (1.9 SE), ps_monster a further +0.20–0.25 (2.5–3.2 SE). **Data moved
+what architecture (§4.2, a measured null) and duplication (§4.1) never did.**
+
+Still unrun: **S** (cliff self-play — deck built, `data/start_fens/cliff_starts_v2.jsonl`,
+412 starts; generation must take values from v17, not ramp, per M3),
+**KS**, and **C** (capacity; report *tower* params, not total — v18_cap moved
+total by 8% because `policy_fc` is 81.5% of the model).
+
+_Original arm specification:_
 
 | arm | corpus | tests |
 |---|---|---|
