@@ -99,7 +99,19 @@ ramp itself — its gate results stand.
 
 These aim the campaign; all are cheap now and none needs owner time.
 
-**M1 — epoch headroom (HANDOFF §4.6, no longer parked).** Rerun the v18 GAP
+**M1 — DONE 2026-08-01, and the answer is "no headroom".** Ran verbatim at
+`--epochs 80 --patience 10` (`models/candidates/v19_m1_ep80`): **best epoch 24,
+early stopped at 34.** The recorded 30-epoch run's best was 25, so lifting the
+cap from 30 to 80 moved the best epoch by −1, inside GPU/CPU nondeterminism.
+
+Under-training is therefore **excluded**: every v18-era negative stands on its
+own merits, and Phase 3 arms take a **30–40 epoch budget with patience 10**.
+The parked question from HANDOFF §4.6 is closed — it was cheap to ask and the
+answer was the unglamorous one. (Retire the retraction note in the
+`training-run-audit-facts` memory: the record now has the measurement, not an
+inference from cap-vs-patience.)
+
+_Original specification, kept for the record:_ Rerun the v18 GAP
 arm verbatim — `--data-dir data/processed/combined_v17_r50h60 --target
 game_result --value-head scalar --seed 42` — at `--epochs 80 --patience 10`.
 StepLR is epoch-indexed and the shuffle is seeded per-epoch, so the first 30
@@ -182,10 +194,31 @@ records with search-grounded values. Steps:
    games are labeled by outcome, not by its beliefs). Volume target: lift the
    merged corpus's wP≥3 share from 9.4% to **25–30%**.
 
-**D4 — owner-game intake.** Add the two orphaned 2026-07-26 playtest games
-(`black_2026_07/game_00023`, `white_2026_07/game_00014`) to the corpus human
-set. The `game_00013` hand-corrected label is included as documented — **owner:
-say the word if you do not bless the §7.4 precedent and it comes out.**
+**D4 — owner-game intake. Bigger than it looked: 25 games, not 2.** Audited
+2026-08-01 by content (corpus files store the newer games at 6× in-file
+duplication, so filename and record-count matching both lie). Owner games on
+this box that **no corpus contains**:
+
+| directory | games | positions | wP≥3 | outcome | replay |
+|---|---|---|---|---|---|
+| `human_games/black_2026_03` | **21** | 798 | **27.1%** | owner-as-Black won all 21 | 21/21 clean |
+| `human_games/white_2026_03` | **4** | 68 | **92.6%** | owner-as-White won all 4 | 4/4 clean |
+| `black_2026_07/game_00023` | 1 | 38 | — | the dup1 echo game | clean |
+| `white_2026_07/game_00014` | 1 | 19 | — | the refused-capture game | clean |
+
+The March directories are on this box only — they were never on the CPU box
+(HANDOFF recorded "4+3 from 2026-03"; there are 4 and **21**). They replay
+without a single error under the current post-2026-07-04 ruleset, so the rules
+correction did not invalidate them.
+
+**This is the highest-density owner data the project has.** The corpus is 9.4%
+pawn phase; these are 27% and 93%, and the 21 Black games are 21 more instances
+of the owner *converting* the phase Black converts 7–14% of — the existence
+proof D3 wants cliff starts from. Against a human set of 96 games, this is a
+26% increase.
+
+The `game_00013` hand-corrected label is included as documented — **owner: say
+the word if you do not bless the §7.4 precedent and it comes out.**
 
 ## 4. Phase 3 — training arms
 
