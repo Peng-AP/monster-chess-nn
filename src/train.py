@@ -461,9 +461,17 @@ def load_data(data_dir):
         # Backward compatibility with processed corpora created before policy
         # masking existed: every record remains a policy teacher.
         policy_weights = np.ones((len(policies),), dtype=np.float32)
+    value_weights_path = os.path.join(data_dir, "value_weights.npy")
+    if os.path.exists(value_weights_path):
+        value_weights = np.load(value_weights_path)
+    else:
+        # Corpora processed before value weighting existed: every record is a
+        # value teacher, which is exactly what they trained as.
+        value_weights = np.ones((len(policies),), dtype=np.float32)
     with np.load(os.path.join(data_dir, "splits.npz")) as split_file:
         splits = {name: split_file[name] for name in split_file.files}
-    return positions, mcts_values, game_results, policies, policy_weights, splits
+    return (positions, mcts_values, game_results, policies, policy_weights,
+            value_weights, splits)
 
 
 def to_side_perspective(values_white_perspective, positions):
@@ -494,7 +502,7 @@ def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
 
 
 def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
-                 y_wdl=None, y_policy_weight=None):
+                 y_wdl=None, y_policy_weight=None, y_value_weight=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
@@ -505,35 +513,81 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
     if y_policy_weight is None:
         y_policy_weight = np.ones((len(y_pol),), dtype=np.float32)
     y_pw = torch.from_numpy(y_policy_weight).float()
+    if y_value_weight is None:
+        y_value_weight = np.ones((len(y_pol),), dtype=np.float32)
+    y_vw = torch.from_numpy(y_value_weight).float()
     if y_wdl is None:
-        ds = TensorDataset(X_t, y_v, y_p, y_pw)
+        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_vw)
     else:
         y_w = torch.from_numpy(y_wdl).long()
-        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_w)
+        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_vw, y_w)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
                       pin_memory=True, num_workers=0, generator=generator)
 
 
 def _unpack_loader_batch(batch):
-    """Normalize current and legacy batches, including policy weights."""
-    if len(batch) == 5:
+    """Normalize current and legacy batches -> (X, y_val, y_pol, y_pw, y_vw, y_wdl).
+
+    Batches have grown twice (policy weights, then value weights) and older
+    shapes still reach here from tests and from any caller building its own
+    TensorDataset. Length alone is ambiguous at 5 -- it is either the current
+    (X, v, p, pw, vw) or the legacy (X, v, p, pw, wdl) -- so the tie is broken
+    on dtype: weights are float, WDL labels are long.
+    """
+    ones = lambda n: torch.ones((n,), dtype=torch.float32)  # noqa: E731
+
+    if len(batch) == 6:
         return batch
+    if len(batch) == 5:
+        X_b, yv_b, yp_b, ypw_b, fifth = batch
+        if fifth.dtype.is_floating_point:
+            return X_b, yv_b, yp_b, ypw_b, fifth, None
+        return X_b, yv_b, yp_b, ypw_b, ones(len(X_b)), fifth
     if len(batch) == 4:
         X_b, yv_b, yp_b, fourth = batch
         if fourth.dtype.is_floating_point:
-            return X_b, yv_b, yp_b, fourth, None
-        policy_weight = torch.ones((len(X_b),), dtype=torch.float32)
-        return X_b, yv_b, yp_b, policy_weight, fourth
+            return X_b, yv_b, yp_b, fourth, ones(len(X_b)), None
+        return X_b, yv_b, yp_b, ones(len(X_b)), ones(len(X_b)), fourth
     if len(batch) == 3:
         X_b, yv_b, yp_b = batch
-        policy_weight = torch.ones((len(X_b),), dtype=torch.float32)
-        return X_b, yv_b, yp_b, policy_weight, None
+        return X_b, yv_b, yp_b, ones(len(X_b)), ones(len(X_b)), None
     raise ValueError(f"Unexpected batch tuple length: {len(batch)}")
 
 
-def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT):
-    """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5."""
-    return torch.pow(torch.abs(pred - target), exponent).mean()
+def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT, weights=None):
+    """Power-law loss: mean(|pred - target|^exp). Stockfish uses 2.5.
+
+    With weights, the mean is taken over the weighted records and normalized
+    by total weight -- so an all-ones weight vector reproduces the unweighted
+    mean exactly, and a zero-weight record contributes no value gradient.
+    Mirrors weighted_policy_cross_entropy.
+    """
+    losses = torch.pow(torch.abs(pred - target), exponent)
+    if weights is None:
+        return losses.mean()
+    losses = losses.reshape(-1)
+    w = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
+    total = w.sum()
+    if total.item() <= 0:
+        # No value teachers in this batch: contribute nothing, but keep the
+        # graph connected so .backward() does not fail.
+        return losses.sum() * 0.0
+    return (losses * w).sum() / total
+
+
+def _weighted_wdl_ce(logits, labels, weights):
+    """WDL cross-entropy under value weights.
+
+    The WDL head is a value head, so a record with value_weight 0 must not
+    teach through it either -- otherwise "policy only" would leak beliefs in
+    by the back door whenever --value-head wdl is used.
+    """
+    losses = F.cross_entropy(logits, labels, reduction="none")
+    w = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
+    total = w.sum()
+    if total.item() <= 0:
+        return losses.sum() * 0.0
+    return (losses * w).sum() / total
 
 
 def weighted_policy_cross_entropy(logits, targets, weights):
@@ -578,11 +632,12 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
     n = 0
 
     for batch in loader:
-        X_b, yv_b, yp_b, ypw_b, yw_b = _unpack_loader_batch(batch)
+        X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
         ypw_b = ypw_b.to(device)
+        yvw_b = yvw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
 
@@ -592,7 +647,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
         value_loss_pred = value_pred
-        loss_val = _power_loss(value_loss_pred, yv_b)
+        loss_val = _power_loss(value_loss_pred, yv_b, weights=yvw_b)
         loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
@@ -602,7 +657,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
             and yw_b is not None
             and wdl_loss_weight > 0
         ):
-            loss_wdl = F.cross_entropy(wdl_logits, yw_b)
+            loss_wdl = _weighted_wdl_ce(wdl_logits, yw_b, yvw_b)
             loss = loss + wdl_loss_weight * loss_wdl
 
         optimizer.zero_grad()
@@ -660,11 +715,12 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         "top1_white", "top1_black", "sign_white", "sign_black")}
 
     for batch in loader:
-        X_b, yv_b, yp_b, ypw_b, yw_b = _unpack_loader_batch(batch)
+        X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b = _unpack_loader_batch(batch)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
         ypw_b = ypw_b.to(device)
+        yvw_b = yvw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
 
@@ -674,12 +730,12 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
         value_loss_pred = value_pred
-        loss_val = _power_loss(value_loss_pred, yv_b)
+        loss_val = _power_loss(value_loss_pred, yv_b, weights=yvw_b)
         loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
         if use_wdl_head and wdl_logits is not None and yw_b is not None:
-            loss_wdl = F.cross_entropy(wdl_logits, yw_b)
+            loss_wdl = _weighted_wdl_ce(wdl_logits, yw_b, yvw_b)
             if wdl_loss_weight > 0:
                 loss = loss + wdl_loss_weight * loss_wdl
             preds = torch.argmax(wdl_logits, dim=1)
@@ -804,7 +860,8 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
-    positions, mcts_values, game_results, policies, policy_weights, splits = load_data(
+    (positions, mcts_values, game_results, policies, policy_weights,
+     value_weights, splits) = load_data(
         args.data_dir)
 
     train_idx = splits["train"]
@@ -959,6 +1016,7 @@ def main():
             shuffle=False,
             y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
             y_policy_weight=policy_weights[val_idx],
+            y_value_weight=value_weights[val_idx],
         )
 
         # Keep policy labels aligned with selected train indices.
@@ -971,6 +1029,7 @@ def main():
             generator=train_gen,
             y_wdl=wdl_targets[epoch_train_idx] if use_wdl_mode else None,
             y_policy_weight=policy_weights[epoch_train_idx],
+            y_value_weight=value_weights[epoch_train_idx],
         )
 
         train_loss, train_v, train_p, train_wdl = _train_epoch(
@@ -1056,6 +1115,7 @@ def main():
         shuffle=False,
         y_wdl=wdl_targets[test_idx] if use_wdl_mode else None,
         y_policy_weight=policy_weights[test_idx],
+        y_value_weight=value_weights[test_idx],
     )
     (test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc,
      test_decisive) = _eval_epoch(
@@ -1087,7 +1147,7 @@ def main():
     all_vtrue = []
     with torch.no_grad():
         for batch in test_loader:
-            X_b, yv_b, _, _, _ = _unpack_loader_batch(batch)
+            X_b, yv_b, _, _, _, _ = _unpack_loader_batch(batch)
             vp, _ = model(X_b.to(device))
             all_vpreds.append(vp.cpu().numpy())
             all_vtrue.append(yv_b.numpy())

@@ -263,6 +263,24 @@ def policy_weight_for_record(rec, mask_human_ai=True):
     return 1.0 if human_won else 0.0
 
 
+def value_weight_for_record(rec):
+    """Return whether a record is a trustworthy VALUE teacher.
+
+    Mirrors policy_weight_for_record, and defaults to 1.0 for everything, so
+    every corpus built before this existed trains exactly as it did.
+
+    It exists because "teach policy from this source but not value" was not
+    expressible (HANDOFF SS7.1 called it bounded but unscoped). ps_monster
+    carries mcts_value 0.0 and outcome labels from 1600-blitz games: excellent
+    policy teachers, and beliefs about who was winning that nobody wants in
+    the value head unless the evidence says so. Setting value_weight on those
+    records turns the knowledge-vs-belief question into an A/B (DIRECTIVE D2).
+    """
+    if "value_weight" in rec:
+        return float(rec["value_weight"])
+    return 1.0
+
+
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
                              value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
@@ -273,6 +291,7 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
     game_results = []
     policy_targets = []
     policy_weights = []
+    value_weights = []
 
     for game in tqdm(games, desc="Converting", leave=False):
         discounted = _discounted_results(
@@ -291,18 +310,21 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             val = rec["mcts_value"]
             pol = policy_dict_to_target(rec["policy"], is_white)
             pol_weight = policy_weight_for_record(rec, mask_human_ai=mask_human_ai)
+            val_weight = value_weight_for_record(rec)
 
             tensors.append(tensor)
             values.append(val)
             game_results.append(gr)
             policy_targets.append(pol)
             policy_weights.append(pol_weight)
+            value_weights.append(val_weight)
             if augment:
                 tensors.append(mirror_tensor(tensor))
                 values.append(val)
                 game_results.append(gr)
                 policy_targets.append(mirror_policy(pol))
                 policy_weights.append(pol_weight)
+                value_weights.append(val_weight)
 
     if tensors:
         X = np.array(tensors, dtype=np.float32)
@@ -310,6 +332,7 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_result = np.array(game_results, dtype=np.float32)
         y_policy = np.array(policy_targets, dtype=np.float32)
         y_policy_weight = np.array(policy_weights, dtype=np.float32)
+        y_value_weight = np.array(value_weights, dtype=np.float32)
     else:
         channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
         X = np.zeros((0, 8, 8, channels), dtype=np.float32)
@@ -317,7 +340,8 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_result = np.zeros((0,), dtype=np.float32)
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
         y_policy_weight = np.zeros((0,), dtype=np.float32)
-    return X, y_value, y_result, y_policy, y_policy_weight
+        y_value_weight = np.zeros((0,), dtype=np.float32)
+    return X, y_value, y_result, y_policy, y_policy_weight, y_value_weight
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -372,13 +396,13 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         else:
             print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 "
                   f"over last {value_horizon} plies")
-    X_train, yv_train, yr_train, yp_train, ypw_train = _convert_games_to_arrays(
+    X_train, yv_train, yr_train, yp_train, ypw_train, yvw_train = _convert_games_to_arrays(
         train_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai)
-    X_val, yv_val, yr_val, yp_val, ypw_val = _convert_games_to_arrays(
+    X_val, yv_val, yr_val, yp_val, ypw_val, yvw_val = _convert_games_to_arrays(
         val_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai)
-    X_test, yv_test, yr_test, yp_test, ypw_test = _convert_games_to_arrays(
+    X_test, yv_test, yr_test, yp_test, ypw_test, yvw_test = _convert_games_to_arrays(
         test_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai)
 
@@ -387,6 +411,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
     y_policy_weight = np.concatenate([ypw_train, ypw_val, ypw_test], axis=0)
+    y_value_weight = np.concatenate([yvw_train, yvw_val, yvw_test], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
     np.save(os.path.join(output_dir, "positions.npy"), X)
@@ -394,6 +419,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
     np.save(os.path.join(output_dir, "policy_weights.npy"), y_policy_weight)
+    np.save(os.path.join(output_dir, "value_weights.npy"), y_value_weight)
 
     n_train, n_val, n_test = len(X_train), len(X_val), len(X_test)
     splits = {
@@ -424,6 +450,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  policies.npy:     {y_policy.shape}")
     print(f"  policy_weights.npy: {y_policy_weight.shape} "
           f"(masked={int((y_policy_weight == 0).sum())})")
+    print(f"  value_weights.npy:  {y_value_weight.shape} "
+          f"(masked={int((y_value_weight == 0).sum())})")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 

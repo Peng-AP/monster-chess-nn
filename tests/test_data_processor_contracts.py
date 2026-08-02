@@ -103,17 +103,19 @@ class SplitAndConvertTests(unittest.TestCase):
 
     def test_convert_flat_no_weighting(self):
         games = self._games(2, -1)
-        X, y_value, y_result, y_policy, y_policy_weight = dp._convert_games_to_arrays(
-            games, augment=False)
+        (X, y_value, y_result, y_policy, y_policy_weight,
+         y_value_weight) = dp._convert_games_to_arrays(games, augment=False)
         self.assertEqual(len(X), 8)  # 2 games x 4 records, once each
         self.assertEqual(len(y_value), 8)
         self.assertEqual(len(y_result), 8)
         self.assertEqual(y_policy.shape[1], 4096)
         self.assertEqual(y_policy_weight.tolist(), [1.0] * 8)
+        # Value weighting defaults to on for every record (D1 contract).
+        self.assertEqual(y_value_weight.tolist(), [1.0] * 8)
 
     def test_augment_doubles_positions_and_mirrors_policy(self):
         games = self._games(1, -1)
-        X, _v, _r, y_policy, y_policy_weight = dp._convert_games_to_arrays(
+        X, _v, _r, y_policy, y_policy_weight, _vw = dp._convert_games_to_arrays(
             games, augment=True)
         self.assertEqual(len(X), 8)  # 4 records x 2 (mirror)
         # h1h2 mirrored -> a1a2
@@ -126,7 +128,7 @@ class SplitAndConvertTests(unittest.TestCase):
         games = self._games(1, -1)
         games[0]["records"][0] = dict(games[0]["records"][0], policy_weight=0.0)
 
-        _X, _v, _r, _p, weights = dp._convert_games_to_arrays(games, augment=True)
+        _X, _v, _r, _p, weights, _vw = dp._convert_games_to_arrays(games, augment=True)
 
         self.assertEqual(weights[:4].tolist(), [0.0, 0.0, 1.0, 1.0])
 

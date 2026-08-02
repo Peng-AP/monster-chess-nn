@@ -27,9 +27,11 @@ class TrainWdlContracts(unittest.TestCase):
             np.savez(data_dir / "splits.npz", train=np.array([0]),
                      val=np.array([], dtype=np.int64), test=np.array([1]))
 
-            _x, _mv, _gr, _pol, weights, _splits = train.load_data(data_dir)
+            (_x, _mv, _gr, _pol, weights, value_weights,
+             _splits) = train.load_data(data_dir)
 
             self.assertEqual(weights.tolist(), [1.0, 1.0])
+            self.assertEqual(value_weights.tolist(), [1.0, 1.0])
 
     def test_policy_loss_ignores_zero_weight_targets(self):
         logits = torch.tensor([[2.0, 0.0], [0.0, 2.0]], requires_grad=True)
@@ -102,25 +104,28 @@ class TrainWdlContracts(unittest.TestCase):
         yp = torch.zeros((1, train.POLICY_SIZE), dtype=torch.float32)
         yw = torch.zeros((1,), dtype=torch.int64)
 
-        X3, yv3, yp3, ypw3, yw3 = train._unpack_loader_batch((x, yv, yp))
+        X3, yv3, yp3, ypw3, yvw3, yw3 = train._unpack_loader_batch((x, yv, yp))
         self.assertIsNone(yw3)
         self.assertEqual(ypw3.tolist(), [1.0])
+        self.assertEqual(yvw3.tolist(), [1.0])
         self.assertEqual(tuple(X3.shape), tuple(x.shape))
         self.assertEqual(tuple(yv3.shape), tuple(yv.shape))
         self.assertEqual(tuple(yp3.shape), tuple(yp.shape))
 
-        X4, yv4, yp4, ypw4, yw4 = train._unpack_loader_batch((x, yv, yp, yw))
+        X4, yv4, yp4, ypw4, yvw4, yw4 = train._unpack_loader_batch((x, yv, yp, yw))
         self.assertIsNotNone(yw4)
         self.assertEqual(ypw4.tolist(), [1.0])
+        self.assertEqual(yvw4.tolist(), [1.0])
         self.assertEqual(tuple(X4.shape), tuple(x.shape))
         self.assertEqual(tuple(yv4.shape), tuple(yv.shape))
         self.assertEqual(tuple(yp4.shape), tuple(yp.shape))
         self.assertEqual(tuple(yw4.shape), tuple(yw.shape))
 
         policy_weight = torch.zeros((1,), dtype=torch.float32)
-        X5, yv5, yp5, ypw5, yw5 = train._unpack_loader_batch(
+        X5, yv5, yp5, ypw5, yvw5, yw5 = train._unpack_loader_batch(
             (x, yv, yp, policy_weight, yw))
         self.assertEqual(ypw5.tolist(), [0.0])
+        self.assertEqual(yvw5.tolist(), [1.0])
         self.assertEqual(yw5.tolist(), [0])
 
 if __name__ == "__main__":
