@@ -153,7 +153,59 @@ corpus, so control is scored on v17 positions only while K and B are scored on
 a set containing 43,939 ps records. Different exams, not different grades. The
 gate is the only cross-arm comparison in this report that is like-for-like.
 
-_Gate results filled in as they land._
+### Gate results — three arms passed, and the ladder is monotone
+
+Per-side totals across every leg, and the pooled bar legs (`vs_ramp` +
+`vs_ramp_confirm`, 40 games per side), which is where §12 says to read:
+
+| arm | verdict | White total | Black total | **vs ramp, pooled W / B** |
+|---|---|---|---|---|
+| control | **FAIL** | 0.700 (50) | 0.440 (50) | 0.550 / **0.300** |
+| O | PASS | 0.807 (70) | 0.500 (70) | 0.775 / 0.450 |
+| K | PASS | 0.800 (70) | 0.671 (70) | 0.725 / **0.700** |
+| B | PASS | **0.900** (70) | **0.686** (70) | **0.875** / 0.650 |
+
+Noise floor: SE 0.112 on a 20-game leg, **0.079** on a pooled 40-game bar leg.
+
+**The control reproduces the historical failure exactly.** Its Black leg
+against ramp is **0.300** — the same 0.30 the v18 gap, spatial and dup1 arms
+died on (§4.1, §4.2). Same corpus family, same number. That is the strongest
+evidence the setup is measuring what it claims: the ladder's baseline rung
+lands precisely where the record says it should.
+
+**Reading the rungs against the noise floor** (Black vs ramp, n=40 each):
+
+| step | change | Δ | in SE |
+|---|---|---|---|
+| control → O | + 27 owner games | +0.150 | 1.9 |
+| O → K | + ps_monster, policy only | +0.250 | 3.2 |
+| O → B | + ps_monster, full value | +0.200 | 2.5 |
+| **K vs B** | value labels on/off | **+0.050** | **0.6** |
+
+1. **The owner's 27 games moved the deciding leg on their own** — 0.300 → 0.450
+   at 1.9 SE. Suggestive rather than proven, but in the right direction and it
+   was enough to flip the verdict from FAIL to PASS.
+2. **ps_monster is the big lever, at 2.5–3.2 SE.** HANDOFF called it "the only
+   untried lever". It was worth trying: data moved what architecture (§4.2, a
+   measured null) and duplication (§4.1) never did.
+3. **K vs B is a null at 0.6 SE.** The knowledge-vs-belief fork is *not*
+   resolved — the belief worry did not materialise (B is not worse) and the
+   knowledge advantage did not either (K is not better). The honest statement
+   is that ps_monster helps a great deal either way, and whether its outcome
+   labels reach the value head does not detectably matter.
+
+Every arm faced identical openings on the corresponding leg (seed derived per
+leg index), so these comparisons are paired; and the passing arms cleared the
+bar twice, on two independent opening sets.
+
+**What this does not yet establish.** The gate's opening phase is 16 sampled
+plies, and ps_monster is 829 games of human openings — so part of the gain may
+be opening knowledge rather than the pawn-phase conversion the campaign is
+actually about. The cliff measurement in §6 is what separates those, and it is
+the second of the owner's two criteria for a candidate reaching him.
+
+Artifacts: `benchmarks/gate_v19_{control,O,K,B}_*.json`,
+`benchmarks/phase3_summary_20260802_023748.json`.
 
 ---
 
