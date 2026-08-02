@@ -220,6 +220,29 @@ player. If ramp's value head is miscalibrated, it stays a fine *opponent*
 (games labelled by outcome, not by its beliefs) but its search values are not
 trustworthy training signal.
 
+**M4 — DONE 2026-08-02: the cliff is SEARCH-limited. Arm S is the indicated
+next lever.**
+
+`v19_B` as Black from 100 cliff starts, **only Black's search varied** (White
+fixed at heuristic@400): **0.360 → 0.520 → 0.670 → 0.840** at 200 / 400 / 800 /
+1600 sims, SE 0.050. Monotone, +0.48 across 8×.
+
+By the reading rule stated below, that is the "conversion rises with sims →
+knowledge is present, search-limited → target **value sharpness**, arm S
+dominates" branch. The policy-teaching lever (ps_monster) has already been
+pulled and delivered; the remaining gap at 400 sims is search, not ignorance.
+
+Caveat: White is held at 400 while Black climbs, so part of the rise is Black
+outsearching White — this locates B's ceiling relative to what 400 sims
+extracts, which is the question that picks the next lever, and is not a claim
+about B at 1600 against a strong White.
+
+Also: B shows **no** "worse at high sims" pathology up to 1600, contrary to the
+v17-era observation behind the 800-sim playtest rule. Untested above 1600, so
+the rule stands until measured.
+
+_Original specification:_
+
 **M4 — cliff-vs-sims conversion curve.** From the cliff deck (see D3), Black
 conversion rate at 200/400/800/1600/3200 sims, v17 and ramp, vs both
 NN-White and heuristic-White. HANDOFF says 800 sims → 0.70 h2h ruled out
