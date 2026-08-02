@@ -39,6 +39,15 @@ def white_pawns(fen):
     return sum(1 for c in fen.split()[0] if c == "P")
 
 
+def black_heavies(fen):
+    """Black queens + rooks on the board."""
+    return sum(1 for c in fen.split()[0] if c in "qr")
+
+
+def white_has_only_king_and_pawns(fen):
+    return not any(c.isupper() and c not in "KP" for c in fen.split()[0])
+
+
 def black_to_move(fen):
     parts = fen.split()
     return len(parts) > 1 and parts[1] == "b"
@@ -54,7 +63,9 @@ def game_records(path):
         return [json.loads(line) for line in f if line.strip()]
 
 
-def harvest(raw_dir, min_white_pawns, require_black_win, offset_from_end):
+def harvest(raw_dir, min_white_pawns, require_black_win, offset_from_end,
+            min_black_heavies=0, white_king_and_pawns_only=False,
+            max_white_pawns=None):
     """Yield candidate entries from every game under raw_dir."""
     for dirpath, _dirs, files in os.walk(raw_dir):
         for name in sorted(files):
@@ -77,13 +88,21 @@ def harvest(raw_dir, min_white_pawns, require_black_win, offset_from_end):
                 fen = rec.get("fen")
                 if not fen or not black_to_move(fen):
                     continue
-                if white_pawns(fen) < min_white_pawns:
+                wp = white_pawns(fen)
+                if wp < min_white_pawns:
+                    continue
+                if max_white_pawns is not None and wp > max_white_pawns:
+                    continue
+                if min_black_heavies and black_heavies(fen) < min_black_heavies:
+                    continue
+                if white_king_and_pawns_only and not white_has_only_king_and_pawns(fen):
                     continue
                 yield {
                     "fen": fen,
                     "current_player": "black",
                     "source": os.path.basename(dirpath) or os.path.basename(raw_dir),
-                    "white_pawns": white_pawns(fen),
+                    "white_pawns": wp,
+                    "black_heavies": black_heavies(fen),
                     "game_result": result,
                 }
 
@@ -105,6 +124,17 @@ def main():
                          "owner's 212, and an unweighted sample of 300 came "
                          "out 89%% ps -- burying the conversions that are the "
                          "whole reason the owner's games are in here.")
+    ap.add_argument("--min-black-heavies", type=int, default=0,
+                    help="Black queens+rooks required. Use 3 with "
+                         "--white-king-and-pawns-only to harvest the "
+                         "post-promotion class: Black has overwhelming "
+                         "material, White still has pawns, and the corpus "
+                         "records Black converting only 36%% of the time "
+                         "(OVERNIGHT_REPORT SS8.6) -- the positions the owner "
+                         "watched the model shuffle in.")
+    ap.add_argument("--white-king-and-pawns-only", action="store_true",
+                    help="White has nothing but king and pawns")
+    ap.add_argument("--max-white-pawns", type=int, default=None)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
@@ -118,7 +148,10 @@ def main():
             continue
         before = len(seen)
         for entry in harvest(raw, args.min_white_pawns,
-                             args.require_black_win, args.offset_from_end):
+                             args.require_black_win, args.offset_from_end,
+                             args.min_black_heavies,
+                             args.white_king_and_pawns_only,
+                             args.max_white_pawns):
             scanned += 1
             key = dedup_key(entry["fen"])
             if key in seen:
@@ -153,9 +186,11 @@ def main():
             f.write(json.dumps(e) + "\n")
 
     pawns = Counter(e["white_pawns"] for e in entries)
+    heavies = Counter(e.get("black_heavies") for e in entries)
     srcs = Counter(e["source"] for e in entries)
     print(f"\nwrote {len(entries)} starts to {args.output}")
     print(f"  white pawns: {dict(sorted(pawns.items()))}")
+    print(f"  black heavies: {dict(sorted(heavies.items()))}")
     print(f"  sources: {dict(srcs.most_common(8))}")
     print(f"  candidate positions scanned: {scanned}")
 
