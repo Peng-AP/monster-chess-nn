@@ -9,61 +9,90 @@ things) and `CONTEXT.md` (the incumbent/candidate/version vocabulary).
 
 ---
 
-## CLOSED SINCE THIS WAS WRITTEN (2026-08-01/02, on the GPU box)
+## STATE AS OF 2026-08-02 — read this before the rest
 
-`DIRECTIVE.md` is the active campaign document and `OVERNIGHT_REPORT.md` the
-active run report. The following items below are **answered** — read them as
-history, not as open work:
+**Incumbent: `models/fresh_start_v19`** (was arm K). It beats the previous
+strongest engine, `fresh_start_v18_ramp`, at 0.7125 pooled over 40 games/side,
+and the owner has playtested it: *"big improvements as black. Very difficult to
+crack as white during pawnphase… White is easy to beat, still, but coherent and
+sharp."*
+
+`DIRECTIVE.md` (the v19 campaign) is **concluded**. `OVERNIGHT_REPORT.md` holds
+the evidence for everything below. Sections 4–9 of this document are the
+pre-campaign state and several of their open questions are now answered:
 
 | item | status |
 |---|---|
-| §4.4 refused capture — is it a population defect? | **No.** M2 ran the 400-position deck through *search* for all four models: capture rate 0.565–0.603 with dup1 mid-pack at 0.595 and **v17 the worst at 0.565**. The failure was n=1. |
-| §4.5 ramp's value optimism — insight or error? | **Error.** Ramp and v17 convert the same deck as Black at 20.75% vs 19.75% while predicting −0.129 vs −0.537. Ramp's calibration error is +0.518, v17's +0.130. |
-| §4.6 epoch headroom | **None.** Re-run at `--epochs 80 --patience 10`: best epoch 24, early stop 34, against the recorded 30-epoch run's best 25. |
-| §7.1 ps_monster — knowledge or belief? | Now an A/B, not a debate. `combined_v19_K` (ps at `value_weight=0`) vs `combined_v19_B` (full value), identical otherwise; being gated. |
-| §7.3 widen gate matches | **Done.** 20 games/side/leg, plus a confirmation replay of the bar leg on a fresh opening seed. |
-| §8.1 MCTS promotion probe | Done — `tools/promotion_defense_probe.py`, deck committed at `data/start_fens/promotion_defense_deck_v1.jsonl`. |
-| §8.2 `--patience` | Done. |
-| §8.4 explain ramp's optimism | Done (M3, above). |
+| §4.4 refused capture | **not** a population defect — dup1 mid-pack through search, v17 worst |
+| §4.5 ramp optimism | **miscalibration** — same conversion as v17, beliefs 0.41 apart |
+| §4.6 epoch headroom | **none** — best epoch 24 under an 80 cap |
+| §7.1 ps_monster | merged; **the single biggest gain of the campaign** |
+| §7.3 wider gates | done — 20/side/leg plus a confirmation replay |
+| §8.1 MCTS probe | done, deck committed |
+| §8.2 `--patience` | done |
+| §8.4 ramp optimism | done (§4.5 above) |
 
-Two structural things this document predates:
+### The law this campaign established
 
-* **`clone()` copies 8 plies of history, not the whole stack.** It was 82% of a
-  late-game decision. Full-length games got 4.64× faster with play verified
-  move-for-move identical. §10.4's timings are obsolete.
-* **The gate bar is `fresh_start_v18_ramp`, not the incumbent** (owner,
-  2026-08-01). v17 scores 0.275 against it.
+**Every gain came from the corpus.** Architecture (§4.2), duplication (§4.1),
+capacity (2.74× tower), and side-weighting are all measured nulls or worse.
+The corpus ladder, by contrast, moved the deciding leg monotonically:
+Black-vs-ramp 0.300 (v17 corpus) → 0.450 (+27 owner games) → 0.700 (+ps_monster).
 
-Still open and still needing the owner: §7.4 (the hand-corrected label
-precedent) and the corpus question this document never asked — **ramp trained
-on `combined_v16`, every v18 arm that lost to it trained on `combined_v17`, and
-`data/raw/combined_v16` is on neither this box nor the transfer drive.**
+### What changed structurally
 
----
+- **`clone()` copies 8 plies, not the whole stack** — it was 82% of a late-game
+  decision. Full-length games got **4.64× faster**, play verified move-for-move
+  identical. §10.4's timings are obsolete.
+- **The gate bar tracks the incumbent** (`tools/gate.py`), per the owner's rule
+  "every model better than the last, definitively." It was ramp; it is now v19.
+  A passing candidate replays the bar leg on a fresh opening seed.
+- **Value weights exist** (`value_weights.npy`) — "teach policy, not value" is
+  now expressible, which is what made the ps_monster fork an A/B.
+- **`plies_to_end` is stamped at generation** so filtering a corpus to a phase
+  no longer silently relabels the survivors.
+- **`config.DEFAULT_GAME_WORKERS = 8`** — `cpu_count()`-derived defaults crash
+  CUDA init on this box and leave orphaned 1.4 GB processes.
 
-## 0. Orientation in one screen
+### Numbers worth not re-deriving
 
-The engine plays a chess variant where **White has a king and 4 pawns and moves
-twice per turn**, Black has a full army and moves once. Established law:
-**Black wins with correct play.** So Black's ability to *convert* is the primary
-quality signal, and everything is reported per side.
+- **Search is Python-bound, not GPU-bound.** Profiled at 800 sims: move
+  generation 35%, board clone/apply 25%, tree/Python 26%, **NN forward 14%**.
+  Raising the MCTS leaf batch 16 → 256 buys only 1.53×; there is no more than
+  ~15% left in batching. The ceiling is `python-chess` move generation.
+- **The cliff is search-limited.** v19-class Black converts 0.36 at 200 sims and
+  **0.84 at 1600** against a fixed White. Knowledge is present; 400 sims does
+  not extract it.
+- **The corpus is 64/36 White by construction** — White moves twice per turn, so
+  each turn emits two White records against Black's one.
+- **Self-play skew:** v19's own self-play runs ~77.5% White, worse than v17's
+  56%, in a variant Black is supposed to win. Improving both sides improved
+  White faster.
+- **The post-promotion class is the live problem.** With Black holding 3+
+  heavies and White still holding pawns, the corpus records Black converting
+  **36%** — and v19 self-play converts **30%**. The pessimism is accurate for
+  the model, so **self-play regeneration cannot fix it**; corrected labels need
+  a Black stronger than the White it faces (asymmetric search, owner games, or
+  an oracle that handles more than a bare king).
 
-**Incumbent: `models/fresh_start_v17`** (15ch, WDL head), since 2026-07-13.
-Nothing has beaten it since.
+### Hazards now pinned by tests
 
-**Strongest engine on record: `models/rejected/fresh_start_v18_ramp`** — h2h vs
-v17 0.70 (W 0.60 / B 0.80), **owner-rejected** for opening pawn gifts and a
-missed promotion. It is now the *sparring partner* and second gate opponent.
+Ramp labels are positional (filtering records relabels survivors); match seeds
+closer than the game count replay the same games and look like confirmation;
+`config`'s `VALUE_TARGET_FLOOR/HORIZON` are 0.97/10 and **not** the ramp's
+0.5/60 that every `r50h60` dataset was built with.
 
-**The open problem is the pawn-phase cliff.** Black converts 91–100% once
-White's pawns are gone, but only 7–14% from 3–4-pawn positions the owner wins
-100% of. Six candidate recipes have failed to move it.
+### Still open, still needing the owner
 
-**Latest result (2026-07-26): the duplication hypothesis is dead** (§4.1).
-
-**The untried lever is `data/raw/ps_monster`** — 829 human-vs-human games from
-playstrategy.org, **41.2% pawn phase against this corpus's 9.4%**. Merging is an
-owner decision (§7.1).
+- **§7.4** the hand-corrected label precedent (`white_2026_07/game_00013`).
+- **`data/raw/combined_v16` is on neither this box nor the transfer drive.**
+  Ramp trained on it; every v18 arm that lost to ramp trained on v17; every
+  current corpus inherits v17. One directory copy settles the confound.
+- **The per-side floor has a shelf life.** As Black approaches correct play,
+  White's achievable score against it falls below 0.40 by the nature of the
+  game, and every candidate would fail the White leg on the variant rather than
+  on quality. White's criterion will need to become resistance (survival
+  length, which the ramp already encodes) rather than win rate.
 
 ---
 

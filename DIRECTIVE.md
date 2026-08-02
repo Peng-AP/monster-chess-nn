@@ -1,5 +1,33 @@
 # DIRECTIVE — the v19 campaign (2026-08-01)
 
+**CONCLUDED 2026-08-02. v19 is decided: `models/fresh_start_v19` (arm K).**
+This document retires here, as §8 said it would. Read `HANDOFF.md` for the
+current state and `OVERNIGHT_REPORT.md` for the evidence; what follows is the
+plan as written plus what each item actually returned, kept because the
+negative results are most of the value.
+
+## Outcome against the plan
+
+| planned | outcome |
+|---|---|
+| M1 epoch headroom | none — best epoch 24 under an 80 cap |
+| M2 promotion probe | §4.4's refusal was n=1, not a population defect |
+| M3 ramp optimism | miscalibration, not insight (+0.518 vs v17's +0.130) |
+| M4 cliff vs sims | search-limited: 0.36 → 0.84 from 200 → 1600 sims |
+| D1 value weights | shipped, bit-identical by default |
+| D2 ps_monster fork | both arms beat the bar; labels buy strength, cost calibration |
+| D3 cliff self-play | **premise false** — cliff starts give 9.5% pawn-phase density |
+| D4 owner games | 27 uncorpused games found and folded in; +0.150 on the bar leg |
+| Phase 3 arms | control FAIL, O/K/B PASS; K promoted |
+| capacity (arm C) | FAIL, and a null for Black even when side-rebalanced |
+
+**The one-line finding: every gain came from the corpus.** Architecture,
+duplication, capacity and side-weighting are all measured nulls or worse.
+
+---
+
+_Plan as written, 2026-08-01:_
+
 **Objective, in the owner's words: make the models good enough to beat him.**
 Concretely: a Black that converts the 3–4-pawn positions he currently wins 100%
 of, and a White that stops gifting pawns. This document is the complete plan —
@@ -91,9 +119,11 @@ ramp itself — its gate results stand.
       per side per leg; the 0.40 floor untouched. `tools/gate.py` runs all
       three legs through the single `match.run_match` schema, keeps the
       thresholds as constants no CLI flag can reach, and cannot report PASS
-      from a rehearsal. See `PHASE0_REPORT.md` — the calibration run doubled as
-      a real gate on the sparring partner and **its 0.70 h2h did not replicate
-      at n=20/side (0.575)**, which is §7.3 demonstrating itself.
+      from a rehearsal. The calibration run doubled as a real
+      gate on the sparring partner; its 0.70 h2h read 0.575 at n=20/side, and
+      a second independent 40-game sample later read 0.725 — per-leg variance
+      is dominated by the sampled opening set (§7.3 demonstrating itself).
+      Detail in git history: `PHASE0_REPORT.md`, retired 2026-08-02.
 
 ## 2. Phase 1 — decisive measurements (first GPU day)
 

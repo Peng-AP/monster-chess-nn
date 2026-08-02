@@ -36,7 +36,7 @@ import subprocess
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = [sys.executable, "-u"]
 
 # arm -> processed corpus

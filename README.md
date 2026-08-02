@@ -82,7 +82,7 @@ pip install -r requirements.txt
 Play against the engine in the terminal:
 
 ```bash
-python src/play.py --color black --model models/fresh_start_v17/best_value_net.pt
+python src/play.py --color black --model models/fresh_start_v19/best_value_net.pt
 ```
 
 or open `src/play.ipynb` for a widget UI with model selection, curriculum decks,
@@ -180,9 +180,14 @@ src/
   train.py             # network, training loop, checkpoint selection
   benchmark.py         # fixed heuristic-anchor benchmark
   iterate.py           # generate -> process -> train -> gate loop
-  scripted_mate.py     # deterministic K+heavies-vs-K conversion (verified)
+  scripted_mate.py     # deterministic K+heavies-vs-bare-K conversion (verified)
   play.py / play.ipynb # play against the engine (terminal / notebook)
-tools/                 # matches, corpus gates, diffs, deck builders
+tools/                 # gate, matches, probes, corpus and deck builders
+  gate.py              # the promotion protocol, thresholds as constants
+  match.py             # head-to-head, the single match JSON schema
+  value_side_bias.py   # per-side value calibration on held-out games
+  promotion_defense_probe.py  # search behaviour + conversion from a deck
+  phase3_driver.py     # train+gate a set of corpus arms unattended
 tests/                 # contract tests
 benchmarks/            # benchmark and match JSON history
 data/                  # raw games, processed tensors, start-position decks
@@ -198,7 +203,11 @@ concludes; git history is the archive (`git log --diff-filter=D --name-only`).
 python -m unittest discover -s tests
 ```
 
-121 contract tests cover the rules (including the unconditional-king-capture edge
+268 contract tests cover the rules (including the unconditional-king-capture edge
 cases), search invariants, encoding round-trips, data-pipeline contracts, the
-training CLI schema, and the corpus gates. CI runs the suite on push
+training CLI schema, the corpus gates, the promotion protocol's thresholds, and
+several hazards that have produced wrong numbers here before (ramp labels are
+positional, so filtering records silently relabels survivors; match seeds closer
+than the game count replay the same games; worker defaults derived from
+`cpu_count()` crash CUDA init on this box). CI runs the suite on push
 (`.github/workflows/contract-tests.yml`).

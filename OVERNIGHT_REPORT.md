@@ -1,10 +1,11 @@
-# Overnight run — 2026-08-01/02
+# v19 campaign — run report, 2026-08-01/02
 
-Active report for the unattended session that began 2026-08-01 ~22:20. Written
-as results land; every claim cites its artifact in `benchmarks/`.
+The evidence document for the campaign in `DIRECTIVE.md` (now concluded). Every
+claim cites its artifact in `benchmarks/`.
 
-**Nothing here promotes anything.** Promotion needs the owner's playtest, and
-no gate threshold was moved.
+**Outcome: `models/fresh_start_v19` promoted** (arm K), after the owner's
+playtest. No gate threshold was moved at any point; the bar was raised once,
+when v19 beat it.
 
 ---
 
@@ -18,7 +19,8 @@ no gate threshold was moved.
 | 4 | Phase 3 corpus ladder: control → O → K → B | **3 of 4 beat the bar**, §5 |
 | 5 | Cliff conversion, K-vs-B, calibration | done, §6 |
 | 6 | M4 cliff-vs-sims curve | done — **the cliff is search-limited**, §7 |
-| 7 | D3 cliff self-play generation | launched, time-boxed, §8 |
+| 7 | D3 cliff self-play generation | launched; **premise falsified**, §8 |
+| 8 | Post-promotion: capacity, search profile, self-play limits | §8.7 |
 
 ### The three findings that matter
 
@@ -33,8 +35,9 @@ no gate threshold was moved.
    0.36 → 0.84 as its search grows 200 → 1600. The knowledge is in there; 400
    sims does not extract it.
 
-**Nothing is promoted.** Two arms meet both of the owner's criteria and are
-waiting on his playtest.
+A fourth, added after promotion: **capacity is not a lever either** — a 2.74×
+tower failed the gate, and its Black conversion was a null even after the
+64/36 side imbalance was corrected for (§8.7).
 
 ---
 
@@ -581,6 +584,71 @@ This is the pawn-phase cliff one phase later, and the same mechanism: **a weak
 Black's failures recorded as ground truth.** Note where the oracle sits — it
 requires a bare White king, so it covers the 88% class the model already handles
 and abstains from the 36% class that is actually broken.
+
+## 8.7 After promotion — capacity, search, and why self-play stalls
+
+**v19 promoted** (arm K) on 2026-08-02, and the gate bar moved with it per the
+owner's rule. Everything below was measured against the new bar.
+
+**Capacity is closed as a lever.** A 2×2 over tower width and side weighting:
+
+| Black cliff conversion | unbalanced data | balanced (`--black-weight 1.75`) |
+|---|---|---|
+| normal tower | 0.473 (v19) | 0.480 (W) |
+| 2.74× tower | 0.493 (C) | 0.520 (CW) |
+
+Every cell within 0.8 SE — a null. And both wide arms *failed the gate*: C's
+Black leg vs v19 was 0.35, CW's **0.25**, behind aggregates of 0.55 and 0.425.
+Note the split: CW has the best cliff conversion and the worst gate Black leg,
+because the cliff deck plays Black against a *heuristic* White while the gate
+plays it against v19's. Rebalancing bought conversion technique against weak
+opposition and cost resilience against strong.
+
+The owner's hypothesis was that Black, as the more complex side, would benefit
+from capacity. Arm C could not test it: the corpus is **64/36 White by
+construction** (White moves twice per turn), so shared-trunk capacity flows to
+the side with 1.8× the gradient regardless. `--black-weight` was built to remove
+that confound; with it removed, the answer is still no.
+
+**Search is Python-bound, not GPU-bound.** Profiled at 800 sims, post clone-fix:
+
+| | batch 16 | batch 256 |
+|---|---|---|
+| move generation | 35.1% | 36.2% |
+| board clone/apply | 24.5% | 32.4% |
+| tree / other Python | 26.3% | 23.7% |
+| **NN forward** | **14.1%** | 7.7% |
+
+This corrects an earlier claim in this report's own analysis that the forward
+pass was ~70% of a decision — that came from multiplying a standalone batch-16
+latency by the batch count, which double-counts and ignores that the loop breaks
+batches early when the frontier is exhausted. Raising the leaf batch 16 → 256
+buys **1.53×**, and with the NN at 14% there is no more than ~15% left in
+batching. The ceiling is `python-chess` move generation at ~0.1–1 ms/position
+against Stockfish's ~50 ns — a 10³–10⁴ gap that is a different engine, not a
+tuning change.
+
+**Why self-play cannot currently bootstrap.** v19 self-play on the
+post-promotion deck converts **0.300**, against the corpus's 0.36 for the same
+class. Self-play is *no better than the data it came from*. So the corpus's
+pessimism is not stale labelling by a weaker Black — it is an accurate account
+of what this model does, and regenerating with self-play would reproduce it.
+
+Corrected labels require a Black stronger than the White it faces. The one
+scalable source is **asymmetric search**: M4 measured Black going 0.36 → 0.84 as
+its search grew 200 → 1600 against a fixed White, so generating with Black at
+high sims and White at normal sims produces genuine conversions to learn from.
+`data_generation` applies one `--simulations` to both sides, so that is the next
+piece of machinery. The alternatives are owner games (highest quality, does not
+scale) and the scripted oracle (refuses anything but a bare White king — it
+abstains from exactly this class).
+
+**A protocol consequence to keep in view.** The 0.40 per-side floor assumes both
+sides are viable. Established law is that Black wins with correct play, so as
+Black improves, White's achievable score falls below 0.40 by the nature of the
+game and every candidate would fail the White leg on the variant rather than on
+quality. Before that, White's criterion should become *resistance* — survival
+length, which the ramp label already encodes and the gate currently ignores.
 
 ## 9. Where to pick this up
 
