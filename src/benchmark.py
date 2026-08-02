@@ -33,8 +33,16 @@ def _apply(game, action):
     (fn or game.apply_action)(action)
 
 
-def _build_engine(model_path, sims):
-    """Return (engine, label). NN engine if a model is given, else heuristic."""
+def _build_engine(model_path, sims, batch_size=None):
+    """Return (engine, label). NN engine if a model is given, else heuristic.
+
+    batch_size is the MCTS leaf-parallel width. The default (16) was chosen for
+    the generation/match case, where worker processes keep the GPU busy and
+    in-tree batching only degrades selection quality. It is exposed here so the
+    tradeoff can be measured rather than assumed: wider batches buy simulations
+    per second (b=256 measured at 1.53x b=16 on one tree) and cost selection
+    quality, and only a match settles which wins.
+    """
     if model_path:
         from evaluation import NNEvaluator
         eval_fn = NNEvaluator(model_path)
@@ -42,8 +50,9 @@ def _build_engine(model_path, sims):
     else:
         eval_fn = evaluate
         label = "heuristic"
+    kwargs = {} if batch_size is None else {"batch_size": int(batch_size)}
     engine = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
-                  allow_early_stop=True)
+                  allow_early_stop=True, **kwargs)
     return engine, label
 
 

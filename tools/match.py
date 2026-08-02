@@ -31,10 +31,11 @@ def resolve_opening_temp_plies(model_b, requested):
     return 16 if model_b else 0
 
 
-def _init_worker(model_a, model_b, sims):
+def _init_worker(model_a, model_b, sims, sims_b=None,
+                 batch_a=None, batch_b=None):
     from benchmark import _build_engine
-    _engines["a"], _ = _build_engine(model_a, sims)
-    _engines["b"], _ = _build_engine(model_b, sims)
+    _engines["a"], _ = _build_engine(model_a, sims, batch_a)
+    _engines["b"], _ = _build_engine(model_b, sims_b or sims, batch_b)
 
 
 def _play(task):
@@ -49,7 +50,7 @@ def _play(task):
 
 
 def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
-              workers=None):
+              workers=None, sims_b=None, batch_a=None, batch_b=None):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -73,7 +74,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
 
     t0 = time.time()
     with mp.Pool(workers, initializer=_init_worker,
-                 initargs=(model_a, model_b, sims)) as pool:
+                 initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b)) as pool:
         results = pool.map(_play, tasks)
 
     from benchmark import summarize_side
@@ -89,7 +90,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     return {
         "match": f"{name_a} vs {name_b}",
         "name_a": name_a, "name_b": name_b,
-        "games": games, "sims": sims, "seed": seed,
+        "games": games, "sims": sims, "sims_b": sims_b or sims,
+        "batch_a": batch_a, "batch_b": batch_b, "seed": seed,
         "opening_temp_plies": opening_temp_plies,
         "workers": workers,
         "a_score": round(score, 4),
@@ -106,6 +108,12 @@ def main():
                     help="opponent model (.pt); omit for the heuristic anchor")
     ap.add_argument("--games", type=int, default=20, help="total games (half per color)")
     ap.add_argument("--sims", type=int, default=400)
+    ap.add_argument("--sims-b", type=int, default=None,
+                    help="model-b simulations (default: --sims). Use for "
+                         "equal-TIME comparisons when the two configs differ "
+                         "in simulations per second.")
+    ap.add_argument("--batch-a", type=int, default=None)
+    ap.add_argument("--batch-b", type=int, default=None)
     ap.add_argument("--seed", type=int, default=20260704)
     # Left as None so resolve_opening_temp_plies() can pick the default from the
     # opponent: heuristic tie-breaks already diversify anchor games, so only
@@ -117,7 +125,9 @@ def main():
     args = ap.parse_args()
 
     out = run_match(args.model_a, args.model_b, args.games, args.sims,
-                    args.seed, args.opening_temp_plies, args.workers)
+                    args.seed, args.opening_temp_plies, args.workers,
+                    sims_b=args.sims_b, batch_a=args.batch_a,
+                    batch_b=args.batch_b)
     name_a, name_b = out["name_a"], out["name_b"]
 
     os.makedirs(args.out_dir, exist_ok=True)
