@@ -397,6 +397,32 @@ won (200 ps_monster / 212 owner, wP 3 and 4 evenly split). An uncapped sample
 came out 89% ps_monster and buried the owner's own conversions, which are the
 existence proof the deck is for; `--cap-per-source` fixes it.
 
+### 8.1 D3's core assumption is wrong as specified, and the fix is cheap
+
+The plan was that starting games from wP≥3 positions would produce a
+pawn-phase-dense corpus and "lift the merged corpus's wP≥3 share from 9.4% to
+25–30%". **It does not.** Measured over the 89 generated games (6,219 records):
+
+| slice | wP≥3 share |
+|---|---|
+| first quarter of each game | **45.9%** |
+| first half of each game | 33.7% |
+| whole game, per-game mean | 19.7% |
+| **whole corpus, per record** | **9.5%** |
+
+Games start in the pawn phase and leave it — White's pawns get traded or
+promoted — and because the post-phase play is much longer, it dominates the
+record count. The merged corpus's density is therefore unchanged at ~9.5%,
+which is precisely the number D3 set out to move.
+
+**Fix for the next run:** truncate generated games to the plies where wP≥3
+still holds, or filter on merge. Filtering records out of the middle of a game
+is *not* safe as the pipeline stands — `_discounted_results` derives the ramp
+label from a record's distance to the end of its own list, so removing records
+silently rewrites the labels of the survivors. Truncating a prefix has the same
+hazard in milder form. This needs a deliberate change, not a quick filter, and
+is the reason no filtering was applied here.
+
 Generation is **v17 vs v17 at 400 sims**, into
 `data/raw/nn_v19_cliff_selfplay`. Two deliberate choices:
 
