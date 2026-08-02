@@ -288,10 +288,28 @@ def value_weight_for_record(rec):
     return 1.0
 
 
+BLACK_WEIGHT_BALANCED = 1.75
+"""Multiplier that roughly equalises the two sides' gradient share.
+
+White moves twice per turn in this variant, so every turn emits two White
+half-move records against Black's one: the corpus is ~64/36 White/Black by
+construction, not by collection bias. Any capacity or training budget added to
+the SHARED trunk is therefore spent mostly on White, because that is where the
+loss reduction is. Measured on combined_v19_K: White 64.4% / Black 35.6%, and
+64/36 = 1.78.
+
+This exists to make "does Black benefit from more capacity?" a testable
+question (owner hypothesis, 2026-08-02). Arm C added a 2.74x tower to
+unbalanced data and White improved more -- which is what you would predict
+either way, so it tested nothing about the hypothesis.
+"""
+
+
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
                              value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                             input_channels=None, mask_human_ai=True):
+                             input_channels=None, mask_human_ai=True,
+                             black_weight=1.0):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
@@ -318,6 +336,10 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             pol = policy_dict_to_target(rec["policy"], is_white)
             pol_weight = policy_weight_for_record(rec, mask_human_ai=mask_human_ai)
             val_weight = value_weight_for_record(rec)
+            if black_weight != 1.0 and not is_white:
+                # Scales, so an explicitly masked record (weight 0) stays masked.
+                pol_weight *= black_weight
+                val_weight *= black_weight
 
             tensors.append(tensor)
             values.append(val)
@@ -358,7 +380,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      value_horizon=VALUE_TARGET_HORIZON,
                      value_floor=VALUE_TARGET_FLOOR,
                      value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                     input_channels=None, mask_human_ai=True):
+                     input_channels=None, mask_human_ai=True, black_weight=1.0):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -405,13 +427,16 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                   f"over last {value_horizon} plies")
     X_train, yv_train, yr_train, yp_train, ypw_train, yvw_train = _convert_games_to_arrays(
         train_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight)
     X_val, yv_val, yr_val, yp_val, ypw_val, yvw_val = _convert_games_to_arrays(
         val_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight)
     X_test, yv_test, yr_test, yp_test, ypw_test, yvw_test = _convert_games_to_arrays(
         test_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
@@ -487,6 +512,10 @@ if __name__ == "__main__":
     parser.add_argument("--channels", type=int, default=None,
                         help="Position encoding width (15 legacy or 17; "
                              "default: config TENSOR_SHAPE)")
+    parser.add_argument("--black-weight", type=float, default=1.0,
+                        help="multiply policy AND value weights for "
+                             f"Black-to-move records ({BLACK_WEIGHT_BALANCED} "
+                             "roughly equalises the sides; default 1.0 = off)")
     parser.add_argument("--no-human-ai-mask", action="store_true",
                         help="v16/v17-faithful policy weighting: human-game AI "
                              "moves stay policy teachers (explicit weights "
