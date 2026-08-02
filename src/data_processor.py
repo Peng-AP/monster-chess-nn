@@ -539,4 +539,5 @@ if __name__ == "__main__":
         value_discount_mode=args.value_discount_mode,
         input_channels=args.channels,
         mask_human_ai=not args.no_human_ai_mask,
+        black_weight=args.black_weight,
     )

@@ -86,5 +86,47 @@ class TestScaling(unittest.TestCase):
         self.assertEqual(out[5].tolist(), [1.75, 1.75])
 
 
+
+class TestCliWiring(unittest.TestCase):
+    """The flag must survive argparse -> process_raw_data -> conversion.
+
+    It did not, first time: --black-weight was defined and parsed and then
+    never passed on, so the corpus came out byte-identical to the unweighted
+    one. The unit tests above all passed, because they call the conversion
+    function directly. Only an end-to-end run through the CLI catches this.
+    """
+
+    def test_flag_reaches_the_weights_on_disk(self):
+        import json
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "raw" / "selfplay"
+            raw.mkdir(parents=True)
+            for game in range(6):
+                recs = [rec(WHITE_FEN, "white"), rec(BLACK_FEN, "black")] * 3
+                with open(raw / f"game_{game:04d}.jsonl", "w", encoding="utf-8") as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + "\n")
+
+            def run(out, *extra):
+                cmd = [sys.executable, str(ROOT / "src" / "data_processor.py"),
+                       "--raw-dir", str(Path(tmp) / "raw"), "--output-dir", str(out),
+                       "--seed", "42", "--channels", "15", *extra]
+                r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+            import numpy as np
+            plain, weighted = Path(tmp) / "plain", Path(tmp) / "weighted"
+            run(plain)
+            run(weighted, "--black-weight", "1.75")
+            a = np.load(plain / "policy_weights.npy")
+            b = np.load(weighted / "policy_weights.npy")
+            self.assertEqual(len(a), len(b))
+            self.assertGreater(b.sum(), a.sum(),
+                               "--black-weight did not reach the saved weights")
+            self.assertAlmostEqual(float(b.max()), 1.75, places=5)
+
 if __name__ == "__main__":
     unittest.main()
