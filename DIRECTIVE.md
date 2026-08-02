@@ -301,6 +301,27 @@ _Original specification, kept for the record:_
   `game_result`). If B beats K, the belief worry was wrong and the labels
   helped; if K beats B, the fork is answered with evidence.
 
+**D3 — PARTIALLY RUN 2026-08-02, and step 3's premise is FALSE as written.**
+
+Deck built and committed (`data/start_fens/cliff_starts_v2.jsonl`, 412 starts,
+200 ps / 212 owner, `--cap-per-source` because an uncapped sample came out 89%
+ps and buried the owner's own conversions). 89 games generated v17-vs-v17 at
+400 sims into `data/raw/nn_v19_cliff_selfplay` (v17 not ramp — M3).
+
+**The volume target below cannot be met by generating whole games from cliff
+starts.** Measured on those 89 games: the first quarter of each game is 45.9%
+wP≥3, the first half 33.7%, the whole game 19.7% per-game — but **9.5% by
+record**, because games leave the pawn phase and the post-phase play is far
+longer. That is the corpus's existing density, so the merge moved nothing.
+
+**Do not fix this with a naive filter.** `_discounted_results` derives each
+ramp label from the record's distance to the end of its own list, so dropping
+records silently rewrites the labels of everything that survives. A correct fix
+truncates generation itself (stop recording when wP<3) or teaches the label
+builder about truncation. Scope it before spending another night on it.
+
+_Original specification:_
+
 **D3 — cliff self-play: manufacture the missing phase with real search values.**
 ps_monster carries `mcts_value=0.0` — only self-play can produce pawn-phase
 records with search-grounded values. Steps:
