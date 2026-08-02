@@ -38,6 +38,24 @@ def _cheb(a, b):
                abs(chess.square_file(a) - chess.square_file(b)))
 
 
+def mate_algo_applicable(game):
+    """True when the verified scripted conversion applies: bare White king vs
+    Black king + at least three heavies (Q/R).
+
+    Lives here rather than in data_generation because it is the applicability
+    predicate for ScriptedMate, and both the generator and the owner's play
+    notebook need it.
+    """
+    board = game.board
+    if chess.popcount(board.occupied_co[chess.WHITE]) != 1:
+        return False
+    if board.king(chess.BLACK) is None or board.king(chess.WHITE) is None:
+        return False
+    heavies = (board.pieces(chess.QUEEN, chess.BLACK)
+               | board.pieces(chess.ROOK, chess.BLACK))
+    return len(heavies) >= 3
+
+
 class ScriptedMate:
     def __init__(self):
         self.edge = None  # rank (0 or 7) White is pushed toward

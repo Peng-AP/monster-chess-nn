@@ -529,6 +529,59 @@ The policy head is **81.6%** of the default model, which is exactly why
 32% rise in total — that is the honest capacity experiment, and it is the one
 lever law 6 leaves standing.
 
+## 8.5 Owner playtest, 2026-08-02 (at 1200–2000 sims, settled on 1500)
+
+Verbatim: *"I can't really distinguish between K and B playing strengths, but
+they have big improvements as black. Very difficult to crack as white during
+pawnphase and only has weird moments where it struggles to convert and loses
+afterwards. White is easy to beat, still, but coherent and sharp."*
+
+Four claims, each matching something measured:
+
+| observation | measurement |
+|---|---|
+| can't distinguish K from B | every metric except the direct H2H returned a null: gate 0.6 SE, cliff conversion 0.9 SE, promotion-defense conversion 0.05 SE. Only 80 games of K-vs-B separated them, at 2.2 SE |
+| big improvement as Black | cliff conversion 0.347 (ramp) → 0.473/0.527; Black leg vs ramp 0.300 (control) → 0.650/0.700 |
+| hard to crack in the pawn phase | this is the cliff, and it is the thing the campaign set out to move |
+| weird moments failing to convert, then losing | the class measured in §8.6: Black with 3+ heavies vs White king **+ pawns**, which the corpus records as 36% Black / 64% White |
+| White still easy to beat | White was never the target this round; the corpus additions were Black-focused, and self-play skew (§8.3) says White improved *more* in engine terms while remaining beatable by a human |
+
+**Also measured by the owner: 2000 sims buys nothing over 1200** for either
+side, so the notebook settled at 1500. Worth holding against M4's curve, which
+showed B's cliff conversion climbing 0.36 → 0.84 from 200 to 1600 sims — but
+against a *fixed heuristic White*. Deeper search pays enormously against a weak
+opponent and evidently very little against the owner. Both are true; his is the
+one that matters for promotion.
+
+**Campaign goal status: not met.** The objective is a model good enough to beat
+him. Black is now genuinely hard for him in the pawn phase; White is still easy.
+v19 is a real step, not the finish.
+
+## 8.6 Why it shuffles after promoting — the corpus says those positions are lost
+
+Prompted by the owner's report that Black converts to a won state, promotes,
+then fails to finish. The data is not scarce — it is *pessimistic*:
+
+| Black has 3+ heavies, White has… | records | games reaching it: Black wins / White wins |
+|---|---|---|
+| **bare king** | 48,788 | **941 / 83** (88% Black) |
+| king + 1 pawn | 13,184 | 449 / 336 |
+| king + 2 pawns | 11,206 | 478 / 617 |
+| **king + 3 pawns** | 25,534 | **446 / 782** (36% Black) |
+
+With White stripped to a bare king Black wins 88%, and the model finishes those
+confidently — 40% of the corpus is that class, and `data_generation` has always
+handed those endings to the verified `ScriptedMate` conversion. **With White
+still holding pawns, Black converts 36% and White wins outright**, so a model
+trained on this plays the owner's position as though it were lost. It is not
+missing knowledge; it learned the corpus's truth, and the corpus reached those
+positions with a Black too weak to convert them.
+
+This is the pawn-phase cliff one phase later, and the same mechanism: **a weak
+Black's failures recorded as ground truth.** Note where the oracle sits — it
+requires a bare White king, so it covers the 88% class the model already handles
+and abstains from the 36% class that is actually broken.
+
 ## 9. Where to pick this up
 
 **Two candidates are ready for your playtest.** Both clear the gate twice on

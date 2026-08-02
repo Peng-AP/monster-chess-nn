@@ -267,17 +267,9 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
             _opponent_eval_pool.append(NNEvaluator(p))
 
 
-def _mate_algo_applicable(game):
-    """True when the verified scripted conversion applies: bare White king vs
-    Black king + at least three heavies (Q/R)."""
-    board = game.board
-    if chess.popcount(board.occupied_co[chess.WHITE]) != 1:
-        return False
-    if board.king(chess.BLACK) is None or board.king(chess.WHITE) is None:
-        return False
-    heavies = (board.pieces(chess.QUEEN, chess.BLACK)
-               | board.pieces(chess.ROOK, chess.BLACK))
-    return len(heavies) >= 3
+# Moved to scripted_mate, which is where the algorithm it guards lives; the
+# play notebook needs it too. Re-exported under the old name for any caller.
+from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa: E402
 
 
 def play_game(num_simulations, game_deadline=None):
