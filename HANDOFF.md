@@ -9,6 +9,38 @@ things) and `CONTEXT.md` (the incumbent/candidate/version vocabulary).
 
 ---
 
+## CLOSED SINCE THIS WAS WRITTEN (2026-08-01/02, on the GPU box)
+
+`DIRECTIVE.md` is the active campaign document and `OVERNIGHT_REPORT.md` the
+active run report. The following items below are **answered** — read them as
+history, not as open work:
+
+| item | status |
+|---|---|
+| §4.4 refused capture — is it a population defect? | **No.** M2 ran the 400-position deck through *search* for all four models: capture rate 0.565–0.603 with dup1 mid-pack at 0.595 and **v17 the worst at 0.565**. The failure was n=1. |
+| §4.5 ramp's value optimism — insight or error? | **Error.** Ramp and v17 convert the same deck as Black at 20.75% vs 19.75% while predicting −0.129 vs −0.537. Ramp's calibration error is +0.518, v17's +0.130. |
+| §4.6 epoch headroom | **None.** Re-run at `--epochs 80 --patience 10`: best epoch 24, early stop 34, against the recorded 30-epoch run's best 25. |
+| §7.1 ps_monster — knowledge or belief? | Now an A/B, not a debate. `combined_v19_K` (ps at `value_weight=0`) vs `combined_v19_B` (full value), identical otherwise; being gated. |
+| §7.3 widen gate matches | **Done.** 20 games/side/leg, plus a confirmation replay of the bar leg on a fresh opening seed. |
+| §8.1 MCTS promotion probe | Done — `tools/promotion_defense_probe.py`, deck committed at `data/start_fens/promotion_defense_deck_v1.jsonl`. |
+| §8.2 `--patience` | Done. |
+| §8.4 explain ramp's optimism | Done (M3, above). |
+
+Two structural things this document predates:
+
+* **`clone()` copies 8 plies of history, not the whole stack.** It was 82% of a
+  late-game decision. Full-length games got 4.64× faster with play verified
+  move-for-move identical. §10.4's timings are obsolete.
+* **The gate bar is `fresh_start_v18_ramp`, not the incumbent** (owner,
+  2026-08-01). v17 scores 0.275 against it.
+
+Still open and still needing the owner: §7.4 (the hand-corrected label
+precedent) and the corpus question this document never asked — **ramp trained
+on `combined_v16`, every v18 arm that lost to it trained on `combined_v17`, and
+`data/raw/combined_v16` is on neither this box nor the transfer drive.**
+
+---
+
 ## 0. Orientation in one screen
 
 The engine plays a chess variant where **White has a king and 4 pawns and moves
