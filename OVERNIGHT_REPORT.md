@@ -133,7 +133,27 @@ Recipe frozen across all four (ramp labels r50h60, scalar head, 15ch, seed 42,
 unchanged: bar is ramp, per-side floor 0.40, passing arms replay the bar leg on
 a fresh opening seed.
 
-_Results filled in as they land._
+**Training, all four (same recipe, same seed):**
+
+| arm | best epoch | stopped | train positions |
+|---|---|---|---|
+| control | **24** | cap 30 | 116,324 |
+| O | 8 | early, 18 | 124,924 |
+| K | 5 | early, 15 | 195,292 |
+| B | 6 | early, 16 | 195,292 |
+
+`v19_control` reproduces M1's best epoch 24 and selection value −1.2594 exactly,
+which is a second confirmation that D1 left training untouched.
+
+The merged arms converge far earlier — more positions per epoch, so fewer
+epochs — and then early-stop. Their `best_selection_value` is *lower* than
+control's (K −1.0994, B −1.1139, O −1.2217 vs control −1.2594), but **that
+comparison is not meaningful**: each arm's validation set is drawn from its own
+corpus, so control is scored on v17 positions only while K and B are scored on
+a set containing 43,939 ps records. Different exams, not different grades. The
+gate is the only cross-arm comparison in this report that is like-for-like.
+
+_Gate results filled in as they land._
 
 ---
 
