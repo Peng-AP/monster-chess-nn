@@ -407,7 +407,38 @@ Generation is **v17 vs v17 at 400 sims**, into
   1600 and §7 has just shown why sharper search matters; 1600 would need ~4 h
   and the window was ~1 h. **A future run should regenerate at 1600.**
 
-## 9. Open, unchanged
+## 9. Where to pick this up
+
+**Two candidates are ready for your playtest.** Both clear the gate twice on
+independent openings and both convert the pawn phase far better than ramp.
+They are not interchangeable:
+
+* **`models/candidates/v19_B`** — the stronger player. Beats ramp 0.7625
+  pooled, beats K head-to-head 0.65, cliff conversion 0.527. Carries a +0.283
+  value bias.
+* **`models/candidates/v19_K`** — the honest one. Beats ramp 0.7125 pooled with
+  the **better Black leg (0.700 vs 0.650)**, same promotion-defense conversion
+  as B, and less than half the calibration error (+0.119).
+
+Play B first if you want to know whether the ceiling moved; play K if you want
+to know whether the *judgement* improved. Given ramp was rejected for faults an
+optimistic value head produces, K may survive your eye better than its gate
+numbers suggest. **At 800 sims per the standing rule** — though see §7, that
+rule was measured on v17-era models and B shows no high-sim pathology to 1600.
+
+**The next lever is arm S**, not more policy data. §7 says the knowledge is
+already in there and search extracts it, so the payoff is in sharper value
+targets. D3's generation is the first step; regenerate at 1600 sims when there
+is a night for it.
+
+**The question I could not answer and you can.** Ramp trained on
+`combined_v16`; every v18 arm that lost to it trained on `combined_v17`; the
+whole ladder above inherits v17. `data/raw/combined_v16` is on neither this box
+nor the transfer drive. One directory copied from the CPU box would let us
+reproduce ramp from source and settle whether the v16→v17 recipe change cost
+anything — the one confound this run could not control for.
+
+## 10. Open, unchanged
 
 - **The v16/v17 corpus confound.** Ramp trained on `combined_v16`; all three
   v18 arms that died on its Black leg trained on `combined_v17`; the whole
