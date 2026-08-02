@@ -98,16 +98,19 @@ def main():
     ap.add_argument("--offset-from-end", type=int, default=6,
                     help="drop the last N records of each game (default: 6)")
     ap.add_argument("--count", type=int, default=300)
-    ap.add_argument("--per-game-cap", type=int, default=4,
-                    help="at most N starts from one game, so a long conversion "
-                         "does not dominate the deck (default: 4)")
+    ap.add_argument("--cap-per-source", type=int, default=None,
+                    help="at most N starts from any one source directory. "
+                         "Without it a large source swamps the deck: "
+                         "ps_monster alone yields 1753 candidates against the "
+                         "owner's 212, and an unweighted sample of 300 came "
+                         "out 89%% ps -- burying the conversions that are the "
+                         "whole reason the owner's games are in here.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
     seen = {}
-    per_game = Counter()
     scanned = 0
     for raw in args.raw_dir:
         if not os.path.isdir(raw):
@@ -128,14 +131,19 @@ def main():
                 continue
             if game.is_terminal() or not game.get_legal_actions():
                 continue
-            bucket = f"{entry['source']}"
-            if per_game[bucket] >= 10 ** 9:
-                continue
             seen[key] = entry
         print(f"  {raw}: +{len(seen) - before} distinct (running total {len(seen)})")
 
     entries = list(seen.values())
     rng.shuffle(entries)
+    if args.cap_per_source:
+        kept, per_source = [], Counter()
+        for e in entries:
+            if per_source[e["source"]] >= args.cap_per_source:
+                continue
+            per_source[e["source"]] += 1
+            kept.append(e)
+        entries = kept
     entries = entries[:args.count]
     entries.sort(key=lambda e: e["fen"])
 
