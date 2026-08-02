@@ -458,6 +458,77 @@ this run does not test it fairly.
 
 Artifact: `benchmarks/match_v19_KS_vs_fresh_start_v18_ramp_20260802_072327.json`.
 
+## 8.3 Head-to-head and side skew (owner-requested, 2026-08-02)
+
+**K vs B, 80 independent games**, seeds 20260802 and 20760802:
+
+| seed | K | K as White | K as Black |
+|---|---|---|---|
+| 20260802 | 0.350 | 0.65 | 0.05 |
+| 20760802 | 0.400 | 0.65 | 0.15 |
+
+**Pooled: B 0.625 / K 0.375, +0.125 = 2.2 SE.**
+
+A third run at seed 20260803 was **discarded, not pooled**. `run_match` derives
+per-game seeds as `seed + i`, so seeds one apart share 19 of 20 games; that run
+was the first shifted by one and reproduced it exactly. Pooling it would have
+claimed n=120 at 2.9 SE for what is really ~41 distinct games. Identical
+results across "independent" samples is a bug signature, not a confirmation.
+Pinned in `tests/test_match_seed_separation.py`, which also proves every gate
+leg pair is disjoint — **tonight's six gates are unaffected**.
+
+**Side skew in self-play** — same model on both sides, so White's score *is*
+the side advantage. 40 games each:
+
+| model | as White | as Black | **White overall** | skew |
+|---|---|---|---|---|
+| v17 | 0.575 | 0.450 | 0.562 | +0.062 |
+| ramp | 0.600 | 0.325 | 0.637 | +0.137 |
+| **B** | 0.850 | 0.450 | **0.700** | +0.200 |
+| **K** | 0.800 | 0.250 | **0.775** | **+0.275** |
+
+SE 0.079; K vs v17 is 2.7 SE, real.
+
+**The new arms are MORE White-skewed than the models they beat.** This is not a
+contradiction of §5–6, it is the resolution of them: both sides improved and
+White improved more. K's Black scores 0.700 against *ramp's* White and 0.250
+against *K's own* White, because K's White is now far stronger than ramp's. The
+absolute Black gains are real — cliff conversion 0.473/0.527 against ramp's
+0.347 — they are simply outpaced.
+
+Two consequences:
+
+1. In a variant whose established law is that **Black wins with correct play**,
+   these models sit further from the truth than v17 did. The gate measures
+   strength against a fixed opponent, so this could never have surfaced there.
+2. **Self-play generation from K or B will be more White-skewed than from v17.**
+   D3's run already came out 63/89 White wins using v17. Keep v17 as the
+   generator, or generate only from Black-favourable starts.
+
+## 8.4 D3 unblocked, and arm C scoped
+
+**The label hazard is fixed at the source.** `data_generation` now stamps
+`plies_to_end` on every record, and `_discounted_results` prefers it over the
+positional rule. Filtering a corpus to its pawn-phase records — which is what
+D3's density target needs — no longer relabels the survivors. Every corpus on
+disk lacks the field and therefore trains exactly as before (verified by
+sampling all five; the unit tests pin both branches).
+
+**Arm C, with the numbers `v18_cap` should have reported:**
+
+| config | total | tower+stem | policy head | tower multiple |
+|---|---|---|---|---|
+| default (v17/v18/v19) | 10,285,697 | 1,864,000 | 8,396,864 | 1.00× |
+| tower 128→192 mix | 12,866,561 | 4,434,624 | 8,398,912 | **2.38×** |
+| tower 192×8 | 13,546,753 | 5,114,816 | 8,398,912 | **2.74×** |
+| tower 256×8 | 17,470,849 | 9,028,672 | 8,400,960 | 4.84× |
+
+The policy head is **81.6%** of the default model, which is exactly why
+`v18_cap` moved total params 8% and concluded capacity was tested. It was not.
+`--res-channels 192,192,192,192,192,192,192,192` nearly triples the tower for a
+32% rise in total — that is the honest capacity experiment, and it is the one
+lever law 6 leaves standing.
+
 ## 9. Where to pick this up
 
 **Two candidates are ready for your playtest.** Both clear the gate twice on
