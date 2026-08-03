@@ -120,9 +120,17 @@ that measurement.
     only the corpus varied produced the campaign's only real gains:
     Black-vs-ramp 0.300 (v17 corpus) → 0.450 (+27 owner games) → 0.700
     (+ps_monster). The control rung reproduced the historical 0.300 exactly.
-12. **The cliff is search-limited.** B as Black converts 0.36 → 0.52 → 0.67 →
-    **0.84** at 200/400/800/1600 sims against a fixed heuristic White@400.
-    Knowledge is present; 400 sims does not extract it.
+12. **Conversion is search-limited, in both classes, and it survives a strong
+    opponent.** B as Black on the cliff deck converts 0.36 → 0.52 → 0.67 →
+    **0.84** at 200/400/800/1600 sims (vs heuristic White@400). v19 on the
+    **post-promotion** deck, measured 2026-08-03 against **v19's own White@400**
+    — a strong opponent, so it passes the transfer gate — converts
+    **0.21 → 0.28 → 0.48 → 0.70** (+0.49, **6.9 SE**), with mean game length
+    rising 55 → 112 plies as Black plays conversions out instead of shuffling
+    to the cap. Knowledge is present in both; 400 sims does not extract it.
+    **Corollary: the corpus's 36% is an accurate record of 400-sim play, not a
+    poisoned label** — which is why masking the class (L2) attacks the wrong
+    thing and generating at depth (L3) attacks the right one.
 13. **Self-play cannot bootstrap symmetrically.** v19 self-play converts the
     post-promotion class at 0.300 against the corpus's 0.36 — no better than
     the data it came from. Corrected labels need a Black stronger than the

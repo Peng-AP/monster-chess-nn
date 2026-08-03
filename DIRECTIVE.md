@@ -68,7 +68,14 @@ end in conversions instead of recorded failures; a finishing module the play
 path itself can use. Pure Python, no GPU, fully testable — the
 highest-value engineering item in the project.
 
-**L2 — stop teaching the poison (cheap, and the weakest of the three).** The
+**L2 — RETIRED 2026-08-03 by the PPC curve.** Its premise was that the class's
+labels are poisoned pessimism. They are not: they are an accurate record of
+400-sim play, and the same model at 1600 sims converts the same positions 0.70.
+There is nothing wrong with the labels to mask — the model was simply not
+searching deep enough when they were made. Kept below as the reasoning that was
+superseded.
+
+_Retired rationale:_ **L2 — stop teaching the poison (cheap, and the weakest of the three).** The
 king+3-pawns class holds 25,534 *records*; of the 1,228 *games* reaching it,
 White won 782 (64%) in a class the owner wins 100% of. D1's `value_weights.npy` exists precisely for
 "do not teach value from this." Build a corpus variant masking value on the
@@ -146,8 +153,8 @@ L1 scripts and L3 approximates.
 
 | order | item | cost |
 |---|---|---|
-| **first** | **PPC sims curve** — 200/400/800/1600 on `postpromo_starts_v1`, Black varying, **White = v19@400** | ~1.5 h |
-| then, on the answer | rises → L3; flat → see below (L1 is struck) | — |
+| ~~first~~ | **PPC sims curve — DONE 2026-08-03: 0.21 → 0.28 → 0.48 → 0.70, +0.49 at 6.9 SE against v19's White.** Search-limited, transfer-gate clean. | done |
+| **now** | **L3: generate from both decks at Black@1600 / White@400, train, gate** | overnight |
 | ~~now, parallel~~ | ~~per-side sims in `data_generation`~~ — already exists via `--train-side` | done |
 | after L3 machinery | asymmetric generation from both decks | overnight |
 | then | train the arm, gate with the transfer gate | ~1 day |
