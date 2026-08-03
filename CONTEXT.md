@@ -124,13 +124,28 @@ that measurement.
     opponent.** B as Black on the cliff deck converts 0.36 → 0.52 → 0.67 →
     **0.84** at 200/400/800/1600 sims (vs heuristic White@400). v19 on the
     **post-promotion** deck, measured 2026-08-03 against **v19's own White@400**
-    — a strong opponent, so it passes the transfer gate — converts
-    **0.21 → 0.28 → 0.48 → 0.70** (+0.49, **6.9 SE**), with mean game length
-    rising 55 → 112 plies as Black plays conversions out instead of shuffling
-    to the cap. Knowledge is present in both; 400 sims does not extract it.
+    — a strong opponent, so it passes the transfer gate — reads
+    0.21 → 0.28 → 0.48 → 0.70 on `black_win_rate`.
+
+    **Decompose that, because `black_win_rate` counts `result < 0` and so
+    includes the −0.5 move-limit relabel.** True king captures are
+    **0.09 → 0.15 → 0.20 → 0.30**; −0.5 dominant-but-unfinished games are
+    12 / 13 / 28 / 40 of 100. Search genuinely helps — true conversions triple
+    (~3.5 SE) — but **at 1600 sims 40% of games still reach the turn cap with
+    Black dominant and unable to finish.** Mean length rises 55 → 112 plies:
+    longer, not more decisive. The owner's shuffling report survives a 4×
+    increase in search. Knowledge is present in both classes; 400 sims does not
+    extract it.
+
     **Corollary: the corpus's 36% is an accurate record of 400-sim play, not a
     poisoned label** — which is why masking the class (L2) attacks the wrong
     thing and generating at depth (L3) attacks the right one.
+
+    **Second corollary — finishing is a separate failure from converting.**
+    Deeper search reaches the won position and then cannot end the game. The
+    scripted oracle solves exactly this for the bare-king class and is struck
+    for the rest (§5 do-not-do), so the remaining untested lever is the turn
+    cap itself, `MAX_GAME_TURNS = 150`.
 13. **Self-play cannot bootstrap symmetrically.** v19 self-play converts the
     post-promotion class at 0.300 against the corpus's 0.36 — no better than
     the data it came from. Corrected labels need a Black stronger than the
