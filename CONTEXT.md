@@ -48,14 +48,14 @@ unchanged, in `_get_white_actions`).
   conversion is a big problem.**"*
 - **The live problem is Black conversion** — above all the post-promotion
   class (law 1a). The campaign targeting it is `DIRECTIVE.md`.
-- **`models/candidates/v20w` passed the gate 2026-08-03** and awaits the
-  owner's playtest. Corpus: `combined_v19_K` + 240 asymmetric-search games
-  (Black@1600 vs White@400) at 4× weight. Bar legs pooled over both reads
-  (n=80): aggregate **0.588** (1.6 SE over 0.50), White 0.725, **Black 0.450
-  against v19's own Black-vs-that-White of 0.250** (+0.200, 1.5 SE) — the
-  campaign's target side is the one that moved. **Marginal pass:** the
-  confirmation leg read 0.525 with Black exactly on the 0.40 floor against the
-  primary leg's 0.65.
+- **The v20 campaign closed 2026-08-03: both arms rejected** (`v20` Black 0.10
+  vs v19; `v20w` PASS-then-FAIL — its gate pass was move-limit relabels, Black
+  0.50 → **0.30** under captures-only scoring; both in `models/rejected/`).
+  Asymmetric generation at this scale did not produce a Black that converts
+  against v19; the turn cap tested dead (2.7× moves, identical captures). See
+  `REPORT.md`. **The active campaign is the engine rewrite** (`DIRECTIVE.md`,
+  2026-08-03): native search core, parity-gated, then a single re-baseline of
+  all incumbents under captures-only + native engine.
 
 ## 3. Model lifecycle vocabulary
 
