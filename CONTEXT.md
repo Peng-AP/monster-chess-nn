@@ -80,6 +80,7 @@ unchanged, in `_get_white_actions`).
 | **Push** | Never unless asked. `main` is ahead of `origin` by his choice. |
 | **Long / multi-worker jobs** | Standing go carried in the active directive. **Never while he is playing.** |
 | **Gates** | **Never weaken a threshold to let a recipe through.** Per-side floor 0.40 on every leg, aggregate must beat 0.50 on model legs. Thresholds are constants with no CLI flag, asserted by test. |
+| **What counts as a win** | *"A win by time shouldn't be counted the same as win by capturing the king"* (2026-08-03). Only a king capture scores a win; a move-limit ending scores a **draw**, symmetrically. The ±0.5 *training label* is unchanged. **Every gate/match result before 2026-08-03 was computed under the old rule and is not comparable to results after it** — including v19's promotion and the whole v19 ladder. |
 | **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds (two 40-game reads of one fixed matchup once came out 0.575 and 0.725 — one leg over 0.50 confirms nothing). **Unsettled right now:** `tools/gate.py` has `BAR = "vs_v19"` (the incumbent), while the strongest engine on record is `v19_B`. Owner decision open (DIRECTIVE §4.1); until then report both legs. |
 | **Versions** | A number needs automated evidence **plus** his playtest. |
 | **Metrics** | No proxy scorecards: *"my eval is not replaceable."* |
@@ -149,11 +150,19 @@ that measurement.
     poisoned label** — which is why masking the class (L2) attacks the wrong
     thing and generating at depth (L3) attacks the right one.
 
-    **Second corollary — finishing is a separate failure from converting.**
-    Deeper search reaches the won position and then cannot end the game. The
-    scripted oracle solves exactly this for the bare-king class and is struck
-    for the rest (§5 do-not-do), so the remaining untested lever is the turn
-    cap itself, `MAX_GAME_TURNS = 150`.
+    **Second corollary — finishing is a separate failure from converting, and
+    neither search nor time fixes it.** Deeper search reaches the won position
+    and then cannot end the game. Raising `MAX_GAME_TURNS` 150 → 400 (v19 both
+    sides @800 sims, same 100 starts, 2026-08-03) left true captures at
+    **0.20 → 0.20** and dominant-unfinished at 28 → 27, while mean length went
+    88 → 197 plies: given 2.7× the moves, Black converts identically. The
+    unfinished games are **not** conversions awaiting more time.
+
+    So Black's residual failure is a *technique* gap. More search finds the won
+    position; more moves do not cash it. The scripted oracle is the only thing
+    that ever solved finishing, for the bare-king class, and it is struck for
+    the rest (§5 do-not-do). The remaining sources of finishing technique are
+    the owner's own games and nothing else currently identified.
 13. **Self-play cannot bootstrap symmetrically.** v19 self-play converts the
     post-promotion class at 0.300 against the corpus's 0.36 — no better than
     the data it came from. Corrected labels need a Black stronger than the
