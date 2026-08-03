@@ -225,8 +225,26 @@ two weeks of infrastructure it may not need.
 
 **E1 — rules core.** Bitboards, movegen, both action APIs, state machine,
 clone, terminal with cap relabel (heuristic stub wired), FEN in/out.
-*Exit gate:* replays **all 2,966 playstrategy games and every human game on
-disk** move-for-move with FEN parity at every ply and identical results;
+*Exit gate:* replays **every replayable recorded game** move-for-move with FEN
+parity and identical results — measured 2026-08-03 with `tools/replay_parity.py`
+against the *Python* engine, which is both the harness's own check and the
+baseline the port must match: **968 of 991 clean (48,272 plies)**. Three
+corrections to this gate as first written:
+
+- **The 2,966-game playstrategy corpus is not on this box.** Only `ps_monster`
+  (829 games, all clean) and `human_games` (162) are on disk. Same class of
+  gap as `combined_v16` (§4.3).
+- **23 human games can never replay** and are carved out in
+  `data/legacy_unreplayable_games.json`. All 23 have one cause: White ends its
+  turn with its king attacked, which the owner's ruling forbids
+  (`test_ruleset_divergences.py` divergence 2). They were recorded under the
+  looser rule. The list is fixed — an unlisted game diverging is a real defect.
+- **"FEN parity at every ply" is not possible for owner games.** They record
+  only White-to-move positions with an atomic `"m1,m2"` policy; the
+  intermediate half-ply positions were never stored, so parity is checkable
+  only at turn boundaries.
+
+Also required:
 randomized differential vs the Python engine — ≥10M positions, legal-action
 **set** equality on both APIs including forced-blunder and ep cases; native
 mirrors of `test_king_capture_rules.py` and `test_ruleset_divergences.py`
