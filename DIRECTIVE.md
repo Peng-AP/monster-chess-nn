@@ -1,7 +1,8 @@
 # DIRECTIVE — the engine rewrite (2026-08-03)
 
 **Owner's call: the residual problem may be compute.** Search is Python-bound
-(CONTEXT law 17: NN forward 14%, python-chess movegen ~35%, clone/apply
+(CONTEXT law 18: NN forward 14% at batch 16 and 7.7% at batch 256,
+python-chess movegen ~35%, clone/apply
 25–32%, tree ~25%) and search strength demonstrably buys conversions (law 12,
 corrected: true king captures 0.09 → 0.30 as Black's sims go 200 → 1600, still
 rising at the last measured point). This directive scopes the whole-engine
@@ -38,7 +39,13 @@ playtest; no gate threshold moves).
    override (owner 2026-07-12, engine-wide), the first-half override and
    oscillation penalty (owner 2026-07-17), selected-child value reporting
    (owner 2026-07-17). These are product decisions, not implementation detail.
-4. **Nothing else changes.** Labels, corpora, thresholds, the scoring rule,
+4. **Abort trigger.** This is a multi-week commitment with a history of
+   optimistic estimates behind it (§6). Stop and reassess if **E1 exceeds 8
+   days**, if the 10M-position differential cannot reach legal-action set
+   equality, or if E3(c) misses 5×. Stopping is cheap — §0.2 keeps the Python
+   engine live, and E0 delivers its answers independently of the rewrite.
+   Sunk cost is not a reason to continue past these.
+5. **Nothing else changes.** Labels, corpora, thresholds, the scoring rule,
    the model, the laws — untouched. One comparability break is inherent in
    swapping the search engine; it is taken once, deliberately, at §3 E5.
 
@@ -154,7 +161,7 @@ training or gates silently if drifted.
 **D1 — Rust, PyO3, maturin.** Memory-safe tree code, first-class Windows/MSVC
 support, cargo-driven differential tests. (C++/pybind11 is the acceptable
 alternative if a blocker appears; Cython/numba are not — bounded at ~2–3×,
-measured category, law 17.)
+measured category, law 18.)
 
 **D2 — the native core owns:** bitboard state, movegen (both APIs), game
 state machine, clone, terminal + cap relabel, the heuristic evaluator, the
@@ -188,12 +195,33 @@ until E5.
 
 ## 3. Phases and exit gates
 
-**E0 — payoff calibration (existing engine, unattended, blocks nothing).**
-(a) Extend the PPC true-capture curve to 3200/6400 sims — does conversion keep
-climbing or plateau at the value head's indifference? (b) The forced-capture
-probe over the 40 dominant-unfinished endgames — how many had forced kills
-MCTS walked past? (a) sizes the high-sim payoff; (b) sizes the finisher
-search. Both shape E6, neither blocks E1.
+**E0 — payoff calibration (existing engine, runs in parallel with E1).**
+
+**(a) The sims curve, unattended.** Extend the PPC true-capture curve to
+3200/6400 sims — does conversion keep climbing or plateau at the value head's
+indifference? Sizes purchase #1. Note this curve is the one major
+pre-2026-08-03 result the scoring change does **not** invalidate:
+`true_capture_rate` counts `result <= -1` only, so it was already
+captures-only. It is the cleanest evidence in the record and the load-bearing
+support for this directive.
+
+**(b) The finisher spike — promoted from sizing to its own go/no-go, and it
+runs first.** A depth-limited exhaustive forced-capture search over the 40
+dominant-unfinished endgames: how many had forced kills MCTS walked past?
+This is 40 fixed positions searched offline in Python — cheap, and it settles
+purchase #2's premise *before* any Rust exists. Two outcomes:
+
+- **Forced kills are there** -> the finisher is validated as the fix, and the
+  next question is whether a Python finisher invoked *only* at dominant evals
+  (a rare trigger) is affordable today. If it is, purchase #2 lands without
+  waiting for the rewrite, and the rewrite's case narrows to #1 and #3.
+- **They are not** -> the dominant-unfinished positions are genuinely unwon at
+  reachable depth, the finisher drops down E6, and #1 carries the directive.
+
+Rationale for the promotion: #2 is the only purchase attacking a failure mode
+nothing else addresses, and #1/#3 largely buy throughput for generation — the
+lever that just failed twice (v20, v20w). The best idea should not sit behind
+two weeks of infrastructure it may not need.
 
 **E1 — rules core.** Bitboards, movegen, both action APIs, state machine,
 clone, terminal with cap relabel (heuristic stub wired), FEN in/out.
@@ -210,17 +238,42 @@ on 100k positions in both 15ch and 17ch layouts.
 
 **E3 — native MCTS, all modes, all overrides.** *Exit gate:* (a) on
 `promotion_defense_deck_v1` (400 positions, 400 sims, no noise), selected-move
-agreement with the Python engine ≥95%, and the §4.4 anchor position
-reproduces capture priors to 4 decimals; (b) old-engine vs new-engine
-self-match at equal sims, 200 games, score within 2 SE of 0.50; (c)
-**performance: ≥10× wall-clock** on the standard late-game profile decision
+agreement with the Python engine **≥99%, every disagreement triaged** — with
+noise off and temperature 0 PUCT is deterministic given identical evals, so
+agreement should be near-total; a 5% budget over 400 positions would let 20
+positions differ silently, and §4 names FPU/backprop perspective bugs as the
+top risk. Gate on visit-count distributions, not argmax alone. The §4.4 anchor
+position reproduces capture priors to 4 decimals. (b) old-engine vs new-engine
+self-match at equal sims, 200 games, score within 2 SE of 0.50. (c)
+**performance: ≥5× wall-clock** on the standard late-game profile decision
 (the ply-~60, 400-sim benchmark that measured 22.6 s pre-clone-fix).
 
+*Why 5× and not 10× here.* Amdahl, from law 18's own numbers. E3 runs at batch
+16 (§1.2 pins the width until parity holds), where NN forward is 14% of a
+decision and D3 Stage 1 leaves it in PyTorch untouched. Decision time is
+`14 + 86/k` for native speedup `k` on everything else: 4.4x at k=10, 5.5x at
+k=20, and a **7.1x ceiling at k=infinity**. A 10x gate at E3 demands a result
+the phase's own configuration forbids. 5x already implies k~16 and is strong
+evidence the port is sound. The 10x target moves to E4, where widening the
+batch makes it reachable.
+
 **E4 — integration.** `--engine native` through generation, match, gate,
-benchmark, play; the Stage-2 inference server. *Exit gate:* a full 3-leg gate
-in ≤5 minutes (today: ~34); aggregate throughput ≥40× current 7.1
-decisions/s; one overnight generation run completing clean under the
-detached-execution pattern.
+benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the
+profile decision at batch 256**, one overnight generation run completing clean
+under the detached-execution pattern, and a full 3-leg gate in **≤6 minutes**
+(today ~34, i.e. ≥5.7× end-to-end; the gap to 10× is fixed cost — model load
+and process spawn — which the rewrite does not address).
+
+*Where 10× comes from, and what the ceiling is.* At batch 256 law 18 measures
+NN forward at 7.7% with the decision 1.53× faster overall, so of the original
+100 units the NN holds ~5.0 and everything else ~60.4. Native gives
+`5.0 + 60.4/k`: 9.1x at k=10, 12.5x at k=20, **20x ceiling at k=infinity**.
+The previous draft's "≥40× aggregate throughput" sat *above* that ceiling — it
+is reachable only if the Stage-2 cross-game server beats single-process
+batch-256 by a further 2× (plausible: 8 workers currently fire 8 separate
+16-leaf kernels where one 128-leaf forward would do), but that is an
+extrapolation, not a measurement, and it must not be a hard gate. **40×
+aggregate is the target; 10× on the decision is the gate.**
 
 **E5 — the re-baseline (the single comparability break).** One event, one
 night: v17, ramp, v19, v19_B, heuristic anchor — full cross-table under
@@ -246,6 +299,7 @@ change — none rides in with another.
 | perspective bugs in FPU/backprop (bit M2 twice) | port from the *contract* in §1.2, property tests on 3-ply hand-built trees with known Q |
 | GIL contention, 8 workers × callback | each worker owns its core + model as today; Stage 2 server replaces, not wraps, per-worker inference |
 | Windows toolchain | rustup MSVC + maturin; CI is `cargo test` + the Python suite, both local |
+| **the known post-timeout hang** — worker kill leaves zombies that block the next `Pool`; E4 stacks an inference server on that unfixed pipeline | fix or quarantine it *before* E4 wires the Stage-2 server; the overnight-rehearsal gate must be a clean run, not a restarted one |
 | scope creep — "while we're in here" | §0.1. Parity first. Every improvement is a separate, flagged, measured change |
 | the rewrite eats the calendar while the real lever idles | **L4 continues throughout**: every owner session harvested; the rewrite never blocks his play or the intake of his games |
 
@@ -272,6 +326,14 @@ unchanged.
 | E6 | ongoing | per E0's answer |
 
 Calendar: ~1.5–2 weeks to E5 at the pace this project has actually sustained.
+**Treat that as the optimistic bound.** E1 covers bitboard movegen for a
+double-move variant with pseudo-legal + king-capture semantics, contractual
+move ordering and ep parity, *plus* a 10M-position differential harness and
+full-corpus replay; E2's 1 day is a mechanical port whose cost is chasing the
+last ulp to 1e-9; E3 carries the perspective flip, both overrides, the
+oscillation penalty and tree reuse. 4–5 weeks to E5 is the realistic band, and
+§0.4's abort trigger exists because of that gap. The parity regime is the
+consolation: overruns surface as failed gates, not as silent wrongness.
 Commits owner-identity, one-line; evidence to `benchmarks/`; the native crate
 lives in `native/` with its own tests; root docs unchanged in role
 (`CONTEXT.md` durable, this directive active, `REPORT.md` the last run).
