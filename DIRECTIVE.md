@@ -246,9 +246,27 @@ corrections to this gate as first written:
 
 Also required:
 randomized differential vs the Python engine — ≥10M positions, legal-action
-**set** equality on both APIs including forced-blunder and ep cases; native
-mirrors of `test_king_capture_rules.py` and `test_ruleset_divergences.py`
-pass.
+**set** equality on both APIs, plus contractual *ordering* where callers depend
+on it; native mirrors of `test_king_capture_rules.py` and
+`test_ruleset_divergences.py` pass.
+
+**Coverage is itself a gate criterion**, measured 2026-08-03 with
+`tools/differential.py` over 60,000 random-walk positions (2,808 pos/s on 6
+workers, so 10M is ~1 hour):
+
+| case | rate | verdict |
+|---|---|---|
+| ep capturable by the mover | 1.5% | ample from random walk |
+| castling rights present | 45% | ample |
+| White second half | 34% | ample |
+| **forced blunder (either side)** | **1 in 60,000** | **random sampling will not test this** |
+
+At 1.7e-5, a 10M-position run yields ~170 forced-blunder positions
+*incidentally*, concentrated in whatever lines happened to produce them — while
+§4 names forced-blunder ordering as a top risk. **That class needs targeted
+construction, not more random positions.** Ordering held across 19,501
+Black-to-move positions (0 violations) on the current engine, so the contract is
+real and checkable.
 
 **E2 — heuristic + encoding.** *Exit gate:* |Δeval| ≤ 1e-9 vs Python on 1M
 random positions including clamp and pending-aware cases; tensor byte-equality
