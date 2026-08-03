@@ -98,25 +98,52 @@ def summarize_side(plies_by_result):
     Returns wins/losses/draws, score = (W + 0.5 D) / N, mean plies overall,
     and mean plies split by won/lost games (how decisively games go, in
     either direction).
+
+    **Only a king capture is a win** (owner, 2026-08-03: *"a win by time
+    shouldn't be counted the same as win by capturing the king"*). A game that
+    reaches `MAX_GAME_TURNS` is relabelled +-0.5 by heuristic sign, and that
+    relabel used to score here as a full win: `result > 0` caught +0.5. So a
+    model that reached a winning position and then shuffled to the cap earned
+    the same gate credit as one that finished, which is exactly the behaviour
+    the owner reported at the board. Measured on `v20w`: its post-promotion
+    "conversion" rose 0.28 -> 0.46 against v19 entirely through +-0.5 relabels
+    (13 -> 33 of them) while true captures went 0.15 -> 0.13.
+
+    Move-limit endings now score as draws. The +-0.5 *training label* is
+    unchanged -- it is a position-dependent proxy that carries gradient
+    (CONTEXT law 3); this is about what the gate calls a win.
+
+    **Results from before 2026-08-03 were computed under the old rule and are
+    not comparable to results after it.**
     """
     wins = losses = draws = 0
+    time_wins = time_losses = 0
     all_plies, win_plies, loss_plies = [], [], []
     for result, plies in plies_by_result:
         all_plies.append(plies)
-        if result > 0:
+        if result >= 1:
             wins += 1
             win_plies.append(plies)
-        elif result < 0:
+        elif result <= -1:
             losses += 1
             loss_plies.append(plies)
         else:
             draws += 1
+            if result > 0:
+                time_wins += 1
+            elif result < 0:
+                time_losses += 1
     n = len(plies_by_result)
     return {
         "games": n,
         "wins": wins,
         "losses": losses,
         "draws": draws,
+        # Of the draws, how many were move-limit endings leaning each way.
+        # Reported so "ahead at the cap" stays visible instead of vanishing
+        # into the draw column.
+        "time_leaning_wins": time_wins,
+        "time_leaning_losses": time_losses,
         "score": round((wins + 0.5 * draws) / n, 4) if n else None,
         "mean_plies": _mean(all_plies),
         "mean_plies_when_won": _mean(win_plies),
