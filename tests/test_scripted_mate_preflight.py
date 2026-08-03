@@ -63,9 +63,10 @@ class TestPreflightTakesPrecedence(unittest.TestCase):
         self.assertIsNone(child.board.king(chess.WHITE))
 
     def test_a_forced_line_is_played_in_the_proven_number_of_moves(self):
-        # Two rooks and a queen against a bare king: forced, and the fence
-        # heuristic has no reason to hurry.
-        fen = "4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1"
+        # Two rooks and a queen against a bare king, with NO immediate
+        # capture available -- select_move answers those before the preflight
+        # is consulted, so a mate-in-1 fixture cannot test this at all.
+        fen = "4k3/8/8/8/8/2q5/1r5r/K7 b - - 0 1"
         g = MonsterChessGame(fen)
         proven = forced_capture_depth(g, max_black_moves=3)
         if proven is None:
@@ -75,10 +76,10 @@ class TestPreflightTakesPrecedence(unittest.TestCase):
         self.assertLessEqual(plies, proven)
 
     def test_the_preflight_reports_when_it_fires(self):
-        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1")
+        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r5r/K7 b - - 0 1")
         bot = ScriptedMate(forced_depth=3)
         bot.select_move(g)
-        self.assertGreaterEqual(bot.forced_hits, 0)
+        self.assertEqual(bot.forced_hits, 1)
 
 
 class TestDefaultIsOptIn(unittest.TestCase):
@@ -91,7 +92,7 @@ class TestDefaultIsOptIn(unittest.TestCase):
         self.assertEqual(ScriptedMate().forced_depth, 0)
 
     def test_opting_in_actually_engages_the_search(self):
-        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1")
+        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r5r/K7 b - - 0 1")
         off, on = ScriptedMate(), ScriptedMate(forced_depth=3)
         off.select_move(g)
         on.select_move(g)
@@ -103,7 +104,7 @@ class TestOffSwitch(unittest.TestCase):
     def test_forced_depth_zero_restores_the_old_behaviour(self):
         # The comparison that produced the 1-of-8 measurement must stay
         # reproducible, so the heuristic has to remain reachable on its own.
-        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1")
+        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r5r/K7 b - - 0 1")
         bot = ScriptedMate(forced_depth=0)
         move = bot.select_move(g)
         self.assertIsNotNone(move)
@@ -112,7 +113,7 @@ class TestOffSwitch(unittest.TestCase):
 
 class TestBudgetFallsThrough(unittest.TestCase):
     def test_a_budget_hit_returns_a_move_rather_than_raising(self):
-        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1")
+        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r5r/K7 b - - 0 1")
         bot = ScriptedMate(forced_depth=3, forced_budget=1)
         move = bot.select_move(g)
         self.assertIsNotNone(move, "exhaustion must fall through to the heuristic")
