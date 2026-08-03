@@ -127,8 +127,18 @@ def _probe_one(entry):
     return rows
 
 
-def _init_outcomes(white_model, black_model, white_sims, black_sims):
+def _init_outcomes(white_model, black_model, white_sims, black_sims,
+                   max_turns=None):
     from benchmark import _build_engine
+    if max_turns:
+        # is_terminal() resolves MAX_GAME_TURNS from the module global at call
+        # time, so overriding the attribute changes the cap for this worker.
+        # Measured 2026-08-03: at 1600 sims, 40% of post-promotion games reach
+        # the 150-turn cap with Black dominant but unfinished and take the -0.5
+        # relabel. Raising the cap asks whether those are conversions Black
+        # would complete given more moves, or genuine non-wins.
+        import monster_chess
+        monster_chess.MAX_GAME_TURNS = int(max_turns)
     _state["white"], _ = _build_engine(white_model, white_sims)
     _state["black"], _ = _build_engine(black_model, black_sims)
 
@@ -193,6 +203,9 @@ def main():
                          "and confound a search-depth curve.")
     ap.add_argument("--black-sims", type=int, default=None,
                     help="outcomes mode: Black's simulations (default: --sims)")
+    ap.add_argument("--max-turns", type=int, default=None,
+                    help="override MAX_GAME_TURNS for the playout (default: "
+                         "config's 150)")
     ap.add_argument("--label", default=None,
                     help="tag for the outcomes artifact filename")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
@@ -244,9 +257,11 @@ def main():
               f"Black={who(args.playout_black)}@{black_sims} sims")
         with mp.Pool(args.workers, initializer=_init_outcomes,
                      initargs=(args.playout_white, args.playout_black,
-                               white_sims, black_sims)) as pool:
+                               white_sims, black_sims, args.max_turns)) as pool:
             outcomes = pool.map(_play_out, tasks)
         black_wins = sum(1 for o in outcomes if o["result"] < 0)
+        true_wins = sum(1 for o in outcomes if o["result"] == -1)
+        dominant_draws = sum(1 for o in outcomes if o["result"] == -0.5)
         payload = {
             "mode": "outcomes", "sims": args.sims, "positions": len(deck),
             "deck": os.path.relpath(args.deck, ROOT).replace("\\", "/"),
@@ -254,7 +269,14 @@ def main():
             "black_player": who(args.playout_black),
             "white_sims": white_sims,
             "black_sims": black_sims,
+            "max_turns": args.max_turns,
+            # black_win_rate counts result < 0, which INCLUDES the -0.5
+            # move-limit relabel. Reporting it alone once overstated conversion
+            # by more than 2x (0.70 headline vs 0.30 true captures), so the
+            # split ships in every artifact from here on.
             "black_win_rate": round(black_wins / len(outcomes), 4) if outcomes else None,
+            "true_capture_rate": round(true_wins / len(outcomes), 4) if outcomes else None,
+            "dominant_draws": dominant_draws,
             "mean_plies": round(statistics.fmean(o["plies"] for o in outcomes), 1),
             "outcomes": outcomes,
             "elapsed_sec": round(time.time() - t0, 1),
