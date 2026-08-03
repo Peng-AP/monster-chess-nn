@@ -72,7 +72,7 @@ unchanged, in `_get_white_actions`).
 | **Push** | Never unless asked. `main` is ahead of `origin` by his choice. |
 | **Long / multi-worker jobs** | Standing go carried in the active directive. **Never while he is playing.** |
 | **Gates** | **Never weaken a threshold to let a recipe through.** Per-side floor 0.40 on every leg, aggregate must beat 0.50 on model legs. Thresholds are constants with no CLI flag, asserted by test. |
-| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds (two 40-game reads of one fixed matchup once came out 0.575 and 0.725 — one leg over 0.50 confirms nothing). |
+| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds (two 40-game reads of one fixed matchup once came out 0.575 and 0.725 — one leg over 0.50 confirms nothing). **Unsettled right now:** `tools/gate.py` has `BAR = "vs_v19"` (the incumbent), while the strongest engine on record is `v19_B`. Owner decision open (DIRECTIVE §4.1); until then report both legs. |
 | **Versions** | A number needs automated evidence **plus** his playtest. |
 | **Metrics** | No proxy scorecards: *"my eval is not replaceable."* |
 | **His observations** | Confirmed by measurement **every single time** checked. Debug the code first; measure and report the number. |
@@ -183,11 +183,13 @@ labels bought game strength (B beats K 0.625, n=80) and cost calibration
 (+0.283 vs +0.119) while conversion stayed identical — the owner promoted K
 and could not distinguish them at the board.
 
-**Rejected this campaign** (`models/rejected/`): `v19_C` (2.74× tower; Black
-0.35 vs v19 behind a 0.55 aggregate), `v19_CW` (capacity + side-weight; Black
-**0.25** — law 14's proof), `v19_W` (side-weight alone; conversion null),
-`v19_KB` (soup; law 6). `v19_KS` was a preliminary on a superseded data batch,
-not a fair test of self-play (law 13 / §7).
+**Set aside this campaign** (`models/rejected/`): `v19_C` (2.74× tower; gated,
+Black 0.35 vs v19 behind a 0.55 aggregate), `v19_CW` (capacity + side-weight;
+gated, Black **0.25** — law 14's proof), `v19_KB` (soup; gated by three
+20-game matches, both parents beat it). **Never gated:** `v19_W`
+(side-weight alone) — set aside on a conversion null (0.480 vs v19's 0.473),
+which is weaker evidence than the others here; `v19_KS` was a preliminary on a
+superseded data batch, not a fair test of self-play (law 13 / §7).
 
 **D3's premise failed:** whole games from 412 cliff starts came out **9.5%**
 pawn-phase by record (games leave the phase; the tail dominates) and 63/89
@@ -285,4 +287,4 @@ heredocs** (mangles `\n` — use the Write tool); notebook round-trip is
 `README.md`) only. Evidence goes to `benchmarks/` before the next run starts;
 concluded work retires to git history; rejected candidates to
 `models/rejected/` and the number stays free. Data deletion is the owner's
-call (`data/processed/` holds ~13 GB of regenerable concluded datasets).
+call (`data/processed/` holds ~33 GB of regenerable datasets, most of them concluded).

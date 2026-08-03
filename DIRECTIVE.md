@@ -8,7 +8,13 @@ problem.**"*
 
 So this campaign has one target: **Black converting won positions** — the
 post-promotion class first (law 1a: corpus 36% Black in a class the owner wins
-100% of), the wP≥3 cliff behind it. White improvement is welcome fallout, not
+100% of), the wP≥3 cliff behind it.
+
+**Why this class and not another.** It is not a rare ending: **1,613 of 2,624
+games in `combined_v19_K` (61.5%) pass through it**, and Black wins only 38.6%
+of those. Nearly two-thirds of all games are decided in a class the owner
+converts every time. Caveat kept honest: *reaching* the class is not the same
+as holding a won position in it, so the ceiling is not 61.5% of games flipping. White improvement is welcome fallout, not
 a goal; its criterion redesign is a queued decision (§4.4), not work.
 
 **Authorization.** The owner's standing go of 2026-08-01 carries forward:
@@ -51,12 +57,21 @@ end in conversions instead of recorded failures; a finishing module the play
 path itself can use. Pure Python, no GPU, fully testable — the
 highest-value engineering item in the project.
 
-**L2 — stop teaching the poison (cheap, immediate).** The 25,534
-king+3-pawns-class records carry labels saying "lost" 64% of the time in a
-class the owner wins 100% of. D1's `value_weights.npy` exists precisely for
+**L2 — stop teaching the poison (cheap, and the weakest of the three).** The
+king+3-pawns class holds 25,534 *records*; of the 1,228 *games* reaching it,
+White won 782 (64%) in a class the owner wins 100% of. D1's `value_weights.npy` exists precisely for
 "do not teach value from this." Build a corpus variant masking value on the
 class (policy untouched), retrain the frozen recipe, gate. One evening, and
 it isolates how much of the conversion failure is *taught* pessimism.
+
+**Why this is ranked below L1 and L3 despite being cheapest:** masking can only
+*remove* wrong teaching, never *supply* right teaching, and it leaves the value
+head untrained on the class rather than correctly trained. It is also not
+obvious the labels are wrong *for this model* — v19 self-play converts the
+class at 0.300 against the corpus's 0.36 (law 13), so the labels describe what
+it actually does. They are wrong relative to what is *achievable*, which is a
+different claim and the one L1/L3 attack directly. Run L2 as a control, not as
+the fix.
 
 **L3 — asymmetric generation.** Add per-side sims to `data_generation.py`
 (`tools/match.py` got them at `a3e74dd`; generation is the piece that
@@ -116,12 +131,27 @@ L1 scripts and L3 approximates.
 
 | order | item | cost |
 |---|---|---|
-| now | L2: mask the class, retrain frozen recipe, gate | ~1 evening |
+| **first** | **PPC sims curve** — 200/400/800/1600 on `postpromo_starts_v1`, Black varying, **White = v19@400** | ~1.5 h |
+| then, on the answer | rises → L3 machinery; flat → L1 oracle | — |
 | now, parallel | per-side sims in `data_generation` + tests | small |
 | next | L1: oracle extension, king+1p first, verified | days, CPU-only |
 | after L3 machinery | asymmetric generation from both decks | overnight |
 | then | train the arm, gate with the transfer gate | ~1 day |
+| control, any time | L2: mask the class, retrain, gate | ~1 evening |
 | continuous | L4: harvest every owner session | minutes |
+
+**Why the curve comes first.** L1/L2 and L3 rest on opposite diagnoses of the
+same failure, and the experiment separating them had not been run. Law 12's
+0.36 → 0.84 curve was measured on **`cliff_starts_v2`**, not on the
+post-promotion deck — all four artifacts confirm it — so L3's justifying number
+is imported from a different class. Worse, it was measured against *heuristic*
+White, which law 14 and §3's own transfer gate say does not transfer. The curve
+below is therefore run against **v19's White**, so its answer counts:
+
+- **rises steeply** → the technique is reachable by search → L3, and L2 is
+  masking labels that are not the binding problem;
+- **flat** → the technique is not in the model at any depth → L1 supplies it as
+  ground truth, and L3 would only manufacture more recorded failures.
 
 ## 6. Standing discipline (unchanged, non-negotiable)
 
