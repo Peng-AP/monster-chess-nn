@@ -84,9 +84,13 @@ it actually does. They are wrong relative to what is *achievable*, which is a
 different claim and the one L1/L3 attack directly. Run L2 as a control, not as
 the fix.
 
-**L3 — asymmetric generation.** Add per-side sims to `data_generation.py`
-(`tools/match.py` got them at `a3e74dd`; generation is the piece that
-matters). Generate from `postpromo_starts_v1.jsonl` + `cliff_starts_v2.jsonl`
+**L3 — asymmetric generation. The machinery already exists** (verified
+2026-08-03): `--train-side black --simulations N --opponent-sims M
+--use-model X --opponent-model X` builds Black at N sims and White at M, each
+with its own evaluator. Nothing needed writing. Smoke: 2 games from
+`postpromo_starts_v1` at Black@800 / White@200 → **Black won both**, 153
+records, which is the shape L3 wants (games that end in conversions rather
+than recorded failures). Generate from `postpromo_starts_v1.jsonl` + `cliff_starts_v2.jsonl`
 with Black ~1600 vs White 400 — law 12 says Black converts 0.84 there — using
 the **strongest** players (B/v19, not v17), truncation now label-safe via
 `plies_to_end`. Secondary payoff: these are the first games in which White
@@ -144,7 +148,7 @@ L1 scripts and L3 approximates.
 |---|---|---|
 | **first** | **PPC sims curve** — 200/400/800/1600 on `postpromo_starts_v1`, Black varying, **White = v19@400** | ~1.5 h |
 | then, on the answer | rises → L3; flat → see below (L1 is struck) | — |
-| now, parallel | per-side sims in `data_generation` + tests | small |
+| ~~now, parallel~~ | ~~per-side sims in `data_generation`~~ — already exists via `--train-side` | done |
 | after L3 machinery | asymmetric generation from both decks | overnight |
 | then | train the arm, gate with the transfer gate | ~1 day |
 | control, any time | L2: mask the class, retrain, gate | ~1 evening |
