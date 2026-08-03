@@ -75,11 +75,14 @@ class ScriptedMate:
     positions the search cannot resolve within its depth and budget.
     """
 
-    def __init__(self, forced_depth=3, forced_budget=200_000):
+    def __init__(self, forced_depth=0, forced_budget=200_000):
         self.edge = None  # rank (0 or 7) White is pushed toward
         self._visits = {}  # position fen -> times reached by our own moves
-        # forced_depth=0 disables the preflight (used to reproduce the old
-        # behaviour in tests, never in generation).
+        # OPT-IN, owner's call 2026-08-03. The measurement above stands, but
+        # the owner's standing veto covers changes to this file ("messing with
+        # the oracle"), so the default keeps generation behaviour exactly as it
+        # was and callers opt in with forced_depth=3. Flip the default only on
+        # his explicit review.
         self.forced_depth = forced_depth
         self.forced_budget = forced_budget
         self.forced_hits = 0  # forced lines actually played, for reporting

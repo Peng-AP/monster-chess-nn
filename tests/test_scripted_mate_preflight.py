@@ -81,6 +81,24 @@ class TestPreflightTakesPrecedence(unittest.TestCase):
         self.assertGreaterEqual(bot.forced_hits, 0)
 
 
+class TestDefaultIsOptIn(unittest.TestCase):
+    def test_the_preflight_is_off_unless_asked_for(self):
+        # Owner's call 2026-08-03. His standing veto covers changes to the
+        # oracle, so the shipped default must leave generation byte-identical
+        # to pre-preflight behaviour; callers opt in explicitly. A future
+        # change flipping this default silently would breach that, so it is
+        # pinned rather than left to convention.
+        self.assertEqual(ScriptedMate().forced_depth, 0)
+
+    def test_opting_in_actually_engages_the_search(self):
+        g = MonsterChessGame("4k3/8/8/8/8/2q5/1r6/K6r b - - 0 1")
+        off, on = ScriptedMate(), ScriptedMate(forced_depth=3)
+        off.select_move(g)
+        on.select_move(g)
+        self.assertEqual(off.forced_hits, 0)
+        self.assertGreater(on.forced_hits, 0)
+
+
 class TestOffSwitch(unittest.TestCase):
     def test_forced_depth_zero_restores_the_old_behaviour(self):
         # The comparison that produced the 1-of-8 measurement must stay
