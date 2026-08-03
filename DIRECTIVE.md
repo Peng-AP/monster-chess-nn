@@ -289,6 +289,56 @@ White normal, strongest players, `plies_to_end` truncation); the self-play
 loop with the White-rate health metric. Each exploit is its own measured
 change — none rides in with another.
 
+## 3a. E0 RESULTS (2026-08-03, same day) — both answers landed
+
+**E0(a): the curve did not plateau. It accelerated.** v19 Black vs v19
+White@400, 100 post-promotion starts, captures-only throughout:
+
+| Black sims | 200 | 400 | 800 | 1600 | **3200** |
+|---|---|---|---|---|---|
+| true king captures | 0.09 | 0.15 | 0.20 | 0.30 | **0.51** |
+| dominant, unfinished | 12 | 13 | 28 | 40 | **20** |
+| White wins | 0.79 | 0.72 | 0.52 | 0.29 | **0.29** |
+| mean plies | 54.6 | 61.0 | 88.3 | 112.1 | **74.1** |
+
+The 1600 -> 3200 step is the largest in the curve (+0.21, ~4 SE at n=100) and
+the stuck-game count **halves** — the pathology that motivated the finisher is
+itself partly a search-depth artifact. Games also get *shorter*. Purchase #1 is
+validated: high-sim operation buys conversion, and 3200 is not the ceiling.
+`benchmarks/promotion_defense_outcomes_ppccurve_s3200_*.json`.
+
+**E0(b): forced wins are walked past — and the culprit is the oracle, not the
+search.** Of 65 dominant-unfinished games in current generation (v19
+Black@1600, 2026-08-02/03), **19 (29%) held a position with a forced king
+capture within 3 Black moves and the moves left to play it**; 312 positions,
+18 of them forced in *2*. The legacy corpus gives the same rate (13/43).
+
+The games' own records show Black policy-degenerate at 1.0 from those
+positions on — the **scripted oracle** had already taken over and then failed
+to finish. Cause is a scope gap: `verify_scripted_mate` verifies on canonical
+K+Q+R+R vs bare king with every Black piece at Chebyshev >= 5, while
+`mate_algo_applicable` admits *any* bare White king facing 3+ heavies,
+including cluttered midgame positions with pawns and minors. Played out from
+the 11 walked-past positions it accepts, the fence heuristic converted **1 of
+8**. With an exact forced-capture preflight: **8 of 8**, each in the proven
+minimum of 3 moves. Shipped (`src/forced_capture.py`, wired into
+`ScriptedMate.select_move`); A/B at fixed seeds shows no behaviour change where
+it does not fire.
+
+**Two consequences for this directive.**
+
+1. **Purchase #2 is largely not a rewrite item.** The finisher for the failing
+   class was a day of Python against a function that already existed. What
+   remains genuinely native-scale is the 6 of 19 walked-past positions where
+   **White still held material** — outside the oracle's class entirely.
+2. **A separate, pre-existing oracle defect is now on the record.**
+   `verify_scripted_mate --games 12` currently reports **9/12**: three
+   canonical starts end with White capturing the Black king (one leaves the
+   board bare but for the White king). Controlled A/B confirms the preflight
+   is not the cause — it never fires in those lines. This matters beyond the
+   oracle: it labels training data as ground truth. **Fix before leaning on
+   oracle-generated labels again.**
+
 ## 4. Risks, named
 
 | risk | mitigation |
