@@ -77,6 +77,8 @@ def test_processor_emits_requested_channel_width(channels, expected):
         "game_result": -1,
         "policy": {"d4d3": 1.0},
     }]
-    X, _, _, _, _ = data_processor._convert_games_to_arrays(
-        [{"records": records}], augment=False, input_channels=channels)
+    # Positional unpack deliberately avoided: the arity grew when D1 added
+    # value weights, and this test only ever cared about the channel width.
+    X = data_processor._convert_games_to_arrays(
+        [{"records": records}], augment=False, input_channels=channels)[0]
     assert X.shape == (1, 8, 8, expected)
