@@ -1,0 +1,19 @@
+[package]
+name = "monster_native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "monster_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.27", features = ["extension-module"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+# No panic = "abort": PyO3 converts a Rust panic into a Python exception, and
+# that conversion needs unwinding. Aborting would take the interpreter — and
+# every worker's in-flight game — down with it.

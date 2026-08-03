@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "monster-native"
+requires-python = ">=3.10"
+description = "Native rules/search core for Monster Chess (DIRECTIVE E1-E4)"
+classifiers = ["Programming Language :: Rust"]
+
+[tool.maturin]
+module-name = "monster_native"
+features = ["pyo3/extension-module"]
