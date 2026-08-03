@@ -57,9 +57,32 @@ def mate_algo_applicable(game):
 
 
 class ScriptedMate:
-    def __init__(self):
+    """Fence/confinement conversion, with an exact forced-capture preflight.
+
+    The fence heuristic below is verified only on the canonical class
+    `verify_scripted_mate.py` generates: Black K+Q+R+R against a bare White
+    king, every Black piece at Chebyshev >= 5. But `mate_algo_applicable`
+    admits a far larger set — *any* bare White king facing 3+ Black heavies,
+    including cluttered midgame positions carrying pawns and minors. Measured
+    2026-08-03 (E0(b), `benchmarks/forced_capture_v20asym_b1600_d3_*.json`):
+    on positions from that wider set where an exact search finds a forced king
+    capture in <= 3 Black moves, the heuristic converted **1 of 8** and
+    shuffled past the rest — one legacy game sat on a forced win for 117 plies
+    with Q+2R+2B+N+4P against a lone king.
+
+    So the preflight runs first and is authoritative: a proven forced capture
+    is not a thing to weigh against fence geometry. The heuristic keeps the
+    positions the search cannot resolve within its depth and budget.
+    """
+
+    def __init__(self, forced_depth=3, forced_budget=200_000):
         self.edge = None  # rank (0 or 7) White is pushed toward
         self._visits = {}  # position fen -> times reached by our own moves
+        # forced_depth=0 disables the preflight (used to reproduce the old
+        # behaviour in tests, never in generation).
+        self.forced_depth = forced_depth
+        self.forced_budget = forced_budget
+        self.forced_hits = 0  # forced lines actually played, for reporting
 
     # ------------------------------------------------------------------
     def select_move(self, game):
@@ -76,6 +99,18 @@ class ScriptedMate:
         for m in legal:
             if m.to_square == wk:
                 return m
+
+        # Exact preflight: play a proven forced capture when one exists.
+        # Budget exhaustion falls through to the heuristic — "no answer" is
+        # not "no win" (see forced_capture.try_forced_capture_move).
+        if self.forced_depth and not game.is_white_turn:
+            from forced_capture import try_forced_capture_move
+            forced, _depth, _exhausted = try_forced_capture_move(
+                game, max_black_moves=self.forced_depth,
+                node_budget=self.forced_budget)
+            if forced is not None:
+                self.forced_hits += 1
+                return forced
 
         if self.edge is None:
             bk_rank = chess.square_rank(bk) if bk is not None else 7

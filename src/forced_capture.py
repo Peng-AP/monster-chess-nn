@@ -138,6 +138,38 @@ def forced_capture_depth(state, max_black_moves=2, node_budget=400_000):
     return None
 
 
+def try_forced_capture_move(state, max_black_moves=3, node_budget=200_000):
+    """The move that forces the fastest king capture: (move, depth, exhausted).
+
+    Iterative deepening outside the move loop, so the move returned belongs to
+    a *shortest* forced line rather than merely some winning one — a finisher
+    that wins slowly still risks the move limit.
+
+    On budget exhaustion this returns `(None, None, True)`. A caller must treat
+    that as "no answer", never as "no win": falling through to a heuristic is
+    safe, concluding the position is undecided is not.
+    """
+    root = _fresh(state)
+    if root.is_white_turn:
+        raise ValueError("try_forced_capture_move expects a Black-to-move position")
+    search = _Search(node_budget)
+    actions = root.get_legal_actions()
+    try:
+        for d in range(1, max_black_moves + 1):
+            for move in actions:
+                child = root.clone()
+                child.apply_action(move)
+                if child.board.king(chess.WHITE) is None:
+                    return move, 1, False
+                if d == 1:
+                    continue
+                if search.white_all_lose(child, d - 1):
+                    return move, d, False
+    except NodeBudgetExceeded:
+        return None, None, True
+    return None, None, False
+
+
 def try_forced_capture_depth(state, max_black_moves=2, node_budget=400_000):
     """`forced_capture_depth`, but returns ("budget", nodes) instead of raising.
 
