@@ -154,12 +154,57 @@ L1 scripts and L3 approximates.
 | order | item | cost |
 |---|---|---|
 | ~~first~~ | **PPC sims curve — DONE 2026-08-03: 0.21 → 0.28 → 0.48 → 0.70, +0.49 at 6.9 SE against v19's White.** Search-limited, transfer-gate clean. | done |
-| **now** | **L3: generate from both decks at Black@1600 / White@400, train, gate** | overnight |
+| ~~now~~ | ~~L3: generate from both decks at Black@1600 / White@400, train, gate~~ — **done, both arms rejected (§5a)** | done |
+| **next** | **re-measure v19 and v19_B under captures-only scoring** — the ladder's numbers are not comparable across the rule change | ~1h |
 | ~~now, parallel~~ | ~~per-side sims in `data_generation`~~ — already exists via `--train-side` | done |
 | after L3 machinery | asymmetric generation from both decks | overnight |
 | then | train the arm, gate with the transfer gate | ~1 day |
 | control, any time | L2: mask the class, retrain, gate | ~1 evening |
 | continuous | L4: harvest every owner session | minutes |
+
+## 5a. Campaign ledger — L3 is closed, and so is the measurement it used
+
+**L3 ran and both arms are rejected.** 240 asymmetric games (Black@1600 vs
+White@400) from both decks, two corpora, two trainings, both gated:
+
+| arm | gate vs v19 (Black leg) | verdict |
+|---|---|---|
+| `v20` | 0.10 | FAIL — rejected 2026-08-03 |
+| `v20w` | 0.50 → **0.30** under captures-only | **FAIL — rejected 2026-08-03** |
+
+`v20w` is the important one, because it *passed* on 2026-08-03 08:12 and
+failed on the same 40 games at 10:52. Nothing changed but the scoring rule
+(owner: *"a win by time shouldn't be counted the same as win by capturing the
+king"*). Its Black leg was 0.50 only because move-limit relabels counted as
+wins — `mean_plies_when_won: 196.5` against 36.8 when it lost. It won by not
+losing. Artifacts: `benchmarks/gate_v20w_20260803_{081212,105202}.json`.
+
+**Two things this closes.**
+
+1. **Asymmetric generation is not the lever.** Both arms trained on games that
+   *do* end in conversions, which was L3's whole premise, and neither produced
+   a Black that converts against v19. The premise was sound and the result is
+   negative.
+2. **The turn cap is not the lever either** (CONTEXT law 12, 2026-08-03):
+   raising `MAX_GAME_TURNS` 150 → 400 left true captures at 0.20 → 0.20 while
+   games ran 88 → 197 plies. Given 2.7× the moves, Black converts identically.
+
+With L1 struck by the owner, L2 retired by the PPC curve, and L3 rejected,
+**every lever in §2 except L4 is now closed.** The honest statement of the
+problem: Black's failure is a *technique* gap that neither more search, more
+time, nor more self-generated data supplies. The only demonstrated source of
+that technique is the owner's own play (L4) and the scripted oracle on the one
+class it already solves.
+
+**A measurement debt comes with this.** The old rule paid Black for shuffling
+and charged White for surviving — v20w's White *rose* 0.80 → 0.90 under the
+new rule because all four of its "losses" were at exactly the cap, i.e. v19's
+Black never captured its king in 20 games. Cap games in this variant are
+overwhelmingly Black-ahead, so the bias had a direction, and it ran through
+the whole v19 ladder including v19's promotion. **No pre-2026-08-03 number may
+be compared to a post-change number.** Before the next campaign claims a
+gain, the incumbent needs re-measuring under the new rule — that is the first
+item, ahead of any new arm.
 
 **Why the curve comes first.** L1/L2 and L3 rest on opposite diagnoses of the
 same failure, and the experiment separating them had not been run. Law 12's
