@@ -48,6 +48,14 @@ unchanged, in `_get_white_actions`).
   conversion is a big problem.**"*
 - **The live problem is Black conversion** — above all the post-promotion
   class (law 1a). The campaign targeting it is `DIRECTIVE.md`.
+- **`models/candidates/v20w` passed the gate 2026-08-03** and awaits the
+  owner's playtest. Corpus: `combined_v19_K` + 240 asymmetric-search games
+  (Black@1600 vs White@400) at 4× weight. Bar legs pooled over both reads
+  (n=80): aggregate **0.588** (1.6 SE over 0.50), White 0.725, **Black 0.450
+  against v19's own Black-vs-that-White of 0.250** (+0.200, 1.5 SE) — the
+  campaign's target side is the one that moved. **Marginal pass:** the
+  confirmation leg read 0.525 with Black exactly on the 0.40 floor against the
+  primary leg's 0.65.
 
 ## 3. Model lifecycle vocabulary
 
@@ -163,7 +171,18 @@ that measurement.
     turn emit two records against Black's one. Self-play from the new arms is
     *more* White-skewed than from v17 (White overall in self-play: v17 0.562,
     ramp 0.637, B 0.700, K 0.775): both sides improved, White improved more.
-17. **Search is Python-bound, not GPU-bound.** At 800 sims post clone-fix:
+17. **New data must be weighted to survive dilution.** 240 asymmetric-search
+    games merged into `combined_v19_K` moved the post-promotion class's
+    Black-win rate only 38.6% → 41.6% — they are 13% of the games in a class
+    that already holds 1,613. Trained as-is (`v20`) the arm **failed** with a
+    Black leg of 0.10 vs v19; the identical games at `value_weight` /
+    `policy_weight` **4.0** (`v20w`, 28.6% of total policy weight against 10.1%
+    of records) **passed**, Black 0.50. Same corpus, same seed, one variable.
+    ~2.5 SE at n=20/leg, so treat the magnitude as provisional — but the
+    direction says a small high-quality source is invisible at 1× against an
+    established corpus. Prefer weights to duplication (D1 machinery, no split
+    leakage).
+18. **Search is Python-bound, not GPU-bound.** At 800 sims post clone-fix:
     move generation ~35%, board clone/apply 25–32%, tree/Python ~25%, NN
     forward **14%** (7.7% at batch 256). Leaf batch 16→256 buys 1.53×; ≤~15%
     remains in batching. The ceiling is `python-chess` move generation.
