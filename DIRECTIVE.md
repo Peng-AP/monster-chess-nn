@@ -83,6 +83,11 @@ L1 scripts and L3 approximates.
 - **The operating point.** Gates run at 400 sims; the owner plays at 1500.
   Before any candidate reaches him, replay its decisive comparison at 1500
   (one leg, cheap) to catch ordering flips.
+- **Loop health.** In a variant where Black wins with correct play, healthy
+  progress shows the **self-play White rate falling toward 0.5** — it is
+  0.775 for v19, worse than v17's 0.562 (law 16). The gate cannot see this
+  (it compares against a fixed opponent), so report it per candidate or the
+  loop amplifies its own bias invisibly.
 - Gate protocol otherwise unchanged: per-side floor 0.40 on every leg,
   aggregate over 0.50 on model legs, confirmation replay on a fresh (and
   disjoint — see hazards) opening seed, every leg reported per-side.
