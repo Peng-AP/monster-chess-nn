@@ -233,6 +233,145 @@ impl Board {
     pub fn is_attacked_by(&self, color: usize, sq: u8) -> bool {
         self.attackers(color, sq) != 0
     }
+
+    /// Rights that actually count, mirroring python-chess `clean_castling_rights`.
+    ///
+    /// A side's rights are void unless its king stands on its home square, so a
+    /// captured or wandering king silently voids them. In this variant the
+    /// Black king really does get captured, which is how this surfaced: the
+    /// engine's FEN drops "kq" the moment a White piece lands on e8, and a port
+    /// that only cleared rook squares kept them. Caught by the API
+    /// differential, 2026-08-03.
+    pub fn clean_castling(&self) -> u64 {
+        const E1: u64 = 1u64 << 4;
+        const E8: u64 = 1u64 << 60;
+        const RANK1: u64 = 0xFF;
+        const RANK8: u64 = 0xFFu64 << 56;
+        let rights = self.castling & self.rooks;
+        let mut out = 0u64;
+        if self.kings & self.occupied_co[WHITE] & E1 != 0 {
+            out |= rights & RANK1 & self.occupied_co[WHITE];
+        }
+        if self.kings & self.occupied_co[BLACK] & E8 != 0 {
+            out |= rights & RANK8 & self.occupied_co[BLACK];
+        }
+        out
+    }
+
+    fn remove_piece(&mut self, sq: u8) {
+        let b = !(1u64 << sq);
+        self.pawns &= b;
+        self.knights &= b;
+        self.bishops &= b;
+        self.rooks &= b;
+        self.queens &= b;
+        self.kings &= b;
+        self.occupied_co[WHITE] &= b;
+        self.occupied_co[BLACK] &= b;
+        self.occupied &= b;
+    }
+
+    /// Apply a pseudo-legal move, reproducing python-chess's bookkeeping.
+    pub fn push(&mut self, mv: &Move) {
+        let us = if self.turn { WHITE } else { BLACK };
+        let piece = match self.piece_type_at(mv.from) {
+            Some(p) => p,
+            None => return,
+        };
+        let is_capture = self.occupied & (1u64 << mv.to) != 0;
+
+        // En passant: the captured pawn is not on the destination square.
+        if piece == PAWN && Some(mv.to) == self.ep_square && !is_capture {
+            let captured = if self.turn { mv.to - 8 } else { mv.to + 8 };
+            self.remove_piece(captured);
+        }
+
+        // Castling moves the rook too. Detected the way python-chess does for
+        // standard positions: a king travelling two files.
+        let castling = piece == KING
+            && (file_of(mv.from) as i8 - file_of(mv.to) as i8).abs() == 2;
+
+        self.remove_piece(mv.to);
+        self.remove_piece(mv.from);
+        let placed = mv.promotion.unwrap_or(piece);
+        self.set_piece(mv.to, placed, us);
+
+        if castling {
+            let back = rank_of(mv.from) * 8;
+            let (rook_from, rook_to) = if file_of(mv.to) == 6 {
+                (back + 7, back + 5)
+            } else {
+                (back, back + 3)
+            };
+            self.remove_piece(rook_from);
+            self.set_piece(rook_to, ROOK, us);
+        }
+
+        // Rights die when the rook square is vacated or captured, and all of a
+        // side's rights die when its king moves.
+        self.castling &= !(1u64 << mv.from) & !(1u64 << mv.to);
+        if piece == KING {
+            let back_mask = if us == WHITE { 0xFFu64 } else { 0xFFu64 << 56 };
+            self.castling &= !back_mask;
+        }
+
+        // A double pawn push always sets the square; whether it is *shown* in
+        // the FEN is a separate question (see has_legal_ep).
+        self.ep_square = if piece == PAWN
+            && (rank_of(mv.from) as i8 - rank_of(mv.to) as i8).abs() == 2
+        {
+            Some(((mv.from as i16 + mv.to as i16) / 2) as u8)
+        } else {
+            None
+        };
+
+        if piece == PAWN || is_capture {
+            self.halfmove = 0;
+        } else {
+            self.halfmove += 1;
+        }
+        if !self.turn {
+            self.fullmove += 1;
+        }
+        self.turn = !self.turn;
+    }
+
+    /// Does the side to move have a *legal* en-passant capture?
+    ///
+    /// python-chess's `fen()` defaults to `en_passant="legal"`, so it omits an
+    /// ep square that cannot actually be taken. Reproducing that is not
+    /// cosmetic: without it every FEN after a double push diverges from the
+    /// engine's, and the replay gate compares FENs.
+    pub fn has_legal_ep(&self) -> bool {
+        let ep = match self.ep_square {
+            Some(sq) => sq,
+            None => return false,
+        };
+        if self.occupied & (1u64 << ep) != 0 {
+            return false;
+        }
+        let us = if self.turn { WHITE } else { BLACK };
+        let them = if self.turn { BLACK } else { WHITE };
+        let rank_mask: u64 = 0xFFu64 << (8 * if self.turn { 4 } else { 3 });
+        let mut movers =
+            PAWN_ATTACKS[them][ep as usize] & self.pawns & self.occupied_co[us] & rank_mask;
+        while movers != 0 {
+            let from = movers.trailing_zeros() as u8;
+            movers &= movers - 1;
+            let mut probe = self.clone();
+            probe.push(&Move { from, to: ep, promotion: None });
+            // python-chess treats a missing king as safe rather than erroring.
+            match probe.king_square(us) {
+                None => return true,
+                Some(k) => {
+                    if !probe.is_attacked_by(them, k) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -367,23 +506,26 @@ pub fn to_fen(board: &Board) -> String {
     out.push(if board.turn { 'w' } else { 'b' });
     out.push(' ');
     let mut rights = String::new();
-    if board.castling & (1u64 << 7) != 0 {
+    let clean = board.clean_castling();
+    if clean & (1u64 << 7) != 0 {
         rights.push('K');
     }
-    if board.castling & 1 != 0 {
+    if clean & 1 != 0 {
         rights.push('Q');
     }
-    if board.castling & (1u64 << 63) != 0 {
+    if clean & (1u64 << 63) != 0 {
         rights.push('k');
     }
-    if board.castling & (1u64 << 56) != 0 {
+    if clean & (1u64 << 56) != 0 {
         rights.push('q');
     }
     out.push_str(if rights.is_empty() { "-" } else { &rights });
     out.push(' ');
+    // `en_passant="legal"` is python-chess's default: an ep square with no
+    // legal capture is not written.
     match board.ep_square {
-        Some(sq) => out.push_str(&square_name(sq)),
-        None => out.push('-'),
+        Some(sq) if board.has_legal_ep() => out.push_str(&square_name(sq)),
+        _ => out.push('-'),
     }
     out.push_str(&format!(" {} {}", board.halfmove, board.fullmove));
     out
@@ -486,11 +628,20 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
             push_pawn_move(&mut moves, from, to);
         }
 
-        // En passant. The square is whatever the FEN carries, which is exactly
-        // the "conferred only by the last push" divergence: python-chess holds
-        // one ep square and each push recomputes it.
+        // En passant. Two constraints beyond "a pawn attacks the ep square",
+        // both from python-chess and both load-bearing:
+        //   * the capturer must stand on rank 5 (White) / rank 4 (Black) --
+        //     `BB_RANKS[4 if turn else 3]`. Without it, White's own double
+        //     push offers a capture of its own ep square (c2c4 then d2c3),
+        //     because Monster Chess forces board.turn back to WHITE between
+        //     halves. Caught by the API differential, 2026-08-03.
+        //   * the ep square itself must be empty.
         if let Some(ep) = board.ep_square {
-            if PAWN_ATTACKS[us][from as usize] & (1u64 << ep) != 0 {
+            let capturer_rank = if board.turn { 4 } else { 3 };
+            if rank_of(from) == capturer_rank
+                && occ & (1u64 << ep) == 0
+                && PAWN_ATTACKS[us][from as usize] & (1u64 << ep) != 0
+            {
                 moves.push(Move { from, to: ep, promotion: None });
             }
         }
@@ -501,7 +652,7 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
     let back_rank = if board.turn { 0u8 } else { 7u8 };
     if let Some(king_sq) = board.king_square(us) {
         if rank_of(king_sq) == back_rank && !board.is_attacked_by(them, king_sq) {
-            let mut rights = board.castling & board.occupied_co[us];
+            let mut rights = board.clean_castling() & board.occupied_co[us];
             while rights != 0 {
                 let rook_sq = rights.trailing_zeros() as u8;
                 rights &= rights - 1;
