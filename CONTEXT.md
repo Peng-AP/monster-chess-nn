@@ -155,6 +155,12 @@ that measurement.
   gradient-dead).
 - Any automated proxy for the owner's judgement.
 - Relaxing any gate threshold.
+- **Extending the scripted oracle beyond the bare-king class** (owner,
+  2026-08-03: *"the complexity will skyrocket"*). With White pawns on the board
+  the pawns are simultaneously targets and promotion threats, so the fence /
+  confinement geometry the algorithm is built on stops being fixed, and both it
+  and its verifier grow without bound. `scripted_mate.py` stays as-is for the
+  class it already solves.
 - Quoting deck conversion rates as population rates — decks are built from
   Black-won games and played vs weak White; they compare models fairly and
   estimate nothing else.

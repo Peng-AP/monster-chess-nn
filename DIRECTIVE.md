@@ -46,7 +46,18 @@ sims and train on it." Four findings retired that plan as written:
 
 ## 2. The levers, in priority order
 
-**L1 — extend the scripted oracle to the post-promotion class.**
+**L1 — ~~extend the scripted oracle to the post-promotion class~~. STRUCK by
+the owner, 2026-08-03: *"I don't think messing with the oracle is smart, the
+complexity will skyrocket."*** The bare-king conversion is a hand-built 2-ply
+minimax over a fence/confinement evaluation; generalising it to White king +
+pawns means the pawns become both targets and promotion threats, so the
+confinement plan stops being a fixed geometry and the algorithm — plus its
+verifier — grows without bound. Kept below only as the record of what was
+considered.
+
+_Struck rationale, retained:_
+
+**L1 (struck) —**
 `src/scripted_mate.py` plays the verified conversion once White is a bare
 king, and `data_generation` already hands endings to it. Extend it to Black
 3+ heavies vs White king **+ pawns**, incrementally — king+1 pawn, then +2,
@@ -132,9 +143,8 @@ L1 scripts and L3 approximates.
 | order | item | cost |
 |---|---|---|
 | **first** | **PPC sims curve** — 200/400/800/1600 on `postpromo_starts_v1`, Black varying, **White = v19@400** | ~1.5 h |
-| then, on the answer | rises → L3 machinery; flat → L1 oracle | — |
+| then, on the answer | rises → L3; flat → see below (L1 is struck) | — |
 | now, parallel | per-side sims in `data_generation` + tests | small |
-| next | L1: oracle extension, king+1p first, verified | days, CPU-only |
 | after L3 machinery | asymmetric generation from both decks | overnight |
 | then | train the arm, gate with the transfer gate | ~1 day |
 | control, any time | L2: mask the class, retrain, gate | ~1 evening |
@@ -150,8 +160,11 @@ below is therefore run against **v19's White**, so its answer counts:
 
 - **rises steeply** → the technique is reachable by search → L3, and L2 is
   masking labels that are not the binding problem;
-- **flat** → the technique is not in the model at any depth → L1 supplies it as
-  ground truth, and L3 would only manufacture more recorded failures.
+- **flat** → the technique is not in the model at any depth. With L1 struck,
+  the remaining routes are L4 (owner games in this class — real demonstrations,
+  does not scale) and L2 as a control; and the honest conclusion may be that
+  this class is not fixable by data alone at the current search depth, which is
+  itself a result worth having before more compute is spent on it.
 
 ## 6. Standing discipline (unchanged, non-negotiable)
 
