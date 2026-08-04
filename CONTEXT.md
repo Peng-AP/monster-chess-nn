@@ -196,6 +196,38 @@ that measurement.
     forward **14%** (7.7% at batch 256). Leaf batch 16→256 buys 1.53×; ≤~15%
     remains in batching. The ceiling is `python-chess` move generation.
 
+### The scripted oracle's 9/12 (diagnosed 2026-08-04)
+
+`verify_scripted_mate --games 12` reports **9/12**, deterministically — it seeds
+`random` per game, so the three failures reproduce exactly. All three fail the
+same way: **Black loses its heavy pieces**, starting from K+Q+R+R vs a bare
+king.
+
+| failing start | heavies lost, at turn |
+|---|---|
+| `1r3qk1/1r6/8/8/8/8/3K4/8` | 5, 20, 21 |
+| `q2k2r1/5r2/8/8/8/8/8/6K1` | 9, 51 |
+| `1kr5/4r2q/8/8/8/8/8/K7` | 23, 80, 81 |
+
+Not an endgame subtlety: the first loss lands at turn 5-23, during the approach,
+and losses then arrive in consecutive turns as the fence collapses. The cause is
+that `ScriptedMate._white_reply_min` searches depth 1 with a single danger-gated
+extension — the comment records that depth 2 "exploded combinatorially" — which
+is not enough to see a **double-moving king capture two squares away**, or two
+heavies in one turn.
+
+**Why this matters beyond the oracle:** `data_generation` hands Black to this
+algorithm unconditionally once a position qualifies, and its moves are recorded
+as training data at `policy 1.0`. A quarter of the canonical class is being
+labelled with games Black loses.
+
+Fixing it means changing `scripted_mate.py`, which the owner's veto covers, so
+it is recorded here rather than done. The shape of the fix is the mirror of the
+king-safety override he already approved engine-wide: refuse a move that leaves
+a heavy capturable by the double-move king when an alternative does not.
+Separately, the forced-capture preflight (opt-in, off by default) addresses
+*finishing*, not this — it would not have saved any of these three games.
+
 ### Do not do
 
 - Blending, fine-tuning, or label-shape variation on the existing corpus
