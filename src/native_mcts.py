@@ -87,7 +87,8 @@ class NativeMCTS:
     """Same interface as `mcts.MCTS`, backed by the native core."""
 
     def __init__(self, num_simulations=800, eval_fn=None, batch_size=16,
-                 root_noise=False, allow_early_stop=True, seed=None):
+                 root_noise=False, allow_early_stop=True, seed=None,
+                 reuse_across_moves=False, solver=False):
         # `seed=None` draws from Python's global RNG **at construction**, which
         # is how this engine inherits per-game seeding. `mcts.MCTS` reads that
         # global module directly, and both `data_generation._worker` and
@@ -104,6 +105,8 @@ class NativeMCTS:
         self.batch_size = batch_size
         self.root_noise = root_noise
         self.allow_early_stop = allow_early_stop
+        self.reuse_across_moves = reuse_across_moves
+        self.solver = solver
         self.seed = seed
         # Advanced once per decision. The native RNG is constructed from the
         # seed it is GIVEN, so passing a constant re-seeds an identical stream
@@ -153,17 +156,31 @@ class NativeMCTS:
                        self._history(state))
 
     def _remember(self, state, tree, selected_uci):
-        """Keep the selected subtree when White still owes its second half."""
-        first_white_half = (state.is_white_turn
-                            and not getattr(state, "white_half_pending", False))
-        if not first_white_half or selected_uci is None:
+        """Keep the played subtree so the next search continues this tree.
+
+        `reuse_across_moves=False` restores the Python engine's scope -- only
+        White's first -> second half -- which is what the two are compared
+        against. Beyond that the tree survives the whole game, because
+        `Arena::reroot` rebases the new root's frame instead of refusing.
+        """
+        if selected_uci is None:
             self._reuse_tree = None
             self._reuse_key = None
             return
+        if not self.reuse_across_moves:
+            first_white_half = (state.is_white_turn
+                                and not getattr(state, "white_half_pending", False))
+            if not first_white_half:
+                self._reuse_tree = None
+                self._reuse_key = None
+                return
         if tree.reroot(selected_uci):
             self._reuse_tree = tree
             self._reuse_key = (tree.fen(0), tree.is_white_turn(0),
                                tree.white_half_pending(0))
+        else:
+            self._reuse_tree = None
+            self._reuse_key = None
 
     # ------------------------------------------------------------------
     def get_best_action(self, root_state, temperature=1.0):
@@ -178,7 +195,7 @@ class NativeMCTS:
                 batch_size=self.batch_size, channels=self._channels,
                 allow_early_stop=self.allow_early_stop,
                 root_noise=self.root_noise, seed=decision_seed,
-                heuristic_values=self._heuristic_values)
+                heuristic_values=self._heuristic_values, solver=self.solver)
         else:
             tree.run_sequential(self.num_simulations,
                                 allow_early_stop=self.allow_early_stop,

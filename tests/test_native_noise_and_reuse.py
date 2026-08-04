@@ -144,5 +144,94 @@ class TestTreeReuse(unittest.TestCase):
         self.assertTrue(tree.white_half_pending(0))
 
 
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestRerootRebasing(unittest.TestCase):
+    """Reuse across a side change requires rebasing the new root, and only it.
+
+    A node's Q is stored in its *parent's* side-to-move frame; a root's is in
+    its *own*. Rerooting severs exactly one parent link and leaves every other
+    parent-child relationship intact, so only the new root's frame changes.
+    Negate its accumulated value exactly when the side to move differs from the
+    old root's -- descendants keep their frames untouched.
+
+    The Python engine refuses this reuse rather than rebase, which throws the
+    tree away on every Black move.
+    """
+
+    def setUp(self):
+        self.game = MonsterChessGame(START_FEN)
+        self.m1 = self.game.get_search_actions()[0].uci()
+        after = self.game.clone()
+        after.apply_search_action(
+            next(m for m in self.game.get_search_actions() if m.uci() == self.m1))
+        self.after_m1 = after
+        self.m2 = after.get_search_actions()[0].uci()
+
+    def test_same_side_reroot_leaves_the_sign_alone(self):
+        # White's first -> second half: both White to move.
+        tree = mn.Tree(START_FEN)
+        child = tree.add_child(0, self.m1, 1.0)
+        tree.set_stats(child, 4, 2.0)
+        self.assertTrue(tree.is_white_turn(0))
+        self.assertTrue(tree.is_white_turn(child))
+        tree.reroot(self.m1)
+        self.assertAlmostEqual(tree.total_value(0), 2.0)
+        self.assertAlmostEqual(tree.q_value(0), 0.5)
+
+    def test_side_change_reroot_negates_the_new_root(self):
+        # White's second half -> Black to move: the frame flips.
+        tree = mn.Tree(self.after_m1.fen(), True, self.after_m1.turn_count)
+        child = tree.add_child(0, self.m2, 1.0)
+        tree.set_stats(child, 4, 2.0)
+        self.assertTrue(tree.is_white_turn(0))
+        self.assertFalse(tree.is_white_turn(child))
+        tree.reroot(self.m2)
+        self.assertAlmostEqual(tree.total_value(0), -2.0)
+        self.assertAlmostEqual(tree.q_value(0), -0.5)
+
+    def test_descendants_are_not_rebased(self):
+        # Only the severed link changes frame; a grandchild keeps its own.
+        tree = mn.Tree(self.after_m1.fen(), True, self.after_m1.turn_count)
+        child = tree.add_child(0, self.m2, 1.0)
+        after = self.after_m1.clone()
+        after.apply_search_action(
+            next(m for m in self.after_m1.get_search_actions() if m.uci() == self.m2))
+        grandchild = tree.add_child(child, after.get_search_actions()[0].uci(), 1.0)
+        tree.set_stats(child, 4, 2.0)
+        tree.set_stats(grandchild, 2, 1.0)
+        tree.reroot(self.m2)
+        self.assertAlmostEqual(tree.total_value(0), -2.0)   # rebased
+        self.assertAlmostEqual(tree.total_value(1), 1.0)    # untouched
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestReuseScopeFlag(unittest.TestCase):
+    def test_default_matches_the_python_engines_scope(self):
+        from native_mcts import NativeMCTS
+        self.assertFalse(NativeMCTS().reuse_across_moves)
+
+    def test_across_moves_keeps_the_tree_after_a_black_move(self):
+        from evaluation import evaluate
+        from native_mcts import NativeMCTS
+        state = MonsterChessGame(START_FEN)
+        engine = NativeMCTS(num_simulations=32, eval_fn=evaluate,
+                            allow_early_stop=False, reuse_across_moves=True)
+        for _ in range(3):   # W m1, W m2, then Black
+            action, _p, _v = engine.get_best_action(state, temperature=0.0)
+            state.apply_search_action(action)
+        self.assertIsNotNone(engine._reuse_tree)
+
+    def test_default_scope_drops_it_after_a_black_move(self):
+        from evaluation import evaluate
+        from native_mcts import NativeMCTS
+        state = MonsterChessGame(START_FEN)
+        engine = NativeMCTS(num_simulations=32, eval_fn=evaluate,
+                            allow_early_stop=False)
+        for _ in range(3):
+            action, _p, _v = engine.get_best_action(state, temperature=0.0)
+            state.apply_search_action(action)
+        self.assertIsNone(engine._reuse_tree)
+
 if __name__ == "__main__":
     unittest.main()

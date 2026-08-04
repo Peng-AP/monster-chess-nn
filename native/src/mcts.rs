@@ -723,11 +723,23 @@ impl Arena {
 
     /// Keep only the subtree under `child`, making it the new root.
     ///
-    /// Reuse is allowed **only** across White's first -> second half-move.
-    /// Both nodes are White-to-move, so accumulated Q stays valid; reusing
-    /// across a side change would require rebasing every stored value, which
-    /// is why the Python engine refuses it and this does too.
+    /// **Rebasing, derived rather than guessed.** A node's Q is stored in its
+    /// *parent's* side-to-move frame (see `backpropagate`), while a root's Q is
+    /// in its *own*. Rerooting severs exactly one parent link and leaves every
+    /// other parent-child relationship intact, so only the new root's frame
+    /// changes -- its descendants keep theirs. The new root therefore needs its
+    /// accumulated value negated exactly when the side to move differs from the
+    /// old root's, and nothing else needs touching.
+    ///
+    /// The Python engine refuses reuse across a side change rather than rebase,
+    /// which costs it the whole tree on every Black move. With this the tree
+    /// survives the entire game, as LC0's does.
     pub fn reroot(&mut self, child: usize) {
+        let old_root_white = self.nodes[0].state.is_white_turn;
+        let new_root_white = self.nodes[child].state.is_white_turn;
+        if old_root_white != new_root_white {
+            self.nodes[child].total_value = -self.nodes[child].total_value;
+        }
         let mut order = vec![child];
         let mut i = 0;
         while i < order.len() {
