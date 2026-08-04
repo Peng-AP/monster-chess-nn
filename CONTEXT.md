@@ -221,12 +221,23 @@ algorithm unconditionally once a position qualifies, and its moves are recorded
 as training data at `policy 1.0`. A quarter of the canonical class is being
 labelled with games Black loses.
 
-Fixing it means changing `scripted_mate.py`, which the owner's veto covers, so
-it is recorded here rather than done. The shape of the fix is the mirror of the
-king-safety override he already approved engine-wide: refuse a move that leaves
-a heavy capturable by the double-move king when an alternative does not.
-Separately, the forced-capture preflight (opt-in, off by default) addresses
-*finishing*, not this — it would not have saved any of these three games.
+**FIXED 2026-08-04** on the owner's instruction ("fix the mate bot"). Two
+guards, both now on by default:
+
+* **Material guard** — filter out any move after which White can win a heavy or
+  the king, when a move exists that does not. It asks the engine for White's
+  real pair list rather than reasoning about geometry, so a capture that would
+  leave White's own king en prise is correctly not counted as a threat. Cheap
+  in exactly this class: `mate_algo_applicable` requires a *bare* White king,
+  so the pair list is ~8x8 king moves. Stands down when everything hangs —
+  forced is forced, the same discipline as the king-safety override.
+* **Forced-capture preflight** (depth 3), previously opt-in.
+
+Result: **9/12 -> 11/12**, and the one remaining failure changed character
+entirely. It no longer loses anything: it reaches the 150-turn cap at -0.5 with
+queen and both rooks intact. That is the known *finishing* problem, not a
+blunder, and no forced capture exists within depth 3 there. Separately the
+oracle still converts 8/8 of the E0(b) walked-past positions.
 
 ### Do not do
 

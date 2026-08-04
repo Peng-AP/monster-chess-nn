@@ -75,17 +75,54 @@ class ScriptedMate:
     positions the search cannot resolve within its depth and budget.
     """
 
-    def __init__(self, forced_depth=0, forced_budget=200_000):
+    def __init__(self, forced_depth=3, forced_budget=200_000, guard_material=True):
         self.edge = None  # rank (0 or 7) White is pushed toward
         self._visits = {}  # position fen -> times reached by our own moves
-        # OPT-IN, owner's call 2026-08-03. The measurement above stands, but
-        # the owner's standing veto covers changes to this file ("messing with
-        # the oracle"), so the default keeps generation behaviour exactly as it
-        # was and callers opt in with forced_depth=3. Flip the default only on
-        # his explicit review.
+        # Both defaults ON since the owner's "fix the mate bot", 2026-08-04.
         self.forced_depth = forced_depth
         self.forced_budget = forced_budget
-        self.forced_hits = 0  # forced lines actually played, for reporting
+        self.guard_material = guard_material
+        self.forced_hits = 0   # forced lines actually played, for reporting
+        self.guard_hits = 0    # moves rejected for hanging material
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _heavy_count(board):
+        return len(board.pieces(chess.QUEEN, chess.BLACK)
+                   | board.pieces(chess.ROOK, chess.BLACK))
+
+    def _hangs_material(self, game, move):
+        """True if, after `move`, White can win a heavy (or the king) outright.
+
+        This is the defect the 9/12 was made of. Every one of the three failing
+        canonical starts lost the same way: Black hangs heavies to the
+        double-move king -- first loss at turn 5-23, then the rest in
+        consecutive turns as the fence collapses. `_white_reply_min` searches
+        depth 1 with a single danger-gated extension (depth 2 "exploded
+        combinatorially"), which cannot see a king that captures two squares
+        away, still less one that takes two pieces in a turn.
+
+        Cheap in exactly the class this algorithm claims: `mate_algo_applicable`
+        requires a **bare** White king, so White's pair list is at most ~8x8
+        king moves rather than the hundreds a full army generates.
+
+        It asks the engine for White's real options rather than reasoning about
+        geometry, so a capture that would leave White's own king en prise --
+        which the rules forbid -- is correctly not counted as a threat.
+        """
+        probe = game.clone()
+        probe.apply_search_action(move)
+        if probe.is_terminal():
+            return False  # the move ended the game; nothing left to lose
+        before = self._heavy_count(probe.board)
+        for pair in probe.get_legal_actions():
+            after = probe.clone()
+            after.apply_action(pair)
+            if after.board.king(chess.BLACK) is None:
+                return True
+            if self._heavy_count(after.board) < before:
+                return True
+        return False
 
     # ------------------------------------------------------------------
     def select_move(self, game):
@@ -102,6 +139,19 @@ class ScriptedMate:
         for m in legal:
             if m.to_square == wk:
                 return m
+
+        # Material guard: never volunteer a heavy to the double-move king when
+        # a move exists that does not. Filtering the candidate list (rather
+        # than re-ranking afterwards) keeps the fence heuristic choosing among
+        # sound moves only. If EVERY move hangs something the guard stands
+        # down, exactly as the owner's king-safety override does -- forced is
+        # forced.
+        if self.guard_material and len(legal) > 1:
+            safe = [m for m in legal if not self._hangs_material(game, m)]
+            if safe and len(safe) < len(legal):
+                self.guard_hits += len(legal) - len(safe)
+            if safe:
+                legal = safe
 
         # Exact preflight: play a proven forced capture when one exists.
         # Budget exhaustion falls through to the heuristic — "no answer" is
