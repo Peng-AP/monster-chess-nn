@@ -232,7 +232,16 @@ def main():
 
         with mp.Pool(args.workers, initializer=_init_search,
                      initargs=(models, args.sims)) as pool:
-            results = pool.map(_probe_one, deck)
+            results = []
+            started = time.time()
+            for done, item in enumerate(pool.imap_unordered(_probe_one, deck), 1):
+                results.append(item)
+                if done % max(1, len(deck) // 20) == 0 or done == len(deck):
+                    elapsed = time.time() - started
+                    rate = done / elapsed if elapsed else 0.0
+                    print(f"  [{done:4d}/{len(deck)}] {elapsed / 60:5.1f}m elapsed, "
+                          f"~{(len(deck) - done) / rate / 60 if rate else 0:5.1f}m left",
+                          flush=True)
 
         rows_by_model = {name: [] for name, _p in models}
         for row in results:
@@ -258,7 +267,23 @@ def main():
         with mp.Pool(args.workers, initializer=_init_outcomes,
                      initargs=(args.playout_white, args.playout_black,
                                white_sims, black_sims, args.max_turns)) as pool:
-            outcomes = pool.map(_play_out, tasks)
+            # imap_unordered, not map: `map` returns nothing until every task
+            # is done, so a long run is indistinguishable from a hung one --
+            # the only way to tell was reading per-process CPU counters.
+            outcomes = []
+            started = time.time()
+            for done, outcome in enumerate(pool.imap_unordered(_play_out, tasks), 1):
+                outcomes.append(outcome)
+                if done % max(1, len(tasks) // 20) == 0 or done == len(tasks):
+                    elapsed = time.time() - started
+                    rate = done / elapsed if elapsed else 0.0
+                    eta = (len(tasks) - done) / rate if rate else 0.0
+                    true_so_far = sum(1 for o in outcomes if o["result"] == -1)
+                    print(f"  [{done:4d}/{len(tasks)}] "
+                          f"true captures {true_so_far:3d} "
+                          f"({true_so_far / done:.2f})  "
+                          f"{elapsed / 60:5.1f}m elapsed, ~{eta / 60:5.1f}m left",
+                          flush=True)
         black_wins = sum(1 for o in outcomes if o["result"] < 0)
         true_wins = sum(1 for o in outcomes if o["result"] == -1)
         dominant_draws = sum(1 for o in outcomes if o["result"] == -0.5)
