@@ -287,7 +287,21 @@ done in f64 and narrowed on store, matching numpy assigning a Python float into
 a float32 array; computing in f32 throughout would round differently and break
 equality. **E2 is complete.**
 
-**A format hazard found on the way, which E4 must respect: FENs are lossy.**
+**A FEN under-determines a Monster Chess state — three times over.** Each was
+found the same way, by a measurement that disagreed for no visible reason, and
+each fails *silently* rather than erroring:
+
+1. **`white_half_pending`** — selects a different action set entirely. A tree
+   built from a FEN alone searched a different position; the symptom was the
+   native search choosing moves the Python search did not rank at all.
+2. **`turn_count`** — decides the move-limit cap and therefore the ±0.5 relabel.
+3. **Move history** — the oscillation penalty reads it at offsets -1/-3/-4, so a
+   state rebuilt without it stops penalising reversals and simply never fires.
+
+`Game` and `Tree` now take all four (FEN + these three). **E4 must never pass
+positions between the engines as bare FENs.**
+
+**And a fourth, at the format level: FENs are lossy about ep.**
 python-chess writes `en_passant="legal"`, so a live game object can hold an
 ep square its own FEN drops — 1 position in 148,272 evaluated differently
 through a FEN round-trip *within Python itself*. The native `Game` must

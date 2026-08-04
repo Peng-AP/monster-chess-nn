@@ -392,6 +392,11 @@ fn square_from_name(name: &str) -> Option<u8> {
     }
 }
 
+/// Public alias so other modules can print squares without duplicating this.
+pub fn square_name_pub(sq: u8) -> String {
+    square_name(sq)
+}
+
 fn square_name(sq: u8) -> String {
     let mut s = String::with_capacity(2);
     s.push((b'a' + file_of(sq)) as char);

@@ -19,16 +19,26 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::bitboard::{generate_pseudo_legal, parse_fen, to_fen, Board, Move, BLACK, WHITE};
+use crate::bitboard::square_name_pub;
 use crate::eval::evaluate;
 use crate::monster::{black_actions, white_actions, white_second_half_moves, white_single_moves};
 
 /// Mirrors `config.MAX_GAME_TURNS`. Asserted against Python by the test suite.
 pub const MAX_GAME_TURNS: u32 = 150;
 
+/// How many plies of move history to carry. Mirrors `CLONE_HISTORY_PLIES`:
+/// only the oscillation detector reads it, at offsets -1/-3/-4.
+pub const HISTORY_PLIES: usize = 8;
+
 #[pyclass]
 #[derive(Clone)]
 pub struct Game {
     board: Board,
+    /// Recent (from, to) squares, oldest first, capped at HISTORY_PLIES.
+    /// A FEN-constructed position starts empty — no history, no oscillation
+    /// override — and history accrues as the driver applies actions, exactly
+    /// as python-chess's `move_stack` does.
+    pub history: Vec<(u8, u8)>,
     #[pyo3(get)]
     pub is_white_turn: bool,
     #[pyo3(get)]
@@ -81,10 +91,30 @@ impl Game {
     /// assumed `pending = false` and made two engines search different
     /// positions -- found while measuring search agreement, 2026-08-03.
     pub fn from_state(fen: &str, white_half_pending: bool, turn_count: u32) -> Result<Self, String> {
+        Game::from_state_with_history(fen, white_half_pending, turn_count, &[])
+    }
+
+    /// The third thing a FEN cannot carry, after `white_half_pending` and
+    /// `turn_count`: **recent move history**. The oscillation penalty reads it
+    /// at offsets -1/-3/-4, so a state rebuilt without it silently loses the
+    /// penalty — the override quietly stops firing rather than failing.
+    pub fn from_state_with_history(
+        fen: &str,
+        white_half_pending: bool,
+        turn_count: u32,
+        history: &[String],
+    ) -> Result<Self, String> {
         let board = parse_fen(fen)?;
         let is_white_turn = board.turn;
+        let mut recent: Vec<(u8, u8)> = Vec::new();
+        for uci in history.iter().rev().take(HISTORY_PLIES).rev() {
+            if let Some(mv) = parse_uci(uci) {
+                recent.push((mv.from, mv.to));
+            }
+        }
         Ok(Game {
             board,
+            history: recent,
             is_white_turn,
             turn_count,
             white_half_pending: white_half_pending && is_white_turn,
@@ -141,8 +171,38 @@ impl Game {
         moves.iter().map(|m| m.uci()).collect()
     }
 
+    fn record_history(&mut self, mv: &Move) {
+        if self.history.len() == HISTORY_PLIES {
+            self.history.remove(0);
+        }
+        self.history.push((mv.from, mv.to));
+    }
+
+    /// The side-to-move's own recent moves, for oscillation detection.
+    ///
+    /// Offsets follow the fixed push cycle (Black 1 push, White 2). A
+    /// misaligned offset can only surface an OPPONENT move, whose exact
+    /// reversal is never a legal own move, so false positives are excluded
+    /// structurally rather than by checking.
+    pub fn own_previous_moves(&self) -> Vec<(u8, u8)> {
+        let offsets: &[usize] = if self.is_white_turn { &[1, 3, 4] } else { &[3] };
+        let len = self.history.len();
+        offsets
+            .iter()
+            .filter(|&&o| len >= o)
+            .map(|&o| self.history[len - o])
+            .collect()
+    }
+
+    /// True when the action to be selected completes a turn: Black's move, or
+    /// White's SECOND half. White's first half may pass through check.
+    pub fn turn_completing(&self) -> bool {
+        !self.is_white_turn || self.white_half_pending
+    }
+
     pub fn apply_half(&mut self, uci: &str) -> Result<(), String> {
         let mv = parse_uci(uci).ok_or_else(|| "bad uci".to_string())?;
+        self.record_history(&mv);
         if self.is_white_turn && !self.white_half_pending {
             self.board.push(&mv);
             // Only restore White's turn if the Black king survived; a
@@ -169,9 +229,40 @@ impl Game {
 #[pymethods]
 impl Game {
     #[new]
-    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0))]
-    fn new(fen: &str, white_half_pending: bool, turn_count: u32) -> PyResult<Self> {
-        Game::from_state(fen, white_half_pending, turn_count).map_err(PyValueError::new_err)
+    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0, history=None))]
+    fn new(
+        fen: &str,
+        white_half_pending: bool,
+        turn_count: u32,
+        history: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        Game::from_state_with_history(
+            fen,
+            white_half_pending,
+            turn_count,
+            &history.unwrap_or_default(),
+        )
+        .map_err(PyValueError::new_err)
+    }
+
+    /// Recent moves as "fromto" square pairs, oldest first.
+    fn history_uci(&self) -> Vec<String> {
+        self.history
+            .iter()
+            .map(|(f, t)| format!("{}{}", square_name_pub(*f), square_name_pub(*t)))
+            .collect()
+    }
+
+    /// The side-to-move's own recent moves, per the oscillation offsets.
+    fn own_previous_uci(&self) -> Vec<String> {
+        self.own_previous_moves()
+            .iter()
+            .map(|(f, t)| format!("{}{}", square_name_pub(*f), square_name_pub(*t)))
+            .collect()
+    }
+
+    fn turn_completing_py(&self) -> bool {
+        self.turn_completing()
     }
 
     fn fen(&self) -> String {

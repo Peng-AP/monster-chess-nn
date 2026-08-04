@@ -192,7 +192,7 @@ impl Rng {
     pub fn new(seed: u64) -> Self {
         Rng(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed })
     }
-    fn next_u64(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x >> 12;
         x ^= x << 25;
@@ -507,6 +507,69 @@ impl Arena {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Selection layer: overrides, oscillation penalty, temperature
+// ---------------------------------------------------------------------------
+//
+// These are the owner's product decisions (§0.3), not implementation detail,
+// and they port verbatim:
+//   * king safety (2026-07-12, engine-wide) -- never hand over an immediate
+//     king capture when a searched alternative survives;
+//   * White first half (2026-07-17) -- an m1 must keep at least one king-safe
+//     completion whenever a searched alternative does, because the m2-level
+//     override cannot repair an m1 blunder;
+//   * oscillation penalty (2026-07-17) -- *penalise* exact reversals, do not
+//     forbid them; the discount only decides ties.
+//
+// Both overrides re-rank among the search's OWN children by visit count, and
+// touch nothing unless the chosen action is actually bad.
+
+pub const OSCILLATION_VISIT_PENALTY: f64 = 0.10;
+
+/// True if, after this turn-completing action, the opponent can capture the
+/// mover's king immediately.
+fn hangs_king(state: &Game, action: &str) -> bool {
+    let mut tmp = state.clone();
+    if tmp.apply_half(action).is_err() {
+        return false;
+    }
+    if tmp.is_terminal_rust() {
+        return false; // the action itself ended the game
+    }
+    if tmp.is_white_turn {
+        crate::eval::white_threat_scan(tmp.board_ref(), tmp.white_half_pending)
+    } else {
+        crate::eval::black_threat_scan(tmp.board_ref())
+    }
+}
+
+/// True if after this first half-move EVERY legal second half hangs the king.
+fn m1_dooms_king(state: &Game, m1: &str) -> bool {
+    let mut tmp = state.clone();
+    if tmp.apply_half(m1).is_err() {
+        return false;
+    }
+    if tmp.is_terminal_rust() {
+        return false; // a winning m1 is never doomed
+    }
+    for m2 in tmp.search_actions_rust() {
+        if !hangs_king(&tmp, &m2) {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_reversal(action: &str, prev: &[(u8, u8)]) -> bool {
+    let b = action.as_bytes();
+    if b.len() < 4 {
+        return false;
+    }
+    let from = (b[1] - b'1') * 8 + (b[0] - b'a');
+    let to = (b[3] - b'1') * 8 + (b[2] - b'a');
+    prev.iter().any(|&(pf, pt)| from == pt && to == pf)
+}
+
 fn uci_to_index(uci: &str) -> usize {
     let b = uci.as_bytes();
     if b.len() < 4 {
@@ -529,12 +592,24 @@ pub struct PyTree {
 #[pymethods]
 impl PyTree {
     #[new]
-    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0))]
-    fn new(fen: &str, white_half_pending: bool, turn_count: u32) -> PyResult<Self> {
-        // pending and turn_count are part of the state, not decoration: the
-        // first carries a different action set, the second decides the cap.
-        let root = Game::from_state(fen, white_half_pending, turn_count)
-            .map_err(PyValueError::new_err)?;
+    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0, history=None))]
+    fn new(
+        fen: &str,
+        white_half_pending: bool,
+        turn_count: u32,
+        history: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        // None of these are decoration. `pending` selects a different action
+        // set, `turn_count` decides the cap, and `history` is what the
+        // oscillation penalty reads — a tree built without it silently stops
+        // penalising reversals.
+        let root = Game::from_state_with_history(
+            fen,
+            white_half_pending,
+            turn_count,
+            &history.unwrap_or_default(),
+        )
+        .map_err(PyValueError::new_err)?;
         Ok(PyTree { arena: Arena::new(root) })
     }
 
@@ -750,6 +825,130 @@ impl PyTree {
             sims_done += leaves.len();
         }
         Ok(())
+    }
+
+    /// Selection, ported from `get_best_action`: raw visit distribution for the
+    /// training target, oscillation-adjusted visits for the move actually
+    /// played, then the two owner overrides, then the *selected child's* Q.
+    ///
+    /// Reporting the selected child's Q rather than the root average is an
+    /// owner decision (2026-07-17): the root average is a visit-weighted mean
+    /// including simulations spent refuting losing siblings, so a proven mate
+    /// reads ~+0.7. The selected child sits at exactly ±1.0 for proven lines.
+    #[pyo3(signature = (temperature=1.0, seed=20260803))]
+    fn best_action(
+        &self,
+        temperature: f64,
+        seed: u64,
+    ) -> (Option<String>, Vec<(String, f64)>, f64) {
+        let root = &self.arena.nodes[0];
+        if root.children.is_empty() {
+            return (None, Vec::new(), 0.0);
+        }
+        let info: Vec<(usize, String, f64)> = root
+            .children
+            .iter()
+            .map(|&c| {
+                (
+                    c,
+                    self.arena.nodes[c].action.clone().unwrap_or_default(),
+                    self.arena.nodes[c].visit_count as f64,
+                )
+            })
+            .collect();
+
+        // Training target keeps the RAW distribution.
+        let total: f64 = info.iter().map(|(_, _, v)| *v).sum();
+        let probs: Vec<(String, f64)> = if total <= 0.0 {
+            let uniform = 1.0 / info.len() as f64;
+            info.iter().map(|(_, a, _)| (a.clone(), uniform)).collect()
+        } else {
+            info.iter()
+                .map(|(_, a, v)| (a.clone(), v / total))
+                .collect()
+        };
+
+        // Selection uses oscillation-adjusted visits.
+        let state = &root.state;
+        let prev = state.own_previous_moves();
+        let adjusted: Vec<f64> = if state.turn_completing() && !prev.is_empty() {
+            info.iter()
+                .map(|(_, a, v)| {
+                    if is_reversal(a, &prev) {
+                        v * (1.0 - OSCILLATION_VISIT_PENALTY)
+                    } else {
+                        *v
+                    }
+                })
+                .collect()
+        } else {
+            info.iter().map(|(_, _, v)| *v).collect()
+        };
+
+        let mut selected = if temperature < 0.01 {
+            // Python's max() keeps the FIRST maximum; strict > matches it.
+            let mut best = 0usize;
+            for i in 1..adjusted.len() {
+                if adjusted[i] > adjusted[best] {
+                    best = i;
+                }
+            }
+            info[best].1.clone()
+        } else {
+            let weights: Vec<f64> = adjusted
+                .iter()
+                .map(|v| v.max(0.0).powf(1.0 / temperature))
+                .collect();
+            let total_w: f64 = weights.iter().sum();
+            let mut rng = Rng::new(seed);
+            if total_w == 0.0 {
+                let idx = (rng.next_u64() % info.len() as u64) as usize;
+                info[idx].1.clone()
+            } else {
+                let mut draw = (rng.next_u64() as f64 / u64::MAX as f64) * total_w;
+                let mut chosen = info.len() - 1;
+                for (i, w) in weights.iter().enumerate() {
+                    draw -= w;
+                    if draw <= 0.0 {
+                        chosen = i;
+                        break;
+                    }
+                }
+                info[chosen].1.clone()
+            }
+        };
+
+        // Override 1: a first half-move must keep a king-safe completion.
+        if state.is_white_turn && !state.white_half_pending && m1_dooms_king(state, &selected) {
+            let mut order: Vec<&(usize, String, f64)> = info.iter().collect();
+            order.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            for cand in order {
+                if cand.1 != selected && !m1_dooms_king(state, &cand.1) {
+                    selected = cand.1.clone();
+                    break;
+                }
+            }
+        }
+
+        // Override 2: never hand over an immediate king capture.
+        if state.turn_completing() && hangs_king(state, &selected) {
+            let mut order: Vec<&(usize, String, f64)> = info.iter().collect();
+            order.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            for cand in order {
+                if cand.1 != selected && !hangs_king(state, &cand.1) {
+                    selected = cand.1.clone();
+                    break;
+                }
+            }
+        }
+
+        let value = info
+            .iter()
+            .find(|(_, a, v)| *a == selected && *v > 0.0)
+            .map(|(c, _, _)| self.arena.nodes[*c].q_value())
+            .unwrap_or_else(|| self.arena.nodes[0].q_value());
+
+        (Some(selected), probs, value)
     }
 
     fn max_depth(&self) -> usize {

@@ -153,6 +153,20 @@ fn is_passed_pawn(board: &Board, sq: u8, color: usize) -> bool {
     true
 }
 
+/// Pending-aware White capture threat, exposed for the selection overrides.
+pub fn white_threat_scan(board: &Board, white_half_pending: bool) -> bool {
+    if white_half_pending {
+        white_can_capture_king_single(board)
+    } else {
+        white_can_capture_king(board)
+    }
+}
+
+/// Can Black capture the White king with the move in hand?
+pub fn black_threat_scan(board: &Board) -> bool {
+    black_can_capture_king(board)
+}
+
 /// The clamps that run **before any NN call**, matching
 /// `NNEvaluator._batch_impl` / `evaluate_with_policy`.
 ///
