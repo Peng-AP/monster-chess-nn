@@ -74,15 +74,23 @@ def carryover(model, sims, plies, seed):
     return out
 
 
-def match(model, sims, games, seed):
-    """Reuse-on vs reuse-off, colours alternated, same sims."""
+def match(model, sims, games, seed, on_sims=None):
+    """Reuse-on vs reuse-off, colours alternated.
+
+    `on_sims` lets the reuse side be given the extra simulations its wall-clock
+    saving pays for. Equal-sims is the wrong comparison for a change whose
+    benefit is speed: reuse banks the previous search's visit lead, so
+    `_should_stop_early` fires sooner and the search terminates earlier rather
+    than going deeper. Measured 2026-08-04: 233 vs 301 ms per decision, so at
+    equal time the reuse side affords ~1.29x the simulations.
+    """
     evaluator = NNEvaluator(model)
     starts = load_starts(max(1, games // 2))
     points = 0.0
     played = 0
     for i in range(games):
         random.seed(seed + i)
-        on = NativeMCTS(num_simulations=sims, eval_fn=evaluator,
+        on = NativeMCTS(num_simulations=on_sims or sims, eval_fn=evaluator,
                         allow_early_stop=True, reuse_across_moves=True)
         off = NativeMCTS(num_simulations=sims, eval_fn=evaluator,
                          allow_early_stop=True, reuse_across_moves=False)
@@ -114,6 +122,9 @@ def main():
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--sims", type=int, default=200)
     ap.add_argument("--plies", type=int, default=30)
+    ap.add_argument("--on-sims", type=int, default=None,
+                    help="simulations for the reuse side; use the wall-clock "
+                         "ratio to compare at equal TIME rather than equal nodes")
     ap.add_argument("--seed", type=int, default=20260804)
     args = ap.parse_args()
 
@@ -126,13 +137,15 @@ def main():
 
     print("\nmeasuring strength...", flush=True)
     started = time.time()
-    score, played = match(args.model, args.sims, args.games, args.seed)
+    score, played = match(args.model, args.sims, args.games, args.seed,
+                          on_sims=args.on_sims)
     se = math.sqrt(0.25 / played)
     print(f"  reuse-on score {score:.4f} +- {se:.4f} over {played} games "
           f"({(score - 0.5) / se:+.2f} SE)  [{time.time() - started:.0f}s]")
 
     summary = {
         "sims": args.sims,
+        "on_sims": args.on_sims or args.sims,
         "games": played,
         "carryover_half_pair_only": carry[False][0],
         "carryover_across_moves": carry[True][0],
