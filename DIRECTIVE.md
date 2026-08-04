@@ -357,6 +357,33 @@ the phase's own configuration forbids. 5x already implies k~16 and is strong
 evidence the port is sound. The 10x target moves to E4, where widening the
 batch makes it reachable.
 
+**E3 STATUS 2026-08-03.** Ported: node arithmetic (PUCT/FPU/backprop),
+sequential UCB1, batched PUCT with the D3 stage-1 NN bridge, virtual loss,
+Dirichlet root noise, tree reuse across White's half-pair, the selection layer
+with both owner overrides, the oscillation penalty and selected-child value
+reporting.
+
+| gate | bar | result |
+|---|---|---|
+| (a) selected-move agreement, probe deck | >=99% | **400/400 = 100%** |
+| (b) engine-vs-engine self-match, 200 games | within 2 SE of 0.50 | running |
+| (c) wall-clock at batch 64 | >=5x | **6.31x** |
+
+**Gate (a) earned its keep immediately: it caught a sign flip.** The value head
+speaks in the **side-to-move** perspective and `NNEvaluator._to_white_perspective`
+converts it; the first bridge forwarded the raw value, so every Black-to-move
+leaf backpropagated the wrong sign. Agreement read 90% with disagreements at
+rank 5 and visibly wrong values. With the conversion applied — natively, since
+the search is what knows each leaf's side — agreement is 400/400. This is the
+argument for having tightened (a) from 95% to 99%: at 95% a subtler version of
+the same bug would have passed.
+
+**Not ported, deliberately: the atomic-pair prior path** (`_white_priors`, the
+80-child cap). It is unreachable for `MonsterChessGame`, which defines
+`get_search_actions`, so `_state_legal_actions` always returns single moves and
+`is_pair` is always False. Porting it would add untestable dead code. If a state
+type without `get_search_actions` is ever introduced, this needs writing.
+
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the
 profile decision at batch 256**, one overnight generation run completing clean
