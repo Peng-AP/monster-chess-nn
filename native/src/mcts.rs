@@ -508,6 +508,127 @@ impl Arena {
 }
 
 // ---------------------------------------------------------------------------
+// Dirichlet root noise (self-play exploration)
+// ---------------------------------------------------------------------------
+//
+// Root-only and self-play-only: mixing noise into an evaluation or arena game
+// would corrupt the thing being measured. alpha = 0.3, epsilon = 0.25.
+//
+// D4 puts RNG under statistical parity, so this need not reproduce numpy's
+// stream -- only be a correct Dirichlet sample.
+
+pub const DIRICHLET_ALPHA: f64 = 0.3;
+pub const DIRICHLET_EPSILON: f64 = 0.25;
+
+impl Rng {
+    fn next_f64(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    fn normal(&mut self) -> f64 {
+        let mut u1 = self.next_f64();
+        if u1 < 1e-300 {
+            u1 = 1e-300;
+        }
+        let u2 = self.next_f64();
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+    }
+
+    /// Marsaglia-Tsang. For alpha < 1 it uses the boost
+    /// Gamma(a) = Gamma(a+1) * U^(1/a), which matters here: alpha is 0.3.
+    fn gamma(&mut self, alpha: f64) -> f64 {
+        if alpha < 1.0 {
+            let u = self.next_f64().max(1e-300);
+            return self.gamma(alpha + 1.0) * u.powf(1.0 / alpha);
+        }
+        let d = alpha - 1.0 / 3.0;
+        let c = 1.0 / (9.0 * d).sqrt();
+        loop {
+            let x = self.normal();
+            let v = (1.0 + c * x).powi(3);
+            if v <= 0.0 {
+                continue;
+            }
+            let u = self.next_f64();
+            if u < 1.0 - 0.0331 * x.powi(4) {
+                return d * v;
+            }
+            if u.ln() < 0.5 * x * x + d * (1.0 - v + v.ln()) {
+                return d * v;
+            }
+        }
+    }
+
+    fn dirichlet(&mut self, alpha: f64, n: usize) -> Vec<f64> {
+        let samples: Vec<f64> = (0..n).map(|_| self.gamma(alpha)).collect();
+        let total: f64 = samples.iter().sum();
+        if total <= 0.0 {
+            return vec![1.0 / n as f64; n];
+        }
+        samples.iter().map(|s| s / total).collect()
+    }
+}
+
+impl Arena {
+    /// Mix Dirichlet noise into the root children's priors.
+    pub fn add_root_noise(&mut self, alpha: f64, epsilon: f64, rng: &mut Rng) {
+        let children = self.nodes[0].children.clone();
+        if children.is_empty() {
+            return;
+        }
+        let noise = rng.dirichlet(alpha, children.len());
+        for (&child, n) in children.iter().zip(noise) {
+            self.nodes[child].prior = (1.0 - epsilon) * self.nodes[child].prior + epsilon * n;
+        }
+    }
+
+    /// Keep only the subtree under `child`, making it the new root.
+    ///
+    /// Reuse is allowed **only** across White's first -> second half-move.
+    /// Both nodes are White-to-move, so accumulated Q stays valid; reusing
+    /// across a side change would require rebasing every stored value, which
+    /// is why the Python engine refuses it and this does too.
+    pub fn reroot(&mut self, child: usize) {
+        let mut order = vec![child];
+        let mut i = 0;
+        while i < order.len() {
+            let node = order[i];
+            for &c in &self.nodes[node].children {
+                order.push(c);
+            }
+            i += 1;
+        }
+        let mut mapping = std::collections::HashMap::new();
+        for (new_idx, &old_idx) in order.iter().enumerate() {
+            mapping.insert(old_idx, new_idx);
+        }
+        let mut fresh: Vec<Node> = Vec::with_capacity(order.len());
+        for &old_idx in &order {
+            let old = &self.nodes[old_idx];
+            fresh.push(Node {
+                state: old.state.clone(),
+                parent: if old_idx == child {
+                    None
+                } else {
+                    old.parent.and_then(|p| mapping.get(&p).copied())
+                },
+                action: if old_idx == child { None } else { old.action.clone() },
+                prior: old.prior,
+                visit_count: old.visit_count,
+                total_value: old.total_value,
+                children: old
+                    .children
+                    .iter()
+                    .filter_map(|c| mapping.get(c).copied())
+                    .collect(),
+                is_expanded: old.is_expanded,
+            });
+        }
+        self.nodes = fresh;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Selection layer: overrides, oscillation penalty, temperature
 // ---------------------------------------------------------------------------
 //
@@ -698,7 +819,7 @@ impl PyTree {
     /// marshalling would cost more than the search it serves.
     #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
                         c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
-                        allow_early_stop=true))]
+                        allow_early_stop=true, root_noise=false, seed=20260803))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -709,6 +830,8 @@ impl PyTree {
         c_puct: f64,
         fpu_reduction: f64,
         allow_early_stop: bool,
+        root_noise: bool,
+        seed: u64,
     ) -> PyResult<()> {
         let call = |py: Python<'_>, nodes: &[usize], arena: &Arena| -> PyResult<(Vec<f64>, Vec<f32>)> {
             let mut buf: Vec<f32> = Vec::with_capacity(nodes.len() * channels * 64);
@@ -720,9 +843,23 @@ impl PyTree {
             };
             let result = eval_fn.call1((PyBytes::new(py, bytes), nodes.len(), channels))?;
             let (vb, pb): (Vec<u8>, Vec<u8>) = result.extract()?;
+            // The value head speaks in the SIDE-TO-MOVE perspective; the tree
+            // backpropagates in White's. `NNEvaluator._to_white_perspective`
+            // does this conversion in Python, and a bridge that forwards the
+            // raw value silently flips the sign at every Black-to-move leaf.
+            // The conversion lives here, not in the bridge, because the search
+            // is what knows each leaf's side.
             let values: Vec<f64> = vb
                 .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
+                .zip(nodes.iter())
+                .map(|(c, &node)| {
+                    let raw = f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64;
+                    if arena.nodes[node].state.is_white_turn {
+                        raw
+                    } else {
+                        -raw
+                    }
+                })
                 .collect();
             let policies: Vec<f32> = pb
                 .chunks_exact(4)
@@ -745,6 +882,11 @@ impl PyTree {
             self.arena.expand_with_policy(0, logits);
         }
         self.arena.backpropagate(0, root_value);
+        if root_noise && !self.arena.nodes[0].children.is_empty() {
+            let mut rng = Rng::new(seed);
+            self.arena
+                .add_root_noise(DIRICHLET_ALPHA, DIRICHLET_EPSILON, &mut rng);
+        }
         let mut sims_done = 1usize;
 
         while sims_done < simulations {
@@ -951,6 +1093,42 @@ impl PyTree {
         (Some(selected), probs, value)
     }
 
+    /// Reuse the subtree under `action` as the new root. False when that child
+    /// does not exist. Only valid across White's first -> second half-move.
+    fn reroot(&mut self, action: &str) -> bool {
+        let target = self.arena.nodes[0]
+            .children
+            .iter()
+            .copied()
+            .find(|&c| self.arena.nodes[c].action.as_deref() == Some(action));
+        match target {
+            Some(child) => {
+                self.arena.reroot(child);
+                true
+            }
+            None => false,
+        }
+    }
+
+    #[pyo3(signature = (alpha=DIRICHLET_ALPHA, epsilon=DIRICHLET_EPSILON, seed=20260803))]
+    fn add_root_noise(&mut self, alpha: f64, epsilon: f64, seed: u64) {
+        let mut rng = Rng::new(seed);
+        self.arena.add_root_noise(alpha, epsilon, &mut rng);
+    }
+
+    fn root_priors(&self) -> Vec<(String, f64)> {
+        self.arena.nodes[0]
+            .children
+            .iter()
+            .map(|&c| {
+                (
+                    self.arena.nodes[c].action.clone().unwrap_or_default(),
+                    self.arena.nodes[c].prior,
+                )
+            })
+            .collect()
+    }
+
     fn max_depth(&self) -> usize {
         self.arena.max_depth()
     }
@@ -965,5 +1143,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("C_PUCT", C_PUCT)?;
     m.add("FPU_REDUCTION", FPU_REDUCTION)?;
     m.add("EXPLORATION_CONSTANT", EXPLORATION_CONSTANT)?;
+    m.add("DIRICHLET_ALPHA", DIRICHLET_ALPHA)?;
+    m.add("DIRICHLET_EPSILON", DIRICHLET_EPSILON)?;
+    m.add("VIRTUAL_LOSS", VIRTUAL_LOSS)?;
+    m.add("OSCILLATION_VISIT_PENALTY", OSCILLATION_VISIT_PENALTY)?;
     Ok(())
 }

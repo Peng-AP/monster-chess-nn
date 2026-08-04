@@ -11,6 +11,11 @@ point of stage 1. Only the *caller* moved.
 Note the native side applies the pre-NN clamps itself (king absence, the
 side-to-move capture scan), exactly as `NNEvaluator._batch_impl` does, so
 decided positions never reach this function.
+
+**The value returned here is in the SIDE-TO-MOVE perspective**, exactly as the
+model emits it. The native search converts to White's perspective itself,
+because it is what knows each leaf's side. Do not convert here: doing it in
+both places restores the bug it fixes.
 """
 import os
 import sys
