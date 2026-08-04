@@ -8,6 +8,7 @@
 use pyo3::prelude::*;
 
 mod bitboard;
+mod encoding;
 mod eval;
 mod game;
 mod monster;
@@ -25,5 +26,6 @@ fn monster_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     monster::register(m)?;
     game::register(m)?;
     eval::register(m)?;
+    encoding::register(m)?;
     Ok(())
 }
