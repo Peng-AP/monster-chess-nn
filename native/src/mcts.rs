@@ -45,6 +45,14 @@ pub struct Node {
     pub total_value: f64,
     pub children: Vec<usize>,
     pub is_expanded: bool,
+    /// Game-theoretic proof in **White's** perspective: `Some(1.0)` White wins
+    /// with best play, `Some(-1.0)` Black does, `None` unknown.
+    ///
+    /// Only a king capture proves anything. The move-limit relabel (+-0.5 by
+    /// heuristic sign) is an opinion about an unfinished game, so it must never
+    /// become a proof -- treating it as one would let the search "prove" wins
+    /// that were merely positions it liked when the clock ran out.
+    pub proof: Option<f64>,
 }
 
 impl Node {
@@ -58,6 +66,7 @@ impl Node {
             total_value: 0.0,
             children: Vec::new(),
             is_expanded: false,
+            proof: None,
         }
     }
 
@@ -304,6 +313,10 @@ impl Arena {
     }
 
     /// Run `simulations` sequential UCB1 iterations from the root.
+    ///
+    /// The solver is not wired into this path: UCB1 mode exists for heuristic
+    /// play and diagnostics, and mixing a behaviour change into a path used as
+    /// a reference would blur what the flag is being measured against.
     pub fn run_sequential(&mut self, simulations: usize, c: f64, allow_early_stop: bool, rng: &mut Rng) {
         let mut untried: Vec<Vec<String>> = vec![Vec::new(); self.nodes.len()];
         for i in 0..simulations {
@@ -445,21 +458,51 @@ impl Arena {
     }
 
     /// Descend by PUCT to a terminal or unexpanded node.
-    fn select_puct(&self, root: usize, c_puct: f64, fpu: f64) -> usize {
+    ///
+    /// With the solver on, a proven-lost child is never descended into (its
+    /// value is already known, so visits there buy nothing) and a proven node
+    /// is a dead end rather than something to keep sampling.
+    fn select_puct(&self, root: usize, c_puct: f64, fpu: f64, solver: bool) -> usize {
         let mut node = root;
         while !self.nodes[node].state.is_terminal_rust() {
+            if solver && self.nodes[node].proof.is_some() {
+                return node;
+            }
             if !self.nodes[node].is_expanded {
                 return node;
             }
             if self.nodes[node].children.is_empty() {
                 return node;
             }
-            node = match self.best_child_puct(node, c_puct, fpu) {
+            let next = if solver {
+                self.best_child_puct_unproven(node, c_puct, fpu)
+            } else {
+                self.best_child_puct(node, c_puct, fpu)
+            };
+            node = match next {
                 Some(child) => child,
                 None => return node,
             };
         }
         node
+    }
+
+    /// `best_child_puct`, skipping children already proven lost for the mover.
+    fn best_child_puct_unproven(&self, idx: usize, c_puct: f64, fpu: f64) -> Option<usize> {
+        let mut best: Option<(usize, f64)> = None;
+        for &child in &self.nodes[idx].children {
+            if self.is_proven_loss_for_mover(idx, child) {
+                continue;
+            }
+            let score = self.puct_score(child, c_puct, fpu);
+            match best {
+                Some((_, b)) if !(score > b) => {}
+                _ => best = Some((child, score)),
+            }
+        }
+        // Every child refuted: fall back so selection still terminates.
+        best.map(|(i, _)| i)
+            .or_else(|| self.best_child_puct(idx, c_puct, fpu))
     }
 
     /// Expand every legal half-move with priors from the policy head.
@@ -504,6 +547,102 @@ impl Arena {
                 }
             }
         }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Certainty propagation (MCTS-Solver)
+// ---------------------------------------------------------------------------
+//
+// Plain MCTS dilutes a forced win: the winning line is one path among
+// thousands, its +1 is averaged into a mean, and the visit distribution never
+// concentrates hard enough to play it. Measured on this engine: 29% of
+// dominant-unfinished games held a forced king capture within 3 Black moves
+// that 1600-sim search walked past, and endgame PV depth stays at 4 plies even
+// at 51,200 sims.
+//
+// MCTS-Solver (Winands et al.) fixes the dilution rather than the depth: a
+// proven result backs up as an exact, unaveraged fact.
+//
+//   * a node whose side to move has ANY child proven winning for it is proven
+//     winning;
+//   * a node ALL of whose children are proven losing for it is proven losing;
+//   * proofs are expressed in White's perspective throughout, so White is the
+//     maximiser and Black the minimiser -- and because White's two half-moves
+//     do not change the side to move, that framing stays correct across the
+//     half-pair where a ply-parity rule would not.
+//
+// Selection then refuses children proven lost and takes a proven win at once.
+
+impl Arena {
+    /// Only a king capture proves a result. See the note on `Node::proof`.
+    fn terminal_proof(&self, idx: usize) -> Option<f64> {
+        let state = &self.nodes[idx].state;
+        if state.board_ref().king_square(crate::bitboard::WHITE).is_none() {
+            return Some(-1.0);
+        }
+        if state.board_ref().king_square(crate::bitboard::BLACK).is_none() {
+            return Some(1.0);
+        }
+        None
+    }
+
+    /// Recompute one node's proof from its children, returning true if it changed.
+    fn update_proof(&mut self, idx: usize) -> bool {
+        if self.nodes[idx].proof.is_some() {
+            return false;
+        }
+        let children = self.nodes[idx].children.clone();
+        if children.is_empty() {
+            return false;
+        }
+        // White to move maximises in White perspective; Black minimises.
+        let win_for_mover = if self.nodes[idx].state.is_white_turn { 1.0 } else { -1.0 };
+        let mut all_lost = true;
+        for &child in &children {
+            match self.nodes[child].proof {
+                Some(v) if v == win_for_mover => {
+                    self.nodes[idx].proof = Some(win_for_mover);
+                    return true;
+                }
+                Some(_) => {}
+                None => all_lost = false,
+            }
+        }
+        // "All children lose" only counts once every child is expanded and
+        // proven; an unexpanded node is not a refutation.
+        if all_lost && self.nodes[idx].is_expanded {
+            self.nodes[idx].proof = Some(-win_for_mover);
+            return true;
+        }
+        false
+    }
+
+    /// Propagate a newly proven leaf towards the root, stopping when nothing changes.
+    fn propagate_proof(&mut self, from: usize) {
+        let mut current = self.nodes[from].parent;
+        while let Some(idx) = current {
+            if !self.update_proof(idx) {
+                return;
+            }
+            current = self.nodes[idx].parent;
+        }
+    }
+
+    /// A child proven winning for the side to move at `idx`, if any.
+    fn proven_winning_child(&self, idx: usize) -> Option<usize> {
+        let win = if self.nodes[idx].state.is_white_turn { 1.0 } else { -1.0 };
+        self.nodes[idx]
+            .children
+            .iter()
+            .copied()
+            .find(|&c| self.nodes[c].proof == Some(win))
+    }
+
+    fn is_proven_loss_for_mover(&self, parent: usize, child: usize) -> bool {
+        let loss = if self.nodes[parent].state.is_white_turn { -1.0 } else { 1.0 };
+        self.nodes[child].proof == Some(loss)
     }
 }
 
@@ -622,6 +761,7 @@ impl Arena {
                     .filter_map(|c| mapping.get(c).copied())
                     .collect(),
                 is_expanded: old.is_expanded,
+                proof: old.proof,
             });
         }
         self.nodes = fresh;
@@ -820,7 +960,7 @@ impl PyTree {
     #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
                         c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
                         allow_early_stop=true, root_noise=false, seed=20260803,
-                        heuristic_values=false))]
+                        heuristic_values=false, solver=false))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -839,6 +979,11 @@ impl PyTree {
         // values wherever generation uses hybrid ones -- same moves early,
         // different tree once values diverge.
         heuristic_values: bool,
+        // Certainty propagation. OFF by default: it changes what the engine
+        // plays, so under DIRECTIVE section 0.1 it lands behind a flag and is
+        // measured on its own rather than folded into the port. Declared last
+        // to match the pyo3 signature order exactly.
+        solver: bool,
     ) -> PyResult<()> {
         let call = |py: Python<'_>, nodes: &[usize], arena: &Arena| -> PyResult<(Vec<f64>, Vec<f32>)> {
             let mut buf: Vec<f32> = Vec::with_capacity(nodes.len() * channels * 64);
@@ -910,7 +1055,7 @@ impl PyTree {
             let mut leaves: Vec<(usize, Option<f64>, bool)> = Vec::with_capacity(target);
             let mut pending: Vec<usize> = Vec::with_capacity(target);
             while leaves.len() < target {
-                let node = self.arena.select_puct(0, c_puct, fpu_reduction);
+                let node = self.arena.select_puct(0, c_puct, fpu_reduction, solver);
                 if pending.contains(&node) {
                     break; // frontier exhausted; padding would be duplicate work
                 }
@@ -974,7 +1119,17 @@ impl PyTree {
                         if *expand && !self.arena.nodes[*node].is_expanded {
                             self.arena.expand_with_policy(*node, None);
                         }
+                        if solver {
+                            // Only a king capture proves anything; the cap's
+                            // +-0.5 relabel deliberately does not.
+                            if let Some(p) = self.arena.terminal_proof(*node) {
+                                self.arena.nodes[*node].proof = Some(p);
+                            }
+                        }
                         self.arena.backpropagate(*node, *v);
+                        if solver && self.arena.nodes[*node].proof.is_some() {
+                            self.arena.propagate_proof(*node);
+                        }
                     }
                     None => {
                         let value = if heuristic_values {
@@ -997,6 +1152,19 @@ impl PyTree {
                             self.arena.expand_with_policy(*node, logits);
                         }
                         self.arena.backpropagate(*node, value);
+                        if solver {
+                            // A freshly expanded node may already be decided --
+                            // e.g. every child hands over the king.
+                            let children = self.arena.nodes[*node].children.clone();
+                            for child in children {
+                                if let Some(p) = self.arena.terminal_proof(child) {
+                                    self.arena.nodes[child].proof = Some(p);
+                                }
+                            }
+                            if self.arena.update_proof(*node) {
+                                self.arena.propagate_proof(*node);
+                            }
+                        }
                         nn_cursor += 1;
                     }
                 }
@@ -1028,6 +1196,32 @@ impl PyTree {
         let root = &self.arena.nodes[0];
         if root.children.is_empty() {
             return (None, Vec::new(), 0.0);
+        }
+        // A proven win is not a thing to weigh against visit counts. Reported
+        // with an exact value, which is also what the owner asked the search
+        // value to say for proven lines (2026-07-17).
+        if let Some(winner) = self.arena.proven_winning_child(0) {
+            let probs: Vec<(String, f64)> = root
+                .children
+                .iter()
+                .map(|&c| {
+                    let v = self.arena.nodes[c].visit_count as f64;
+                    (self.arena.nodes[c].action.clone().unwrap_or_default(), v)
+                })
+                .collect();
+            let total: f64 = probs.iter().map(|(_, v)| *v).sum();
+            let probs = if total > 0.0 {
+                probs.into_iter().map(|(a, v)| (a, v / total)).collect()
+            } else {
+                let u = 1.0 / root.children.len() as f64;
+                probs.into_iter().map(|(a, _)| (a, u)).collect()
+            };
+            // The reported value is in the ROOT'S SIDE-TO-MOVE perspective --
+            // a root child's Q accumulates in exactly that frame, so the
+            // non-solver path returns +1 for "the mover wins". Returning
+            // White's perspective here instead would flip the sign for Black
+            // and disagree with the very path this is meant to sharpen.
+            return (self.arena.nodes[winner].action.clone(), probs, 1.0);
         }
         let info: Vec<(usize, String, f64)> = root
             .children
@@ -1156,6 +1350,24 @@ impl PyTree {
     fn add_root_noise(&mut self, alpha: f64, epsilon: f64, seed: u64) {
         let mut rng = Rng::new(seed);
         self.arena.add_root_noise(alpha, epsilon, &mut rng);
+    }
+
+    /// Proof state of the root's children, in White's perspective.
+    fn root_proofs(&self) -> Vec<(String, Option<f64>)> {
+        self.arena.nodes[0]
+            .children
+            .iter()
+            .map(|&c| {
+                (
+                    self.arena.nodes[c].action.clone().unwrap_or_default(),
+                    self.arena.nodes[c].proof,
+                )
+            })
+            .collect()
+    }
+
+    fn root_proof(&self) -> Option<f64> {
+        self.arena.nodes[0].proof
     }
 
     fn root_priors(&self) -> Vec<(String, f64)> {
