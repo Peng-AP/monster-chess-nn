@@ -10,15 +10,16 @@
 //! `turn_count` counts completed turns, not plies: it advances on White's
 //! second half and on each Black move.
 //!
-//! **Terminal is king-absence only, plus the move-limit cap.** The cap's
-//! ±0.5 relabel is decided by the *heuristic*, which lands with E2; until then
-//! `result()` returns None at the cap to say "a heuristic is required here"
-//! rather than guessing a value that would silently mislabel training data.
+//! **Terminal is king-absence, plus the move-limit cap.** At the cap the result
+//! is relabelled by the *sign of the heuristic*, symmetrically: ±0.5 beyond
+//! |0.4|, else 0. That is why the native core cannot leave the evaluator behind
+//! in Python — search reaches the cap in-tree during late games.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::bitboard::{generate_pseudo_legal, parse_fen, to_fen, Board, Move, BLACK, WHITE};
+use crate::eval::evaluate;
 use crate::monster::{black_actions, white_actions, white_second_half_moves, white_single_moves};
 
 /// Mirrors `config.MAX_GAME_TURNS`. Asserted against Python by the test suite.
@@ -95,16 +96,33 @@ impl Game {
             || self.turn_count >= MAX_GAME_TURNS
     }
 
-    /// +1 White, -1 Black, or None at the cap (the ±0.5 relabel needs E2's
-    /// heuristic — see the module docstring).
+    /// +1 White, -1 Black, ±0.5 or 0 at the move-limit cap, None if not terminal.
     fn result(&self) -> Option<f64> {
         if self.board.king_square(WHITE).is_none() {
             Some(-1.0)
         } else if self.board.king_square(BLACK).is_none() {
             Some(1.0)
+        } else if self.turn_count >= MAX_GAME_TURNS {
+            // Position-dependent proxy, applied equally in both directions --
+            // a game reaching the cap with one side decisively ahead is not a
+            // true draw. Only a king capture is a *win* (owner, 2026-08-03);
+            // this value is a training label, not a scoreline.
+            let h = evaluate(&self.board, self.is_white_turn, self.white_half_pending);
+            Some(if h < -0.4 {
+                -0.5
+            } else if h > 0.4 {
+                0.5
+            } else {
+                0.0
+            })
         } else {
             None
         }
+    }
+
+    /// The heuristic at this state, for callers that want it directly.
+    fn evaluate(&self) -> f64 {
+        evaluate(&self.board, self.is_white_turn, self.white_half_pending)
     }
 
     fn at_turn_cap(&self) -> bool {

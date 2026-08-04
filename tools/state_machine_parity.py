@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "native"))
 
 import monster_native as mn  # noqa: E402
+from evaluation import evaluate  # noqa: E402
 from monster_chess import MonsterChessGame  # noqa: E402
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1"
@@ -57,15 +58,18 @@ def compare(py, rs, phase, fails):
     if py.white_half_pending != rs.white_half_pending:
         note("white_half_pending", py.white_half_pending, rs.white_half_pending)
 
+    # The heuristic drives the cap relabel and the anchor opponent, so compare
+    # it at every ply rather than only where it happens to be consulted.
+    if evaluate(py) != rs.evaluate():
+        note("heuristic", evaluate(py), rs.evaluate())
+
     py_term = py.is_terminal()
     if py_term != rs.is_terminal():
         note("is_terminal", py_term, rs.is_terminal())
     if py_term:
-        # At the cap the native side reports None on purpose: the ±0.5 relabel
-        # needs E2's heuristic. Only decisive results are comparable today.
-        if not rs.at_turn_cap():
-            if float(py.get_result()) != rs.result():
-                note("result", py.get_result(), rs.result())
+        # Includes the cap's ±0.5 relabel now that the native heuristic exists.
+        if float(py.get_result()) != rs.result():
+            note("result", py.get_result(), rs.result())
         return False
 
     if set(py_search_actions(py)) != set(rs.search_actions()):

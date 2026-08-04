@@ -272,6 +272,22 @@ real and checkable.
 random positions including clamp and pending-aware cases; tensor byte-equality
 on 100k positions in both 15ch and 17ch layouts.
 
+**Heuristic: DONE 2026-08-03.** `tools/eval_parity.py` — **148,272 positions,
+bit-identical (worst delta exactly 0.0)**, 48,535 of them pending-aware, drawn
+from random walks and every recorded game on disk. Bit-identity rather than
+1e-9 is the honest result: the heuristic is only +,-,*,/ on f64 plus an integer
+power, so the sole hazard was accumulation order, and any ordering error yields
+a delta far larger than the tolerance. The cap relabel is wired into the native
+state machine and lockstep now compares the heuristic at **every** ply
+(31,807 plies, 0 failures). Encoding still to do.
+
+**A format hazard found on the way, which E4 must respect: FENs are lossy.**
+python-chess writes `en_passant="legal"`, so a live game object can hold an
+ep square its own FEN drops — 1 position in 148,272 evaluated differently
+through a FEN round-trip *within Python itself*. The native `Game` must
+therefore be driven by actions, never re-created from a FEN each ply, or
+evaluations silently diverge at exactly those positions.
+
 **E3 — native MCTS, all modes, all overrides.** *Exit gate:* (a) on
 `promotion_defense_deck_v1` (400 positions, 400 sims, no noise), selected-move
 agreement with the Python engine **≥99%, every disagreement triaged** — with
