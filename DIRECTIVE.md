@@ -366,7 +366,7 @@ reporting.
 | gate | bar | result |
 |---|---|---|
 | (a) selected-move agreement, probe deck | >=99% | **400/400 = 100%** |
-| (b) engine-vs-engine self-match, 200 games | within 2 SE of 0.50 | running |
+| (b) engine-vs-engine self-match, 200 games | within 2 SE of 0.50 | **0.525, 0.71 SE — PASS** |
 | (c) wall-clock at batch 64 | >=5x | **6.31x** |
 
 **Gate (a) earned its keep immediately: it caught a sign flip.** The value head
@@ -383,6 +383,28 @@ the same bug would have passed.
 `get_search_actions`, so `_state_legal_actions` always returns single moves and
 `is_pair` is always False. Porting it would add untestable dead code. If a state
 type without `get_search_actions` is ever introduced, this needs writing.
+
+**E4 PROGRESS 2026-08-04.** `NativeMCTS` (D5) is a drop-in for `mcts.MCTS`:
+same constructor, same `get_best_action(state, temperature)` contract, returns
+the caller's own `Move` object. `--engine {python,native}` is wired through
+`benchmark._build_engine` — the single chokepoint for match, gate, benchmark,
+iterate and every probe — plus explicit flags on `data_generation`, `match` and
+`gate`, and a `MONSTER_ENGINE` environment variable for tools without a flag.
+**The default stays `python` until E5**, pinned by test.
+
+Three things the adapter exists to get right, each of which was a real bug when
+missing: it passes the *whole* state (never a bare FEN), it returns a `Move`
+rather than a UCI string, and it matches the evaluator's value source —
+`HybridEvaluator` takes values from the heuristic and only policy from the
+network, which the native search now supports explicitly.
+
+Measured end to end: a 16-game match, same model both sides, 200 sims, 4
+workers — **169.7s python vs 46.5s native (3.65x)**. Lower than the ~10x
+per-decision figure because model loading and game setup are fixed costs
+amortised over few games; scores agree within noise.
+
+Still to do in E4: the Stage-2 cross-game inference server, and — **before** it
+is wired — the post-timeout multiprocessing hang (§4 risk table).
 
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the

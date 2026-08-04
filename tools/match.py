@@ -32,10 +32,12 @@ def resolve_opening_temp_plies(model_b, requested):
 
 
 def _init_worker(model_a, model_b, sims, sims_b=None,
-                 batch_a=None, batch_b=None):
+                 batch_a=None, batch_b=None, engine=None):
+    # Workers are separate processes: the choice must be passed in, not read
+    # from a parent-side global.
     from benchmark import _build_engine
-    _engines["a"], _ = _build_engine(model_a, sims, batch_a)
-    _engines["b"], _ = _build_engine(model_b, sims_b or sims, batch_b)
+    _engines["a"], _ = _build_engine(model_a, sims, batch_a, engine=engine)
+    _engines["b"], _ = _build_engine(model_b, sims_b or sims, batch_b, engine=engine)
 
 
 def _play(task):
@@ -50,7 +52,8 @@ def _play(task):
 
 
 def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
-              workers=None, sims_b=None, batch_a=None, batch_b=None):
+              workers=None, sims_b=None, batch_a=None, batch_b=None,
+              engine=None):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -74,7 +77,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
 
     t0 = time.time()
     with mp.Pool(workers, initializer=_init_worker,
-                 initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b)) as pool:
+                 initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b,
+                           engine)) as pool:
         results = pool.map(_play, tasks)
 
     from benchmark import summarize_side
@@ -107,6 +111,8 @@ def main():
     ap.add_argument("--model-b", default=None,
                     help="opponent model (.pt); omit for the heuristic anchor")
     ap.add_argument("--games", type=int, default=20, help="total games (half per color)")
+    ap.add_argument("--engine", choices=("python", "native"), default=None,
+                    help="search engine; defaults to MONSTER_ENGINE or python")
     ap.add_argument("--sims", type=int, default=400)
     ap.add_argument("--sims-b", type=int, default=None,
                     help="model-b simulations (default: --sims). Use for "
@@ -127,7 +133,7 @@ def main():
     out = run_match(args.model_a, args.model_b, args.games, args.sims,
                     args.seed, args.opening_temp_plies, args.workers,
                     sims_b=args.sims_b, batch_a=args.batch_a,
-                    batch_b=args.batch_b)
+                    batch_b=args.batch_b, engine=args.engine)
     name_a, name_b = out["name_a"], out["name_b"]
 
     os.makedirs(args.out_dir, exist_ok=True)

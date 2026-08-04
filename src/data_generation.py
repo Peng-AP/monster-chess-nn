@@ -220,13 +220,16 @@ def _curriculum_indices_for_range(tier_min, tier_max):
     return indices
 
 
-def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results,
+def _init_worker(engine_choice, model_path, opponent_model_path, curriculum,
+                 curriculum_live_results,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, start_fen_source, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
                  record_all_plies, hybrid_eval=False,
                  root_noise=True, allow_early_stop=False):
     """Initializer for worker processes - loads model(s) once per worker."""
+    global _SEARCH_ENGINE
+    _SEARCH_ENGINE = engine_choice
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
@@ -272,6 +275,23 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
 from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa: E402
 
 
+_SEARCH_ENGINE = None  # set per worker; None means "follow the environment"
+
+
+def _resolve_search_cls():
+    """MCTS or the native drop-in, decided once per worker.
+
+    Workers are separate processes, so the choice travels via the initializer
+    argument or the MONSTER_ENGINE environment variable rather than a shared
+    global. Both classes satisfy the same get_best_action contract (D5).
+    """
+    from benchmark import _engine_choice
+    if _engine_choice(_SEARCH_ENGINE) == "native":
+        from native_mcts import NativeMCTS
+        return NativeMCTS
+    return MCTS
+
+
 def play_game(num_simulations, game_deadline=None):
     """Play one full game of Monster Chess via MCTS self-play.
 
@@ -291,11 +311,14 @@ def play_game(num_simulations, game_deadline=None):
     """
     import random as rng
 
-    # Build engine(s) based on training mode
+    # Build engine(s) based on training mode. `_search_cls` is MCTS or the
+    # native drop-in; both present the same get_best_action contract (D5), so
+    # nothing below this line knows which engine it is driving.
+    _search_cls = _resolve_search_cls()
     if _train_side == "both":
         # Single engine for both sides (backward-compatible)
-        engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
-                      root_noise=_root_noise, allow_early_stop=_allow_early_stop)
+        engine = _search_cls(num_simulations=num_simulations, eval_fn=_eval_fn,
+                             root_noise=_root_noise, allow_early_stop=_allow_early_stop)
         white_engine = engine
         black_engine = engine
     else:
@@ -304,11 +327,13 @@ def play_game(num_simulations, game_deadline=None):
         opponent_eval = _opponent_eval_fn
         if _opponent_eval_pool:
             opponent_eval = rng.choice(_opponent_eval_pool)
-        train_engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
-                            root_noise=_root_noise, allow_early_stop=_allow_early_stop)
-        opponent_engine = MCTS(num_simulations=_opponent_sims,
-                               eval_fn=opponent_eval,
-                               root_noise=_root_noise, allow_early_stop=_allow_early_stop)
+        train_engine = _search_cls(num_simulations=num_simulations, eval_fn=_eval_fn,
+                                   root_noise=_root_noise,
+                                   allow_early_stop=_allow_early_stop)
+        opponent_engine = _search_cls(num_simulations=_opponent_sims,
+                                      eval_fn=opponent_eval,
+                                      root_noise=_root_noise,
+                                      allow_early_stop=_allow_early_stop)
         if _train_side == "white":
             white_engine = train_engine
             black_engine = opponent_engine
@@ -491,6 +516,8 @@ def _worker(args):
 def main():
     parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
     parser.add_argument("--num-games", type=int, default=NUM_GAMES)
+    parser.add_argument("--engine", choices=("python", "native"), default=None,
+                        help="search engine; defaults to MONSTER_ENGINE or python")
     parser.add_argument("--simulations", type=int, default=MCTS_SIMULATIONS)
     parser.add_argument("--simulations-min", type=int, default=None,
                         help="Minimum simulations per game (default: --simulations)")
@@ -710,7 +737,8 @@ def main():
     executor = ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
+        initargs=(args.engine, model_path, opponent_model_path, args.curriculum,
+                  args.curriculum_live_results,
                   args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, args.start_fen_source,

@@ -33,7 +33,24 @@ def _apply(game, action):
     (fn or game.apply_action)(action)
 
 
-def _build_engine(model_path, sims, batch_size=None):
+ENGINE_ENV = "MONSTER_ENGINE"
+
+
+def _engine_choice(engine=None):
+    """`python` (default) or `native`.
+
+    Explicit argument wins, then the MONSTER_ENGINE environment variable, then
+    the default. The env var exists so tools without their own flag can be
+    switched for a whole run; D5 keeps the default on `python` until the E5
+    re-baseline, so nothing changes underneath existing measurements.
+    """
+    choice = (engine or os.environ.get(ENGINE_ENV) or "python").lower()
+    if choice not in ("python", "native"):
+        raise ValueError(f"unknown engine {choice!r} (expected python|native)")
+    return choice
+
+
+def _build_engine(model_path, sims, batch_size=None, engine=None):
     """Return (engine, label). NN engine if a model is given, else heuristic.
 
     batch_size is the MCTS leaf-parallel width. The default (16) was chosen for
@@ -51,9 +68,16 @@ def _build_engine(model_path, sims, batch_size=None):
         eval_fn = evaluate
         label = "heuristic"
     kwargs = {} if batch_size is None else {"batch_size": int(batch_size)}
-    engine = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
-                  allow_early_stop=True, **kwargs)
-    return engine, label
+    choice = _engine_choice(engine)
+    if choice == "native":
+        from native_mcts import NativeMCTS
+        search = NativeMCTS(num_simulations=sims, eval_fn=eval_fn,
+                            root_noise=False, allow_early_stop=True, **kwargs)
+        label = f"{label}|native"
+    else:
+        search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
+                      allow_early_stop=True, **kwargs)
+    return search, label
 
 
 def play_one(white_engine, black_engine, start_fen=None, max_plies=600,

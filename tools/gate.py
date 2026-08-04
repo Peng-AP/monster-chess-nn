@@ -134,7 +134,8 @@ def evaluate_legs(legs):
     return verdict, failures, totals
 
 
-def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS):
+def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
+             engine=None):
     spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
     from match import run_match
 
@@ -146,7 +147,7 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS):
               flush=True)
         t0 = time.time()
         legs[name] = run_match(model, opponent, games, sims, leg_seed,
-                               workers=workers)
+                               workers=workers, engine=engine)
         print(f"[gate]   {name}: a_score={legs[name]['a_score']} "
               f"W={legs[name]['a_as_white']['score']} "
               f"B={legs[name]['a_as_black']['score']} "
@@ -199,6 +200,9 @@ def main():
     ap.add_argument("--model", required=True, help="candidate .pt")
     ap.add_argument("--protocol", choices=("full", "quick"), default="full",
                     help="quick = tiny rehearsal, verdict is non-binding")
+    ap.add_argument("--engine", choices=("python", "native"), default=None,
+                    help="search engine for every leg; defaults to "
+                         "MONSTER_ENGINE or python. Thresholds are untouched.")
     ap.add_argument("--seed", type=int, default=20260801)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
@@ -207,7 +211,8 @@ def main():
     if not os.path.exists(args.model):
         ap.error(f"no such model: {args.model}")
 
-    out = run_gate(args.model, args.protocol, args.seed, args.workers)
+    out = run_gate(args.model, args.protocol, args.seed, args.workers,
+                   engine=args.engine)
 
     os.makedirs(args.out_dir, exist_ok=True)
     tag = "gate" if out["binding"] else "gate_rehearsal"
