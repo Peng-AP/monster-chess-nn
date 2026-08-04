@@ -325,6 +325,46 @@ impl Arena {
         }
     }
 
+    /// Depth in plies of the deepest node in the tree.
+    pub fn max_depth(&self) -> usize {
+        let mut depth = vec![0usize; self.nodes.len()];
+        let mut best = 0;
+        for idx in 1..self.nodes.len() {
+            if let Some(p) = self.nodes[idx].parent {
+                depth[idx] = depth[p] + 1;
+                best = best.max(depth[idx]);
+            }
+        }
+        best
+    }
+
+    /// Depth of the principal variation — follow the most-visited child.
+    ///
+    /// This is the honest "how deep does it actually look" number: a tree can
+    /// be deep down a line it visited twice while the move it will play was
+    /// resolved shallowly. The PV depth is the line the search is committing to.
+    pub fn pv_depth(&self) -> usize {
+        let mut node = 0usize;
+        let mut depth = 0usize;
+        loop {
+            let children = &self.nodes[node].children;
+            if children.is_empty() {
+                return depth;
+            }
+            let mut best = children[0];
+            for &c in children {
+                if self.nodes[c].visit_count > self.nodes[best].visit_count {
+                    best = c;
+                }
+            }
+            if self.nodes[best].visit_count == 0 {
+                return depth;
+            }
+            node = best;
+            depth += 1;
+        }
+    }
+
     /// Visit counts of the root's children, with their actions.
     pub fn root_visits(&self) -> Vec<(String, u32)> {
         self.nodes[0]
@@ -438,6 +478,14 @@ impl PyTree {
 
     fn node_count(&self) -> usize {
         self.arena.nodes.len()
+    }
+
+    fn max_depth(&self) -> usize {
+        self.arena.max_depth()
+    }
+
+    fn pv_depth(&self) -> usize {
+        self.arena.pv_depth()
     }
 }
 

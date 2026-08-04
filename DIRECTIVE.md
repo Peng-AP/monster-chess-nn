@@ -340,6 +340,37 @@ zero-point; it also discharges the standing re-measure debt from the scoring
 fix and is the natural moment for the owner to **settle the bar decision**
 (v19 vs v19_B). Nothing measured before E5 is compared to anything after it.
 
+**Queued for E6 by the owner, 2026-08-03: pruning.** Raised after the depth
+measurement below, and the measurement is the argument for it.
+
+Search depth is logarithmic in sims and the slope is shallow — measured on the
+native engine, PV depth in plies:
+
+| position | 400 sims | 51,200 sims (128x) |
+|---|---|---|
+| opening | 3 | 7 |
+| midgame | 4 | 10 |
+| **endgame** | **4** | **4** |
+
+About 0.6-0.9 plies per doubling, so the whole rewrite (~13x) buys **+2 to +3
+plies — roughly one extra round**. This is why the engine "struggles post 2-3
+moves from each side": the PV genuinely reaches 1-3.3 full rounds and no
+plausible compute budget changes that. MCTS keeps everything it visits;
+Stockfish's depth comes from discarding most of the tree. **Pruning, not
+throughput, is the lever on depth.**
+
+Two facts to carry into that discussion. First, sims do *not* buy conversion by
+buying depth: 200 -> 3200 sims moved true captures 0.09 -> 0.51 while midgame PV
+depth went 4 -> 5, so the gain is better value estimates over a shallow tree.
+Second, the endgame row is pinned at 4 plies even at 51,200 sims with node count
+*below* sim count (43,512 / 51,200) — the search re-walks short lines into
+terminals. That is the conversion class, and it is why an exhaustive depth-3
+proof search found forced wins MCTS did not (E0(b)).
+
+Constraint on whatever is chosen: §0.1 applies. Pruning changes what the engine
+plays, so it lands after parity, behind a flag, measured on its own — which is
+what the owner's "after this is done" already says.
+
 **E6 — exploit.** In whatever order E0 indicated: the finisher search
 (proof-number on "forced king capture within N plies," invoked at dominant
 evals); the PPC curve to 12,800+; asymmetric generation at scale (Black high /
