@@ -569,6 +569,13 @@ itself partly a search-depth artifact. Games also get *shorter*. Purchase #1 is
 validated: high-sim operation buys conversion, and 3200 is not the ceiling.
 `benchmarks/promotion_defense_outcomes_ppccurve_s3200_*.json`.
 
+**6400 ANSWERED 2026-08-04, on the native engine (whole curve re-run
+single-engine, `ppccurve_native_s*`): 0.55 — +0.04 over 3200, ~1 SE. The curve
+plateaus at the 3200 knee.** §5's contingency applies: raw sims cap near 0.55
+on this deck, so the exploit order shifts to the finisher/solver and to data.
+The rewrite's case now rests on throughput (a 3200-sim gate costs ~12 min,
+not 2.3 h), which is what it delivers. Full analysis: REPORT.md §6.
+
 **E0(b): forced wins are walked past — and the culprit is the oracle, not the
 search.** Of 65 dominant-unfinished games in current generation (v19
 Black@1600, 2026-08-02/03), **19 (29%) held a position with a forced king

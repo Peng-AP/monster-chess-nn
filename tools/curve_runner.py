@@ -15,7 +15,10 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL = os.path.join("models", "fresh_start_v19", "best_value_net.pt")
-POINTS = [200, 400, 800, 1600, 3200, 6400]
+# Overridable so a partial comparison (e.g. solver-on at 1600/3200 only)
+# reuses this runner instead of growing another ad-hoc shell loop.
+POINTS = [int(x) for x in os.environ.get(
+    "CURVE_POINTS", "200,400,800,1600,3200,6400").split(",") if x]
 
 
 def main():

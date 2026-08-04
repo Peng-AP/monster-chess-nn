@@ -129,8 +129,9 @@ class TestPerGameSeeding(unittest.TestCase):
         # Harnesses re-seed once per GAME but build engines once per WORKER
         # (promotion_defense_probe._play_out, match._play). An engine that
         # captured a seed at construction ignores that re-seeding entirely --
-        # which made the native PPC curve read 0.19 true captures at 200 sims
-        # against python's 0.09 on the same deck.
+        # symptom: noise-on self-play collapsed to near-identical short games
+        # (median fullmove 7 vs python's 37). The PPC-curve gap first blamed
+        # on this proved unrelated: those playouts are deterministic.
         import random
         from monster_chess import MonsterChessGame
         engine = self.engine()

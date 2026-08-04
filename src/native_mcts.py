@@ -106,9 +106,16 @@ class NativeMCTS:
         # re-seed once per GAME (`promotion_defense_probe._play_out`,
         # `match._play`). An engine that captured a seed at construction
         # ignored that entirely: Python restarted its randomness each game
-        # while native's stream ran on across all of them, which showed up as
-        # the native PPC curve reading 0.19 true captures at 200 sims against
-        # python's 0.09 on the same deck. Caught 2026-08-04.
+        # while native's stream ran on across all of them. Observable symptom:
+        # noise-on self-play collapsed to near-identical short games (median
+        # final fullmove 7 against python's 37 on the same command). Caught
+        # 2026-08-04.
+        #
+        # CORRECTION, same day: the native-vs-python PPC curve gap first
+        # blamed on this is UNRELATED. Those playouts run at temperature 0
+        # with noise off, and a post-fix re-run reproduced every statistic of
+        # the pre-fix curve exactly -- they never touch the RNG. The curve gap
+        # is an open question (REPORT.md).
         #
         # An explicit seed keeps the reproducible internal counter instead.
         self.num_simulations = num_simulations
