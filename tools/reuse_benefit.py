@@ -88,6 +88,7 @@ def match(model, sims, games, seed, on_sims=None):
     starts = load_starts(max(1, games // 2))
     points = 0.0
     played = 0
+    began = time.time()
     for i in range(games):
         random.seed(seed + i)
         on = NativeMCTS(num_simulations=on_sims or sims, eval_fn=evaluator,
@@ -113,6 +114,16 @@ def match(model, sims, games, seed, on_sims=None):
             points += 0.0 if on_is_white else 1.0
         else:
             points += 0.5
+        # Progress every few games: a match that reports only at the end is
+        # indistinguishable from a hung one, which is the whole reason
+        # tools/runs.py exists.
+        if played % max(1, games // 20) == 0 or played == games:
+            elapsed = time.time() - began
+            rate = played / elapsed if elapsed else 0.0
+            print(f"  [{played:3d}/{games}] reuse-on {points / played:.3f}  "
+                  f"{elapsed / 60:5.1f}m elapsed, "
+                  f"~{(games - played) / rate / 60 if rate else 0:5.1f}m left",
+                  flush=True)
     return points / played, played
 
 
