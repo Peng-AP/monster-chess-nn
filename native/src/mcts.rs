@@ -171,6 +171,176 @@ impl Arena {
 }
 
 // ---------------------------------------------------------------------------
+// Sequential UCB1 search (heuristic mode)
+// ---------------------------------------------------------------------------
+//
+// Ported from `_run_sequential` / `_select_ucb` / `_evaluate_and_expand_ucb`.
+// Leaves are scored by the native heuristic, so this path never touches Python.
+//
+// D4 puts search under *statistical* parity, not bit-parity: Python's MT19937
+// stream is not replicated, and `expand_one` shuffles untried actions. So the
+// RNG here is our own (xorshift, seeded) and equivalence is established by the
+// E3 gates rather than by identical playouts.
+
+use crate::eval::evaluate as heuristic;
+
+/// xorshift64*, so a seeded run is reproducible without pulling in a crate.
+pub struct Rng(u64);
+
+impl Rng {
+    pub fn new(seed: u64) -> Self {
+        Rng(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed })
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    fn shuffle<T>(&mut self, items: &mut Vec<T>) {
+        for i in (1..items.len()).rev() {
+            let j = (self.next_u64() % (i as u64 + 1)) as usize;
+            items.swap(i, j);
+        }
+    }
+}
+
+impl Arena {
+    fn is_fully_expanded(&self, idx: usize) -> bool {
+        self.nodes[idx].is_expanded
+    }
+
+    /// Descend by UCB1 until an unexpanded node or a terminal is reached.
+    fn select_ucb(&self, root: usize, c: f64) -> usize {
+        let mut node = root;
+        while !self.nodes[node].state.is_terminal_rust() {
+            if !self.is_fully_expanded(node) {
+                return node;
+            }
+            if self.nodes[node].children.is_empty() {
+                return node;
+            }
+            let mut best: Option<(usize, f64)> = None;
+            for &child in &self.nodes[node].children {
+                let score = self.ucb_score(child, c);
+                match best {
+                    Some((_, b)) if !(score > b) => {}
+                    _ => best = Some((child, score)),
+                }
+            }
+            node = match best {
+                Some((i, _)) => i,
+                None => return node,
+            };
+        }
+        node
+    }
+
+    /// Expand one untried action, mirroring `expand_one`.
+    fn expand_one(&mut self, idx: usize, untried: &mut Vec<Vec<String>>, rng: &mut Rng) -> Option<usize> {
+        if untried[idx].is_empty() && !self.nodes[idx].is_expanded {
+            let mut actions = self.nodes[idx].state.search_actions_rust();
+            rng.shuffle(&mut actions);
+            if actions.is_empty() {
+                self.nodes[idx].is_expanded = true;
+                return None;
+            }
+            untried[idx] = actions;
+        }
+        let action = match untried[idx].pop() {
+            Some(a) => a,
+            None => {
+                self.nodes[idx].is_expanded = true;
+                return None;
+            }
+        };
+        let mut child_state = self.nodes[idx].state.clone();
+        if child_state.apply_half(&action).is_err() {
+            return None;
+        }
+        let child = self.add_child(idx, child_state, action, 1.0);
+        untried.push(Vec::new());
+        if untried[idx].is_empty() {
+            self.nodes[idx].is_expanded = true;
+        }
+        Some(child)
+    }
+
+    fn leaf_value(&self, idx: usize) -> f64 {
+        let node = &self.nodes[idx];
+        if let Some(result) = node.state.result_rust() {
+            return result;
+        }
+        heuristic(
+            node.state.board_ref(),
+            node.state.is_white_turn,
+            node.state.white_half_pending,
+        )
+    }
+
+    fn should_stop_early(&self, root: usize, sims_done: usize, total: usize) -> bool {
+        if (sims_done as f64) < total as f64 * 0.3 {
+            return false;
+        }
+        let children = &self.nodes[root].children;
+        if children.is_empty() {
+            return false;
+        }
+        if self.nodes[root].q_value().abs() > 0.95 {
+            return true;
+        }
+        let mut visits: Vec<u32> = children.iter().map(|&c| self.nodes[c].visit_count).collect();
+        visits.sort_unstable_by(|a, b| b.cmp(a));
+        if visits.len() >= 2 {
+            let remaining = (total - sims_done) as i64;
+            if (visits[0] as i64 - visits[1] as i64) > remaining {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Run `simulations` sequential UCB1 iterations from the root.
+    pub fn run_sequential(&mut self, simulations: usize, c: f64, allow_early_stop: bool, rng: &mut Rng) {
+        let mut untried: Vec<Vec<String>> = vec![Vec::new(); self.nodes.len()];
+        for i in 0..simulations {
+            let node = self.select_ucb(0, c);
+            let (leaf, value) = if self.nodes[node].state.is_terminal_rust() {
+                (node, self.leaf_value(node))
+            } else {
+                while untried.len() < self.nodes.len() {
+                    untried.push(Vec::new());
+                }
+                match self.expand_one(node, &mut untried, rng) {
+                    None => (node, self.leaf_value(node)),
+                    Some(child) => (child, self.leaf_value(child)),
+                }
+            };
+            self.backpropagate(leaf, value);
+            if allow_early_stop && i % 32 == 31 && self.should_stop_early(0, i + 1, simulations) {
+                break;
+            }
+        }
+    }
+
+    /// Visit counts of the root's children, with their actions.
+    pub fn root_visits(&self) -> Vec<(String, u32)> {
+        self.nodes[0]
+            .children
+            .iter()
+            .map(|&c| {
+                (
+                    self.nodes[c].action.clone().unwrap_or_default(),
+                    self.nodes[c].visit_count,
+                )
+            })
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Python surface — enough to run the contract tests against the native arena.
 // ---------------------------------------------------------------------------
 
@@ -182,8 +352,12 @@ pub struct PyTree {
 #[pymethods]
 impl PyTree {
     #[new]
-    fn new(fen: &str) -> PyResult<Self> {
-        let root = Game::from_fen(fen).map_err(PyValueError::new_err)?;
+    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0))]
+    fn new(fen: &str, white_half_pending: bool, turn_count: u32) -> PyResult<Self> {
+        // pending and turn_count are part of the state, not decoration: the
+        // first carries a different action set, the second decides the cap.
+        let root = Game::from_state(fen, white_half_pending, turn_count)
+            .map_err(PyValueError::new_err)?;
         Ok(PyTree { arena: Arena::new(root) })
     }
 
@@ -242,6 +416,28 @@ impl PyTree {
 
     fn backpropagate(&mut self, from: usize, value: f64) {
         self.arena.backpropagate(from, value);
+    }
+
+    /// Sequential UCB1 with heuristic leaves, entirely inside the crate.
+    #[pyo3(signature = (simulations, c=EXPLORATION_CONSTANT, allow_early_stop=true, seed=20260803))]
+    fn run_sequential(
+        &mut self,
+        simulations: usize,
+        c: f64,
+        allow_early_stop: bool,
+        seed: u64,
+    ) -> PyResult<()> {
+        let mut rng = Rng::new(seed);
+        self.arena.run_sequential(simulations, c, allow_early_stop, &mut rng);
+        Ok(())
+    }
+
+    fn root_visits(&self) -> Vec<(String, u32)> {
+        self.arena.root_visits()
+    }
+
+    fn node_count(&self) -> usize {
+        self.arena.nodes.len()
     }
 }
 

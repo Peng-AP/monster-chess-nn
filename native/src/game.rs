@@ -71,13 +71,23 @@ impl Game {
     /// Rust-side constructor. `#[pymethods]` cannot be called across modules,
     /// and the search needs to build states without touching the interpreter.
     pub fn from_fen(fen: &str) -> Result<Self, String> {
+        Game::from_state(fen, false, 0)
+    }
+
+    /// A FEN alone does **not** determine a Monster Chess state: it cannot say
+    /// whether White has already spent the first half of its turn, and that
+    /// flag selects a completely different action set and a different
+    /// (pending-aware) threat scan. Constructing from a FEN alone silently
+    /// assumed `pending = false` and made two engines search different
+    /// positions -- found while measuring search agreement, 2026-08-03.
+    pub fn from_state(fen: &str, white_half_pending: bool, turn_count: u32) -> Result<Self, String> {
         let board = parse_fen(fen)?;
         let is_white_turn = board.turn;
         Ok(Game {
             board,
             is_white_turn,
-            turn_count: 0,
-            white_half_pending: false,
+            turn_count,
+            white_half_pending: white_half_pending && is_white_turn,
         })
     }
 
@@ -87,6 +97,48 @@ impl Game {
 
     pub fn board_ref(&self) -> &Board {
         &self.board
+    }
+
+    /// Terminal test, callable from the search without the interpreter.
+    pub fn is_terminal_rust(&self) -> bool {
+        self.board.king_square(WHITE).is_none()
+            || self.board.king_square(BLACK).is_none()
+            || self.turn_count >= MAX_GAME_TURNS
+    }
+
+    /// Terminal result, including the cap's heuristic relabel. None if live.
+    pub fn result_rust(&self) -> Option<f64> {
+        if self.board.king_square(WHITE).is_none() {
+            Some(-1.0)
+        } else if self.board.king_square(BLACK).is_none() {
+            Some(1.0)
+        } else if self.turn_count >= MAX_GAME_TURNS {
+            let h = evaluate(&self.board, self.is_white_turn, self.white_half_pending);
+            Some(if h < -0.4 {
+                -0.5
+            } else if h > 0.4 {
+                0.5
+            } else {
+                0.0
+            })
+        } else {
+            None
+        }
+    }
+
+    /// The half-move action list, as UCI strings.
+    pub fn search_actions_rust(&self) -> Vec<String> {
+        if self.is_terminal_rust() {
+            return Vec::new();
+        }
+        let moves = if !self.is_white_turn {
+            black_actions(&self.board, true)
+        } else if self.white_half_pending {
+            white_second_half_moves(&self.board)
+        } else {
+            white_single_moves(&self.board)
+        };
+        moves.iter().map(|m| m.uci()).collect()
     }
 
     pub fn apply_half(&mut self, uci: &str) -> Result<(), String> {
@@ -117,8 +169,9 @@ impl Game {
 #[pymethods]
 impl Game {
     #[new]
-    fn new(fen: &str) -> PyResult<Self> {
-        Game::from_fen(fen).map_err(PyValueError::new_err)
+    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0))]
+    fn new(fen: &str, white_half_pending: bool, turn_count: u32) -> PyResult<Self> {
+        Game::from_state(fen, white_half_pending, turn_count).map_err(PyValueError::new_err)
     }
 
     fn fen(&self) -> String {
