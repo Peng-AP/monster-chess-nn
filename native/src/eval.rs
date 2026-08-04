@@ -153,6 +153,37 @@ fn is_passed_pawn(board: &Board, sq: u8, color: usize) -> bool {
     true
 }
 
+/// The clamps that run **before any NN call**, matching
+/// `NNEvaluator._batch_impl` / `evaluate_with_policy`.
+///
+/// §1.3 of the contract: these are not an optimisation, they are part of the
+/// evaluation. A port that skips them sends decided positions to the network
+/// and gets a different value for them — and because the policy is `None` in
+/// this branch, the node must still be expanded with *uniform* priors.
+/// Threat-against-the-mover deliberately does not clamp (the sacrificial-check
+/// bug).
+pub fn pre_nn_clamp(board: &Board, is_white_turn: bool, white_half_pending: bool) -> Option<f64> {
+    if board.king_square(WHITE).is_none() {
+        return Some(-1.0);
+    }
+    if board.king_square(BLACK).is_none() {
+        return Some(1.0);
+    }
+    if is_white_turn {
+        let threat = if white_half_pending {
+            white_can_capture_king_single(board)
+        } else {
+            white_can_capture_king(board)
+        };
+        if threat {
+            return Some(0.95);
+        }
+    } else if black_can_capture_king(board) {
+        return Some(-0.95);
+    }
+    None
+}
+
 /// The heuristic. `is_white_turn` / `white_half_pending` come from the game
 /// state, not the board, because the threat scan is pending-aware.
 pub fn evaluate(board: &Board, is_white_turn: bool, white_half_pending: bool) -> f64 {

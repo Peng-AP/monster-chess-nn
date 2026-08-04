@@ -25,6 +25,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 
 use crate::game::Game;
 
@@ -381,6 +382,142 @@ impl Arena {
 }
 
 // ---------------------------------------------------------------------------
+// Batched PUCT with an NN bridge (D3 stage 1)
+// ---------------------------------------------------------------------------
+//
+// The search stays native and calls Python once per *batch*: it fills an
+// (N, C, 8, 8) f32 buffer, hands it over as raw bytes, and gets values and
+// policy logits back the same way. Bytes rather than Python lists because a
+// batch of 16 is ~17k floats, and list marshalling would cost more than the
+// whole search it is meant to serve.
+//
+// Ported from `_run_batched_puct`. Two details that look like implementation
+// noise and are not:
+//   * the root is expanded and backpropagated **synchronously first**, so the
+//     batch loop always descends into real children, and it counts as one
+//     simulation;
+//   * a `pending` set stops the batch early when re-selecting an already
+//     selected node — virtual loss cannot diversify a frontier that has not
+//     been expanded yet, so padding the batch would be duplicate work counted
+//     as progress. Simulations are counted by completed backpropagations.
+
+pub const VIRTUAL_LOSS: i64 = 3;
+
+/// Softmax over a subset of logit indices, matching `_softmax_masked`.
+/// Degenerate (all-zero) totals fall back to uniform rather than producing NaN.
+fn softmax_masked(logits: &[f32], indices: &[usize]) -> Vec<f64> {
+    if indices.is_empty() {
+        return Vec::new();
+    }
+    let vals: Vec<f64> = indices
+        .iter()
+        .map(|&i| *logits.get(i).unwrap_or(&0.0) as f64)
+        .collect();
+    let max = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let exp: Vec<f64> = vals.iter().map(|v| (v - max).exp()).collect();
+    let total: f64 = exp.iter().sum();
+    if total == 0.0 {
+        let uniform = 1.0 / indices.len() as f64;
+        return vec![uniform; indices.len()];
+    }
+    exp.iter().map(|e| e / total).collect()
+}
+
+impl Arena {
+    fn apply_virtual_loss(&mut self, node: usize) {
+        let mut current = Some(node);
+        while let Some(idx) = current {
+            self.nodes[idx].visit_count =
+                (self.nodes[idx].visit_count as i64 + VIRTUAL_LOSS) as u32;
+            self.nodes[idx].total_value -= VIRTUAL_LOSS as f64;
+            current = self.nodes[idx].parent;
+        }
+    }
+
+    fn revert_virtual_loss(&mut self, node: usize) {
+        let mut current = Some(node);
+        while let Some(idx) = current {
+            self.nodes[idx].visit_count =
+                (self.nodes[idx].visit_count as i64 - VIRTUAL_LOSS) as u32;
+            self.nodes[idx].total_value += VIRTUAL_LOSS as f64;
+            current = self.nodes[idx].parent;
+        }
+    }
+
+    /// Descend by PUCT to a terminal or unexpanded node.
+    fn select_puct(&self, root: usize, c_puct: f64, fpu: f64) -> usize {
+        let mut node = root;
+        while !self.nodes[node].state.is_terminal_rust() {
+            if !self.nodes[node].is_expanded {
+                return node;
+            }
+            if self.nodes[node].children.is_empty() {
+                return node;
+            }
+            node = match self.best_child_puct(node, c_puct, fpu) {
+                Some(child) => child,
+                None => return node,
+            };
+        }
+        node
+    }
+
+    /// Expand every legal half-move with priors from the policy head.
+    fn expand_with_policy(&mut self, node: usize, logits: Option<&[f32]>) {
+        let actions = self.nodes[node].state.search_actions_rust();
+        if actions.is_empty() {
+            self.nodes[node].is_expanded = true;
+            return;
+        }
+        let priors: Vec<f64> = match logits {
+            None => vec![1.0 / actions.len() as f64; actions.len()],
+            Some(l) => {
+                let indices: Vec<usize> = actions.iter().map(|a| uci_to_index(a)).collect();
+                softmax_masked(l, &indices)
+            }
+        };
+        for (action, prior) in actions.into_iter().zip(priors) {
+            let mut child_state = self.nodes[node].state.clone();
+            if child_state.apply_half(&action).is_err() {
+                continue;
+            }
+            self.add_child(node, child_state, action, prior);
+        }
+        self.nodes[node].is_expanded = true;
+    }
+
+    /// (C, 8, 8) encoding of a node's state, appended to `buf`.
+    fn encode_into(&self, node: usize, channels: usize, buf: &mut Vec<f32>) {
+        let state = &self.nodes[node].state;
+        let hwc = crate::encoding::encode(
+            state.board_ref(),
+            state.is_white_turn,
+            state.white_half_pending,
+            channels,
+        )
+        .unwrap_or_else(|_| vec![0.0; 8 * 8 * channels]);
+        // (8, 8, C) -> (C, 8, 8): the bridge wants channels-first for torch.
+        for c in 0..channels {
+            for rank in 0..8 {
+                for file in 0..8 {
+                    buf.push(hwc[rank * 8 * channels + file * channels + c]);
+                }
+            }
+        }
+    }
+}
+
+fn uci_to_index(uci: &str) -> usize {
+    let b = uci.as_bytes();
+    if b.len() < 4 {
+        return 0;
+    }
+    let from = ((b[1] - b'1') * 8 + (b[0] - b'a')) as usize;
+    let to = ((b[3] - b'1') * 8 + (b[2] - b'a')) as usize;
+    from * 64 + to
+}
+
+// ---------------------------------------------------------------------------
 // Python surface — enough to run the contract tests against the native arena.
 // ---------------------------------------------------------------------------
 
@@ -478,6 +615,141 @@ impl PyTree {
 
     fn node_count(&self) -> usize {
         self.arena.nodes.len()
+    }
+
+    /// Batched PUCT. `eval_fn(batch_bytes, n, channels)` must return
+    /// `(values_bytes, policy_bytes)` — n f32 values and n*4096 f32 logits,
+    /// little-endian. Bytes, not lists: a batch of 16 is ~17k floats and list
+    /// marshalling would cost more than the search it serves.
+    #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
+                        c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                        allow_early_stop=true))]
+    fn run_batched_puct(
+        &mut self,
+        py: Python<'_>,
+        simulations: usize,
+        eval_fn: &Bound<'_, PyAny>,
+        batch_size: usize,
+        channels: usize,
+        c_puct: f64,
+        fpu_reduction: f64,
+        allow_early_stop: bool,
+    ) -> PyResult<()> {
+        let call = |py: Python<'_>, nodes: &[usize], arena: &Arena| -> PyResult<(Vec<f64>, Vec<f32>)> {
+            let mut buf: Vec<f32> = Vec::with_capacity(nodes.len() * channels * 64);
+            for &n in nodes {
+                arena.encode_into(n, channels, &mut buf);
+            }
+            let bytes: &[u8] = unsafe {
+                std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 4)
+            };
+            let result = eval_fn.call1((PyBytes::new(py, bytes), nodes.len(), channels))?;
+            let (vb, pb): (Vec<u8>, Vec<u8>) = result.extract()?;
+            let values: Vec<f64> = vb
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
+                .collect();
+            let policies: Vec<f32> = pb
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            Ok((values, policies))
+        };
+
+        if self.arena.nodes[0].state.is_terminal_rust() {
+            let v = self.arena.nodes[0].state.result_rust().unwrap_or(0.0);
+            self.arena.backpropagate(0, v);
+            return Ok(());
+        }
+
+        // Root synchronously first, so the batch loop descends into real children.
+        let (values, policies) = call(py, &[0], &self.arena)?;
+        let root_value = *values.first().unwrap_or(&0.0);
+        if !self.arena.nodes[0].is_expanded {
+            let logits = if policies.len() >= 4096 { Some(&policies[..4096]) } else { None };
+            self.arena.expand_with_policy(0, logits);
+        }
+        self.arena.backpropagate(0, root_value);
+        let mut sims_done = 1usize;
+
+        while sims_done < simulations {
+            if allow_early_stop && self.arena.should_stop_early(0, sims_done, simulations) {
+                break;
+            }
+            let target = batch_size.min(simulations - sims_done);
+            // (node, immediate value if decided, expand-with-uniform-priors)
+            let mut leaves: Vec<(usize, Option<f64>, bool)> = Vec::with_capacity(target);
+            let mut pending: Vec<usize> = Vec::with_capacity(target);
+            while leaves.len() < target {
+                let node = self.arena.select_puct(0, c_puct, fpu_reduction);
+                if pending.contains(&node) {
+                    break; // frontier exhausted; padding would be duplicate work
+                }
+                pending.push(node);
+                self.arena.apply_virtual_loss(node);
+                let state = &self.arena.nodes[node].state;
+                match state.result_rust() {
+                    // Terminal: backprop only, never expanded.
+                    Some(v) => leaves.push((node, Some(v), false)),
+                    None => {
+                        // Decided-by-clamp: the Python evaluator returns the
+                        // clamp with policy=None and skips the forward, so the
+                        // node is expanded with uniform priors.
+                        match crate::eval::pre_nn_clamp(
+                            state.board_ref(),
+                            state.is_white_turn,
+                            state.white_half_pending,
+                        ) {
+                            Some(v) => leaves.push((node, Some(v), true)),
+                            None => leaves.push((node, None, true)),
+                        }
+                    }
+                }
+            }
+            if leaves.is_empty() {
+                break;
+            }
+
+            let nn_nodes: Vec<usize> = leaves
+                .iter()
+                .filter(|(_, imm, _)| imm.is_none())
+                .map(|(n, _, _)| *n)
+                .collect();
+            let (nn_values, nn_policies) = if nn_nodes.is_empty() {
+                (Vec::new(), Vec::new())
+            } else {
+                call(py, &nn_nodes, &self.arena)?
+            };
+
+            let mut nn_cursor = 0usize;
+            for (node, immediate, expand) in &leaves {
+                self.arena.revert_virtual_loss(*node);
+                match immediate {
+                    Some(v) => {
+                        if *expand && !self.arena.nodes[*node].is_expanded {
+                            self.arena.expand_with_policy(*node, None);
+                        }
+                        self.arena.backpropagate(*node, *v);
+                    }
+                    None => {
+                        let value = *nn_values.get(nn_cursor).unwrap_or(&0.0);
+                        let start = nn_cursor * 4096;
+                        if !self.arena.nodes[*node].is_expanded {
+                            let logits = if nn_policies.len() >= start + 4096 {
+                                Some(&nn_policies[start..start + 4096])
+                            } else {
+                                None
+                            };
+                            self.arena.expand_with_policy(*node, logits);
+                        }
+                        self.arena.backpropagate(*node, value);
+                        nn_cursor += 1;
+                    }
+                }
+            }
+            sims_done += leaves.len();
+        }
+        Ok(())
     }
 
     fn max_depth(&self) -> usize {
