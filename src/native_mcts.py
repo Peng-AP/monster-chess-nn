@@ -97,9 +97,20 @@ class NativeMCTS:
         # self-play games that all ended White at fullmove 6-7, against
         # python's 14/10 spread over fullmove 7-75. Caught 2026-08-04.
         # Pass an explicit seed for reproducibility.
-        import random as _random
-        if seed is None:
-            seed = _random.randrange(1, 2 ** 62)
+        # seed=None is the FAITHFUL mode and the default: every decision draws
+        # from Python's global RNG, exactly as `mcts.MCTS` does (it reads that
+        # module for temperature sampling and expansion shuffling). This is
+        # what makes per-game `random.seed()` reach the engine.
+        #
+        # It matters because engines are built once per WORKER while harnesses
+        # re-seed once per GAME (`promotion_defense_probe._play_out`,
+        # `match._play`). An engine that captured a seed at construction
+        # ignored that entirely: Python restarted its randomness each game
+        # while native's stream ran on across all of them, which showed up as
+        # the native PPC curve reading 0.19 true captures at 200 sims against
+        # python's 0.09 on the same deck. Caught 2026-08-04.
+        #
+        # An explicit seed keeps the reproducible internal counter instead.
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn
         self.batch_size = batch_size
@@ -185,8 +196,12 @@ class NativeMCTS:
     # ------------------------------------------------------------------
     def get_best_action(self, root_state, temperature=1.0):
         tree = self._tree_for(root_state)
-        # A fresh stream per decision, reproducible for a given engine instance.
-        decision_seed = self.seed + self._decisions
+        if self.seed is None:
+            # Follow the global RNG, like MCTS. Per-game re-seeding reaches us.
+            import random as _random
+            decision_seed = _random.randrange(1, 2 ** 62)
+        else:
+            decision_seed = self.seed + self._decisions
         self._decisions += 1
 
         if self._bridge is not None:

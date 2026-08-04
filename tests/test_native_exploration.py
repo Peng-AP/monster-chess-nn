@@ -125,23 +125,52 @@ class TestPerGameSeeding(unittest.TestCase):
         from native_mcts import NativeMCTS
         return NativeMCTS(num_simulations=16, eval_fn=evaluate, **kw)
 
-    def test_default_seed_comes_from_the_global_rng(self):
+    def test_the_default_follows_the_global_rng_per_decision(self):
+        # Harnesses re-seed once per GAME but build engines once per WORKER
+        # (promotion_defense_probe._play_out, match._play). An engine that
+        # captured a seed at construction ignores that re-seeding entirely --
+        # which made the native PPC curve read 0.19 true captures at 200 sims
+        # against python's 0.09 on the same deck.
         import random
-        random.seed(4242)
-        first = self.engine().seed
-        random.seed(4242)
-        second = self.engine().seed
-        self.assertEqual(first, second, "engine ignores the global RNG")
+        from monster_chess import MonsterChessGame
+        engine = self.engine()
+        self.assertIsNone(engine.seed, "default must follow the global RNG")
 
-    def test_engines_built_in_sequence_get_different_seeds(self):
-        # The generation case: one fresh engine per game.
-        seeds = {self.engine().seed for _ in range(8)}
-        self.assertEqual(len(seeds), 8, "every game would replay one sequence")
+        def sequence():
+            random.seed(31337)
+            eng = self.engine()
+            return [eng.get_best_action(MonsterChessGame(START_FEN),
+                                        temperature=1.0)[0].uci()
+                    for _ in range(6)]
+
+        self.assertEqual(sequence(), sequence(),
+                         "re-seeding the global RNG must reproduce the run")
+
+    def test_reseeding_between_games_actually_changes_play(self):
+        import random
+        from monster_chess import MonsterChessGame
+        random.seed(1)
+        first = [self.engine().get_best_action(MonsterChessGame(START_FEN),
+                                               temperature=1.0)[0].uci()
+                 for _ in range(6)]
+        random.seed(2)
+        second = [self.engine().get_best_action(MonsterChessGame(START_FEN),
+                                                temperature=1.0)[0].uci()
+                  for _ in range(6)]
+        self.assertNotEqual(first, second)
 
     def test_an_explicit_seed_still_pins_it(self):
+        # Explicit seeding keeps the reproducible internal counter, so a run
+        # can be pinned without touching global state.
         self.assertEqual(self.engine(seed=1234).seed, 1234)
-        a, b = self.engine(seed=7), self.engine(seed=7)
-        self.assertEqual(a.seed, b.seed)
+        from monster_chess import MonsterChessGame
+        a = self.engine(seed=7)
+        b = self.engine(seed=7)
+        sa = [a.get_best_action(MonsterChessGame(START_FEN), temperature=1.0)[0].uci()
+              for _ in range(5)]
+        sb = [b.get_best_action(MonsterChessGame(START_FEN), temperature=1.0)[0].uci()
+              for _ in range(5)]
+        self.assertEqual(sa, sb)
 
 if __name__ == "__main__":
     unittest.main()
