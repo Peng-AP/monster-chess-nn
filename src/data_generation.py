@@ -278,6 +278,43 @@ from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa:
 _SEARCH_ENGINE = None  # set per worker; None means "follow the environment"
 
 
+def terminate_pool(executor, join_timeout=3):
+    """Tear a ProcessPoolExecutor down so the NEXT pool can start.
+
+    The historic failure (three confirmed occurrences, March 2026): one game
+    times out, workers are killed, and the humanseed phase that follows never
+    starts -- no error, just a frozen log and ~1.2GB processes still resident.
+
+    Two things make the difference, and both are easy to write the wrong way:
+
+    * **Snapshot `_processes` BEFORE `shutdown`.** `shutdown(wait=False)` clears
+      the internal dict, so iterating it afterwards finds nothing to kill and
+      leaves exactly the zombies that block the next pool.
+    * **Escalate.** SIGTERM, bounded join, then SIGKILL. A worker blocked inside
+      a CUDA call will not honour SIGTERM, and an unbounded join is how the
+      "hang" presented in the first place.
+
+    Returns the number of processes that needed killing, so callers and tests
+    can assert on it instead of guessing.
+    """
+    snapshot = dict(getattr(executor, "_processes", {}))
+    executor.shutdown(wait=False, cancel_futures=True)
+    killed = 0
+    for pid, proc in snapshot.items():
+        if not proc.is_alive():
+            continue
+        killed += 1
+        try:
+            os.kill(pid, signal.SIGTERM)
+            proc.join(timeout=join_timeout)
+            if proc.is_alive():
+                os.kill(pid, 9)  # SIGKILL: CUDA-blocked workers ignore SIGTERM
+                proc.join(timeout=join_timeout)
+        except (OSError, ProcessLookupError):
+            pass
+    return killed
+
+
 def _resolve_search_cls():
     """MCTS or the native drop-in, decided once per worker.
 
@@ -812,20 +849,7 @@ def main():
                 timed_out_games += hung
                 pbar.update(hung)
     finally:
-        # Snapshot _processes BEFORE shutdown — shutdown(wait=False) clears the
-        # internal dict, leaving nothing to iterate over and producing zombie
-        # workers that block the next subprocess pool.
-        _procs_snapshot = dict(getattr(executor, '_processes', {}))
-        executor.shutdown(wait=False, cancel_futures=True)
-        for pid, proc in _procs_snapshot.items():
-            if proc.is_alive():
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    proc.join(timeout=3)
-                    if proc.is_alive():
-                        os.kill(pid, 9)  # SIGKILL
-                except (OSError, ProcessLookupError):
-                    pass
+        terminate_pool(executor)
 
     white = sum(v for k, v in results.items() if k > 0)
     black = sum(v for k, v in results.items() if k < 0)
