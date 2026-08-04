@@ -434,8 +434,48 @@ A first cut of this benchmark reported **5x** by comparing wall clocks — which
 credited the server with 8 model loads it had merely moved before the timer.
 Comparing search work only is what makes the number mean anything.
 
-**Remaining E4 item: one overnight generation run completing clean** under the
-detached-execution pattern, on `--engine native`.
+**E4's overnight run is NOT passed. Two findings, 2026-08-04.**
+
+**1. A frozen RNG killed exploration (found, fixed, tested).** The native RNG is
+built from the seed it is *given*; `NativeMCTS` passed a constant, so every
+decision re-seeded an identical stream. Temperature sampling returned the same
+move 10/10 times and Dirichlet noise drew one vector across 5 trees —
+exploration was dead while still looking random, because different positions
+still produce different moves. **Gates (a) and (b) run at temperature 0 with
+noise off and structurally cannot see this**; generation is the only path using
+both, and it is the path whose output becomes training data. Fixed by advancing
+the seed per decision (reproducibility preserved: same seed, same sequence) and
+pinned by `tests/test_native_exploration.py`. The first overnight run
+(240 games, White 240/240) is invalid and is quarantined as
+`data/raw/INVALID_native_e4_overnight_frozen_rng`.
+
+**2. A divergence remains in the noise regime, and it is NOT the port being
+worse.** Isolated by turning the stochastic elements off one at a time, 4 games
+each, then confirmed at n=16:
+
+| config | python | native |
+|---|---|---|
+| deterministic (no noise, temp~0) | `{1:4}` lengths 85,86,89,97 | **identical** |
+| temperature only | `{1:4}` lengths 10-32 | `{1:4}` lengths 9-15 |
+| **noise only** | `{1:12, -0.5:4}`, final fullmove med 37 | `{1:16}`, **med 7** |
+
+Per-decision the engines agree (same picks, values within 0.003), and the
+Dirichlet sampler matches numpy statistically (mean max component 0.455 vs
+0.459, entropy 1.443 vs 1.431, all rows sum to 1). Tracing a whole game, the
+engines agree on nearly every move; where they differ **native reports +1.00 —
+a proven king capture — against python's +0.88**. Native is finding forced wins
+python misses at the same sim count, so self-play ends by move 7 with White
+winning every time.
+
+**Why this still blocks the gate.** A strength difference is not a correctness
+bug under D4's statistical-parity clause, but generation exists to produce
+training data, and data from an engine that finishes games at move 7 is not
+interchangeable with data from one that runs to move 37. Until the cause is
+identified, `--engine native` must not generate a corpus. The deterministic path
+is exact, so match/gate/benchmark use are unaffected.
+
+Next step: find what native searches that python does not in the noisy regime —
+tree-size and visit-count comparison at matched sims is the obvious probe.
 
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the

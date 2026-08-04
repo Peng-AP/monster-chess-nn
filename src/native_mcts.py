@@ -94,6 +94,16 @@ class NativeMCTS:
         self.root_noise = root_noise
         self.allow_early_stop = allow_early_stop
         self.seed = seed
+        # Advanced once per decision. The native RNG is constructed from the
+        # seed it is GIVEN, so passing a constant re-seeds an identical stream
+        # every call: temperature sampling then returns the same move every
+        # time and Dirichlet noise draws the same vector every time --
+        # exploration is frozen while still looking random, because different
+        # positions still yield different moves. Caught 2026-08-04 when native
+        # self-play produced White 240/240 against python's 14/10 on the same
+        # command; gates (a) and (b) run at temperature 0 with noise off and
+        # cannot see it.
+        self._decisions = 0
 
         nn = _underlying_nn(eval_fn)
         self._heuristic_values = _uses_heuristic_values(eval_fn)
@@ -147,21 +157,24 @@ class NativeMCTS:
     # ------------------------------------------------------------------
     def get_best_action(self, root_state, temperature=1.0):
         tree = self._tree_for(root_state)
+        # A fresh stream per decision, reproducible for a given engine instance.
+        decision_seed = self.seed + self._decisions
+        self._decisions += 1
 
         if self._bridge is not None:
             tree.run_batched_puct(
                 self.num_simulations, self._bridge,
                 batch_size=self.batch_size, channels=self._channels,
                 allow_early_stop=self.allow_early_stop,
-                root_noise=self.root_noise, seed=self.seed,
+                root_noise=self.root_noise, seed=decision_seed,
                 heuristic_values=self._heuristic_values)
         else:
             tree.run_sequential(self.num_simulations,
                                 allow_early_stop=self.allow_early_stop,
-                                seed=self.seed)
+                                seed=decision_seed)
 
         selected_uci, probs, value = tree.best_action(temperature=temperature,
-                                                      seed=self.seed)
+                                                      seed=decision_seed)
         if selected_uci is None:
             self._reuse_tree = None
             self._reuse_key = None

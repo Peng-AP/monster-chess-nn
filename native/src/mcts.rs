@@ -1014,6 +1014,11 @@ impl PyTree {
     /// owner decision (2026-07-17): the root average is a visit-weighted mean
     /// including simulations spent refuting losing siblings, so a proven mate
     /// reads ~+0.7. The selected child sits at exactly ±1.0 for proven lines.
+    /// NOTE: `seed` constructs a fresh RNG on every call. A caller that passes
+    /// a constant gets an identical stream each time — temperature sampling
+    /// returns the same move and Dirichlet noise the same vector, which looks
+    /// random because different positions still differ. Callers must advance
+    /// the seed per decision; `NativeMCTS` does.
     #[pyo3(signature = (temperature=1.0, seed=20260803))]
     fn best_action(
         &self,
