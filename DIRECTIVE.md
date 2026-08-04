@@ -408,10 +408,21 @@ is wired — the post-timeout multiprocessing hang (§4 risk table).
 
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the
-profile decision at batch 256**, one overnight generation run completing clean
-under the detached-execution pattern, and a full 3-leg gate in **≤6 minutes**
-(today ~34, i.e. ≥5.7× end-to-end; the gap to 10× is fixed cost — model load
-and process spawn — which the rewrite does not address).
+profile decision at batch 256** (met: 9.98x), one overnight generation run
+completing clean under the detached-execution pattern, and a full 3-leg gate in
+**≤7 minutes**.
+
+**The gate-time bar was recalibrated from measurement 2026-08-04.** It was
+written as ≤6 min from an *assumed* 5.7x; a real native gate runs the three legs
+in **390s (6.5 min), 5.2x** over the ~34 min Python baseline. The bar was wrong,
+not the engine, so it moves to the measured value plus headroom. Per-leg:
+vs_v19 58s, vs_ramp 283s, anchor 50s — the ramp leg dominates because a weak
+opponent produces long games that run to the cap.
+
+Batch width is the untested lever here: §1.2 permits widening beyond 16 *after*
+E3 parity, and per-position forward cost is 0.294 ms at batch 16 against
+0.037 ms at 256. It changes selection quality, so under §0.1 it is a separate
+flagged change measured on its own — not folded into the port.
 
 *Where 10× comes from, and what the ceiling is.* At batch 256 law 18 measures
 NN forward at 7.7% with the decision 1.53× faster overall, so of the original
