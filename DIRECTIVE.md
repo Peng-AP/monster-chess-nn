@@ -279,7 +279,13 @@ from random walks and every recorded game on disk. Bit-identity rather than
 power, so the sole hazard was accumulation order, and any ordering error yields
 a delta far larger than the tolerance. The cap relabel is wired into the native
 state machine and lockstep now compares the heuristic at **every** ply
-(31,807 plies, 0 failures). Encoding still to do.
+(31,807 plies, 0 failures).
+
+**Encoding: DONE 2026-08-03.** `tools/encoding_parity.py` — **98,272 positions
+in each layout, zero byte-unequal**, 15ch legacy and 17ch current. Arithmetic is
+done in f64 and narrowed on store, matching numpy assigning a Python float into
+a float32 array; computing in f32 throughout would round differently and break
+equality. **E2 is complete.**
 
 **A format hazard found on the way, which E4 must respect: FENs are lossy.**
 python-chess writes `en_passant="legal"`, so a live game object can hold an
