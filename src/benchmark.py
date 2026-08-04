@@ -34,6 +34,20 @@ def _apply(game, action):
 
 
 ENGINE_ENV = "MONSTER_ENGINE"
+SOLVER_ENV = "MONSTER_SOLVER"   # certainty propagation, off unless set
+REUSE_ENV = "MONSTER_REUSE"     # tree reuse across moves, off unless set
+
+
+def _env_flag(name):
+    """Behaviour switches travel by environment, like MONSTER_ENGINE.
+
+    They are off unless explicitly set, because both change what the engine
+    plays: under DIRECTIVE section 0.1 each is measured on its own rather than
+    folded into a run that exists to measure something else. The environment is
+    the transport because these have to reach Pool workers, which are separate
+    processes.
+    """
+    return str(os.environ.get(name, "")).lower() in ("1", "true", "yes", "on")
 
 
 def _engine_choice(engine=None):
@@ -71,9 +85,16 @@ def _build_engine(model_path, sims, batch_size=None, engine=None):
     choice = _engine_choice(engine)
     if choice == "native":
         from native_mcts import NativeMCTS
+        solver = _env_flag(SOLVER_ENV)
+        reuse = _env_flag(REUSE_ENV)
         search = NativeMCTS(num_simulations=sims, eval_fn=eval_fn,
-                            root_noise=False, allow_early_stop=True, **kwargs)
+                            root_noise=False, allow_early_stop=True,
+                            solver=solver, reuse_across_moves=reuse, **kwargs)
         label = f"{label}|native"
+        if solver:
+            label += "+solver"
+        if reuse:
+            label += "+reuse"
     else:
         search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
                       allow_early_stop=True, **kwargs)
