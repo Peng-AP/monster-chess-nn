@@ -11,6 +11,7 @@ mod bitboard;
 mod encoding;
 mod eval;
 mod game;
+mod mcts;
 mod monster;
 
 /// Build identity, so the Python side can assert it loaded the crate it built.
@@ -27,5 +28,6 @@ fn monster_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     game::register(m)?;
     eval::register(m)?;
     encoding::register(m)?;
+    mcts::register(m)?;
     Ok(())
 }

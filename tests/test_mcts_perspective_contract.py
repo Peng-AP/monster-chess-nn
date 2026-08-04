@@ -194,5 +194,122 @@ class TestVisitedChildScore(unittest.TestCase):
             a.puct_score(), fpu_part + C_PUCT * 0.3 * math.sqrt(25) / (1 + 0))
 
 
+
+# ---------------------------------------------------------------------------
+# The same contract, against the native arena. Same hand-computed numbers --
+# not a differential, so a disagreement names which side is wrong.
+# ---------------------------------------------------------------------------
+
+sys.path.insert(0, str(ROOT / "native"))
+try:
+    import monster_native as mn
+except ImportError:
+    mn = None
+
+
+def build_native_chain():
+    """Mirror of build_chain() in the native arena, via the same actions."""
+    py_state = MonsterChessGame(START_FEN)
+    tree = mn.Tree(START_FEN)
+    indices = [0]
+    parent = 0
+    for _ in range(3):
+        action = py_state.get_search_actions()[0]
+        parent = tree.add_child(parent, action.uci(), 0.5)
+        indices.append(parent)
+        py_state.apply_search_action(action)
+    return tree, indices  # [root, a, b, c]
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestNativeChainShape(unittest.TestCase):
+    def test_white_keeps_the_move_across_its_two_halves(self):
+        tree, (root, a, b, c) = build_native_chain()
+        self.assertTrue(tree.is_white_turn(root))
+        self.assertFalse(tree.white_half_pending(root))
+        self.assertTrue(tree.is_white_turn(a))
+        self.assertTrue(tree.white_half_pending(a))
+        self.assertFalse(tree.is_white_turn(b))
+        self.assertTrue(tree.is_white_turn(c))
+
+    def test_states_match_the_python_chain(self):
+        _py_root, py_a, py_b, py_c = build_chain()
+        tree, (_root, a, b, c) = build_native_chain()
+        self.assertEqual(tree.fen(a), py_a.state.fen())
+        self.assertEqual(tree.fen(b), py_b.state.fen())
+        self.assertEqual(tree.fen(c), py_c.state.fen())
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestNativeBackpropagation(unittest.TestCase):
+    def test_value_is_stored_in_the_parents_perspective(self):
+        tree, (root, a, b, c) = build_native_chain()
+        tree.backpropagate(c, 0.8)
+        self.assertAlmostEqual(tree.total_value(c), -0.8)
+        self.assertAlmostEqual(tree.total_value(b), 0.8)
+        self.assertAlmostEqual(tree.total_value(a), 0.8)
+        self.assertAlmostEqual(tree.total_value(root), 0.8)
+        for idx in (root, a, b, c):
+            self.assertEqual(tree.visit_count(idx), 1)
+
+    def test_q_value_is_zero_while_unvisited(self):
+        tree, (_root, a, _b, _c) = build_native_chain()
+        self.assertEqual(tree.q_value(a), 0.0)
+        tree.backpropagate(a, 1.0)
+        self.assertAlmostEqual(tree.q_value(a), 1.0)
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestNativeFpuFlip(unittest.TestCase):
+    def test_no_flip_when_grandparent_and_parent_share_a_side(self):
+        tree, (_root, a, b, _c) = build_native_chain()
+        tree.set_stats(a, 4, 2.0)   # q = 0.5
+        tree.set_prior(b, 0.25)
+        expected = (0.5 - FPU_REDUCTION) + C_PUCT * 0.25 * math.sqrt(4)
+        self.assertAlmostEqual(tree.puct_score(b), expected)
+
+    def test_flip_when_the_side_changes(self):
+        tree, (_root, _a, b, c) = build_native_chain()
+        tree.set_stats(b, 4, 2.0)
+        tree.set_prior(c, 0.25)
+        expected = (-0.5 - FPU_REDUCTION) + C_PUCT * 0.25 * math.sqrt(4)
+        self.assertAlmostEqual(tree.puct_score(c), expected)
+
+    def test_fpu_is_clamped_into_range(self):
+        tree, (_root, a, b, _c) = build_native_chain()
+        tree.set_stats(a, 1, 5.0)
+        tree.set_prior(b, 0.0)
+        self.assertAlmostEqual(tree.puct_score(b), 1.0)
+        tree.set_stats(a, 1, -5.0)
+        self.assertAlmostEqual(tree.puct_score(b), -1.0)
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestNativeMatchesPythonNumerically(unittest.TestCase):
+    def test_puct_agrees_across_a_grid_of_stats(self):
+        # Sweep both perspective cases against the Python implementation.
+        for visits, value, prior in [(4, 2.0, 0.25), (1, -0.9, 0.5),
+                                     (7, 3.5, 0.1), (2, 0.0, 0.9)]:
+            py_root, py_a, py_b, py_c = build_chain()
+            tree, (_root, a, b, c) = build_native_chain()
+
+            py_a.visit_count, py_a.total_value = visits, value
+            py_b.prior = prior
+            tree.set_stats(a, visits, value)
+            tree.set_prior(b, prior)
+            self.assertAlmostEqual(tree.puct_score(b), py_b.puct_score(),
+                                   msg=f"no-flip case {visits},{value},{prior}")
+
+            py_b.visit_count, py_b.total_value = visits, value
+            py_c.prior = prior
+            tree.set_stats(b, visits, value)
+            tree.set_prior(c, prior)
+            self.assertAlmostEqual(tree.puct_score(c), py_c.puct_score(),
+                                   msg=f"flip case {visits},{value},{prior}")
+
+    def test_constants_match_config(self):
+        self.assertEqual(mn.C_PUCT, C_PUCT)
+        self.assertEqual(mn.FPU_REDUCTION, FPU_REDUCTION)
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,11 +67,11 @@ fn parse_uci(uci: &str) -> Option<Move> {
     Some(Move { from, to, promotion })
 }
 
-#[pymethods]
 impl Game {
-    #[new]
-    fn new(fen: &str) -> PyResult<Self> {
-        let board = parse_fen(fen).map_err(PyValueError::new_err)?;
+    /// Rust-side constructor. `#[pymethods]` cannot be called across modules,
+    /// and the search needs to build states without touching the interpreter.
+    pub fn from_fen(fen: &str) -> Result<Self, String> {
+        let board = parse_fen(fen)?;
         let is_white_turn = board.turn;
         Ok(Game {
             board,
@@ -81,8 +81,48 @@ impl Game {
         })
     }
 
-    fn fen(&self) -> String {
+    pub fn fen_string(&self) -> String {
         to_fen(&self.board)
+    }
+
+    pub fn board_ref(&self) -> &Board {
+        &self.board
+    }
+
+    pub fn apply_half(&mut self, uci: &str) -> Result<(), String> {
+        let mv = parse_uci(uci).ok_or_else(|| "bad uci".to_string())?;
+        if self.is_white_turn && !self.white_half_pending {
+            self.board.push(&mv);
+            // Only restore White's turn if the Black king survived; a
+            // king-capturing first half leaves the flip in place.
+            if self.board.king_square(BLACK).is_some() {
+                self.board.turn = true;
+            }
+            self.white_half_pending = true;
+        } else if self.is_white_turn {
+            self.board.turn = true;
+            self.board.push(&mv);
+            self.white_half_pending = false;
+            self.is_white_turn = false;
+            self.turn_count += 1;
+        } else {
+            self.board.push(&mv);
+            self.is_white_turn = true;
+            self.turn_count += 1;
+        }
+        Ok(())
+    }
+}
+
+#[pymethods]
+impl Game {
+    #[new]
+    fn new(fen: &str) -> PyResult<Self> {
+        Game::from_fen(fen).map_err(PyValueError::new_err)
+    }
+
+    fn fen(&self) -> String {
+        self.fen_string()
     }
 
     fn clone_game(&self) -> Game {
@@ -169,27 +209,7 @@ impl Game {
     }
 
     fn apply_search_action(&mut self, uci: &str) -> PyResult<()> {
-        let mv = parse_uci(uci).ok_or_else(|| PyValueError::new_err("bad uci"))?;
-        if self.is_white_turn && !self.white_half_pending {
-            self.board.push(&mv);
-            // Only restore White's turn if the Black king survived; a
-            // king-capturing first half leaves the flip in place.
-            if self.board.king_square(BLACK).is_some() {
-                self.board.turn = true;
-            }
-            self.white_half_pending = true;
-        } else if self.is_white_turn {
-            self.board.turn = true;
-            self.board.push(&mv);
-            self.white_half_pending = false;
-            self.is_white_turn = false;
-            self.turn_count += 1;
-        } else {
-            self.board.push(&mv);
-            self.is_white_turn = true;
-            self.turn_count += 1;
-        }
-        Ok(())
+        self.apply_half(uci).map_err(PyValueError::new_err)
     }
 
     /// Atomic action: "m1,m2" for White (m2 may be "0000"), single uci for Black.
