@@ -87,7 +87,18 @@ class NativeMCTS:
     """Same interface as `mcts.MCTS`, backed by the native core."""
 
     def __init__(self, num_simulations=800, eval_fn=None, batch_size=16,
-                 root_noise=False, allow_early_stop=True, seed=20260803):
+                 root_noise=False, allow_early_stop=True, seed=None):
+        # `seed=None` draws from Python's global RNG **at construction**, which
+        # is how this engine inherits per-game seeding. `mcts.MCTS` reads that
+        # global module directly, and both `data_generation._worker` and
+        # `match._play` re-seed it once per game. A constant default instead
+        # gives every game the identical noise and temperature draws: 240
+        # self-play games that all ended White at fullmove 6-7, against
+        # python's 14/10 spread over fullmove 7-75. Caught 2026-08-04.
+        # Pass an explicit seed for reproducibility.
+        import random as _random
+        if seed is None:
+            seed = _random.randrange(1, 2 ** 62)
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn
         self.batch_size = batch_size

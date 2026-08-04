@@ -107,5 +107,41 @@ class TestAdapterAdvancesTheSeed(unittest.TestCase):
         self.assertEqual(sa, sb)
 
 
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestPerGameSeeding(unittest.TestCase):
+    """The engine must inherit per-GAME seeding, not just per-decision.
+
+    `mcts.MCTS` reads Python's global `random` module, and both
+    `data_generation._worker` and `match._play` re-seed that module once per
+    game. An engine with a constant default seed therefore replays the same
+    noise and temperature draws in *every game*: 240 native self-play games
+    that all ended White at fullmove 6-7, against python's 14/10 spread over
+    fullmove 7-75. Advancing the seed per decision (above) does not fix it --
+    each game restarts the same sequence.
+    """
+
+    def engine(self, **kw):
+        from native_mcts import NativeMCTS
+        return NativeMCTS(num_simulations=16, eval_fn=evaluate, **kw)
+
+    def test_default_seed_comes_from_the_global_rng(self):
+        import random
+        random.seed(4242)
+        first = self.engine().seed
+        random.seed(4242)
+        second = self.engine().seed
+        self.assertEqual(first, second, "engine ignores the global RNG")
+
+    def test_engines_built_in_sequence_get_different_seeds(self):
+        # The generation case: one fresh engine per game.
+        seeds = {self.engine().seed for _ in range(8)}
+        self.assertEqual(len(seeds), 8, "every game would replay one sequence")
+
+    def test_an_explicit_seed_still_pins_it(self):
+        self.assertEqual(self.engine(seed=1234).seed, 1234)
+        a, b = self.engine(seed=7), self.engine(seed=7)
+        self.assertEqual(a.seed, b.seed)
+
 if __name__ == "__main__":
     unittest.main()
