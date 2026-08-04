@@ -572,6 +572,23 @@ fn push_pawn_move(moves: &mut Vec<Move>, from: u8, to: u8) {
     }
 }
 
+/// Squares of a bitboard, highest index first — python-chess's `scan_reversed`.
+///
+/// Iteration order is not cosmetic here. `truncate_wins` returns the *first*
+/// king capture found, so a port that scans low-to-high returns a different
+/// winning move than the Python engine: same outcome, different recorded FEN
+/// and different policy target. Caught in lockstep at ply 4,695, 2026-08-03.
+#[inline]
+fn scan_reversed(mut bb: u64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bb.count_ones() as usize);
+    while bb != 0 {
+        let sq = (63 - bb.leading_zeros()) as u8;
+        out.push(sq);
+        bb &= !(1u64 << sq);
+    }
+    out
+}
+
 pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
     let mut moves = Vec::with_capacity(64);
     let us = if board.turn { WHITE } else { BLACK };
@@ -580,11 +597,12 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
     let enemy = board.occupied_co[them];
     let occ = board.occupied;
 
+    // Section order below mirrors python-chess exactly: non-pawn pieces,
+    // castling, pawn captures, pawn advances (all singles, then all doubles),
+    // en passant.
+
     // --- non-pawn pieces -------------------------------------------------
-    let mut pieces = own & !board.pawns;
-    while pieces != 0 {
-        let from = pieces.trailing_zeros() as u8;
-        pieces &= pieces - 1;
+    for from in scan_reversed(own & !board.pawns) {
         let piece = board.piece_type_at(from).unwrap();
         let attacks = match piece {
             KNIGHT => KNIGHT_ATTACKS[from as usize],
@@ -596,54 +614,8 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
             }
             _ => 0,
         };
-        let mut targets = attacks & !own;
-        while targets != 0 {
-            let to = targets.trailing_zeros() as u8;
-            targets &= targets - 1;
+        for to in scan_reversed(attacks & !own) {
             moves.push(Move { from, to, promotion: None });
-        }
-    }
-
-    // --- pawns -----------------------------------------------------------
-    let mut pawns = own & board.pawns;
-    let forward: i8 = if board.turn { 8 } else { -8 };
-    let start_rank = if board.turn { 1 } else { 6 };
-    while pawns != 0 {
-        let from = pawns.trailing_zeros() as u8;
-        pawns &= pawns - 1;
-
-        let one = from as i8 + forward;
-        if (0..64).contains(&one) && occ & (1u64 << one) == 0 {
-            push_pawn_move(&mut moves, from, one as u8);
-            let two = one + forward;
-            if rank_of(from) == start_rank && (0..64).contains(&two) && occ & (1u64 << two) == 0 {
-                moves.push(Move { from, to: two as u8, promotion: None });
-            }
-        }
-
-        let mut caps = PAWN_ATTACKS[us][from as usize] & enemy;
-        while caps != 0 {
-            let to = caps.trailing_zeros() as u8;
-            caps &= caps - 1;
-            push_pawn_move(&mut moves, from, to);
-        }
-
-        // En passant. Two constraints beyond "a pawn attacks the ep square",
-        // both from python-chess and both load-bearing:
-        //   * the capturer must stand on rank 5 (White) / rank 4 (Black) --
-        //     `BB_RANKS[4 if turn else 3]`. Without it, White's own double
-        //     push offers a capture of its own ep square (c2c4 then d2c3),
-        //     because Monster Chess forces board.turn back to WHITE between
-        //     halves. Caught by the API differential, 2026-08-03.
-        //   * the ep square itself must be empty.
-        if let Some(ep) = board.ep_square {
-            let capturer_rank = if board.turn { 4 } else { 3 };
-            if rank_of(from) == capturer_rank
-                && occ & (1u64 << ep) == 0
-                && PAWN_ATTACKS[us][from as usize] & (1u64 << ep) != 0
-            {
-                moves.push(Move { from, to: ep, promotion: None });
-            }
         }
     }
 
@@ -652,10 +624,7 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
     let back_rank = if board.turn { 0u8 } else { 7u8 };
     if let Some(king_sq) = board.king_square(us) {
         if rank_of(king_sq) == back_rank && !board.is_attacked_by(them, king_sq) {
-            let mut rights = board.clean_castling() & board.occupied_co[us];
-            while rights != 0 {
-                let rook_sq = rights.trailing_zeros() as u8;
-                rights &= rights - 1;
+            for rook_sq in scan_reversed(board.clean_castling() & board.occupied_co[us]) {
                 if rank_of(rook_sq) != back_rank {
                     continue;
                 }
@@ -695,6 +664,54 @@ pub fn generate_pseudo_legal(board: &Board) -> Vec<Move> {
                 if safe {
                     moves.push(Move { from: king_sq, to: king_to, promotion: None });
                 }
+            }
+        }
+    }
+
+    // --- pawn captures ---------------------------------------------------
+    let pawns = own & board.pawns;
+    for from in scan_reversed(pawns) {
+        for to in scan_reversed(PAWN_ATTACKS[us][from as usize] & enemy) {
+            push_pawn_move(&mut moves, from, to);
+        }
+    }
+
+    // --- pawn advances: every single push, then every double -------------
+    // python-chess builds both target bitboards up front and drains them in
+    // that order, so a per-pawn loop would interleave them differently.
+    let (singles, doubles) = if board.turn {
+        let s1 = (pawns << 8) & !occ;
+        let s2 = (s1 << 8) & !occ & ((0xFFu64 << 16) | (0xFFu64 << 24));
+        (s1, s2)
+    } else {
+        let s1 = (pawns >> 8) & !occ;
+        let s2 = (s1 >> 8) & !occ & ((0xFFu64 << 40) | (0xFFu64 << 32));
+        (s1, s2)
+    };
+    for to in scan_reversed(singles) {
+        let from = if board.turn { to - 8 } else { to + 8 };
+        push_pawn_move(&mut moves, from, to);
+    }
+    for to in scan_reversed(doubles) {
+        let from = if board.turn { to - 16 } else { to + 16 };
+        moves.push(Move { from, to, promotion: None });
+    }
+
+    // --- en passant ------------------------------------------------------
+    // Two constraints beyond "a pawn attacks the ep square", both from
+    // python-chess and both load-bearing:
+    //   * the capturer must stand on rank 5 (White) / rank 4 (Black) --
+    //     `BB_RANKS[4 if turn else 3]`. Without it, White's own double push
+    //     offers a capture of its own ep square (c2c4 then d2c3), because
+    //     Monster Chess forces board.turn back to WHITE between halves.
+    //     Caught by the API differential, 2026-08-03.
+    //   * the ep square itself must be empty.
+    if let Some(ep) = board.ep_square {
+        if occ & (1u64 << ep) == 0 {
+            let rank_mask: u64 = 0xFFu64 << (8 * if board.turn { 4 } else { 3 });
+            let capturers = pawns & PAWN_ATTACKS[them][ep as usize] & rank_mask;
+            for from in scan_reversed(capturers) {
+                moves.push(Move { from, to: ep, promotion: None });
             }
         }
     }

@@ -164,5 +164,77 @@ class TestMonsterActionApis(unittest.TestCase):
         self.assertEqual(complete[0], "a1e1")
         self.assertGreater(len(complete), 1)
 
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestGenerationOrderMatchesExactly(unittest.TestCase):
+    """Not just set equality — the ordered list.
+
+    `truncate_wins` returns the *first* king capture found, so a port that
+    scans squares low-to-high returns a different winning move than the Python
+    engine: same result, different recorded FEN and different policy target.
+    Caught in lockstep at ply 4,695 (2026-08-03), fixed by mirroring
+    python-chess's `scan_reversed` order and its section order.
+    """
+
+    def assert_order(self, fen):
+        self.assertEqual(mn.pseudo_legal_uci(fen),
+                         [m.uci() for m in chess.Board(fen).pseudo_legal_moves], fen)
+
+    def test_start_position_order(self):
+        self.assert_order(START_FEN)
+
+    def test_order_with_pawn_captures_and_pushes(self):
+        self.assert_order("rnbqkbnr/pppppppp/8/8/3PP3/8/2P2P2/4K3 b kq - 0 1")
+
+    def test_order_with_castling_available(self):
+        self.assert_order("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
+
+    def test_order_with_promotions(self):
+        self.assert_order("n3k3/1P6/8/8/8/8/8/4K3 w - - 0 1")
+
+    def test_the_position_that_exposed_the_ordering_bug(self):
+        self.assert_order("r3bbn1/4k1pr/p4p1K/5q2/3p4/1p6/8/8 b - - 1 21")
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestStateMachine(unittest.TestCase):
+    def test_turn_bookkeeping_across_whites_two_halves(self):
+        g = mn.Game(START_FEN)
+        self.assertTrue(g.is_white_turn)
+        self.assertFalse(g.white_half_pending)
+        self.assertEqual(g.turn_count, 0)
+        g.apply_search_action("e2e4")
+        # First half: still White, still turn 0, but now pending.
+        self.assertTrue(g.is_white_turn)
+        self.assertTrue(g.white_half_pending)
+        self.assertEqual(g.turn_count, 0)
+        self.assertIn(" w ", g.fen())
+        g.apply_search_action("d2d4")
+        self.assertFalse(g.is_white_turn)
+        self.assertFalse(g.white_half_pending)
+        self.assertEqual(g.turn_count, 1)
+
+    def test_matches_the_python_engine_step_for_step(self):
+        py = MonsterChessGame(START_FEN)
+        rs = mn.Game(START_FEN)
+        for uci in ("e2e4", "d2d4", "d7d5", "e4e5", "f2f4"):
+            py.apply_search_action(next(m for m in py.get_search_actions()
+                                        if m.uci() == uci))
+            rs.apply_search_action(uci)
+            self.assertEqual(rs.fen(), py.fen(), uci)
+            self.assertEqual(rs.turn_count, py.turn_count, uci)
+            self.assertEqual(rs.is_white_turn, py.is_white_turn, uci)
+            self.assertEqual(rs.white_half_pending, py.white_half_pending, uci)
+
+    def test_max_game_turns_matches_config(self):
+        from config import MAX_GAME_TURNS
+        self.assertEqual(mn.MAX_GAME_TURNS, MAX_GAME_TURNS)
+
+    def test_cap_result_is_none_until_the_heuristic_lands(self):
+        # Honest sentinel: the +-0.5 relabel is decided by evaluation.py (E2),
+        # so the native side must not invent a value here.
+        g = mn.Game(START_FEN)
+        self.assertIsNone(g.result())
+
 if __name__ == "__main__":
     unittest.main()
