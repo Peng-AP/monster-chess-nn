@@ -819,7 +819,8 @@ impl PyTree {
     /// marshalling would cost more than the search it serves.
     #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
                         c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
-                        allow_early_stop=true, root_noise=false, seed=20260803))]
+                        allow_early_stop=true, root_noise=false, seed=20260803,
+                        heuristic_values=false))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -832,6 +833,12 @@ impl PyTree {
         allow_early_stop: bool,
         root_noise: bool,
         seed: u64,
+        // HybridEvaluator takes VALUES from the heuristic and only the
+        // POLICY from the network, and it skips the forward entirely when
+        // |heuristic| >= 0.95. Without this the native search would use NN
+        // values wherever generation uses hybrid ones -- same moves early,
+        // different tree once values diverge.
+        heuristic_values: bool,
     ) -> PyResult<()> {
         let call = |py: Python<'_>, nodes: &[usize], arena: &Arena| -> PyResult<(Vec<f64>, Vec<f32>)> {
             let mut buf: Vec<f32> = Vec::with_capacity(nodes.len() * channels * 64);
@@ -876,7 +883,12 @@ impl PyTree {
 
         // Root synchronously first, so the batch loop descends into real children.
         let (values, policies) = call(py, &[0], &self.arena)?;
-        let root_value = *values.first().unwrap_or(&0.0);
+        let root_value = if heuristic_values {
+            let st = &self.arena.nodes[0].state;
+            crate::eval::evaluate(st.board_ref(), st.is_white_turn, st.white_half_pending)
+        } else {
+            *values.first().unwrap_or(&0.0)
+        };
         if !self.arena.nodes[0].is_expanded {
             let logits = if policies.len() >= 4096 { Some(&policies[..4096]) } else { None };
             self.arena.expand_with_policy(0, logits);
@@ -912,13 +924,29 @@ impl PyTree {
                         // Decided-by-clamp: the Python evaluator returns the
                         // clamp with policy=None and skips the forward, so the
                         // node is expanded with uniform priors.
-                        match crate::eval::pre_nn_clamp(
-                            state.board_ref(),
-                            state.is_white_turn,
-                            state.white_half_pending,
-                        ) {
-                            Some(v) => leaves.push((node, Some(v), true)),
-                            None => leaves.push((node, None, true)),
+                        if heuristic_values {
+                            // Mirrors HybridEvaluator: the heuristic is the
+                            // value, and |value| >= 0.95 means the position is
+                            // decided, so no forward and uniform priors.
+                            let h = crate::eval::evaluate(
+                                state.board_ref(),
+                                state.is_white_turn,
+                                state.white_half_pending,
+                            );
+                            if h.abs() >= 0.95 {
+                                leaves.push((node, Some(h), true));
+                            } else {
+                                leaves.push((node, None, true));
+                            }
+                        } else {
+                            match crate::eval::pre_nn_clamp(
+                                state.board_ref(),
+                                state.is_white_turn,
+                                state.white_half_pending,
+                            ) {
+                                Some(v) => leaves.push((node, Some(v), true)),
+                                None => leaves.push((node, None, true)),
+                            }
                         }
                     }
                 }
@@ -949,7 +977,16 @@ impl PyTree {
                         self.arena.backpropagate(*node, *v);
                     }
                     None => {
-                        let value = *nn_values.get(nn_cursor).unwrap_or(&0.0);
+                        let value = if heuristic_values {
+                            let st = &self.arena.nodes[*node].state;
+                            crate::eval::evaluate(
+                                st.board_ref(),
+                                st.is_white_turn,
+                                st.white_half_pending,
+                            )
+                        } else {
+                            *nn_values.get(nn_cursor).unwrap_or(&0.0)
+                        };
                         let start = nn_cursor * 4096;
                         if !self.arena.nodes[*node].is_expanded {
                             let logits = if nn_policies.len() >= start + 4096 {

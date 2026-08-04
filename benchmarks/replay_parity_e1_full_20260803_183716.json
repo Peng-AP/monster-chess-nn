@@ -1,0 +1,516 @@
+{
+  "label": "e1_full",
+  "sources": [
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\raw\\ps_monster",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\raw\\human_games"
+  ],
+  "games": 991,
+  "plies": 48272,
+  "replayed_ok": 830,
+  "diverged": 161,
+  "stopped_at_declined_king_capture": 0,
+  "elapsed_sec": 6.7,
+  "timestamp": "2026-08-03T18:37:16",
+  "failures": [
+    {
+      "path": "data\\raw\\human_games\\game_00000.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "r1bqkbnr/pppppppp/2n5/8/2P5/5P2/3PP3/4K3 w kq - 1 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00001.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/2PP4/4PP2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00002.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/8/3p4/3P4/4P3/2P2P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00003.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/8/3p4/2P5/4P3/3P1P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00004.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/4P3/5P2/2PP4/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00005.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/8/3p4/8/2P2P2/3PP3/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00006.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/1ppppppp/8/p7/4PP2/8/2PP4/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00007.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/3p4/8/2PP4/8/4PP2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00008.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/1ppppppp/8/p7/8/4PP2/2PP4/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00009.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "r1bqkbnr/pppppppp/2n5/8/2P5/5P2/3PP3/4K3 w kq - 1 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00010.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/1ppppppp/8/p7/2P2P2/8/3PP3/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00011.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/4P3/8/2PP1P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00012.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkb1r/pppppppp/5n2/8/5P2/8/2PPP3/5K2 w kq - 2 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00013.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/2P1P3/8/3P1P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00014.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/5P2/8/2PPPK2/8 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00015.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/8/3p4/8/8/2PPPP2/6K1 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00016.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/3p4/8/2PP4/8/4PP2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00017.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/2P1P3/3P1P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00018.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/4P3/3P4/2P2P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00019.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/4P3/5P2/2PP4/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00020.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/4P3/3P4/2P2P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00021.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/ppp1pppp/3p4/8/5P2/8/2PPP3/3K4 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00022.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/2P2P2/3PP3/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00023.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/5P2/2PPP3/5K2 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00024.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "r1bqkbnr/pppppppp/2n5/8/3PP3/8/2P2P2/4K3 w kq - 1 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00025.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/5P2/4P3/2PP4/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00026.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/5P2/2PPP3/5K2 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00027.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/8/5P2/2PPPK2/8 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00028.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/5P2/8/2PPP3/5K2 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00029.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppp1ppp/4p3/8/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00030.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/4P3/8/8/2PP1P2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00031.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/3P4/5P2/2P1P3/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00032.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4P3/3P4/2P2P2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00033.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/8/4P3/2PP1P2/5K2 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00034.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4PP2/8/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00035.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4PP2/8/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00036.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/5P2/4P3/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00037.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4P3/8/2PPKP2/8 b kq - 1 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00038.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/8/3P4/2P1PP2/5K2 b kq - 1 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00039.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4PP2/8/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\game_00040.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4PP2/8/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00000.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/2PP4/8/4PP2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00001.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/8/3P4/2P1PP2/5K2 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00002.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/2P5/5P2/3PP3/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00003.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/8/2P2P2/3PP3/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00004.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/2P5/8/8/3PPP2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00005.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/4P3/5P2/2PP4/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00006.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/2P1P3/8/3P1P2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00007.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/2P1P3/8/3P1P2/4K3 b kq - 0 1",
+        "offered": 10
+      }
+    },
+    {
+      "path": "data\\raw\\human_games\\black_2026_03\\game_00008.jsonl",
+      "detail": {
+        "index": 0,
+        "reason": "no legal action reproduces the next position",
+        "from_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "to_fen": "rnbqkbnr/pppppppp/8/8/8/5P2/2PPP3/3K4 b kq - 1 1",
+        "offered": 10
+      }
+    }
+  ]
+}
