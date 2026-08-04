@@ -403,8 +403,39 @@ workers — **169.7s python vs 46.5s native (3.65x)**. Lower than the ~10x
 per-decision figure because model loading and game setup are fixed costs
 amortised over few games; scores agree within noise.
 
-Still to do in E4: the Stage-2 cross-game inference server, and — **before** it
-is wired — the post-timeout multiprocessing hang (§4 risk table).
+**The post-timeout hang is discharged.** `terminate_pool` is extracted from
+`data_generation` and `tests/test_pool_teardown.py` forces the exact historic
+sequence — hang a worker, hit the timeout, tear down, start a fresh pool — and
+asserts the second pool completes. The fix was already in the tree; what was
+missing was a test that it works. A regression here reintroduces a failure whose
+signature is an overnight run that silently produced nothing.
+
+**Stage-2 inference server: built, measured, and it pays less than the
+per-position numbers implied.** `src/inference_server.py` holds one model and
+batches leaves across all workers; workers hold no model at all (it *replaces*
+per-worker inference rather than wrapping it, per the §4 risk row).
+
+At 8 workers, 3 games, 200 sims:
+
+| | stage 1 (model per worker) | stage 2 (shared server) |
+|---|---|---|
+| search work, slowest worker | 1.13s | **0.99s (0.87x)** |
+| wall clock | 7.2s (8 model loads) | 1.7s (1 model load) |
+| resident models | 8 | **1** |
+
+**The honest gain is ~13% on search plus an 8x reduction in GPU model memory** —
+not the 8x the 0.294ms/0.037ms per-position figures suggested. The reason is
+that 8 workers can have at most 8 requests in flight (each blocks for its
+reply), so the server gathers ~128 leaves at best and only when they happen to
+coincide; CUDA was already time-slicing the 8 processes reasonably well. The
+memory saving is the stronger argument, because it is what allows more workers.
+
+A first cut of this benchmark reported **5x** by comparing wall clocks — which
+credited the server with 8 model loads it had merely moved before the timer.
+Comparing search work only is what makes the number mean anything.
+
+**Remaining E4 item: one overnight generation run completing clean** under the
+detached-execution pattern, on `--engine native`.
 
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the
