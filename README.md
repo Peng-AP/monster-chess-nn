@@ -47,9 +47,12 @@ turn are clamped before any network call.
 **Network** (`src/train.py`) is a ResNet (configurable stem and tower, default
 8 blocks up to 128 channels) with a policy head over a flat 4096-move space
 (`from_square × to_square`) and a value head that can train as a scalar regression
-or a win/draw/loss classifier. Checkpoint architecture is inferred from the state
-dict at load time, so older checkpoints with different widths or encodings remain
-loadable.
+or a win/draw/loss classifier. The established policy head is dense; an opt-in
+source-to-destination attention head provides the same logits with far fewer
+parameters. An opt-in moves-left auxiliary head predicts remaining recorded
+decisions without reshaping the value target. Checkpoint architecture is inferred
+from the state dict, so older checkpoints remain loadable and inference still
+returns the same `(value, policy)` pair.
 
 **Position encoding** (`src/encoding.py`) is 17 planes: 12 piece planes, side to
 move, a half-move indicator (distinguishing White's second half-turn), a signed
@@ -111,6 +114,10 @@ Sanity-check a merged corpus before spending a training run on it:
 python tools/pretrain_check.py data/raw/my_run --reference data/raw/previous_run
 ```
 
+`data/processed/` intentionally retains only the active v19_B-derived corpus;
+see `data/processed/README.md` and the cleanup manifest under `logs/archive/`
+before regenerating concluded experiment datasets.
+
 Train:
 
 ```bash
@@ -120,6 +127,21 @@ python src/train.py --data-dir data/processed/my_run --model-dir models/my_model
 
 Ramp-target training uses the scalar head:
 `--value-head scalar` after processing with `--value-floor 0.5 --value-horizon 60`.
+
+LC0-inspired candidates are separate, opt-in experiments: `--moves-left-head`
+adds masked Huber regression on decisive trusted trajectories;
+`--legal-policy-mask` excludes illegal logits from policy loss and top-1;
+`--policy-head attention` selects the compact policy head; and
+`--ema-decay 0.999` validates and checkpoints an exponential weight average.
+None of these flags changes the default recipe.
+
+Current approved bar (2026-08-05):
+`models/candidates/lc0b_attention_ema/best_value_net.pt`. It uses attention
+plus EMA on the exact v19_B recipe, passed the unchanged automated gate in
+both colors, and passed the owner playtest. The next confirmed candidate is
+`models/candidates/lc0b_attention_ema_wide64/best_value_net.pt`; widening only
+the attention channels improved both colors in two calibrated reads and now
+awaits its owner playtest. Historical checkpoints have not been replaced.
 
 Run one full generate → process → train → gate cycle:
 
@@ -155,6 +177,8 @@ strength are demonstrably decoupled in this project), `tools/heuristic_ab.py`
 (promotion prevention / defender survival), and deck builders
 (`tools/make_human_deck.py`, `tools/make_promo_deck.py`) that turn recorded games
 into targeted start-position decks.
+`tools/search_sweep.py` runs resumable, non-binding one-factor PUCT sweeps against
+the same checkpoint, ranks Black first, and retains the White/aggregate floors.
 
 ### Model lifecycle
 
@@ -203,7 +227,7 @@ concludes; git history is the archive (`git log --diff-filter=D --name-only`).
 python -m unittest discover -s tests
 ```
 
-268 contract tests cover the rules (including the unconditional-king-capture edge
+498 contract tests cover the rules (including the unconditional-king-capture edge
 cases), search invariants, encoding round-trips, data-pipeline contracts, the
 training CLI schema, the corpus gates, the promotion protocol's thresholds, and
 several hazards that have produced wrong numbers here before (ramp labels are

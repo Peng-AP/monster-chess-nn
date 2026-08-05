@@ -1,0 +1,49 @@
+{
+  "study": "v19b_training_hpo_smoke",
+  "storage": "logs\\hpo\\v19b_training_hpo_smoke.sqlite3",
+  "data": "data/processed/combined_v19_B_r50h60",
+  "bar": "models/candidates/v19_B/best_value_net.pt",
+  "objective": {
+    "formula": "black_delta + 0.25*aggregate_delta - 2*white_shortfall",
+    "white_delta_floor": -0.05
+  },
+  "stages": [
+    {
+      "index": 1,
+      "epochs": 1,
+      "games": 2,
+      "sims": 1,
+      "seed": 90260820
+    }
+  ],
+  "trial_counts": {
+    "RUNNING": 0,
+    "COMPLETE": 1,
+    "PRUNED": 0,
+    "FAIL": 0,
+    "WAITING": 0
+  },
+  "best": {
+    "number": 0,
+    "value": 0.0,
+    "params": {
+      "lr": 0.0014741898660230472,
+      "lr_gamma": 0.9381666649673026,
+      "weight_decay": 6.269822099109694e-06,
+      "policy_loss_weight": 0.5980776691993951,
+      "warmup_epochs": 2,
+      "grad_clip": 0.5,
+      "batch_size": 256
+    },
+    "user_attrs": {
+      "stage_1_aggregate_delta": 0.0,
+      "stage_1_artifact": "models/tuning/v19b_training_hpo_smoke/trial_00000/stage_01_match.json",
+      "stage_1_best_epoch": 1,
+      "stage_1_black_delta": 0.0,
+      "stage_1_score": 0.0,
+      "stage_1_white_delta": 0.0,
+      "stage_1_white_shortfall": 0.0
+    }
+  },
+  "timestamp": "2026-08-04T21:38:23"
+}

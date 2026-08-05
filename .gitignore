@@ -220,6 +220,7 @@ __marimo__/
 native/*.pyd
 native/*.dll
 
-# run logs are output, not source
-logs/*.log
-logs/*.json
+# Run logs and tuner databases are generated output, not source.
+# Keep the directory documentation tracked.
+/logs/**
+!/logs/README.md

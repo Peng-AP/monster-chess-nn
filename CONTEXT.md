@@ -34,14 +34,35 @@ en passant is conferred only by the **last** move of White's turn; White may
 not **end** its turn with its own king attacked (forced-blunder exception
 unchanged, in `_get_white_actions`).
 
-## 2. Where the project stands (2026-08-02)
+## 2. Where the project stands (2026-08-05)
 
 - **Incumbent: `models/fresh_start_v19`** (arm K), promoted 2026-08-02 after
   automated evidence plus the owner's playtest.
-- **Strongest engine on record: `models/candidates/v19_B`** — beats ramp
+- **Formal gate bar: `models/candidates/v19_B`** — beats ramp
   0.7625 pooled to v19's 0.7125, and beats v19 head-to-head 0.625 over 80
-  independent games (2.2 SE). Unrejected. Whether the gate bar should be B is
-  an open owner decision (DIRECTIVE §4).
+  independent games (2.2 SE). E5 then beat v19 **0.575 twice** on independent
+  40-game reads under captures-only scoring + native search, and led every
+  shared cross-table comparison. `fresh_start_v19` remains the numbered
+  incumbent pending an owner promotion, but candidates gate against B.
+- **Successor candidate: `models/candidates/lc0b_attention_ema`.** It keeps
+  v19_B's exact data and training recipe, changing only to the compact
+  attention policy head plus EMA (`0.999`) validation/checkpoint weights. It
+  passed the unchanged binding gate: against v19_B it scored **0.7125 overall,
+  0.925 as White, 0.500 as Black**, then **0.7375 / 0.925 / 0.550** on the
+  automatic fresh confirmation. It also scored 0.825 against ramp and 1.000
+  against the fixed heuristic anchor. This is the strongest automated result
+  on record; promotion remains deliberately pending the owner's playtest, and
+  v19_B is preserved as the formal bar meanwhile.
+- **Owner gate passed 2026-08-05.** The owner found `lc0b_attention_ema` very
+  strong on both sides, able to handle his White attack and vicious as White;
+  only occasional spotty Black conversion moves remained. It is now the
+  approved playing-strength bar for successor work (checkpoint preserved in
+  place; no historical artifact was overwritten).
+- **Next candidate: `lc0b_attention_ema_wide64`.** The only change is widening
+  the attention query/key channels from 32 to 64. Against the approved model
+  it improved both colors twice: calibrated **+0.050 Black / +0.025 White**
+  at 40 games, 400 sims, then **+0.1625 Black / +0.0625 White** at 80 games,
+  800 sims. This candidate awaits the owner's playtest.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black
@@ -53,9 +74,19 @@ unchanged, in `_get_white_actions`).
   0.50 → **0.30** under captures-only scoring; both in `models/rejected/`).
   Asymmetric generation at this scale did not produce a Black that converts
   against v19; the turn cap tested dead (2.7× moves, identical captures). See
-  `REPORT.md`. **The active campaign is the engine rewrite** (`DIRECTIVE.md`,
-  2026-08-03): native search core, parity-gated, then a single re-baseline of
-  all incumbents under captures-only + native engine.
+  `REPORT.md`. The engine rewrite and re-baseline are now complete; the active
+  campaign is the post-E5 data ladder and separately measured E6 search work.
+- **Post-E5 data ladder closed 2026-08-04: all three arms rejected.** Against
+  `v19_B`, frozen-corpus base / +e1500 policy-only / +41 owner games scored
+  0.250 / 0.100 / 0.075 as Black (overall 0.4750 / 0.3875 / 0.2125). The bar
+  remains `v19_B`; the active work is now Black-first search and opt-in
+  LC0-derived architecture screens.
+- **The rewrite's E0-E5 phases are complete.** Rules, heuristic and encoding
+  reached exact parity; native MCTS passed 400/400 move agreement and its
+  200-game self-match; the full gate runs in 6.5 minutes instead of ~34. E5
+  established the new captures-only/native zero point and moved the gate bar
+  to v19_B. The first E6 solver measurement was a null (+0.02 true
+  captures at both 1600 and 3200 sims), so it stays off by default.
 
 ## 3. Model lifecycle vocabulary
 
@@ -81,7 +112,7 @@ unchanged, in `_get_white_actions`).
 | **Long / multi-worker jobs** | Standing go carried in the active directive. **Never while he is playing.** |
 | **Gates** | **Never weaken a threshold to let a recipe through.** Per-side floor 0.40 on every leg, aggregate must beat 0.50 on model legs. Thresholds are constants with no CLI flag, asserted by test. |
 | **What counts as a win** | *"A win by time shouldn't be counted the same as win by capturing the king"* (2026-08-03). Only a king capture scores a win; a move-limit ending scores a **draw**, symmetrically. The ±0.5 *training label* is unchanged. **Every gate/match result before 2026-08-03 was computed under the old rule and is not comparable to results after it** — including v19's promotion and the whole v19 ladder. |
-| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds (two 40-game reads of one fixed matchup once came out 0.575 and 0.725 — one leg over 0.50 confirms nothing). **Unsettled right now:** `tools/gate.py` has `BAR = "vs_v19"` (the incumbent), while the strongest engine on record is `v19_B`. Owner decision open (DIRECTIVE §4.1); until then report both legs. |
+| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds. E5 settled it at `v19_B`: B scored 0.575 against v19 on each of two disjoint 40-game reads under captures-only/native. `tools/gate.py` now targets B and confirms that leg; thresholds did not move. |
 | **Versions** | A number needs automated evidence **plus** his playtest. |
 | **Metrics** | No proxy scorecards: *"my eval is not replaceable."* |
 | **His observations** | Confirmed by measurement **every single time** checked. Debug the code first; measure and report the number. |
@@ -386,5 +417,8 @@ heredocs** (mangles `\n` — use the Write tool); notebook round-trip is
 **Repo conventions:** root carries `CONTEXT.md` + `DIRECTIVE.md` (+
 `README.md`) only. Evidence goes to `benchmarks/` before the next run starts;
 concluded work retires to git history; rejected candidates to
-`models/rejected/` and the number stays free. Data deletion is the owner's
-call (`data/processed/` holds ~33 GB of regenerable datasets, most of them concluded).
+`models/rejected/` and the number stays free. The owner authorized the
+2026-08-05 cleanup: `data/processed/` now retains only the active
+`combined_v19_B_r50h60` corpus; rejected derived corpora are recoverable from
+the Windows Recycle Bin until it is emptied and remain regenerable from raw
+sources plus recorded recipes.

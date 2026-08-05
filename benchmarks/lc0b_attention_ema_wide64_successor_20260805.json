@@ -1,0 +1,35 @@
+{
+  "experiment": "lc0b_attention_ema_wide64_successor_summary",
+  "binding": false,
+  "status": "CONFIRMED_owner_playtest_pending",
+  "candidate_manifest": "models/candidates/lc0b_attention_ema_wide64/candidate_manifest.json",
+  "candidate_checkpoint": "models/candidates/lc0b_attention_ema_wide64/best_value_net.pt",
+  "candidate_sha256": "f09fd872defdbded89ed6ab518cab959386fdcf17b9c5f1d52ce4773cdb936e3",
+  "bar_checkpoint": "models/candidates/lc0b_attention_ema/best_value_net.pt",
+  "bar_sha256": "b4de71a7ebe682c0bd20d064130eafd6ca7765df62847c0cdcd5ca529b1e6dc5",
+  "only_model_change": "policy_attention_channels_32_to_64",
+  "screen": {
+    "artifact": "benchmarks/lc0b_successor_wide_screen_20260805.json",
+    "games": 40,
+    "sims": 400,
+    "black_delta": 0.05,
+    "white_delta": 0.025,
+    "aggregate_delta": 0.0375
+  },
+  "confirmation": {
+    "artifact": "benchmarks/lc0b_successor_wide_confirmation_20260805.json",
+    "games": 80,
+    "sims": 800,
+    "black_delta": 0.1625,
+    "white_delta": 0.0625,
+    "aggregate_delta": 0.1125,
+    "passes_both_colors": true
+  },
+  "decision": {
+    "improves_black": true,
+    "improves_white": true,
+    "repeated_on_fresh_seed": true,
+    "recommended_for_owner_playtest": true,
+    "promoted_automatically": false
+  }
+}

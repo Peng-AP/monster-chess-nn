@@ -1,5 +1,13 @@
 # DIRECTIVE — the engine rewrite (2026-08-03)
 
+**Status (2026-08-05): complete through E5.** The native engine is the
+default, the captures-only re-baseline established v19_B as the formal bar,
+and the follow-on Black-first architecture campaign has produced
+`lc0b_attention_ema`, which passed both the binding automated gate and the
+owner playtest. Its 64-channel successor has passed two calibrated reads and
+awaits its owner playtest. Current evidence and next actions are in `REPORT.md`; the
+remainder of this document preserves the rewrite contract and E6 scope.
+
 **Owner's call: the residual problem may be compute.** Search is Python-bound
 (CONTEXT law 18: NN forward 14% at batch 16 and 7.7% at batch 256,
 python-chess movegen ~35%, clone/apply
@@ -434,7 +442,7 @@ A first cut of this benchmark reported **5x** by comparing wall clocks — which
 credited the server with 8 model loads it had merely moved before the timer.
 Comparing search work only is what makes the number mean anything.
 
-**E4's overnight run is NOT passed. Two findings, 2026-08-04.**
+**E4's first overnight run did NOT pass. Two findings, 2026-08-04.**
 
 **1. A frozen RNG killed exploration (found, fixed, tested).** The native RNG is
 built from the seed it is *given*; `NativeMCTS` passed a constant, so every
@@ -467,7 +475,7 @@ a proven king capture — against python's +0.88**. Native is finding forced win
 python misses at the same sim count, so self-play ends by move 7 with White
 winning every time.
 
-**Why this still blocks the gate.** A strength difference is not a correctness
+**Why this blocked the gate at the time.** A strength difference is not a correctness
 bug under D4's statistical-parity clause, but generation exists to produce
 training data, and data from an engine that finishes games at move 7 is not
 interchangeable with data from one that runs to move 37. Until the cause is
@@ -476,6 +484,11 @@ is exact, so match/gate/benchmark use are unaffected.
 
 Next step: find what native searches that python does not in the noisy regime —
 tree-size and visit-count comparison at matched sims is the obvious probe.
+
+**Resolved later 2026-08-04:** the adapter was not inheriting the per-game
+global RNG seed. After that fix, the clean 240-game overnight completed with a
+healthy W174/B44/cap22 distribution. E4 is complete; `REPORT.md` is the current
+state record and this subsection preserves the failure that found the bug.
 
 **E4 — integration.** `--engine native` through generation, match, gate,
 benchmark, play; the Stage-2 inference server. *Exit gate:* **≥10× wall-clock on the
@@ -513,6 +526,11 @@ zero-point; it also discharges the standing re-measure debt from the scoring
 fix and is the natural moment for the owner to **settle the bar decision**
 (v19 vs v19_B). Nothing measured before E5 is compared to anything after it.
 
+**DONE 2026-08-04.** `rebaseline_20260804_155035.json`: v17 < ramp < v19 <
+v19_B survives captures-only/native. v19_B beat v19 0.575 twice on disjoint
+40-game reads and led the heuristic anchor 0.762 vs 0.738. The gate bar moves
+to v19_B; the numbered incumbent remains v19 pending an owner promotion.
+
 **Queued for E6 by the owner, 2026-08-03: pruning.** Raised after the depth
 measurement below, and the measurement is the argument for it.
 
@@ -533,7 +551,8 @@ Stockfish's depth comes from discarding most of the tree. **Pruning, not
 throughput, is the lever on depth.**
 
 Two facts to carry into that discussion. First, sims do *not* buy conversion by
-buying depth: 200 -> 3200 sims moved true captures 0.09 -> 0.51 while midgame PV
+buying depth: on the controlled native deck, 200 -> 3200 sims moved true
+captures 0.19 -> 0.51 while midgame PV
 depth went 4 -> 5, so the gain is better value estimates over a shallow tree.
 Second, the endgame row is pinned at 4 plies even at 51,200 sims with node count
 *below* sim count (43,512 / 51,200) — the search re-walks short lines into
@@ -553,8 +572,8 @@ change — none rides in with another.
 
 ## 3a. E0 RESULTS (2026-08-03, same day) — both answers landed
 
-**E0(a): the curve did not plateau. It accelerated.** v19 Black vs v19
-White@400, 100 post-promotion starts, captures-only throughout:
+**E0(a), original read (superseded): the curve appeared not to plateau.** v19
+Black vs v19 White@400, 100 post-promotion starts, captures-only throughout:
 
 | Black sims | 200 | 400 | 800 | 1600 | **3200** |
 |---|---|---|---|---|---|
@@ -563,18 +582,21 @@ White@400, 100 post-promotion starts, captures-only throughout:
 | White wins | 0.79 | 0.72 | 0.52 | 0.29 | **0.29** |
 | mean plies | 54.6 | 61.0 | 88.3 | 112.1 | **74.1** |
 
-The 1600 -> 3200 step is the largest in the curve (+0.21, ~4 SE at n=100) and
-the stuck-game count **halves** — the pathology that motivated the finisher is
-itself partly a search-depth artifact. Games also get *shorter*. Purchase #1 is
-validated: high-sim operation buys conversion, and 3200 is not the ceiling.
-`benchmarks/promotion_defense_outcomes_ppccurve_s3200_*.json`.
+**Artifact audit correction, 2026-08-04:** the 200–1600 rows above used
+`postpromo_starts_v1`; the 3200 row used `promotion_defense_deck_v1` (only
+10/400 FENs overlap). The claimed +0.21 step and halving comparison are
+therefore invalid. The controlled single-deck native rerun below supersedes
+this table and still establishes the 3200 knee, by valid evidence.
 
-**6400 ANSWERED 2026-08-04, on the native engine (whole curve re-run
-single-engine, `ppccurve_native_s*`): 0.55 — +0.04 over 3200, ~1 SE. The curve
-plateaus at the 3200 knee.** §5's contingency applies: raw sims cap near 0.55
+**6400 ANSWERED 2026-08-04, on the native engine (whole curve re-run on one
+deck and one engine, `ppccurve_native_s*`): 0.55 — +0.04 over 3200, ~1 SE. The
+controlled curve is 0.19 / 0.17 / 0.24 / 0.37 / 0.51 / 0.55 and plateaus at
+the 3200 knee.** §5's contingency applies: raw sims cap near 0.55
 on this deck, so the exploit order shifts to the finisher/solver and to data.
-The rewrite's case now rests on throughput (a 3200-sim gate costs ~12 min,
-not 2.3 h), which is what it delivers. Full analysis: REPORT.md §6.
+The rewrite's case now rests on throughput. The first directly comparable
+full 3200-sim binding gate took **48.5 min** (including a 25.8-min, 40-game
+bar leg), not the earlier unmeasured ~12-min estimate and still below the
+2.3-hour reference. Full analysis: REPORT.md §6.
 
 **E0(b): forced wins are walked past — and the culprit is the oracle, not the
 search.** Of 65 dominant-unfinished games in current generation (v19
@@ -658,6 +680,5 @@ lives in `native/` with its own tests; root docs unchanged in role
 (`CONTEXT.md` durable, this directive active, `REPORT.md` the last run).
 
 *Written 2026-08-03 after a full source read (monster_chess.py, mcts.py,
-evaluation.py, encoding.py, config.py, generation/match call sites). This is
-the active campaign document; it retires when the native engine is the
-default and the E5 re-baseline is on record.*
+evaluation.py, encoding.py, config.py, generation/match call sites). Retained
+as the completed rewrite contract and the scope record for any later E6 work.*
