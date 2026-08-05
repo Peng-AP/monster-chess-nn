@@ -294,8 +294,8 @@ automatic fresh v19_B replay:
 
 Artifact: `gate_lc0b_attention_ema_20260805_052437.json`; packaged summary:
 `lc0b_attention_ema_successor_20260805.json`. This is the strongest automated
-result on record. It is not automatically promoted: the owner's playtest is
-still binding, so v19_B remains intact as the formal bar.
+result on record. The owner's playtest then approved it as the interim
+playing-strength bar; v19_B remains preserved as historical evidence.
 
 **Immediate successor cycle (2026-08-05).** The owner then passed
 `lc0b_attention_ema` qualitatively: strong in both colors, especially vicious
@@ -306,9 +306,17 @@ attention channels from 32 to 64 was the sole repeatable improvement. Against
 the approved 32-channel model, `lc0b_attention_ema_wide64` scored calibrated
 **+0.050 Black / +0.025 White / +0.0375 overall** at 40 games and 400 sims,
 then **+0.1625 / +0.0625 / +0.1125** on a fresh 80-game, 800-sim
-confirmation. It is packaged for the next owner playtest; no automatic
-promotion occurred. Artifacts: `lc0b_successor_wide_{screen,confirmation}_*`
-and `lc0b_attention_ema_wide64_successor_20260805.json`.
+confirmation. On 2026-08-05 the owner promoted this exact checkpoint as
+`models/fresh_start_v20`; it is now both the numbered incumbent and formal
+gate bar. The source campaign checkpoint remains preserved. Artifacts:
+`lc0b_successor_wide_{screen,confirmation}_*` and
+`lc0b_attention_ema_wide64_successor_20260805.json`.
+
+The promoted v20 self-match baseline used identical checkpoints and search on
+both sides for 80 native games at 400 sims. White won 47, Black won 16, and 17
+drew: **0.6938 White score vs 0.3063 Black**, a 0.3875 color-score gap toward
+White. This quantifies the operating-point skew; it does not compare two model
+strengths. Artifact: `match_fresh_start_v20_vs_fresh_start_v20_20260805_150239.json`.
 
 **Search-parameter screen — closed null.** Same-checkpoint `v19_B` screens at
 400 sims changed one prior/PUCT setting at a time. The coarse read's best Black
@@ -417,13 +425,95 @@ record should show its own repairs:
 
 ---
 
-## 12. Next
+## 12. V21 two-hour architecture/value screen (2026-08-05)
+
+V20 remains champion. Seven controlled checkpoints were trained from the
+exact `combined_v19_B_r50h60` split/seed/optimizer recipe. The regenerated
+capture corpus was byte-identical on every frozen core array after restoring
+the 16 legacy policy weights that current preprocessing now masks. No model
+cleared repeatable positive deltas in both colors.
+
+| candidate | calibrated result vs v20 |
+|---|---|
+| attention width 96 | Black -0.025, White +0.000 |
+| side-specific attention adapter | Black -0.025, White -0.025 |
+| attention width 128 | screen +0.025/+0.050; confirmation **-0.138/+0.000** |
+| capture-only WDL value | Black +0.050, White **-0.250** |
+| mixed scalar + capture-WDL, weight 0.10, late checkpoint | Black -0.125, White -0.400 |
+| same mixed model, recovered epoch 9 | Black +0.025, White -0.050 |
+| mixed auxiliary weight 0.03 | seed 1: Black **+0.225**, White +0.000; repeat: Black +0.075, White **-0.300** |
+
+The capture-only signal consistently pushed Black in the desired direction,
+but did so by sacrificing White/general play. It is therefore useful as an
+auxiliary diagnostic, not as a replacement value target. The long mixed run
+also exposed a checkpoint-selection defect: a tiny decisive-score increase at
+epoch 25 overwrote epoch 9 even though validation policy CE had deteriorated
+from 1.99 to 2.84; arena strength then collapsed. Future selection must apply
+a policy-loss/top-1 guard or Pareto rule instead of summing policy and sign
+minima without a regression bound.
+
+Implemented and tested infrastructure from this screen:
+
+- raw terminal provenance now emits `capture_results.npy` (`+/-1` only for
+  captures; move-cap and other non-captures are draws);
+- scalar value can retain the proven discounted target while a separately
+  sourced capture-WDL head trains as a low-weight auxiliary;
+- auxiliary checkpoints carry an explicit marker so inference cannot mistake
+  the WDL head for the engine's primary value;
+- optional zero-initialized side-specific attention policy adapters load and
+  round-trip correctly.
+
+Evidence: `v21_initial_screen_20260805.json`,
+`v21_attention128_confirmation_20260805.json`, and the five
+`v21_*capture_wdl*20260805.json` artifacts. Final verification: **532 passed,
+10 warnings, 3 subtests passed**. The best Black-leaning lead is
+`v21_mixed_capture_wdl_w003` (SHA-256
+`9b29cf111497483c44527edae64e6b29adbe81502aa14ac8c8f42e056e68c9af`), but
+it is rejected, not v21.
+
+---
+
+## 13. Promotion-aware policy screen (2026-08-05)
+
+The old 4096-action ABI encoded only source and destination, so all four
+promotion pieces shared one training cell and one network prior. The new
+opt-in ABI retains those 4096 legacy logits and adds 192 promotion cells:
+two colors, eight source files, three destination directions, and q/r/b/n.
+Old checkpoints still load unchanged, and the native/Python engines select the
+extended index only when a checkpoint carries the new head.
+
+The controlled corpus preserved every v20 position, value, split, policy
+weight, and non-promotion target exactly. Only 3,790 augmented promotion rows
+(1,895 originals) changed. `v21_promotion_policy_exact` loaded all 117 v20
+tensors unchanged, froze their parameters and BatchNorm buffers, and trained
+only a zero-initialized 1,548-parameter promotion delta.
+
+Held-out promotion-row metrics improved sharply:
+
+| split | full CE v20 -> candidate | full top-1 v20 -> candidate | promotion-choice CE |
+|---|---:|---:|---:|
+| validation (384) | 2.566 -> 1.665 | 7.8% -> 57.8% | 1.472 -> 0.982 |
+| test (344) | 2.470 -> 1.314 | 4.1% -> 64.5% | 1.453 -> 0.718 |
+
+The binding arena did not promote it. Against v20 it scored 0.5125 initially
+(White 0.575, Black 0.450), then 0.5000 on the required fresh confirmation
+(White 0.675, Black **0.325**). It scored 0.9375 against ramp and 0.950 against
+the heuristic, so general strength was retained, but the fixed 0.40 Black floor
+failed. V20 remains incumbent. Artifacts:
+`promotion_policy_metrics_20260805_185746.json` and
+`gate_v21_promotion_policy_exact_20260805_185732.json`.
+
+---
+
+## 14. Next
 
 1. **Post-E5 training ladder — complete, all rejected.** Base / e1500 /
    owner41 scored 0.250 / 0.100 / 0.075 as Black against `v19_B`; see §9.
-2. **Owner playtest `lc0b_attention_ema`** — automated evidence is complete
-   and passed twice against v19_B, with gains in both colors. Promote only if
-   the owner's qualitative play gate agrees.
+2. **V20 remains the promoted bar.** Do not promote any v21 screen checkpoint.
+   Policy-regression-safe checkpointing and distinct promotions are now done.
+   Next, keep v20 and the promotion head frozen and test a deterministic
+   post-promotion Black-only policy adapter; unlike the failed side adapter,
+   it must be exactly inactive outside the known conversion phase.
 3. **Curve control** — same-deck Python 200-sim read; trace a divergence only
    if that controlled comparison establishes one.
 4. **E6 / pruning conversation** — with the depth data, the plateau, and the

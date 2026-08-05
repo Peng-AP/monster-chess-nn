@@ -133,15 +133,23 @@ adds masked Huber regression on decisive trusted trajectories;
 `--legal-policy-mask` excludes illegal logits from policy loss and top-1;
 `--policy-head attention` selects the compact policy head; and
 `--ema-decay 0.999` validates and checkpoints an exponential weight average.
+`--promotion-policy` enables the backward-compatible 4288-logit policy that
+keeps q/r/b/n promotions distinct; its corpus must be built with
+`data_processor.py --promotion-aware-policy`. `--train-promotion-head-only`
+lifts an existing checkpoint and freezes every legacy parameter and BatchNorm
+buffer. Checkpoint selection can be bounded with
+`--max-policy-ce-regression` and `--max-side-top1-drop`.
 None of these flags changes the default recipe.
 
-Current approved bar (2026-08-05):
-`models/candidates/lc0b_attention_ema/best_value_net.pt`. It uses attention
-plus EMA on the exact v19_B recipe, passed the unchanged automated gate in
-both colors, and passed the owner playtest. The next confirmed candidate is
-`models/candidates/lc0b_attention_ema_wide64/best_value_net.pt`; widening only
-the attention channels improved both colors in two calibrated reads and now
-awaits its owner playtest. Historical checkpoints have not been replaced.
+Current promoted release and formal bar (2026-08-05):
+`models/fresh_start_v20/best_value_net.pt`. It is the preserved
+`lc0b_attention_ema_wide64` checkpoint: attention plus EMA on the exact v19_B
+recipe, with the attention query/key width increased from 32 to 64. It improved
+both colors over the approved 32-channel model in two calibrated reads, and the
+owner promoted it as v20. Historical checkpoints and its campaign copy remain
+intact. An 80-game equal-settings self-match at 400 sims measured a White score
+of 0.6938 and Black score of 0.3063 (47 White wins, 16 Black wins, 17 draws),
+so the current operating point remains materially White-skewed.
 
 Run one full generate → process → train → gate cycle:
 
@@ -167,7 +175,7 @@ times):
 
 ```bash
 python tools/match.py --model-a models/my_model/best_value_net.pt \
-    --model-b models/fresh_start_v17/best_value_net.pt --games 20
+    --model-b models/fresh_start_v20/best_value_net.pt --games 20
 ```
 
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent

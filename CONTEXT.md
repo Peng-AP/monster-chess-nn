@@ -36,40 +36,58 @@ unchanged, in `_get_white_actions`).
 
 ## 2. Where the project stands (2026-08-05)
 
-- **Incumbent: `models/fresh_start_v19`** (arm K), promoted 2026-08-02 after
-  automated evidence plus the owner's playtest.
-- **Formal gate bar: `models/candidates/v19_B`** — beats ramp
-  0.7625 pooled to v19's 0.7125, and beats v19 head-to-head 0.625 over 80
-  independent games (2.2 SE). E5 then beat v19 **0.575 twice** on independent
-  40-game reads under captures-only scoring + native search, and led every
-  shared cross-table comparison. `fresh_start_v19` remains the numbered
-  incumbent pending an owner promotion, but candidates gate against B.
-- **Successor candidate: `models/candidates/lc0b_attention_ema`.** It keeps
+- **Incumbent and formal gate bar: `models/fresh_start_v20`.** The owner
+  promoted the preserved `lc0b_attention_ema_wide64` checkpoint on 2026-08-05.
+  Future candidates must clear v20 twice without moving the established
+  0.40 per-color floor or 0.50 aggregate threshold.
+- **v20 lineage.** The 32-channel `models/candidates/lc0b_attention_ema` keeps
   v19_B's exact data and training recipe, changing only to the compact
   attention policy head plus EMA (`0.999`) validation/checkpoint weights. It
   passed the unchanged binding gate: against v19_B it scored **0.7125 overall,
   0.925 as White, 0.500 as Black**, then **0.7375 / 0.925 / 0.550** on the
   automatic fresh confirmation. It also scored 0.825 against ramp and 1.000
   against the fixed heuristic anchor. This is the strongest automated result
-  on record; promotion remains deliberately pending the owner's playtest, and
-  v19_B is preserved as the formal bar meanwhile.
+  on record at that stage and passed the owner's playtest.
 - **Owner gate passed 2026-08-05.** The owner found `lc0b_attention_ema` very
   strong on both sides, able to handle his White attack and vicious as White;
   only occasional spotty Black conversion moves remained. It is now the
   approved playing-strength bar for successor work (checkpoint preserved in
   place; no historical artifact was overwritten).
-- **Next candidate: `lc0b_attention_ema_wide64`.** The only change is widening
+- **Promoted v20 source: `lc0b_attention_ema_wide64`.** The only change is widening
   the attention query/key channels from 32 to 64. Against the approved model
   it improved both colors twice: calibrated **+0.050 Black / +0.025 White**
   at 40 games, 400 sims, then **+0.1625 Black / +0.0625 White** at 80 games,
-  800 sims. This candidate awaits the owner's playtest.
+  800 sims. The campaign copy and all prior bars remain preserved.
+- **v20 color-skew baseline.** An 80-game native self-match at 400 sims with
+  identical weights/search on both sides produced **47 White wins, 16 Black
+  wins, 17 draws**: White score **0.6938**, Black score **0.3063**. This is a
+  color baseline, not a head-to-head model-strength result.
+- **V21 screen closed without promotion (2026-08-05).** Attention widths 96
+  and 128, a side-specific attention adapter, capture-only WDL, and scalar +
+  capture-WDL auxiliary heads all failed repeatable positive deltas in both
+  colors. The best Black-leaning arm (`v21_mixed_capture_wdl_w003`) produced
+  +0.225 Black / +0.000 White once but repeated at +0.075 / **-0.300**.
+  V20 remains incumbent. Capture terminal labels are useful pressure toward
+  Black conversion but currently trade away White/general strength; see
+  `REPORT.md` §12 and the `v21_*_20260805.json` artifacts.
+- **Promotion-aware policy is implemented; first isolated candidate rejected
+  (2026-08-05).** The legacy 4096 source/destination policy merged q/r/b/n
+  promotions. The opt-in 4288 ABI adds 192 distinct promotion logits in both
+  Python and native search while old checkpoints remain compatible. A frozen
+  v20 lift trained only the 1,548-parameter promotion delta on 3,790 augmented
+  rows. Held-out full-policy top-1 on promotion rows rose 7.8% -> 57.8% (val)
+  and 4.1% -> 64.5% (test), but the binding gate was 0.5125 then 0.5000 versus
+  v20; confirmation Black scored 0.325 below the 0.40 floor. Keep the
+  representation fix, reject `v21_promotion_policy_exact` as v21, and combine
+  it only with a separately gated Black-conversion improvement.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black
   conversion is a big problem.**"*
 - **The live problem is Black conversion** — above all the post-promotion
   class (law 1a). The campaign targeting it is `DIRECTIVE.md`.
-- **The v20 campaign closed 2026-08-03: both arms rejected** (`v20` Black 0.10
+- **The earlier, unpromoted v20-named experiment closed 2026-08-03: both arms
+  rejected** (`v20` Black 0.10
   vs v19; `v20w` PASS-then-FAIL — its gate pass was move-limit relabels, Black
   0.50 → **0.30** under captures-only scoring; both in `models/rejected/`).
   Asymmetric generation at this scale did not produce a Black that converts

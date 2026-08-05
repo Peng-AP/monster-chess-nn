@@ -1,0 +1,41 @@
+{
+  "candidate": "models/candidates/v21_promotion_policy_exact/best_value_net.pt",
+  "incumbent": "models/fresh_start_v20/best_value_net.pt",
+  "data_dir": "data/processed/combined_v19_B_r50h60_promo",
+  "device": "cuda",
+  "splits": {
+    "val": {
+      "incumbent_zero_lift": {
+        "rows": 384,
+        "full_ce": 2.5658725102742515,
+        "full_top1": 0.078125,
+        "promotion_choice_ce": 1.4718006054560344,
+        "promotion_choice_top1": 0.84375
+      },
+      "candidate": {
+        "rows": 384,
+        "full_ce": 1.6653228203455608,
+        "full_top1": 0.578125,
+        "promotion_choice_ce": 0.9821253617604574,
+        "promotion_choice_top1": 0.8177083333333334
+      }
+    },
+    "test": {
+      "incumbent_zero_lift": {
+        "rows": 344,
+        "full_ce": 2.469937257988508,
+        "full_top1": 0.040697674418604654,
+        "promotion_choice_ce": 1.4530636765236078,
+        "promotion_choice_top1": 0.9069767441860465
+      },
+      "candidate": {
+        "rows": 344,
+        "full_ce": 1.3142108251882154,
+        "full_top1": 0.6453488372093024,
+        "promotion_choice_ce": 0.7184020086776378,
+        "promotion_choice_top1": 0.877906976744186
+      }
+    }
+  },
+  "timestamp": "2026-08-05T18:57:46"
+}

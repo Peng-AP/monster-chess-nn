@@ -1,12 +1,12 @@
 # DIRECTIVE — the engine rewrite (2026-08-03)
 
 **Status (2026-08-05): complete through E5.** The native engine is the
-default, the captures-only re-baseline established v19_B as the formal bar,
-and the follow-on Black-first architecture campaign has produced
-`lc0b_attention_ema`, which passed both the binding automated gate and the
-owner playtest. Its 64-channel successor has passed two calibrated reads and
-awaits its owner playtest. Current evidence and next actions are in `REPORT.md`; the
-remainder of this document preserves the rewrite contract and E6 scope.
+default, the captures-only re-baseline established v19_B as the historical
+bar, and the follow-on Black-first architecture campaign produced the
+attention+EMA successor. Its 64-channel Wide64 checkpoint improved both colors
+twice and has now been promoted by the owner as `fresh_start_v20`, the current
+formal bar. Current evidence and next actions are in `REPORT.md`; the remainder
+of this document preserves the rewrite contract and E6 scope.
 
 **Owner's call: the residual problem may be compute.** Search is Python-bound
 (CONTEXT law 18: NN forward 14% at batch 16 and 7.7% at batch 256,
@@ -530,6 +530,11 @@ fix and is the natural moment for the owner to **settle the bar decision**
 v19_B survives captures-only/native. v19_B beat v19 0.575 twice on disjoint
 40-game reads and led the heuristic anchor 0.762 vs 0.738. The gate bar moves
 to v19_B; the numbered incumbent remains v19 pending an owner promotion.
+
+**PROMOTED 2026-08-05.** The later LC0 attention+EMA campaign cleared v19_B,
+then Wide64 improved both colors over the approved 32-channel model on two
+calibrated reads. The owner promoted that preserved checkpoint as v20. Future
+gates target `fresh_start_v20`; thresholds remain unchanged.
 
 **Queued for E6 by the owner, 2026-08-03: pruning.** Raised after the depth
 measurement below, and the measurement is the argument for it.
