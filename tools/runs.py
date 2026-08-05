@@ -13,8 +13,9 @@ Usage:
     py -3 tools/runs.py status
     py -3 tools/runs.py tail --name curve
 
-`status` is the one to look at: every run, whether it is alive, how long it has
-been going, and its most recent progress line.
+`status` is the one to look at: active and recently completed runs, how long
+they have been going, and their most recent progress line. Older entries are
+hidden automatically; use ``status --all`` when the history is useful.
 """
 import argparse
 import json
@@ -25,6 +26,8 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS = os.path.join(ROOT, "logs")
+DEFAULT_RECENT_MINUTES = 60
+DEFAULT_EXTERNAL_STALE_MINUTES = 30
 
 
 def _alive(pid):
@@ -64,6 +67,34 @@ def _last_progress(path, lookback=200):
     return lines[-1]
 
 
+def _started_epoch(started):
+    try:
+        return time.mktime(time.strptime(started, "%Y-%m-%dT%H:%M:%S"))
+    except Exception:
+        return 0
+
+
+def _last_activity(meta_path, log_path, started_epoch):
+    """Best available approximation of when a run last did useful work."""
+    candidates = [started_epoch]
+    for path in (meta_path, log_path):
+        try:
+            candidates.append(os.path.getmtime(path))
+        except OSError:
+            pass
+    return max(candidates)
+
+
+def _run_state(meta, last_activity, now, external_stale_seconds):
+    """Classify a record without letting pid-less adopted jobs live forever."""
+    pid = meta.get("pid")
+    if pid is not None:
+        return "RUNNING" if _alive(pid) else "finished"
+    if now - last_activity <= external_stale_seconds:
+        return "external"
+    return "stale"
+
+
 def cmd_start(args):
     os.makedirs(LOGS, exist_ok=True)
     if not args.command:
@@ -86,36 +117,50 @@ def cmd_start(args):
     print(f"{args.name}: pid {proc.pid}, logging to logs/{args.name}.log")
 
 
-def cmd_status(_args):
+def cmd_status(args):
     os.makedirs(LOGS, exist_ok=True)
     metas = sorted(f for f in os.listdir(LOGS) if f.endswith(".json"))
     if not metas:
         print("no runs recorded")
         return
-    print(f"{'run':22s} {'state':9s} {'elapsed':>9s}  progress")
-    print("-" * 100)
+    now = time.time()
+    recent_seconds = max(0, args.recent_minutes) * 60
+    external_stale_seconds = max(0, args.external_stale_minutes) * 60
+    records = []
     for meta_name in metas:
+        meta_path = os.path.join(LOGS, meta_name)
         try:
-            with open(os.path.join(LOGS, meta_name), encoding="utf-8") as fh:
+            with open(meta_path, encoding="utf-8") as fh:
                 meta = json.load(fh)
         except Exception:
             continue
         name = meta.get("name", meta_name[:-5])
-        started = meta.get("started")
-        try:
-            elapsed = time.time() - time.mktime(
-                time.strptime(started, "%Y-%m-%dT%H:%M:%S"))
-        except Exception:
-            elapsed = 0
-        # A run adopted from outside this tool has no pid to check, so its
-        # state is unknown -- reporting "finished" would be a guess, and the
-        # wrong one while it is still going.
-        if meta.get("pid") is None:
-            state = "external"
-        else:
-            state = "RUNNING" if _alive(meta["pid"]) else "finished"
-        progress = _last_progress(os.path.join(LOGS, f"{name}.log"))[:70]
+        started_epoch = _started_epoch(meta.get("started"))
+        log_path = os.path.join(LOGS, f"{name}.log")
+        last_activity = _last_activity(meta_path, log_path, started_epoch)
+        state = _run_state(meta, last_activity, now, external_stale_seconds)
+        elapsed = max(0, now - started_epoch) if started_epoch else 0
+        progress = _last_progress(log_path)[:70]
+        records.append((name, state, elapsed, last_activity, progress))
+
+    visible = [record for record in records if (
+        args.all or record[1] in ("RUNNING", "external")
+        or now - record[3] <= recent_seconds
+    )]
+    hidden = len(records) - len(visible)
+    if not visible:
+        suffix = (f" ({hidden} older entr{'y' if hidden == 1 else 'ies'} hidden; "
+                  "use status --all for history)") if hidden else ""
+        print(f"no active or recent runs{suffix}")
+        return
+
+    print(f"{'run':22s} {'state':9s} {'elapsed':>9s}  progress")
+    print("-" * 100)
+    for name, state, elapsed, _last_activity_epoch, progress in visible:
         print(f"{name:22s} {state:9s} {elapsed / 60:8.1f}m  {progress}")
+    if hidden:
+        print(f"\n{hidden} older entr{'y' if hidden == 1 else 'ies'} hidden; "
+              "use status --all for history")
 
 
 def cmd_tail(args):
@@ -140,7 +185,18 @@ def main():
     start.add_argument("command", nargs=argparse.REMAINDER)
     start.set_defaults(func=cmd_start)
 
-    status = sub.add_parser("status", help="every run: alive?, elapsed, progress")
+    status = sub.add_parser(
+        "status", help="active/recent runs: alive?, elapsed, progress")
+    status.add_argument(
+        "--all", action="store_true", help="include old finished/stale history")
+    status.add_argument(
+        "--recent-minutes", type=float, default=DEFAULT_RECENT_MINUTES,
+        help=f"show completed runs this long (default: {DEFAULT_RECENT_MINUTES})")
+    status.add_argument(
+        "--external-stale-minutes", type=float,
+        default=DEFAULT_EXTERNAL_STALE_MINUTES,
+        help=("consider pid-less external runs stale after no log activity "
+              f"(default: {DEFAULT_EXTERNAL_STALE_MINUTES})"))
     status.set_defaults(func=cmd_status)
 
     tail = sub.add_parser("tail", help="last lines of one run's log")

@@ -37,9 +37,9 @@ def leg(white, black, games=40):
 
 def healthy():
     """A candidate that has cleared everything, confirmation leg included."""
-    return {"vs_v19": leg(0.60, 0.55), "vs_ramp": leg(0.70, 0.60),
+    return {gate.BAR: leg(0.60, 0.55), "vs_ramp": leg(0.70, 0.60),
             "anchor": leg(0.80, 0.50, games=20),
-            "vs_v19_confirm": leg(0.60, 0.55)}
+            gate.CONFIRM_LEG: leg(0.60, 0.55)}
 
 
 class TestThresholds(unittest.TestCase):
@@ -49,11 +49,11 @@ class TestThresholds(unittest.TestCase):
 
     def test_the_bar_is_the_strongest_model_on_record(self):
         # Owner 2026-08-01: every model must be definitively better than the
-        # last. 'The last' was ramp while ramp was strongest; v19 beat it on
-        # 2026-08-02, so the bar moved with the rule.
-        self.assertEqual(gate.BAR, "vs_v19")
-        self.assertIn("vs_v19", gate.AGGREGATE_LEGS)
-        self.assertIn("fresh_start_v19", gate.INCUMBENT)
+        # last. E5 put v19_B over v19 twice under the current scoring/engine.
+        self.assertEqual(gate.BAR, "vs_v19_B")
+        self.assertIn(gate.BAR, gate.AGGREGATE_LEGS)
+        self.assertIn("v19_B", gate.BAR_MODEL)
+        self.assertIn("fresh_start_v19", gate.NUMBERED_INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):
@@ -76,23 +76,23 @@ class TestThresholds(unittest.TestCase):
 class TestTheBar(unittest.TestCase):
     def test_losing_to_the_bar_fails_however_good_the_rest_is(self):
         legs = healthy()
-        legs["vs_v19"] = leg(0.30, 0.25)
+        legs[gate.BAR] = leg(0.30, 0.25)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_v19" in f for f in failures), failures)
+        self.assertTrue(any(gate.BAR in f for f in failures), failures)
 
     def test_level_with_the_bar_is_not_enough(self):
         # Comfortably past ramp and the anchor, but only level with the bar.
         legs = healthy()
-        legs["vs_v19"] = leg(0.55, 0.45)
-        self.assertEqual(legs["vs_v19"]["a_score"], 0.50)
+        legs[gate.BAR] = leg(0.55, 0.45)
+        self.assertEqual(legs[gate.BAR]["a_score"], 0.50)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_v19 aggregate" in f for f in failures), failures)
+        self.assertTrue(any(f"{gate.BAR} aggregate" in f for f in failures), failures)
 
     def test_an_unplayed_bar_leg_cannot_pass(self):
         legs = healthy()
-        del legs["vs_v19"]
+        del legs[gate.BAR]
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
         self.assertTrue(any("not played" in f for f in failures), failures)
@@ -101,10 +101,10 @@ class TestTheBar(unittest.TestCase):
         # The first bar leg passed; the replay on fresh openings did not.
         # "Definitively better" means both, or it is one lucky opening set.
         legs = healthy()
-        legs["vs_v19_confirm"] = leg(0.50, 0.45)
+        legs[gate.CONFIRM_LEG] = leg(0.50, 0.45)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_v19_confirm" in f for f in failures), failures)
+        self.assertTrue(any(gate.CONFIRM_LEG in f for f in failures), failures)
 
     def test_confirmation_uses_a_different_opening_seed(self):
         # Replaying the same seeds would confirm nothing -- it is the sampled
@@ -143,14 +143,14 @@ class TestFailures(unittest.TestCase):
     def test_side_collapse_fails_behind_a_healthy_aggregate(self):
         # 0.95 White / 0.30 Black aggregates to a respectable 0.625.
         legs = healthy()
-        legs["vs_v19"] = leg(0.95, 0.30)
-        self.assertGreater(legs["vs_v19"]["a_score"], 0.60)
+        legs[gate.BAR] = leg(0.95, 0.30)
+        self.assertGreater(legs[gate.BAR]["a_score"], 0.60)
         verdict, failures, _ = gate.evaluate_legs(legs)
         self.assertEqual(verdict, "FAIL")
-        self.assertTrue(any("vs_v19 black" in f for f in failures), failures)
+        self.assertTrue(any(f"{gate.BAR} black" in f for f in failures), failures)
 
     def test_every_leg_is_checked_not_just_the_incumbent(self):
-        for name in ("vs_v19", "vs_ramp", "anchor"):
+        for name in (gate.BAR, "vs_ramp", "anchor"):
             legs = healthy()
             games = legs[name]["a_as_white"]["games"] * 2
             legs[name] = leg(0.30, 0.90, games=games)
@@ -269,7 +269,7 @@ class TestRehearsalCannotPass(unittest.TestCase):
 
     def test_full_protocol_is_twenty_per_side_against_both_models(self):
         games = {n: g for n, _o, g in gate.FULL_LEGS}
-        self.assertEqual(games["vs_v19"], 40)
+        self.assertEqual(games[gate.BAR], 40)
         self.assertEqual(games["vs_ramp"], 40)
 
     def test_rehearsal_verdict_is_never_pass(self):

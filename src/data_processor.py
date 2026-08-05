@@ -288,6 +288,75 @@ def value_weight_for_record(rec):
     return 1.0
 
 
+def moves_left_weight_for_record(rec):
+    """Weight for the optional moves-left auxiliary target.
+
+    An explicit weight always wins. Otherwise only decisive, trusted value
+    trajectories teach game length. This excludes capped draws and preserves
+    the policy-only contract of imported sources such as PlayStrategy.
+    """
+    if "moves_left_weight" in rec:
+        return float(rec["moves_left_weight"])
+    # Only exact capture outcomes are trustworthy duration targets. The
+    # move-limit proxy is +/-0.5, and curriculum opinions can be fractional;
+    # teaching their distance would make the head predict time-to-cap/tier.
+    if abs(float(rec.get("game_result", 0.0))) < 0.999:
+        return 0.0
+    return value_weight_for_record(rec)
+
+
+def _segment_bounds(records):
+    """Return half-open bounds for repeated segments stored in one file."""
+    if not records:
+        return []
+    if any("segment" in rec for rec in records):
+        starts = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("segment") != records[i - 1].get("segment")]
+    else:
+        start_fen = records[0].get("fen")
+        starts = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("fen") == start_fen]
+    return list(zip(starts, starts[1:] + [len(records)]))
+
+
+def _moves_left_targets(records):
+    """Remaining decisions, including the decision represented by each row."""
+    out = np.zeros((len(records),), dtype=np.float32)
+    for a, b in _segment_bounds(records):
+        for i in range(a, b):
+            explicit = records[i].get("plies_to_end")
+            remaining_after = int(explicit) if explicit is not None else b - 1 - i
+            out[i] = max(1, remaining_after + 1)
+    return out
+
+
+def _legal_policy_mask_packed(rec):
+    """Packed 4096-bit legal-move mask for one half-move training record."""
+    from monster_chess import MonsterChessGame
+
+    is_white = rec["current_player"] == "white"
+    game = MonsterChessGame(fen=rec["fen"])
+    game.is_white_turn = is_white
+    game.board.turn = is_white
+    game.white_half_pending = bool(rec.get("half"))
+    mask = np.zeros((POLICY_SIZE,), dtype=np.uint8)
+    if not is_white:
+        actions = game._get_black_actions(truncate_wins=False)
+    elif game.white_half_pending:
+        actions = game._white_second_half_moves(truncate_wins=False)
+    else:
+        actions = game._white_single_moves()
+    indices = [move_to_index(move) for move in actions]
+    if indices:
+        mask[indices] = 1
+    mirrored_indices = [mirror_move_index(index) for index in indices]
+    mirrored = np.zeros_like(mask)
+    if mirrored_indices:
+        mirrored[mirrored_indices] = 1
+    return (np.packbits(mask), np.packbits(mirrored),
+            frozenset(indices), frozenset(mirrored_indices))
+
+
 BLACK_WEIGHT_BALANCED = 1.75
 """Multiplier that roughly equalises the two sides' gradient share.
 
@@ -309,7 +378,10 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
                              value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
                              input_channels=None, mask_human_ai=True,
-                             black_weight=1.0):
+                             black_weight=1.0, include_moves_left=False,
+                             include_legal_masks=False,
+                             mask_illegal_policy_targets=True,
+                             conversion_stats=None):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
@@ -317,13 +389,18 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
     policy_targets = []
     policy_weights = []
     value_weights = []
+    moves_left_targets = []
+    moves_left_weights = []
+    legal_masks_packed = []
 
     for game in tqdm(games, desc="Converting", leave=False):
         discounted = _discounted_results(
             game["records"], value_horizon, value_floor,
             mode=value_discount_mode,
         )
-        for rec, gr in zip(game["records"], discounted):
+        game_moves_left = _moves_left_targets(game["records"])
+        for rec, gr, moves_left in zip(
+                game["records"], discounted, game_moves_left):
             is_white = rec["current_player"] == "white"
             half_pending = bool(rec.get("half"))
             tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white,
@@ -336,10 +413,28 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             pol = policy_dict_to_target(rec["policy"], is_white)
             pol_weight = policy_weight_for_record(rec, mask_human_ai=mask_human_ai)
             val_weight = value_weight_for_record(rec)
+            ml_weight = moves_left_weight_for_record(rec)
+            if include_legal_masks:
+                (legal_mask, mirrored_legal_mask,
+                 legal_indices, _mirrored_legal_indices) = (
+                    _legal_policy_mask_packed(rec))
+                target_indices = frozenset(np.flatnonzero(pol > 0))
+                if pol_weight > 0 and not target_indices.issubset(legal_indices):
+                    illegal = sorted(target_indices - legal_indices)
+                    if not mask_illegal_policy_targets:
+                        raise ValueError(
+                            "policy target contains illegal move indices "
+                            f"{illegal[:8]} at {rec['fen']} "
+                            f"(half={rec.get('half', 0)})")
+                    pol_weight = 0.0
+                    if conversion_stats is not None:
+                        key = "illegal_policy_targets_masked"
+                        conversion_stats[key] = conversion_stats.get(key, 0) + 1
             if black_weight != 1.0 and not is_white:
                 # Scales, so an explicitly masked record (weight 0) stays masked.
                 pol_weight *= black_weight
                 val_weight *= black_weight
+                ml_weight *= black_weight
 
             tensors.append(tensor)
             values.append(val)
@@ -347,6 +442,10 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             policy_targets.append(pol)
             policy_weights.append(pol_weight)
             value_weights.append(val_weight)
+            moves_left_targets.append(moves_left)
+            moves_left_weights.append(ml_weight)
+            if include_legal_masks:
+                legal_masks_packed.append(legal_mask)
             if augment:
                 tensors.append(mirror_tensor(tensor))
                 values.append(val)
@@ -354,6 +453,10 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                 policy_targets.append(mirror_policy(pol))
                 policy_weights.append(pol_weight)
                 value_weights.append(val_weight)
+                moves_left_targets.append(moves_left)
+                moves_left_weights.append(ml_weight)
+                if include_legal_masks:
+                    legal_masks_packed.append(mirrored_legal_mask)
 
     if tensors:
         X = np.array(tensors, dtype=np.float32)
@@ -362,6 +465,9 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_policy = np.array(policy_targets, dtype=np.float32)
         y_policy_weight = np.array(policy_weights, dtype=np.float32)
         y_value_weight = np.array(value_weights, dtype=np.float32)
+        y_moves_left = np.array(moves_left_targets, dtype=np.float32)
+        y_moves_left_weight = np.array(moves_left_weights, dtype=np.float32)
+        y_legal_masks = np.array(legal_masks_packed, dtype=np.uint8)
     else:
         channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
         X = np.zeros((0, 8, 8, channels), dtype=np.float32)
@@ -370,7 +476,15 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
         y_policy_weight = np.zeros((0,), dtype=np.float32)
         y_value_weight = np.zeros((0,), dtype=np.float32)
-    return X, y_value, y_result, y_policy, y_policy_weight, y_value_weight
+        y_moves_left = np.zeros((0,), dtype=np.float32)
+        y_moves_left_weight = np.zeros((0,), dtype=np.float32)
+        y_legal_masks = np.zeros((0, POLICY_SIZE // 8), dtype=np.uint8)
+    base = (X, y_value, y_result, y_policy, y_policy_weight, y_value_weight)
+    if include_moves_left:
+        base = base + (y_moves_left, y_moves_left_weight)
+    if include_legal_masks:
+        base = base + (y_legal_masks,)
+    return base
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -417,6 +531,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print("Game split integrity: PASS (no overlap across train/val/test game IDs)")
     print(f"  Games: train={len(train_games)}, val={len(val_games)}, test={len(test_games)}")
     print(f"  Processing positions (augment={augment})...")
+    conversion_stats = {}
 
     if value_floor < 1.0:
         if value_discount_mode == "progress":
@@ -425,18 +540,24 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         else:
             print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 "
                   f"over last {value_horizon} plies")
-    X_train, yv_train, yr_train, yp_train, ypw_train, yvw_train = _convert_games_to_arrays(
+    (X_train, yv_train, yr_train, yp_train, ypw_train, yvw_train,
+     yml_train, ymlw_train, ylm_train) = _convert_games_to_arrays(
         train_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai,
-        black_weight=black_weight)
-    X_val, yv_val, yr_val, yp_val, ypw_val, yvw_val = _convert_games_to_arrays(
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, conversion_stats=conversion_stats)
+    (X_val, yv_val, yr_val, yp_val, ypw_val, yvw_val,
+     yml_val, ymlw_val, ylm_val) = _convert_games_to_arrays(
         val_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai,
-        black_weight=black_weight)
-    X_test, yv_test, yr_test, yp_test, ypw_test, yvw_test = _convert_games_to_arrays(
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, conversion_stats=conversion_stats)
+    (X_test, yv_test, yr_test, yp_test, ypw_test, yvw_test,
+     yml_test, ymlw_test, ylm_test) = _convert_games_to_arrays(
         test_games, augment, value_horizon, value_floor, value_discount_mode,
         input_channels=input_channels, mask_human_ai=mask_human_ai,
-        black_weight=black_weight)
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, conversion_stats=conversion_stats)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
@@ -444,6 +565,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
     y_policy_weight = np.concatenate([ypw_train, ypw_val, ypw_test], axis=0)
     y_value_weight = np.concatenate([yvw_train, yvw_val, yvw_test], axis=0)
+    y_moves_left = np.concatenate([yml_train, yml_val, yml_test], axis=0)
+    y_moves_left_weight = np.concatenate(
+        [ymlw_train, ymlw_val, ymlw_test], axis=0)
+    y_legal_masks = np.concatenate([ylm_train, ylm_val, ylm_test], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
     np.save(os.path.join(output_dir, "positions.npy"), X)
@@ -452,6 +577,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "policies.npy"), y_policy)
     np.save(os.path.join(output_dir, "policy_weights.npy"), y_policy_weight)
     np.save(os.path.join(output_dir, "value_weights.npy"), y_value_weight)
+    np.save(os.path.join(output_dir, "moves_left.npy"), y_moves_left)
+    np.save(os.path.join(output_dir, "moves_left_weights.npy"),
+            y_moves_left_weight)
+    np.save(os.path.join(output_dir, "legal_masks_packed.npy"), y_legal_masks)
 
     n_train, n_val, n_test = len(X_train), len(X_val), len(X_test)
     splits = {
@@ -473,6 +602,10 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             "value_floor": float(value_floor),
             "input_channels": int(X.shape[3]) if len(X) else None,
             "total_positions": int(len(X)),
+            "moves_left_target": "remaining recorded decisions including current",
+            "moves_left_trust": "decisive records with positive value weight",
+            "legal_policy_mask": "4096 bits per row, numpy packbits big-endian",
+            "conversion_stats": conversion_stats,
         }, f, indent=2)
 
     print(f"\nSaved to {output_dir}:")
@@ -484,6 +617,12 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
           f"(masked={int((y_policy_weight == 0).sum())})")
     print(f"  value_weights.npy:  {y_value_weight.shape} "
           f"(masked={int((y_value_weight == 0).sum())})")
+    print(f"  moves_left.npy:     {y_moves_left.shape}")
+    print(f"  moves_left_weights.npy: {y_moves_left_weight.shape} "
+          f"(masked={int((y_moves_left_weight == 0).sum())})")
+    print(f"  legal_masks_packed.npy: {y_legal_masks.shape} uint8")
+    print(f"  invalid enabled policy rows masked: "
+          f"{conversion_stats.get('illegal_policy_targets_masked', 0)}")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 

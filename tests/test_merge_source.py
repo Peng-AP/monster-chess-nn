@@ -50,8 +50,9 @@ class TestMerge(unittest.TestCase):
         r = run("--base-dir", str(self.base), "--source", str(self.src),
                 "--as", "ps_monster", "--out-dir", str(out), *extra)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        recs = [json.loads(l) for l in
-                open(out / "ps_monster" / "ps_a.jsonl", encoding="utf-8") if l.strip()]
+        lines = (out / "ps_monster" / "ps_a.jsonl").read_text(
+            encoding="utf-8").splitlines()
+        recs = [json.loads(line) for line in lines if line.strip()]
         return out, recs
 
     def test_value_weight_zero_is_stamped_on_every_record(self):
@@ -102,6 +103,36 @@ class TestMerge(unittest.TestCase):
                 "--as", "ps_monster", "--out-dir", str(out))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("refusing to overwrite", r.stdout + r.stderr)
+
+    def test_optional_dedupe_skips_base_overlap_and_internal_duplicates(self):
+        duplicate = [
+            {"fen": "p1", "policy": {"a2a3": 1.0}, "game_result": 1,
+             "policy_weight": 1.0, "value_weight": 0.0},
+            {"fen": "p2", "policy": {"b2b3": 1.0}, "game_result": 1,
+             "policy_weight": 0.0, "value_weight": 0.0},
+        ]
+        write_jsonl(self.base / "old" / "same_game.jsonl", duplicate)
+        write_jsonl(self.src / "ps_dup.jsonl", [
+            {k: v for k, v in rec.items() if k != "value_weight"}
+            for rec in duplicate
+        ])
+        write_jsonl(self.src / "ps_new.jsonl", [
+            {"fen": "new", "policy": {"c2c3": 1.0}, "game_result": -1}
+        ])
+        out = self.tmp / "deduped"
+        result = run(
+            "--base-dir", str(self.base), "--source", str(self.src),
+            "--as", "expanded", "--out-dir", str(out),
+            "--value-weight", "0", "--dedupe-against-base",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([path.name for path in (out / "expanded").glob("*.jsonl")],
+                         ["ps_new.jsonl"])
+        manifest = json.loads((out / "corpus_manifest.json").read_text())
+        entry = manifest["merged_sources"][0]
+        self.assertEqual(entry["games"], 1)
+        self.assertEqual(entry["duplicate_games_skipped"], 2)
+        self.assertTrue(entry["dedupe_against_base"])
 
 
 if __name__ == "__main__":

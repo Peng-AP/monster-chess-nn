@@ -276,12 +276,18 @@ class MonsterChessGame:
             return self._white_second_half_moves()
         return self._white_single_moves()
 
-    def _white_second_half_moves(self):
-        """White's legal second half-moves: king-safe ones, else all (forced blunder)."""
+    def _white_second_half_moves(self, truncate_wins=True):
+        """White's legal second halves: wins first, then safe/forced moves.
+
+        Search keeps the established winning-capture shortcut. Data processing
+        requests the complete set so every genuinely legal policy target can be
+        represented by its training mask.
+        """
         self.board.turn = chess.WHITE
         candidates = list(self.board.pseudo_legal_moves)
         if not candidates:
             return []
+        wins = []
         safe = []
         allm = []
         for m2 in candidates:
@@ -290,13 +296,16 @@ class MonsterChessGame:
             # with White's own king left attacked (the game is already over).
             if self.board.king(chess.BLACK) is None:
                 self.board.pop()
-                return [m2]
+                if truncate_wins:
+                    return [m2]
+                wins.append(m2)
+                continue
             allm.append(m2)
             wk = self.board.king(chess.WHITE)
             if wk is not None and not self.board.is_attacked_by(chess.BLACK, wk):
                 safe.append(m2)
             self.board.pop()
-        return safe if safe else allm
+        return wins + (safe if safe else allm)
 
     def apply_search_action(self, action):
         """Apply one half-move (or a Black move) in-place and advance state."""

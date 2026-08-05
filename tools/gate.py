@@ -12,12 +12,12 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
-* **The bar is the incumbent, `fresh_start_v19`** (owner, 2026-08-01: "Every
-  model should be better than the last, definitively. Last should be ramp.").
-  It was ramp until 2026-08-02, when v19 was promoted for beating it. A
-  candidate must beat v19 on aggregate, clear the per-side floor on every leg,
-  and then beat v19 *again* on a fresh opening seed. `fresh_start_v18_ramp`
-  remains a floor-bearing leg -- a distinct style, and free to keep.
+* **The bar is the strongest engine on record, `v19_B`.** E5 re-measured the
+  ladder under captures-only scoring on the native engine; v19_B beat the
+  numbered incumbent v19 by 0.575 on each of two independent 40-game reads.
+  A candidate must beat v19_B on aggregate, clear the per-side floor on every
+  leg, and then beat v19_B *again* on a fresh opening seed.
+  `fresh_start_v18_ramp` remains a floor-bearing leg -- a distinct style.
 * Per-side scores are the verdict; aggregates are reported but never decide a
   leg. Aggregates masking a per-side collapse has burned this project four
   times (law 8).
@@ -50,15 +50,16 @@ SIMS = 400
 # Until 2026-08-02 the bar was fresh_start_v18_ramp: v17 held the version
 # number, but ramp was the strongest engine on record, so a candidate had to
 # beat *it*.
-# 2026-08-02: v19 promoted, so "the last" is no longer ramp -- v19 beat it
-# (0.7125 pooled over 40 games/side). The bar moves with the rule, not with
-# sentiment: a candidate must now beat the INCUMBENT, and ramp stays as a
-# second floor-bearing opponent because it is a distinct playing style and
-# costs nothing to keep. This STRENGTHENS the gate; no threshold moved.
-BAR = "vs_v19"
-AGGREGATE_LEGS = ("vs_v19", "vs_ramp")
+# 2026-08-04 E5: captures-only native re-baseline. v19_B beat v19 0.575 twice
+# on disjoint 40-game samples and led every shared comparison. The strongest
+# engine, not the numbered release label, is the bar. No threshold moved.
+BAR = "vs_v19_B"
+AGGREGATE_LEGS = ("vs_v19_B", "vs_ramp")
 
-INCUMBENT = os.path.join(ROOT, "models", "fresh_start_v19", "best_value_net.pt")
+NUMBERED_INCUMBENT = os.path.join(
+    ROOT, "models", "fresh_start_v19", "best_value_net.pt")
+BAR_MODEL = os.path.join(
+    ROOT, "models", "candidates", "v19_B", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -67,17 +68,17 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v19_confirm"
+CONFIRM_LEG = "vs_v19_B_confirm"
 CONFIRM_SEED_OFFSET = 424242
 
 # (leg name, opponent path or None for the heuristic anchor, games)
 FULL_LEGS = [
-    ("vs_v19", INCUMBENT, 40),
+    ("vs_v19_B", BAR_MODEL, 40),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v19", INCUMBENT, 4),
+    ("vs_v19_B", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]
@@ -205,14 +206,20 @@ def main():
                          "MONSTER_ENGINE or python. Thresholds are untouched.")
     ap.add_argument("--seed", type=int, default=20260801)
     ap.add_argument("--workers", type=int, default=None)
+    ap.add_argument("--sims", type=int, default=SIMS,
+                    help="search simulations per move (default: %(default)s); "
+                         "verdict thresholds are unchanged")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     args = ap.parse_args()
 
     if not os.path.exists(args.model):
         ap.error(f"no such model: {args.model}")
 
+    if args.sims <= 0:
+        ap.error("--sims must be positive")
+
     out = run_gate(args.model, args.protocol, args.seed, args.workers,
-                   engine=args.engine)
+                   sims=args.sims, engine=args.engine)
 
     os.makedirs(args.out_dir, exist_ok=True)
     tag = "gate" if out["binding"] else "gate_rehearsal"
