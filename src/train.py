@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 import os
 import random
@@ -20,9 +21,11 @@ from config import (
     PROCESSED_DATA_DIR, MODEL_DIR,
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
-    POLICY_HEAD_CHANNELS, STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
+    POLICY_HEAD_CHANNELS, POLICY_HEAD_TYPE, POLICY_ATTENTION_CHANNELS,
+    STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
     USE_SE_BLOCKS, SE_REDUCTION,
     SPATIAL_VALUE_HEAD, VALUE_HEAD_CONV_CHANNELS,
+    USE_MOVES_LEFT_HEAD, MOVES_LEFT_HEAD_CHANNELS, MOVES_LEFT_LOSS_WEIGHT,
 )
 
 # Input channels = last dim of the current position encoding.
@@ -80,6 +83,28 @@ def build_optimizer(model, lr, weight_decay):
         lr=lr,
     )
     return optimizer, len(decay_params), len(no_decay_params)
+
+
+class ModelEMA:
+    """Exponential moving average of parameters and floating-point buffers."""
+    def __init__(self, model, decay):
+        self.decay = float(decay)
+        if not 0.0 < self.decay < 1.0:
+            raise ValueError("EMA decay must be in (0, 1)")
+        self.module = copy.deepcopy(model).eval()
+        for parameter in self.module.parameters():
+            parameter.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model):
+        ema_state = self.module.state_dict()
+        model_state = model.state_dict()
+        for name, ema_value in ema_state.items():
+            source = model_state[name].detach()
+            if ema_value.is_floating_point():
+                ema_value.mul_(self.decay).add_(source, alpha=1.0 - self.decay)
+            else:
+                ema_value.copy_(source)
 
 
 def _wdl_expectation_from_logits(logits):
@@ -147,6 +172,8 @@ class DualHeadNet(nn.Module):
         self,
         input_channels=IN_CHANNELS,
         policy_head_channels=POLICY_HEAD_CHANNELS,
+        policy_head_type=POLICY_HEAD_TYPE,
+        policy_attention_channels=POLICY_ATTENTION_CHANNELS,
         stem_channels=STEM_CHANNELS,
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
         use_se_blocks=USE_SE_BLOCKS,
@@ -155,18 +182,24 @@ class DualHeadNet(nn.Module):
         value_head_mode=VALUE_HEAD_MODE,
         spatial_value_head=SPATIAL_VALUE_HEAD,
         value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
+        use_moves_left_head=USE_MOVES_LEFT_HEAD,
+        moves_left_head_channels=MOVES_LEFT_HEAD_CHANNELS,
     ):
         super().__init__()
         self.spatial_value_head = bool(spatial_value_head)
         self.value_head_conv_channels = int(value_head_conv_channels)
         self.input_channels = int(input_channels)
         self.policy_head_channels = int(policy_head_channels)
+        self.policy_head_type = str(policy_head_type)
+        self.policy_attention_channels = int(policy_attention_channels)
         self.stem_channels = int(stem_channels)
         self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
         self.use_se_blocks = bool(use_se_blocks)
         self.se_reduction = int(se_reduction)
         self.use_wdl_head = bool(use_wdl_head)
         self.value_head_mode = str(value_head_mode)
+        self.use_moves_left_head = bool(use_moves_left_head)
+        self.moves_left_head_channels = int(moves_left_head_channels)
         if not self.residual_block_channels:
             raise ValueError("residual_block_channels must contain at least one block")
         if self.se_reduction <= 0:
@@ -175,6 +208,12 @@ class DualHeadNet(nn.Module):
             raise ValueError("value_head_conv_channels must be > 0")
         if self.input_channels <= 0:
             raise ValueError("input_channels must be > 0")
+        if self.policy_head_type not in ("dense", "attention"):
+            raise ValueError("policy_head_type must be 'dense' or 'attention'")
+        if self.policy_attention_channels <= 0:
+            raise ValueError("policy_attention_channels must be > 0")
+        if self.moves_left_head_channels <= 0:
+            raise ValueError("moves_left_head_channels must be > 0")
         if self.value_head_mode not in ("scalar", "wdl"):
             raise ValueError("value_head_mode must be 'scalar' or 'wdl'")
         if self.value_head_mode == "wdl" and not self.use_wdl_head:
@@ -206,9 +245,23 @@ class DualHeadNet(nn.Module):
         self.value_head = self._make_value_head()
         if self.use_wdl_head:
             self.wdl_head = self._make_wdl_head()
+        if self.use_moves_left_head:
+            self.moves_left_head = self._make_moves_left_head()
 
         # Policy head
-        self.policy_conv, self.policy_fc = self._make_policy_head()
+        if self.policy_head_type == "dense":
+            self.policy_conv, self.policy_fc = self._make_policy_head()
+        else:
+            self.policy_attention = nn.Conv2d(
+                self.backbone_out_channels,
+                2 * self.policy_attention_channels + 2,
+                1,
+                bias=True,
+            )
+            # LC0's attention head includes learned move biases. This compact
+            # table lets the net represent board geometry (source,destination)
+            # without recreating the 8.4M-parameter dense layer.
+            self.policy_relative_bias = nn.Parameter(torch.zeros(64, 64))
 
     def _make_value_head(self):
         # No dropout (REWORK_PLAN.md Phase 2.2): heavy dropout on a small GAP feature
@@ -249,6 +302,17 @@ class DualHeadNet(nn.Module):
             nn.Linear(128, 3),  # [loss, draw, win]
         )
 
+    def _make_moves_left_head(self):
+        """Small LC0-style auxiliary head; output is remaining decisions."""
+        return nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(self.backbone_out_channels, self.moves_left_head_channels),
+            nn.ReLU(),
+            nn.Linear(self.moves_left_head_channels, 1),
+            nn.Softplus(),
+        )
+
     def _make_policy_head(self):
         conv = nn.Sequential(
             nn.Conv2d(self.backbone_out_channels, self.policy_head_channels, 1, bias=False),
@@ -258,11 +322,22 @@ class DualHeadNet(nn.Module):
         fc = nn.Linear(self.policy_head_channels * 8 * 8, POLICY_SIZE)
         return conv, fc
 
-    @staticmethod
-    def _policy_logits(backbone, policy_conv, policy_fc):
-        p = policy_conv(backbone)
-        p = p.flatten(1)
-        return policy_fc(p)
+    def _policy_logits(self, backbone):
+        if self.policy_head_type == "dense":
+            p = self.policy_conv(backbone)
+            p = p.flatten(1)
+            return self.policy_fc(p)
+
+        projected = self.policy_attention(backbone).flatten(2).transpose(1, 2)
+        width = self.policy_attention_channels
+        query = projected[:, :, :width]
+        key = projected[:, :, width:2 * width]
+        source_bias = projected[:, :, 2 * width]
+        destination_bias = projected[:, :, 2 * width + 1]
+        logits = torch.bmm(query, key.transpose(1, 2)) / (width ** 0.5)
+        logits = logits + source_bias.unsqueeze(2) + destination_bias.unsqueeze(1)
+        logits = logits + self.policy_relative_bias.unsqueeze(0)
+        return logits.flatten(1)
 
     def _forward_backbone(self, x):
         # x: (N, C, 8, 8)  — PyTorch uses channels-first
@@ -274,7 +349,7 @@ class DualHeadNet(nn.Module):
 
     def _compute_heads(self, backbone, side_turn):
         scalar_value = self.value_head(backbone)
-        policy = self._policy_logits(backbone, self.policy_conv, self.policy_fc)
+        policy = self._policy_logits(backbone)
         wdl_logits = self.wdl_head(backbone) if self.use_wdl_head else None
 
         value = scalar_value
@@ -295,6 +370,14 @@ class DualHeadNet(nn.Module):
         value, policy, wdl_logits = self._compute_heads(backbone, side_turn)
         return value, policy, wdl_logits
 
+    def forward_with_aux(self, x):
+        """Training-only superset; the ordinary inference ABI stays 2-headed."""
+        backbone, side_turn = self._forward_backbone(x)
+        value, policy, wdl_logits = self._compute_heads(backbone, side_turn)
+        moves_left = (self.moves_left_head(backbone)
+                      if self.use_moves_left_head else None)
+        return value, policy, wdl_logits, moves_left
+
 
 
 def infer_policy_head_channels(state_dict):
@@ -303,6 +386,16 @@ def infer_policy_head_channels(state_dict):
     if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[0] > 0:
         return int(w.shape[0])
     return POLICY_HEAD_CHANNELS
+
+
+def infer_policy_head_config(state_dict):
+    """Infer dense vs compact attention policy geometry from a checkpoint."""
+    attention = state_dict.get("policy_attention.weight")
+    if (isinstance(attention, torch.Tensor) and attention.ndim == 4
+            and attention.shape[0] >= 4):
+        width = (int(attention.shape[0]) - 2) // 2
+        return "attention", POLICY_HEAD_CHANNELS, width
+    return "dense", infer_policy_head_channels(state_dict), POLICY_ATTENTION_CHANNELS
 
 
 def infer_input_channels(state_dict):
@@ -336,6 +429,14 @@ def infer_wdl_head_config(state_dict):
     if not has_wdl:
         return False, "scalar"
     return True, "wdl"
+
+
+def infer_moves_left_head_config(state_dict):
+    """Infer optional moves-left head presence and hidden width."""
+    w = state_dict.get("moves_left_head.2.weight")
+    if isinstance(w, torch.Tensor) and w.ndim == 2 and w.shape[0] > 0:
+        return True, int(w.shape[0])
+    return False, MOVES_LEFT_HEAD_CHANNELS
 
 
 def infer_backbone_architecture(state_dict):
@@ -384,6 +485,8 @@ def infer_se_config(state_dict):
 def build_model(
     input_channels=IN_CHANNELS,
     policy_head_channels=POLICY_HEAD_CHANNELS,
+    policy_head_type=POLICY_HEAD_TYPE,
+    policy_attention_channels=POLICY_ATTENTION_CHANNELS,
     stem_channels=STEM_CHANNELS,
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
     use_se_blocks=USE_SE_BLOCKS,
@@ -392,10 +495,14 @@ def build_model(
     value_head_mode=VALUE_HEAD_MODE,
     spatial_value_head=SPATIAL_VALUE_HEAD,
     value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
+    use_moves_left_head=USE_MOVES_LEFT_HEAD,
+    moves_left_head_channels=MOVES_LEFT_HEAD_CHANNELS,
 ):
     return DualHeadNet(
         input_channels=input_channels,
         policy_head_channels=policy_head_channels,
+        policy_head_type=policy_head_type,
+        policy_attention_channels=policy_attention_channels,
         stem_channels=stem_channels,
         residual_block_channels=residual_block_channels,
         use_se_blocks=use_se_blocks,
@@ -404,6 +511,8 @@ def build_model(
         value_head_mode=value_head_mode,
         spatial_value_head=spatial_value_head,
         value_head_conv_channels=value_head_conv_channels,
+        use_moves_left_head=use_moves_left_head,
+        moves_left_head_channels=moves_left_head_channels,
     )
 
 
@@ -411,14 +520,17 @@ def load_model_for_inference(checkpoint_path, device):
     """Load model with architecture inferred from checkpoint."""
     state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
     input_channels = infer_input_channels(state_dict)
-    pol_ch = infer_policy_head_channels(state_dict)
+    policy_head_type, pol_ch, attention_ch = infer_policy_head_config(state_dict)
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
     use_se_blocks, se_reduction = infer_se_config(state_dict)
     use_wdl_head, value_head_mode = infer_wdl_head_config(state_dict)
     spatial_value_head, value_conv_ch = infer_spatial_value_head_config(state_dict)
+    use_moves_left_head, moves_left_ch = infer_moves_left_head_config(state_dict)
     model = build_model(
         input_channels=input_channels,
         policy_head_channels=pol_ch,
+        policy_head_type=policy_head_type,
+        policy_attention_channels=attention_ch,
         stem_channels=stem_ch,
         residual_block_channels=block_ch,
         use_se_blocks=use_se_blocks,
@@ -427,6 +539,8 @@ def load_model_for_inference(checkpoint_path, device):
         value_head_mode=value_head_mode,
         spatial_value_head=spatial_value_head,
         value_head_conv_channels=value_conv_ch,
+        use_moves_left_head=use_moves_left_head,
+        moves_left_head_channels=moves_left_ch,
     ).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -448,8 +562,12 @@ def load_state_dict_flexible(model, state_dict):
     return len(compatible), skipped
 
 
-def load_data(data_dir):
-    """Load processed training data and splits."""
+def load_data(data_dir, include_moves_left=False, include_legal_masks=False):
+    """Load processed training data and splits.
+
+    The legacy 7-item return stays unchanged unless the optional auxiliary
+    arrays are requested.
+    """
     positions = np.load(os.path.join(data_dir, "positions.npy"))
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
@@ -470,14 +588,71 @@ def load_data(data_dir):
         value_weights = np.ones((len(policies),), dtype=np.float32)
     with np.load(os.path.join(data_dir, "splits.npz")) as split_file:
         splits = {name: split_file[name] for name in split_file.files}
-    return (positions, mcts_values, game_results, policies, policy_weights,
+    base = (positions, mcts_values, game_results, policies, policy_weights,
             value_weights, splits)
+    if include_moves_left:
+        moves_path = os.path.join(data_dir, "moves_left.npy")
+        moves_weights_path = os.path.join(data_dir, "moves_left_weights.npy")
+        if not os.path.exists(moves_path) or not os.path.exists(moves_weights_path):
+            raise FileNotFoundError(
+                "moves-left training requested, but processed corpus lacks "
+                "moves_left.npy/moves_left_weights.npy; re-run data_processor.py")
+        moves_left = np.load(moves_path)
+        moves_left_weights = np.load(moves_weights_path)
+        if (len(moves_left) != len(policies)
+                or len(moves_left_weights) != len(policies)):
+            raise ValueError("moves-left arrays are not aligned with policies.npy")
+        base = base + (moves_left, moves_left_weights)
+    if include_legal_masks:
+        masks_path = os.path.join(data_dir, "legal_masks_packed.npy")
+        if not os.path.exists(masks_path):
+            raise FileNotFoundError(
+                "legal policy masking requested, but processed corpus lacks "
+                "legal_masks_packed.npy; re-run data_processor.py")
+        legal_masks = np.load(masks_path)
+        if legal_masks.shape != (len(policies), POLICY_SIZE // 8):
+            raise ValueError(
+                "legal_masks_packed.npy must have shape "
+                f"({len(policies)}, {POLICY_SIZE // 8}), got {legal_masks.shape}")
+        base = base + (legal_masks,)
+    return base
 
 
 def to_side_perspective(values_white_perspective, positions):
     """Convert white-perspective targets to side-to-move perspective."""
     side_sign = np.where(positions[:, 0, 0, TURN_LAYER] > 0, 1.0, -1.0).astype(np.float32)
     return values_white_perspective * side_sign
+
+
+def apply_black_policy_weight(policy_weights, positions, black_weight=1.0):
+    """Return policy weights with Black-to-move examples relatively scaled.
+
+    The weighted CE already normalizes by total enabled weight, so this changes
+    the White/Black mixture without changing labels or the overall loss scale.
+    """
+    black_weight = float(black_weight)
+    if black_weight <= 0:
+        raise ValueError("black_weight must be > 0")
+    adjusted = np.asarray(policy_weights, dtype=np.float32).copy()
+    black_turn = positions[:, 0, 0, TURN_LAYER] <= 0
+    adjusted[black_turn] *= black_weight
+    return adjusted
+
+
+def configure_policy_head_only(model, enabled=False):
+    """Optionally freeze everything except the compact policy head."""
+    if not enabled:
+        return [name for name, parameter in model.named_parameters()
+                if parameter.requires_grad]
+    trainable = []
+    for name, parameter in model.named_parameters():
+        keep = name == "policy_relative_bias" or name.startswith("policy_attention.")
+        parameter.requires_grad_(keep)
+        if keep:
+            trainable.append(name)
+    if not trainable:
+        raise ValueError("policy-head-only training requires an attention policy head")
+    return trainable
 
 
 def get_targets(mcts_values, game_results, target_type):
@@ -502,7 +677,9 @@ def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
 
 
 def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
-                 y_wdl=None, y_policy_weight=None, y_value_weight=None):
+                 y_wdl=None, y_policy_weight=None, y_value_weight=None,
+                 y_moves_left=None, y_moves_left_weight=None,
+                 y_legal_masks_packed=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
@@ -516,11 +693,19 @@ def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
     if y_value_weight is None:
         y_value_weight = np.ones((len(y_pol),), dtype=np.float32)
     y_vw = torch.from_numpy(y_value_weight).float()
-    if y_wdl is None:
-        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_vw)
-    else:
-        y_w = torch.from_numpy(y_wdl).long()
-        ds = TensorDataset(X_t, y_v, y_p, y_pw, y_vw, y_w)
+    parts = [X_t, y_v, y_p, y_pw, y_vw]
+    if y_wdl is not None:
+        parts.append(torch.from_numpy(y_wdl).long())
+    if y_moves_left is not None:
+        if y_moves_left_weight is None:
+            y_moves_left_weight = np.ones(
+                (len(y_moves_left),), dtype=np.float32)
+        y_ml = torch.from_numpy(y_moves_left).float().unsqueeze(1)
+        y_mlw = torch.from_numpy(y_moves_left_weight).float()
+        parts.extend((y_ml, y_mlw))
+    if y_legal_masks_packed is not None:
+        parts.append(torch.from_numpy(y_legal_masks_packed).to(torch.uint8))
+    ds = TensorDataset(*parts)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
                       pin_memory=True, num_workers=0, generator=generator)
 
@@ -552,6 +737,34 @@ def _unpack_loader_batch(batch):
         X_b, yv_b, yp_b = batch
         return X_b, yv_b, yp_b, ones(len(X_b)), ones(len(X_b)), None
     raise ValueError(f"Unexpected batch tuple length: {len(batch)}")
+
+
+def _unpack_aux_loader_batch(batch, use_moves_left_head=False,
+                             use_wdl_head=False,
+                             use_legal_policy_mask=False):
+    """Extend the stable legacy unpacker with opt-in auxiliary tensors."""
+    if not use_moves_left_head and not use_legal_policy_mask:
+        return _unpack_loader_batch(batch) + (None, None, None)
+    if len(batch) < 5:
+        raise ValueError("Auxiliary loaders require policy and value weights")
+    X_b, yv_b, yp_b, ypw_b, yvw_b = batch[:5]
+    cursor = 5
+    yw_b = None
+    if use_wdl_head:
+        yw_b = batch[cursor]
+        cursor += 1
+    yml_b = ymlw_b = None
+    if use_moves_left_head:
+        yml_b, ymlw_b = batch[cursor:cursor + 2]
+        cursor += 2
+    legal_b = None
+    if use_legal_policy_mask:
+        legal_b = batch[cursor]
+        cursor += 1
+    if cursor != len(batch):
+        raise ValueError(
+            f"Auxiliary loader consumed {cursor} of {len(batch)} tensors")
+    return X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b, yml_b, ymlw_b, legal_b
 
 
 def _power_loss(pred, target, exponent=VALUE_LOSS_EXPONENT, weights=None):
@@ -590,14 +803,49 @@ def _weighted_wdl_ce(logits, labels, weights):
     return (losses * w).sum() / total
 
 
-def weighted_policy_cross_entropy(logits, targets, weights):
-    """Soft-target policy CE normalized over records enabled as teachers."""
+def unpack_legal_policy_mask(packed, policy_size=POLICY_SIZE):
+    """Unpack NumPy-compatible big-endian packbits on the current device."""
+    if packed.ndim != 2 or packed.shape[1] * 8 < policy_size:
+        raise ValueError("packed legal mask has the wrong shape")
+    shifts = torch.arange(7, -1, -1, device=packed.device,
+                          dtype=torch.uint8)
+    bits = ((packed.to(torch.uint8).unsqueeze(-1) >> shifts) & 1)
+    return bits.reshape(packed.shape[0], -1)[:, :policy_size].bool()
+
+
+def mask_policy_logits(logits, legal_masks_packed):
+    """Set illegal policy logits to the dtype minimum before softmax/argmax."""
+    legal = unpack_legal_policy_mask(legal_masks_packed, logits.shape[1])
+    if not torch.all(legal.any(dim=1)):
+        raise ValueError("legal policy mask contains a row with no legal moves")
+    return logits.masked_fill(~legal, torch.finfo(logits.dtype).min), legal
+
+
+def weighted_policy_cross_entropy(logits, targets, weights,
+                                  legal_masks_packed=None):
+    """Soft-target policy CE normalized over enabled, optionally legal moves."""
+    if legal_masks_packed is not None:
+        logits, legal = mask_policy_logits(logits, legal_masks_packed)
+        illegal_mass = targets.masked_fill(legal, 0).sum(dim=1)
+        enabled = weights.reshape(-1) > 0
+        if torch.any(illegal_mass[enabled] > 1e-5):
+            raise ValueError("policy target assigns mass to an illegal move")
     losses = F.cross_entropy(logits, targets, reduction="none")
     weights = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
     total_weight = weights.sum()
     if total_weight.item() <= 0:
         return losses.sum() * 0.0
     return (losses * weights).sum() / total_weight
+
+
+def weighted_moves_left_huber(predictions, targets, weights):
+    """LC0-style robust regression, masked to trusted decisive trajectories."""
+    losses = F.smooth_l1_loss(predictions, targets, reduction="none").reshape(-1)
+    w = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
+    total = w.sum()
+    if total.item() <= 0:
+        return losses.sum() * 0.0
+    return (losses * w).sum() / total
 
 
 def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor):
@@ -622,17 +870,24 @@ def _set_epoch_lr(optimizer, epoch, base_lr, warmup_epochs, warmup_start_factor)
 
 
 def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm,
-                 use_wdl_head=False, wdl_loss_weight=0.0,
-                 value_head_mode="scalar"):
+                  use_wdl_head=False, wdl_loss_weight=0.0,
+                  value_head_mode="scalar", use_moves_left_head=False,
+                  moves_left_loss_weight=0.0, use_legal_policy_mask=False,
+                  ema=None):
     model.train()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
     total_wdl_loss = 0.0
+    total_moves_left_loss = 0.0
     n = 0
 
     for batch in loader:
-        X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b = _unpack_loader_batch(batch)
+        (X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b,
+         yml_b, ymlw_b, legal_b) = _unpack_aux_loader_batch(
+            batch, use_moves_left_head=use_moves_left_head,
+            use_wdl_head=use_wdl_head,
+            use_legal_policy_mask=use_legal_policy_mask)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
@@ -640,15 +895,26 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         yvw_b = yvw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
+        if yml_b is not None:
+            yml_b = yml_b.to(device)
+            ymlw_b = ymlw_b.to(device)
+        if legal_b is not None:
+            legal_b = legal_b.to(device)
 
-        if use_wdl_head:
+        if use_moves_left_head:
+            value_pred, policy_pred, wdl_logits, moves_left_pred = (
+                model.forward_with_aux(X_b))
+        elif use_wdl_head:
             value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
+            moves_left_pred = None
         else:
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
+            moves_left_pred = None
         value_loss_pred = value_pred
         loss_val = _power_loss(value_loss_pred, yv_b, weights=yvw_b)
-        loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
+        loss_pol = weighted_policy_cross_entropy(
+            policy_pred, yp_b, ypw_b, legal_masks_packed=legal_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
         if (
@@ -659,18 +925,27 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         ):
             loss_wdl = _weighted_wdl_ce(wdl_logits, yw_b, yvw_b)
             loss = loss + wdl_loss_weight * loss_wdl
+        loss_moves_left = torch.zeros((), device=device)
+        if (use_moves_left_head and moves_left_pred is not None
+                and yml_b is not None and moves_left_loss_weight > 0):
+            loss_moves_left = weighted_moves_left_huber(
+                moves_left_pred, yml_b, ymlw_b)
+            loss = loss + moves_left_loss_weight * loss_moves_left
 
         optimizer.zero_grad()
         loss.backward()
         if grad_clip_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
         optimizer.step()
+        if ema is not None:
+            ema.update(model)
 
         bs = X_b.size(0)
         total_loss += loss.item() * bs
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
         total_wdl_loss += loss_wdl.item() * bs
+        total_moves_left_loss += loss_moves_left.item() * bs
         n += bs
 
     return (
@@ -678,6 +953,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
         total_val_loss / n,
         total_pol_loss / n,
         total_wdl_loss / n,
+        total_moves_left_loss / n,
     )
 
 
@@ -699,12 +975,15 @@ def _decisive_score(decisive):
 
 @torch.no_grad()
 def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
-                wdl_loss_weight=0.0, value_head_mode="scalar"):
+                wdl_loss_weight=0.0, value_head_mode="scalar",
+                use_moves_left_head=False, moves_left_loss_weight=0.0,
+                use_legal_policy_mask=False):
     model.eval()
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
     total_wdl_loss = 0.0
+    total_moves_left_loss = 0.0
     total_wdl_correct = 0.0
     total_wdl_count = 0
     total_mae = 0.0
@@ -715,7 +994,11 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         "top1_white", "top1_black", "sign_white", "sign_black")}
 
     for batch in loader:
-        X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b = _unpack_loader_batch(batch)
+        (X_b, yv_b, yp_b, ypw_b, yvw_b, yw_b,
+         yml_b, ymlw_b, legal_b) = _unpack_aux_loader_batch(
+            batch, use_moves_left_head=use_moves_left_head,
+            use_wdl_head=use_wdl_head,
+            use_legal_policy_mask=use_legal_policy_mask)
         X_b = X_b.to(device)
         yv_b = yv_b.to(device)
         yp_b = yp_b.to(device)
@@ -723,15 +1006,26 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         yvw_b = yvw_b.to(device)
         if yw_b is not None:
             yw_b = yw_b.to(device)
+        if yml_b is not None:
+            yml_b = yml_b.to(device)
+            ymlw_b = ymlw_b.to(device)
+        if legal_b is not None:
+            legal_b = legal_b.to(device)
 
-        if use_wdl_head:
+        if use_moves_left_head:
+            value_pred, policy_pred, wdl_logits, moves_left_pred = (
+                model.forward_with_aux(X_b))
+        elif use_wdl_head:
             value_pred, policy_pred, wdl_logits = model.forward_with_wdl(X_b)
+            moves_left_pred = None
         else:
             value_pred, policy_pred = model(X_b)
             wdl_logits = None
+            moves_left_pred = None
         value_loss_pred = value_pred
         loss_val = _power_loss(value_loss_pred, yv_b, weights=yvw_b)
-        loss_pol = weighted_policy_cross_entropy(policy_pred, yp_b, ypw_b)
+        loss_pol = weighted_policy_cross_entropy(
+            policy_pred, yp_b, ypw_b, legal_masks_packed=legal_b)
         loss = loss_val + policy_weight * loss_pol
         loss_wdl = torch.zeros((), device=device)
         if use_wdl_head and wdl_logits is not None and yw_b is not None:
@@ -741,10 +1035,19 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
             preds = torch.argmax(wdl_logits, dim=1)
             total_wdl_correct += (preds == yw_b).sum().item()
             total_wdl_count += int(yw_b.numel())
+        loss_moves_left = torch.zeros((), device=device)
+        if use_moves_left_head and moves_left_pred is not None and yml_b is not None:
+            loss_moves_left = weighted_moves_left_huber(
+                moves_left_pred, yml_b, ymlw_b)
+            if moves_left_loss_weight > 0:
+                loss = loss + moves_left_loss_weight * loss_moves_left
 
         white_turn = X_b[:, TURN_LAYER, 0, 0] > 0
         pol_enabled = (ypw_b.reshape(-1) > 0) & (yp_b.sum(dim=1) > 0)
-        pol_correct = policy_pred.argmax(dim=1) == yp_b.argmax(dim=1)
+        policy_for_metrics = policy_pred
+        if legal_b is not None:
+            policy_for_metrics, _ = mask_policy_logits(policy_pred, legal_b)
+        pol_correct = policy_for_metrics.argmax(dim=1) == yp_b.argmax(dim=1)
         val_nondraw = yv_b.reshape(-1) != 0
         sign_correct = torch.sign(value_pred.reshape(-1)) == torch.sign(yv_b.reshape(-1))
         for side_name, side_mask in (("white", white_turn), ("black", ~white_turn)):
@@ -760,6 +1063,7 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         total_val_loss += loss_val.item() * bs
         total_pol_loss += loss_pol.item() * bs
         total_wdl_loss += loss_wdl.item() * bs
+        total_moves_left_loss += loss_moves_left.item() * bs
         total_mae += (value_pred - yv_b).abs().sum().item()
         total_mse += F.mse_loss(value_pred, yv_b, reduction="sum").item()
         n += bs
@@ -781,6 +1085,7 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         total_mse / n,
         total_wdl_loss / n,
         wdl_acc,
+        total_moves_left_loss / n,
         decisive,
     )
 
@@ -794,9 +1099,20 @@ def main():
                         help="Early-stopping patience in non-improving epochs (default: 10)")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
+    parser.add_argument("--lr-gamma", type=float, default=LR_GAMMA,
+                        help=f"Per-epoch StepLR decay after warmup "
+                             f"(default: {LR_GAMMA})")
     parser.add_argument("--policy-loss-weight", type=float, default=POLICY_LOSS_WEIGHT,
                         help=f"Weight for policy CE term relative to value loss (default: {POLICY_LOSS_WEIGHT})")
+    parser.add_argument("--black-policy-weight", type=float, default=1.0,
+                        help="Relative policy-example weight for Black-to-move "
+                             "positions; weighted CE remains normalized (default: 1.0)")
+    parser.add_argument("--train-policy-head-only", action="store_true",
+                        help="Freeze the backbone/value head and refine only the "
+                             "attention policy head; requires --resume-from")
     parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
+    parser.add_argument("--ema-decay", type=float, default=0.0,
+                        help="EMA decay for validation/checkpoints; 0 disables")
     parser.add_argument("--grad-clip", type=float, default=GRAD_CLIP_NORM)
     parser.add_argument("--warmup-epochs", type=int, default=WARMUP_EPOCHS)
     parser.add_argument("--warmup-start-factor", type=float, default=WARMUP_START_FACTOR)
@@ -819,6 +1135,20 @@ def main():
                         help="Value head keeps the 8x8 layout (conv 1x1 -> "
                              "flatten -> FC) instead of global average pooling. "
                              "Adds ~529K params; A/B candidate, off by default")
+    parser.add_argument("--moves-left-head",
+                        action=argparse.BooleanOptionalAction,
+                        default=USE_MOVES_LEFT_HEAD,
+                        help="Enable the optional remaining-decisions auxiliary head")
+    parser.add_argument("--moves-left-loss-weight", type=float,
+                        default=MOVES_LEFT_LOSS_WEIGHT,
+                        help="Huber-loss weight for --moves-left-head")
+    parser.add_argument("--moves-left-head-channels", type=int,
+                        default=MOVES_LEFT_HEAD_CHANNELS,
+                        help="Hidden width of the moves-left head")
+    parser.add_argument("--legal-policy-mask",
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help="Mask illegal logits during policy loss and metrics; "
+                             "requires legal_masks_packed.npy")
     parser.add_argument("--wdl-draw-epsilon", type=float, default=WDL_DRAW_EPSILON,
                         help=f"Draw band for WDL labels, |target|<=eps (default: {WDL_DRAW_EPSILON})")
     parser.add_argument("--select-metric", type=str, default="decisive",
@@ -828,6 +1158,12 @@ def main():
                              "'val_loss' = legacy aggregate validation loss")
     parser.add_argument("--stem-channels", type=int, default=STEM_CHANNELS,
                         help=f"Stem width (default: {STEM_CHANNELS})")
+    parser.add_argument("--policy-head", choices=("dense", "attention"),
+                        default=POLICY_HEAD_TYPE,
+                        help="Policy head geometry (attention is compact and opt-in)")
+    parser.add_argument("--policy-attention-channels", type=int,
+                        default=POLICY_ATTENTION_CHANNELS,
+                        help="Query/key width for --policy-head=attention")
     parser.add_argument("--res-channels", type=str, default=None,
                         help="Comma-separated residual block widths, e.g. "
                              "'96,96,128,128' (default: config tower)")
@@ -841,12 +1177,26 @@ def main():
         raise ValueError("--grad-clip must be >= 0")
     if args.policy_loss_weight <= 0:
         raise ValueError("--policy-loss-weight must be > 0")
+    if args.black_policy_weight <= 0:
+        raise ValueError("--black-policy-weight must be > 0")
+    if args.train_policy_head_only and not args.resume_from:
+        raise ValueError("--train-policy-head-only requires --resume-from")
+    if not (0.0 < args.lr_gamma <= 1.0):
+        raise ValueError("--lr-gamma must be in (0, 1]")
     if args.se_reduction <= 0:
         raise ValueError("--se-reduction must be > 0")
     if args.wdl_loss_weight < 0:
         raise ValueError("--wdl-loss-weight must be >= 0")
     if args.wdl_draw_epsilon < 0:
         raise ValueError("--wdl-draw-epsilon must be >= 0")
+    if args.moves_left_loss_weight < 0:
+        raise ValueError("--moves-left-loss-weight must be >= 0")
+    if args.moves_left_head_channels <= 0:
+        raise ValueError("--moves-left-head-channels must be > 0")
+    if args.policy_attention_channels <= 0:
+        raise ValueError("--policy-attention-channels must be > 0")
+    if args.ema_decay < 0 or args.ema_decay >= 1:
+        raise ValueError("--ema-decay must be 0 (off) or in (0, 1)")
     if args.value_head == "scalar" and args.wdl_loss_weight > 0:
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
     use_wdl_mode = args.value_head == "wdl"
@@ -860,9 +1210,21 @@ def main():
 
     # Load data
     print(f"Loading data from {args.data_dir}...")
+    loaded = load_data(
+        args.data_dir, include_moves_left=args.moves_left_head,
+        include_legal_masks=args.legal_policy_mask)
     (positions, mcts_values, game_results, policies, policy_weights,
-     value_weights, splits) = load_data(
-        args.data_dir)
+     value_weights, splits) = loaded[:7]
+    policy_weights = apply_black_policy_weight(
+        policy_weights, positions, args.black_policy_weight)
+    cursor = 7
+    moves_left = moves_left_weights = None
+    if args.moves_left_head:
+        moves_left, moves_left_weights = loaded[cursor:cursor + 2]
+        cursor += 2
+    legal_masks_packed = None
+    if args.legal_policy_mask:
+        legal_masks_packed = loaded[cursor]
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -889,6 +1251,13 @@ def main():
             f"(draw_epsilon={args.wdl_draw_epsilon:.3f}, ce_w={args.wdl_loss_weight:.3f})"
         )
     print(f"Policy loss weight: {args.policy_loss_weight}")
+    print(f"Black policy-example weight: {args.black_policy_weight}")
+    if args.moves_left_head:
+        enabled = int((moves_left_weights > 0).sum())
+        print(f"Moves-left head: enabled (Huber weight="
+              f"{args.moves_left_loss_weight}, trusted={enabled}/"
+              f"{len(moves_left_weights)})")
+    print(f"Legal policy masking: {args.legal_policy_mask}")
 
     # Build model. Input channels come from the processed data, not config:
     # a 15-plane corpus trains a 15-plane model even when config default is 17.
@@ -897,6 +1266,8 @@ def main():
                     if args.res_channels else RESIDUAL_BLOCK_CHANNELS)
     model = build_model(
         input_channels=data_channels,
+        policy_head_type=args.policy_head,
+        policy_attention_channels=args.policy_attention_channels,
         stem_channels=args.stem_channels,
         residual_block_channels=res_channels,
         use_se_blocks=args.use_se_blocks,
@@ -904,16 +1275,22 @@ def main():
         use_wdl_head=use_wdl_mode,
         value_head_mode=args.value_head,
         spatial_value_head=args.spatial_value_head,
+        use_moves_left_head=args.moves_left_head,
+        moves_left_head_channels=args.moves_left_head_channels,
     ).to(device)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,}")
     print(f"Value head: {'spatial (8x8 preserved)' if model.spatial_value_head else 'GAP (channel means)'}")
     print(f"Input channels: {model.input_channels}")
     print(f"Policy head channels: {model.policy_head_channels}")
+    print(f"Policy head: {model.policy_head_type} "
+          f"(attention channels={model.policy_attention_channels})")
     print(f"Stem channels: {model.stem_channels}")
     print(f"Residual blocks: {list(model.residual_block_channels)}")
     print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
     print(f"Value head mode: {model.value_head_mode} (wdl_head={model.use_wdl_head})")
+    print(f"Moves-left head: {model.use_moves_left_head} "
+          f"(channels={model.moves_left_head_channels})")
     resume_loaded_count = None
     resume_skipped = None
     if args.resume_from:
@@ -928,13 +1305,20 @@ def main():
             f"loaded {loaded_count} tensors, skipped {len(skipped_keys)} incompatible"
         )
 
+    trainable_parameter_names = configure_policy_head_only(
+        model, args.train_policy_head_only)
+    if args.train_policy_head_only:
+        print("Training policy head only: " + ", ".join(trainable_parameter_names))
+
     optimizer, decay_count, no_decay_count = build_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay,
     )
     print(f"Optimizer: AdamW (weight_decay={args.weight_decay})")
     print(f"  Param groups: decay={decay_count}, no_decay={no_decay_count}")
+    ema = ModelEMA(model, args.ema_decay) if args.ema_decay > 0 else None
+    print(f"EMA: {'off' if ema is None else f'decay={args.ema_decay}'}")
     scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=1, gamma=LR_GAMMA,
+        optimizer, step_size=1, gamma=args.lr_gamma,
     )
 
     # Checkpoint setup
@@ -956,6 +1340,8 @@ def main():
         "model_params": total_params,
         "input_channels": int(model.input_channels),
         "policy_head_channels": int(model.policy_head_channels),
+        "policy_head_type": str(model.policy_head_type),
+        "policy_attention_channels": int(model.policy_attention_channels),
         "stem_channels": int(model.stem_channels),
         "residual_block_channels": [int(x) for x in model.residual_block_channels],
         "residual_block_count": int(model.residual_block_count),
@@ -963,24 +1349,41 @@ def main():
         "se_reduction": int(model.se_reduction),
         "value_head_mode": str(model.value_head_mode),
         "use_wdl_head": bool(model.use_wdl_head),
+        "use_moves_left_head": bool(model.use_moves_left_head),
+        "legal_policy_mask": bool(args.legal_policy_mask),
+        "moves_left_head_channels": int(model.moves_left_head_channels),
         "wdl_draw_epsilon": float(args.wdl_draw_epsilon),
         "wdl_loss_weight": float(args.wdl_loss_weight),
         "resume_from": args.resume_from,
         "resume_loaded_tensors": int(resume_loaded_count) if resume_loaded_count is not None else None,
         "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
+        "train_policy_head_only": bool(args.train_policy_head_only),
+        "trainable_parameter_names": trainable_parameter_names,
         "optimizer": {
             "name": "AdamW",
             "weight_decay": args.weight_decay,
             "decay_group_count": decay_count,
             "no_decay_group_count": no_decay_count,
         },
+        "ema": {
+            "enabled": ema is not None,
+            "decay": float(args.ema_decay),
+            "validation_and_checkpoint_use_ema": ema is not None,
+        },
         "loss_weights": {
             "policy": float(args.policy_loss_weight),
             "value": 1.0,
+            "moves_left": (float(args.moves_left_loss_weight)
+                            if args.moves_left_head else 0.0),
         },
         "warmup": {
             "epochs": args.warmup_epochs,
             "start_factor": args.warmup_start_factor,
+        },
+        "scheduler": {
+            "name": "StepLR",
+            "gamma": float(args.lr_gamma),
+            "after_warmup": True,
         },
         "gradient_clipping": {
             "max_norm": args.grad_clip,
@@ -1017,6 +1420,12 @@ def main():
             y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
             y_policy_weight=policy_weights[val_idx],
             y_value_weight=value_weights[val_idx],
+            y_moves_left=(moves_left[val_idx]
+                          if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights[val_idx]
+                                 if args.moves_left_head else None),
+            y_legal_masks_packed=(legal_masks_packed[val_idx]
+                                  if args.legal_policy_mask else None),
         )
 
         # Keep policy labels aligned with selected train indices.
@@ -1030,20 +1439,36 @@ def main():
             y_wdl=wdl_targets[epoch_train_idx] if use_wdl_mode else None,
             y_policy_weight=policy_weights[epoch_train_idx],
             y_value_weight=value_weights[epoch_train_idx],
+            y_moves_left=(moves_left[epoch_train_idx]
+                          if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights[epoch_train_idx]
+                                 if args.moves_left_head else None),
+            y_legal_masks_packed=(legal_masks_packed[epoch_train_idx]
+                                  if args.legal_policy_mask else None),
         )
 
-        train_loss, train_v, train_p, train_wdl = _train_epoch(
+        train_loss, train_v, train_p, train_wdl, train_moves_left = _train_epoch(
             model, train_loader, optimizer, device, args.policy_loss_weight, args.grad_clip,
             use_wdl_head=use_wdl_mode,
             wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
             value_head_mode=args.value_head,
+            use_moves_left_head=args.moves_left_head,
+            moves_left_loss_weight=(args.moves_left_loss_weight
+                                    if args.moves_left_head else 0.0),
+            use_legal_policy_mask=args.legal_policy_mask,
+            ema=ema,
         )
+        eval_model = ema.module if ema is not None else model
         (val_loss, val_v, val_p, val_mae, val_mse, val_wdl, val_wdl_acc,
-         val_decisive) = _eval_epoch(
-            model, val_loader, device, args.policy_loss_weight,
+         val_moves_left, val_decisive) = _eval_epoch(
+            eval_model, val_loader, device, args.policy_loss_weight,
             use_wdl_head=use_wdl_mode,
             wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
             value_head_mode=args.value_head,
+            use_moves_left_head=args.moves_left_head,
+            moves_left_loss_weight=(args.moves_left_loss_weight
+                                    if args.moves_left_head else 0.0),
+            use_legal_policy_mask=args.legal_policy_mask,
         )
         if epoch > args.warmup_epochs:
             scheduler.step()
@@ -1053,6 +1478,10 @@ def main():
         if use_wdl_mode:
             acc_str = f"{val_wdl_acc:.1%}" if val_wdl_acc is not None else "n/a"
             wdl_str = f"  wdl(train_ce={train_wdl:.4f} val_ce={val_wdl:.4f} val_acc={acc_str})"
+        ml_str = ""
+        if args.moves_left_head:
+            ml_str = (f"  moves_left(train_huber={train_moves_left:.4f} "
+                      f"val_huber={val_moves_left:.4f})")
         dec_str = "  decisive(n/a)"
         if val_decisive["score"] is not None:
             dec_str = (
@@ -1064,7 +1493,7 @@ def main():
         print(f"Epoch {epoch:3d}  "
               f"train={train_loss:.4f} (v={train_v:.4f} p={train_p:.4f})  "
               f"val={val_loss:.4f} (pow={val_v:.4f} mse={val_mse:.4f} p={val_p:.4f} mae={val_mae:.4f})  "
-              f"lr={lr:.1e}{wdl_str}{dec_str}")
+              f"lr={lr:.1e}{wdl_str}{ml_str}{dec_str}")
         run_metadata["epochs"].append({
             "epoch": epoch,
             "train_samples": int(len(epoch_train_idx)),
@@ -1072,6 +1501,7 @@ def main():
             "train_value_power_loss": float(train_v),
             "train_policy_ce": float(train_p),
             "train_wdl_ce": float(train_wdl),
+            "train_moves_left_huber": float(train_moves_left),
             "val_total_loss": float(val_loss),
             "val_value_power_loss": float(val_v),
             "val_value_mse": float(val_mse),
@@ -1079,6 +1509,7 @@ def main():
             "val_value_mae": float(val_mae),
             "val_wdl_ce": float(val_wdl),
             "val_wdl_accuracy": float(val_wdl_acc) if val_wdl_acc is not None else None,
+            "val_moves_left_huber": float(val_moves_left),
             "val_decisive": {k: (float(v) if v is not None else None)
                              for k, v in val_decisive.items()},
             "lr": float(lr),
@@ -1097,7 +1528,7 @@ def main():
             best_selection_value = selection_value
             best_epoch = epoch
             patience_counter = 0
-            torch.save(model.state_dict(), checkpoint_path)
+            torch.save(eval_model.state_dict(), checkpoint_path)
             print(f"  -> saved best model ({selection_desc})")
         else:
             patience_counter += 1
@@ -1116,13 +1547,22 @@ def main():
         y_wdl=wdl_targets[test_idx] if use_wdl_mode else None,
         y_policy_weight=policy_weights[test_idx],
         y_value_weight=value_weights[test_idx],
+        y_moves_left=(moves_left[test_idx] if args.moves_left_head else None),
+        y_moves_left_weight=(moves_left_weights[test_idx]
+                             if args.moves_left_head else None),
+        y_legal_masks_packed=(legal_masks_packed[test_idx]
+                              if args.legal_policy_mask else None),
     )
     (test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc,
-     test_decisive) = _eval_epoch(
+     test_moves_left, test_decisive) = _eval_epoch(
         model, test_loader, device, args.policy_loss_weight,
         use_wdl_head=use_wdl_mode,
         wdl_loss_weight=args.wdl_loss_weight if use_wdl_mode else 0.0,
         value_head_mode=args.value_head,
+        use_moves_left_head=args.moves_left_head,
+        moves_left_loss_weight=(args.moves_left_loss_weight
+                                if args.moves_left_head else 0.0),
+        use_legal_policy_mask=args.legal_policy_mask,
     )
 
     print("\n--- Test set evaluation ---")
@@ -1135,6 +1575,8 @@ def main():
         acc_str = f"{test_wdl_acc:.1%}" if test_wdl_acc is not None else "n/a"
         print(f"WDL CE:     {test_wdl:.4f}")
         print(f"WDL Acc:    {acc_str}")
+    if args.moves_left_head:
+        print(f"Moves-left Huber: {test_moves_left:.4f}")
     if test_decisive["score"] is not None:
         print(f"Policy top-1 (enabled): W={test_decisive['policy_top1_white']:.1%} "
               f"B={test_decisive['policy_top1_black']:.1%}")
@@ -1147,7 +1589,10 @@ def main():
     all_vtrue = []
     with torch.no_grad():
         for batch in test_loader:
-            X_b, yv_b, _, _, _, _ = _unpack_loader_batch(batch)
+            X_b, yv_b, _, _, _, _, _, _, _ = _unpack_aux_loader_batch(
+                batch, use_moves_left_head=args.moves_left_head,
+                use_wdl_head=use_wdl_mode,
+                use_legal_policy_mask=args.legal_policy_mask)
             vp, _ = model(X_b.to(device))
             all_vpreds.append(vp.cpu().numpy())
             all_vtrue.append(yv_b.numpy())
@@ -1166,6 +1611,7 @@ def main():
         "value_mae": float(test_mae),
         "wdl_ce": float(test_wdl),
         "wdl_accuracy": float(test_wdl_acc) if test_wdl_acc is not None else None,
+        "moves_left_huber": float(test_moves_left),
         "winner_sign_accuracy_non_draw": float(acc) if non_draw.sum() > 0 else None,
         "decisive": {k: (float(v) if v is not None else None)
                      for k, v in test_decisive.items()},
