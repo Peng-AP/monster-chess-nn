@@ -30,12 +30,14 @@ Q stays valid, and reuse across a side change is refused rather than rebased.
 """
 import os
 import sys
+import math
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(ROOT, "native") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "native"))
 
 import monster_native as mn  # noqa: E402
+from config import C_PUCT, FPU_REDUCTION, POLICY_TEMPERATURE  # noqa: E402
 
 HISTORY_PLIES = 8
 
@@ -58,7 +60,7 @@ def _uses_heuristic_values(evaluator):
         hasattr(evaluator, "model") and hasattr(evaluator, "device"))
 
 
-def make_bridge(nn_evaluator):
+def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE):
     """(eval_fn, input_channels) for `Tree.run_batched_puct`.
 
     Values come back in the SIDE-TO-MOVE perspective, exactly as the model
@@ -77,8 +79,9 @@ def make_bridge(nn_evaluator):
             tensor = tensor.half()
         with torch.no_grad():
             value, policy = nn_evaluator.model(tensor)
+        policy = policy.reshape(n, -1).float() / policy_temperature
         return (value.reshape(-1).float().cpu().numpy().astype(np.float32).tobytes(),
-                policy.reshape(n, -1).float().cpu().numpy().astype(np.float32).tobytes())
+                policy.cpu().numpy().astype(np.float32).tobytes())
 
     return eval_fn, channels
 
@@ -88,7 +91,16 @@ class NativeMCTS:
 
     def __init__(self, num_simulations=800, eval_fn=None, batch_size=16,
                  root_noise=False, allow_early_stop=True, seed=None,
-                 reuse_across_moves=False, solver=False):
+                 reuse_across_moves=False, solver=False, c_puct=C_PUCT,
+                 fpu_reduction=FPU_REDUCTION,
+                 policy_temperature=POLICY_TEMPERATURE):
+        if not math.isfinite(float(c_puct)) or float(c_puct) < 0:
+            raise ValueError("c_puct must be finite and >= 0")
+        if not math.isfinite(float(fpu_reduction)) or float(fpu_reduction) < 0:
+            raise ValueError("fpu_reduction must be finite and >= 0")
+        if (not math.isfinite(float(policy_temperature))
+                or float(policy_temperature) <= 0):
+            raise ValueError("policy_temperature must be finite and > 0")
         # `seed=None` draws from Python's global RNG **at construction**, which
         # is how this engine inherits per-game seeding. `mcts.MCTS` reads that
         # global module directly, and both `data_generation._worker` and
@@ -126,6 +138,9 @@ class NativeMCTS:
         self.reuse_across_moves = reuse_across_moves
         self.solver = solver
         self.seed = seed
+        self.c_puct = float(c_puct)
+        self.fpu_reduction = float(fpu_reduction)
+        self.policy_temperature = float(policy_temperature)
         # Advanced once per decision. The native RNG is constructed from the
         # seed it is GIVEN, so passing a constant re-seeds an identical stream
         # every call: temperature sampling then returns the same move every
@@ -140,7 +155,8 @@ class NativeMCTS:
         nn = _underlying_nn(eval_fn)
         self._heuristic_values = _uses_heuristic_values(eval_fn)
         if nn is not None:
-            self._bridge, self._channels = make_bridge(nn)
+            self._bridge, self._channels = make_bridge(
+                nn, policy_temperature=self.policy_temperature)
         else:
             self._bridge, self._channels = None, None
 
@@ -217,7 +233,8 @@ class NativeMCTS:
                 batch_size=self.batch_size, channels=self._channels,
                 allow_early_stop=self.allow_early_stop,
                 root_noise=self.root_noise, seed=decision_seed,
-                heuristic_values=self._heuristic_values, solver=self.solver)
+                heuristic_values=self._heuristic_values, solver=self.solver,
+                c_puct=self.c_puct, fpu_reduction=self.fpu_reduction)
         else:
             tree.run_sequential(self.num_simulations,
                                 allow_early_stop=self.allow_early_stop,

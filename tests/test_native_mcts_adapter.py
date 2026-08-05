@@ -57,9 +57,14 @@ class TestEngineChoice(unittest.TestCase):
             _engine_choice("rust")
 
     def test_python_factory_returns_the_python_search(self):
-        engine, label = _build_engine(None, 32, engine="python")
+        engine, label = _build_engine(
+            None, 32, engine="python", c_puct=1.25,
+            fpu_reduction=0.2, policy_temperature=1.4)
         self.assertIsInstance(engine, MCTS)
         self.assertNotIn("native", label)
+        self.assertEqual(engine.c_puct, 1.25)
+        self.assertEqual(engine.fpu_reduction, 0.2)
+        self.assertEqual(engine.policy_temperature, 1.4)
 
 
 @unittest.skipIf(not HAVE_NATIVE, "native crate not built")
@@ -103,9 +108,14 @@ class TestAdapterContract(unittest.TestCase):
 
     def test_factory_builds_the_native_search(self):
         from native_mcts import NativeMCTS
-        engine, label = _build_engine(None, 32, engine="native")
+        engine, label = _build_engine(
+            None, 32, engine="native", c_puct=1.25,
+            fpu_reduction=0.2, policy_temperature=1.4)
         self.assertIsInstance(engine, NativeMCTS)
         self.assertIn("native", label)
+        self.assertEqual(engine.c_puct, 1.25)
+        self.assertEqual(engine.fpu_reduction, 0.2)
+        self.assertEqual(engine.policy_temperature, 1.4)
 
     def test_tree_is_reused_across_whites_two_halves_then_dropped(self):
         engine = self.engine(32)

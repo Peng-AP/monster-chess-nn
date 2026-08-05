@@ -17,11 +17,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
 
-      - name: Install minimal test dependencies
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install contract-test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install chess numpy tqdm
+          python -m pip install chess numpy tqdm torch maturin
+
+      - name: Build and install native engine
+        run: |
+          python -m pip install ./native
+          python -c "import monster_native; print(monster_native.version())"
+
+      - name: Compile native crate tests
+        working-directory: native
+        run: cargo test --locked
 
       - name: Run contract tests
         run: |

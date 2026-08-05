@@ -59,6 +59,7 @@ TENSOR_SHAPE = (8, 8, 17)
 POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
 C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
 FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
+POLICY_TEMPERATURE = 1.0 # scale policy logits before legal-move softmax
 DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
 POLICY_TARGET_PSEUDOCOUNT = 0.0  # policy-target smoothing as a FRACTION of total root
@@ -66,6 +67,8 @@ POLICY_TARGET_PSEUDOCOUNT = 0.0  # policy-target smoothing as a FRACTION of tota
                                  # targets, the AlphaZero default). See mcts.get_best_action.
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 POLICY_HEAD_CHANNELS = 32  # policy head bottleneck channels (widened from 16 for fresh start)
+POLICY_HEAD_TYPE = "dense"  # "dense" or compact source-to-destination "attention"
+POLICY_ATTENTION_CHANNELS = 32
 STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
@@ -83,6 +86,13 @@ VALUE_HEAD_CONV_CHANNELS = 32  # 1x1 bottleneck width for the spatial value head
 
 USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
+
+# Optional LC0-style auxiliary target: predict remaining recorded decisions.
+# It is representation training only for now; search does not consume it.
+# Off by default so old recipes and checkpoint behavior stay unchanged.
+USE_MOVES_LEFT_HEAD = False
+MOVES_LEFT_HEAD_CHANNELS = 64
+MOVES_LEFT_LOSS_WEIGHT = 0.01
 
 # Training
 BATCH_SIZE = 256

@@ -39,7 +39,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from match import run_match  # noqa: E402
+from match import match_game_seeds, run_match  # noqa: E402
 
 # heuristic is `None`: the anchor every era shares, and the only opponent whose
 # strength cannot have drifted.
@@ -50,6 +50,57 @@ PLAYERS = [
     ("v19_B", "models/candidates/v19_B/best_value_net.pt"),
     ("heuristic", None),
 ]
+
+# A match consumes seed..seed+games/2 and seed+1000.. for its two colours.
+# Spacing pairs by only 1000 therefore overlaps one pair's Black sample with
+# the next pair's White sample.  Keep the stride comfortably above both bands.
+PAIR_SEED_STRIDE = 100_000
+BAR_CONFIRM_SEED_OFFSET = 2_000_000
+BAR_PAIR = ("v19", "v19_B")
+
+
+def build_seed_plan(base_seed, pair_count, games):
+    """Build and validate disjoint seeds for every cross-table read.
+
+    The final entry is the independent confirmation of v19 vs v19_B required
+    by the owner's two-read definition of "definitive".
+    """
+    plan = [(f"pair_{k}", base_seed + PAIR_SEED_STRIDE * k)
+            for k in range(pair_count)]
+    plan.append(("bar_confirmation", base_seed + BAR_CONFIRM_SEED_OFFSET))
+
+    used = {}
+    for label, match_seed in plan:
+        for game_seed in match_game_seeds(games, match_seed):
+            previous = used.get(game_seed)
+            if previous is not None:
+                raise ValueError(
+                    f"seed plan overlap: {label} and {previous} use {game_seed}")
+            used[game_seed] = label
+    return plan
+
+
+def result_record(out, name_a, name_b, seed, elapsed):
+    return {
+        "a": name_a, "b": name_b,
+        "a_score": out["a_score"],
+        "a_as_white": out["a_as_white"]["score"],
+        "a_as_black": out["a_as_black"]["score"],
+        "a_white_time_leaning_wins": out["a_as_white"].get("time_leaning_wins"),
+        "a_black_time_leaning_wins": out["a_as_black"].get("time_leaning_wins"),
+        "games": out["a_as_white"]["games"] + out["a_as_black"]["games"],
+        "seed": seed,
+        "elapsed_sec": round(elapsed, 1),
+    }
+
+
+def assess_bar(first_v19_score, confirm_v19_score):
+    """Apply the two-independent-reads rule without over-reading a split."""
+    if first_v19_score > 0.5 and confirm_v19_score > 0.5:
+        return "v19"
+    if first_v19_score < 0.5 and confirm_v19_score < 0.5:
+        return "v19_B"
+    return None
 
 
 def main():
@@ -68,6 +119,7 @@ def main():
         raise SystemExit(f"missing checkpoints: {missing}")
 
     pairs = list(itertools.combinations(range(len(PLAYERS)), 2))
+    seed_plan = build_seed_plan(args.seed, len(pairs), args.games)
     print(f"re-baseline: {len(PLAYERS)} players, {len(pairs)} pairs, "
           f"{args.games} games each, {args.sims} sims, engine={args.engine}",
           flush=True)
@@ -77,27 +129,40 @@ def main():
     for k, (i, j) in enumerate(pairs):
         name_a, path_a = PLAYERS[i]
         name_b, path_b = PLAYERS[j]
-        leg_seed = args.seed + 1000 * k   # disjoint openings per pair
+        leg_seed = seed_plan[k][1]
         t0 = time.time()
         out = run_match(
             os.path.join(ROOT, path_a) if path_a else None,
             os.path.join(ROOT, path_b) if path_b else None,
             args.games, args.sims, leg_seed, workers=args.workers,
             engine=args.engine)
-        results[f"{name_a}_vs_{name_b}"] = {
-            "a": name_a, "b": name_b,
-            "a_score": out["a_score"],
-            "a_as_white": out["a_as_white"]["score"],
-            "a_as_black": out["a_as_black"]["score"],
-            "a_white_time_leaning_wins": out["a_as_white"].get("time_leaning_wins"),
-            "a_black_time_leaning_wins": out["a_as_black"].get("time_leaning_wins"),
-            "games": out["a_as_white"]["games"] + out["a_as_black"]["games"],
-            "elapsed_sec": round(time.time() - t0, 1),
-        }
+        results[f"{name_a}_vs_{name_b}"] = result_record(
+            out, name_a, name_b, leg_seed, time.time() - t0)
         print(f"  [{k+1}/{len(pairs)}] {name_a} vs {name_b}: "
               f"a={out['a_score']:.3f} W={out['a_as_white']['score']:.3f} "
               f"B={out['a_as_black']['score']:.3f} "
               f"({time.time() - t0:.0f}s)", flush=True)
+
+    # One cross-table read is not enough to move the bar.  Repeat the exact
+    # v19/v19_B matchup on a fully disjoint seed range.
+    by_name = dict(PLAYERS)
+    confirm_seed = seed_plan[-1][1]
+    t0 = time.time()
+    confirm_out = run_match(
+        os.path.join(ROOT, by_name[BAR_PAIR[0]]),
+        os.path.join(ROOT, by_name[BAR_PAIR[1]]),
+        args.games, args.sims, confirm_seed, workers=args.workers,
+        engine=args.engine)
+    bar_confirmation = result_record(
+        confirm_out, BAR_PAIR[0], BAR_PAIR[1], confirm_seed, time.time() - t0)
+    first_bar_read = results[f"{BAR_PAIR[0]}_vs_{BAR_PAIR[1]}"]
+    recommended_bar = assess_bar(first_bar_read["a_score"],
+                                 bar_confirmation["a_score"])
+    print(f"  [confirm] {BAR_PAIR[0]} vs {BAR_PAIR[1]}: "
+          f"a={confirm_out['a_score']:.3f} "
+          f"W={confirm_out['a_as_white']['score']:.3f} "
+          f"B={confirm_out['a_as_black']['score']:.3f} "
+          f"({time.time() - t0:.0f}s)", flush=True)
 
     se = math.sqrt(0.25 / args.games)
     summary = {
@@ -108,6 +173,14 @@ def main():
         "se_per_pair": round(se, 4),
         "players": [name for name, _ in PLAYERS],
         "pairs": results,
+        "bar_confirmation": bar_confirmation,
+        "bar_assessment": {
+            "rule": "same engine must score above 0.50 in two independent reads",
+            "first_v19_score": first_bar_read["a_score"],
+            "confirm_v19_score": bar_confirmation["a_score"],
+            "recommended_bar": recommended_bar,
+            "definitive": recommended_bar is not None,
+        },
         "elapsed_sec": round(time.time() - started, 1),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }

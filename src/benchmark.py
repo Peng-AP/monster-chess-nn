@@ -15,7 +15,8 @@ import json
 import os
 import time
 
-from config import MODEL_DIR, PROJECT_ROOT
+from config import (MODEL_DIR, PROJECT_ROOT, C_PUCT, FPU_REDUCTION,
+                    POLICY_TEMPERATURE)
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 from evaluation import evaluate
@@ -64,7 +65,9 @@ def _engine_choice(engine=None):
     return choice
 
 
-def _build_engine(model_path, sims, batch_size=None, engine=None):
+def _build_engine(model_path, sims, batch_size=None, engine=None,
+                  c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                  policy_temperature=POLICY_TEMPERATURE):
     """Return (engine, label). NN engine if a model is given, else heuristic.
 
     batch_size is the MCTS leaf-parallel width. The default (16) was chosen for
@@ -81,7 +84,13 @@ def _build_engine(model_path, sims, batch_size=None, engine=None):
     else:
         eval_fn = evaluate
         label = "heuristic"
-    kwargs = {} if batch_size is None else {"batch_size": int(batch_size)}
+    kwargs = {
+        "c_puct": c_puct,
+        "fpu_reduction": fpu_reduction,
+        "policy_temperature": policy_temperature,
+    }
+    if batch_size is not None:
+        kwargs["batch_size"] = int(batch_size)
     choice = _engine_choice(engine)
     if choice == "native":
         from native_mcts import NativeMCTS
@@ -196,9 +205,13 @@ def summarize_side(plies_by_result):
     }
 
 
-def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None):
+def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None,
+                  c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                  policy_temperature=POLICY_TEMPERATURE):
     import random
-    candidate, cand_label = _build_engine(model_path, sims)
+    candidate, cand_label = _build_engine(
+        model_path, sims, c_puct=c_puct, fpu_reduction=fpu_reduction,
+        policy_temperature=policy_temperature)
     anchor, anchor_label = _build_engine(None, anchor_sims)
 
     n_white = games // 2       # candidate plays White
@@ -246,6 +259,11 @@ def run_benchmark(model_path, games, sims, anchor_sims, seed, start_fen=None):
         "anchor_sims": anchor_sims,
         "seed": seed,
         "start_fen": start_fen,
+        "candidate_search": {
+            "c_puct": c_puct,
+            "fpu_reduction": fpu_reduction,
+            "policy_temperature": policy_temperature,
+        },
         # --- overall (merged both sides; kept for continuity) ---
         "candidate_wins": cand_wins,
         "candidate_draws": cand_draws,
@@ -276,6 +294,10 @@ def main():
                    help="Heuristic anchor simulations (default: --sims)")
     p.add_argument("--seed", type=int, default=20260702)
     p.add_argument("--start-fen", type=str, default=None)
+    p.add_argument("--c-puct", type=float, default=C_PUCT)
+    p.add_argument("--fpu-reduction", type=float, default=FPU_REDUCTION)
+    p.add_argument("--policy-temperature", type=float,
+                   default=POLICY_TEMPERATURE)
     p.add_argument("--out-dir", type=str, default=os.path.join(PROJECT_ROOT, "benchmarks"))
     args = p.parse_args()
 
@@ -296,6 +318,8 @@ def main():
     result = run_benchmark(
         model_path=model_path, games=args.games, sims=args.sims,
         anchor_sims=anchor_sims, seed=args.seed, start_fen=args.start_fen,
+        c_puct=args.c_puct, fpu_reduction=args.fpu_reduction,
+        policy_temperature=args.policy_temperature,
     )
     print(json.dumps(result, indent=2))
 

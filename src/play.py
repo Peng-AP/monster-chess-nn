@@ -15,7 +15,8 @@ import time
 
 import chess
 
-from config import MCTS_SIMULATIONS, RAW_DATA_DIR, INCUMBENT_MODEL
+from config import (MCTS_SIMULATIONS, RAW_DATA_DIR, INCUMBENT_MODEL, C_PUCT,
+                    FPU_REDUCTION, POLICY_TEMPERATURE)
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 
@@ -385,6 +386,11 @@ def main():
                         help="Use heuristic evaluation instead of NN")
     parser.add_argument("--sims", type=int, default=MCTS_SIMULATIONS,
                         help=f"MCTS simulations (default: {MCTS_SIMULATIONS})")
+    parser.add_argument("--c-puct", type=float, default=C_PUCT)
+    parser.add_argument("--fpu-reduction", type=float, default=FPU_REDUCTION)
+    parser.add_argument("--policy-temperature", type=float,
+                        default=POLICY_TEMPERATURE,
+                        help="NN policy-prior temperature (not final move sampling)")
     parser.add_argument("--save-data", action="store_true",
                         help="Save game data for training")
     parser.add_argument("--fen", type=str, default=None,
@@ -409,7 +415,9 @@ def main():
 
     # Human play: deterministic priors (no root noise), early stop allowed.
     engine = MCTS(num_simulations=args.sims, eval_fn=eval_fn,
-                  root_noise=False, allow_early_stop=True)
+                  root_noise=False, allow_early_stop=True,
+                  c_puct=args.c_puct, fpu_reduction=args.fpu_reduction,
+                  policy_temperature=args.policy_temperature)
     human_is_white = args.color == "white"
     session_id = time.strftime("%Y%m%d_%H%M%S")
     ai_color = "black" if human_is_white else "white"
@@ -422,6 +430,10 @@ def main():
     print(f"  AI plays:    {'Black' if human_is_white else 'White (double moves)'}")
     print(f"  Evaluator:   {'Heuristic' if eval_fn is None else 'Neural Network'}")
     print(f"  Simulations: {args.sims}")
+    if eval_fn is not None:
+        print(f"  Search:      c_puct={args.c_puct:g}, "
+              f"fpu={args.fpu_reduction:g}, "
+              f"policy_T={args.policy_temperature:g}")
     print(f"{'='*50}")
     print(f"  Enter moves as UCI (e2e4) or SAN (Nf3)")
     print(f"  Type 'quit' or 'resign' to end the game")

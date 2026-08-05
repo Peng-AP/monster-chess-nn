@@ -19,9 +19,21 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from config import DEFAULT_GAME_WORKERS  # noqa: E402  (needs the sys.path above)
+from config import (DEFAULT_GAME_WORKERS, C_PUCT, FPU_REDUCTION,
+                    POLICY_TEMPERATURE)  # noqa: E402  (needs sys.path above)
 
 _engines = {}
+
+
+def match_game_seeds(games, seed):
+    """Return the per-game RNG seeds used by a match, in task order.
+
+    Exposed so multi-leg protocols can prove that their opening samples are
+    disjoint instead of re-implementing this easy-to-misread layout.
+    """
+    n_white = games // 2
+    return ([seed + i for i in range(n_white)] +
+            [seed + 1000 + i for i in range(games - n_white)])
 
 
 def resolve_opening_temp_plies(model_b, requested):
@@ -32,12 +44,23 @@ def resolve_opening_temp_plies(model_b, requested):
 
 
 def _init_worker(model_a, model_b, sims, sims_b=None,
-                 batch_a=None, batch_b=None, engine=None):
+                 batch_a=None, batch_b=None, engine=None,
+                 c_puct_a=C_PUCT, c_puct_b=C_PUCT,
+                 fpu_reduction_a=FPU_REDUCTION,
+                 fpu_reduction_b=FPU_REDUCTION,
+                 policy_temperature_a=POLICY_TEMPERATURE,
+                 policy_temperature_b=POLICY_TEMPERATURE):
     # Workers are separate processes: the choice must be passed in, not read
     # from a parent-side global.
     from benchmark import _build_engine
-    _engines["a"], _ = _build_engine(model_a, sims, batch_a, engine=engine)
-    _engines["b"], _ = _build_engine(model_b, sims_b or sims, batch_b, engine=engine)
+    _engines["a"], _ = _build_engine(
+        model_a, sims, batch_a, engine=engine, c_puct=c_puct_a,
+        fpu_reduction=fpu_reduction_a,
+        policy_temperature=policy_temperature_a)
+    _engines["b"], _ = _build_engine(
+        model_b, sims_b or sims, batch_b, engine=engine, c_puct=c_puct_b,
+        fpu_reduction=fpu_reduction_b,
+        policy_temperature=policy_temperature_b)
 
 
 def _play(task):
@@ -53,7 +76,11 @@ def _play(task):
 
 def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               workers=None, sims_b=None, batch_a=None, batch_b=None,
-              engine=None):
+              engine=None, c_puct_a=C_PUCT, c_puct_b=C_PUCT,
+              fpu_reduction_a=FPU_REDUCTION,
+              fpu_reduction_b=FPU_REDUCTION,
+              policy_temperature_a=POLICY_TEMPERATURE,
+              policy_temperature_b=POLICY_TEMPERATURE):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -71,14 +98,16 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     # the first result exactly and looks like reassuring agreement. Space
     # independent samples by 100000 or more. tests/test_match_seed_separation.py
     n_white = games // 2
-    tasks = [(True, seed + i, opening_temp_plies) for i in range(n_white)]
-    tasks += [(False, seed + 1000 + i, opening_temp_plies)
-              for i in range(games - n_white)]
+    seeds = match_game_seeds(games, seed)
+    tasks = [(True, s, opening_temp_plies) for s in seeds[:n_white]]
+    tasks += [(False, s, opening_temp_plies) for s in seeds[n_white:]]
 
     t0 = time.time()
     with mp.Pool(workers, initializer=_init_worker,
                  initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b,
-                           engine)) as pool:
+                           engine, c_puct_a, c_puct_b, fpu_reduction_a,
+                           fpu_reduction_b, policy_temperature_a,
+                           policy_temperature_b)) as pool:
         results = pool.map(_play, tasks)
 
     from benchmark import summarize_side
@@ -96,6 +125,16 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         "name_a": name_a, "name_b": name_b,
         "games": games, "sims": sims, "sims_b": sims_b or sims,
         "batch_a": batch_a, "batch_b": batch_b, "seed": seed,
+        "search_a": {
+            "c_puct": c_puct_a,
+            "fpu_reduction": fpu_reduction_a,
+            "policy_temperature": policy_temperature_a,
+        },
+        "search_b": {
+            "c_puct": c_puct_b,
+            "fpu_reduction": fpu_reduction_b,
+            "policy_temperature": policy_temperature_b,
+        },
         "opening_temp_plies": opening_temp_plies,
         "workers": workers,
         "a_score": round(score, 4),
@@ -120,6 +159,14 @@ def main():
                          "in simulations per second.")
     ap.add_argument("--batch-a", type=int, default=None)
     ap.add_argument("--batch-b", type=int, default=None)
+    ap.add_argument("--c-puct-a", type=float, default=C_PUCT)
+    ap.add_argument("--c-puct-b", type=float, default=C_PUCT)
+    ap.add_argument("--fpu-reduction-a", type=float, default=FPU_REDUCTION)
+    ap.add_argument("--fpu-reduction-b", type=float, default=FPU_REDUCTION)
+    ap.add_argument("--policy-temperature-a", type=float,
+                    default=POLICY_TEMPERATURE)
+    ap.add_argument("--policy-temperature-b", type=float,
+                    default=POLICY_TEMPERATURE)
     ap.add_argument("--seed", type=int, default=20260704)
     # Left as None so resolve_opening_temp_plies() can pick the default from the
     # opponent: heuristic tie-breaks already diversify anchor games, so only
@@ -133,7 +180,12 @@ def main():
     out = run_match(args.model_a, args.model_b, args.games, args.sims,
                     args.seed, args.opening_temp_plies, args.workers,
                     sims_b=args.sims_b, batch_a=args.batch_a,
-                    batch_b=args.batch_b, engine=args.engine)
+                    batch_b=args.batch_b, engine=args.engine,
+                    c_puct_a=args.c_puct_a, c_puct_b=args.c_puct_b,
+                    fpu_reduction_a=args.fpu_reduction_a,
+                    fpu_reduction_b=args.fpu_reduction_b,
+                    policy_temperature_a=args.policy_temperature_a,
+                    policy_temperature_b=args.policy_temperature_b)
     name_a, name_b = out["name_a"], out["name_b"]
 
     os.makedirs(args.out_dir, exist_ok=True)

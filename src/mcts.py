@@ -8,6 +8,7 @@ import numpy as np
 from config import (
     EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
     DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION, POLICY_TARGET_PSEUDOCOUNT,
+    POLICY_TEMPERATURE,
 )
 from evaluation import evaluate
 
@@ -176,11 +177,19 @@ def _selected_child_value(children_info, selected_action, fallback):
     return fallback
 
 
-def _softmax_masked(logits, indices):
-    """Softmax over a subset of logit indices, returning {index: prob}."""
+def _softmax_masked(logits, indices, temperature=POLICY_TEMPERATURE):
+    """Softmax over a subset of logit indices, returning {index: prob}.
+
+    This temperature affects the network prior fed to PUCT. It is separate
+    from ``get_best_action(..., temperature=...)``, which samples the final
+    move from visit counts.
+    """
     if not indices:
         return {}
-    vals = np.array([logits[i] for i in indices], dtype=np.float64)
+    temperature = float(temperature)
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("policy temperature must be finite and > 0")
+    vals = np.array([logits[i] for i in indices], dtype=np.float64) / temperature
     vals -= vals.max()
     exp_vals = np.exp(vals)
     total = exp_vals.sum()
@@ -332,9 +341,21 @@ class MCTS:
     VIRTUAL_LOSS = 3
 
     def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None,
-                 batch_size=16, root_noise=True, allow_early_stop=True):
+                 batch_size=16, root_noise=True, allow_early_stop=True,
+                 c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                 policy_temperature=POLICY_TEMPERATURE):
+        if not math.isfinite(float(c_puct)) or float(c_puct) < 0:
+            raise ValueError("c_puct must be finite and >= 0")
+        if not math.isfinite(float(fpu_reduction)) or float(fpu_reduction) < 0:
+            raise ValueError("fpu_reduction must be finite and >= 0")
+        if (not math.isfinite(float(policy_temperature))
+                or float(policy_temperature) <= 0):
+            raise ValueError("policy_temperature must be finite and > 0")
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn or evaluate
+        self.c_puct = float(c_puct)
+        self.fpu_reduction = float(fpu_reduction)
+        self.policy_temperature = float(policy_temperature)
         # Leaf-parallel batch width.  Kept small: wide in-tree batching queues many
         # leaves against the same shallow tree and degrades selection quality.  GPU
         # throughput comes from parallelism ACROSS games (workers), not within one
@@ -603,7 +624,8 @@ class MCTS:
                 return node
             if not node.children:
                 return node  # fully expanded with no legal moves
-            node = node.best_child_puct(fpu_reduction=FPU_REDUCTION)
+            node = node.best_child_puct(c_puct=self.c_puct,
+                                        fpu_reduction=self.fpu_reduction)
         return node
 
     def _expand_with_policy(self, node, policy_logits):
@@ -640,7 +662,8 @@ class MCTS:
         from data_processor import move_to_index
 
         indices = [move_to_index(m) for m in legal_actions]
-        probs = _softmax_masked(policy_logits, indices)
+        probs = _softmax_masked(policy_logits, indices,
+                                temperature=self.policy_temperature)
         return [(move, probs.get(idx, 1.0 / len(legal_actions)))
                 for move, idx in zip(legal_actions, indices)]
 
@@ -656,7 +679,8 @@ class MCTS:
         for m1, m2 in legal_actions:
             m1_groups[move_to_index(m1)].append((m1, m2))
 
-        m1_probs = _softmax_masked(policy_logits, list(m1_groups.keys()))
+        m1_probs = _softmax_masked(policy_logits, list(m1_groups.keys()),
+                                   temperature=self.policy_temperature)
 
         actions_and_priors = []
         for m1_idx, pairs in m1_groups.items():
