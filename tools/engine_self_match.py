@@ -100,7 +100,7 @@ def main():
     ap.add_argument("--games", type=int, default=200)
     ap.add_argument("--sims", type=int, default=200)
     ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--model", default="models/fresh_start_v19/best_value_net.pt")
+    ap.add_argument("--model", default="models/fresh_start_v20/best_value_net.pt")
     ap.add_argument("--root-noise", action="store_true",
                     help="the generation regime: gates (a)/(b) run without it")
     ap.add_argument("--temperature", type=float, default=0.0)

@@ -286,7 +286,7 @@ def main():
         "campaign": "post_e5_data_ladder",
         "arms": results,
         "gate": {"engine": "native", "sims": GATE_SIMS,
-                 "seed": GATE_SEED, "bar": "vs_v19_B"},
+                 "seed": GATE_SEED, "bar": gate.BAR},
         "training_recipe": RECIPE,
         "processing_recipe": PROCESS_RECIPE,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),

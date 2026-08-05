@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "native"))
 
-MODEL = os.path.join("models", "fresh_start_v19", "best_value_net.pt")
+MODEL = os.path.join("models", "fresh_start_v20", "best_value_net.pt")
 FEN = "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1"
 
 

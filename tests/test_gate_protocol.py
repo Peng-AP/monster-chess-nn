@@ -49,11 +49,11 @@ class TestThresholds(unittest.TestCase):
 
     def test_the_bar_is_the_strongest_model_on_record(self):
         # Owner 2026-08-01: every model must be definitively better than the
-        # last. E5 put v19_B over v19 twice under the current scoring/engine.
-        self.assertEqual(gate.BAR, "vs_v19_B")
+        # last. The owner promoted the two-color Wide64 successor as v20.
+        self.assertEqual(gate.BAR, "vs_v20")
         self.assertIn(gate.BAR, gate.AGGREGATE_LEGS)
-        self.assertIn("v19_B", gate.BAR_MODEL)
-        self.assertIn("fresh_start_v19", gate.NUMBERED_INCUMBENT)
+        self.assertIn("fresh_start_v20", gate.BAR_MODEL)
+        self.assertEqual(gate.BAR_MODEL, gate.NUMBERED_INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):

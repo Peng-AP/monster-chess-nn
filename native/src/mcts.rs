@@ -515,7 +515,10 @@ impl Arena {
         let priors: Vec<f64> = match logits {
             None => vec![1.0 / actions.len() as f64; actions.len()],
             Some(l) => {
-                let indices: Vec<usize> = actions.iter().map(|a| uci_to_index(a)).collect();
+                let promotion_aware = l.len() >= crate::encoding::PROMOTION_AWARE_POLICY_SIZE;
+                let indices: Vec<usize> = actions.iter().map(|a| {
+                    crate::encoding::policy_index(a, promotion_aware).unwrap_or(0)
+                }).collect();
                 softmax_masked(l, &indices)
             }
         };
@@ -843,16 +846,6 @@ fn is_reversal(action: &str, prev: &[(u8, u8)]) -> bool {
     prev.iter().any(|&(pf, pt)| from == pt && to == pf)
 }
 
-fn uci_to_index(uci: &str) -> usize {
-    let b = uci.as_bytes();
-    if b.len() < 4 {
-        return 0;
-    }
-    let from = ((b[1] - b'1') * 8 + (b[0] - b'a')) as usize;
-    let to = ((b[3] - b'1') * 8 + (b[2] - b'a')) as usize;
-    from * 64 + to
-}
-
 // ---------------------------------------------------------------------------
 // Python surface — enough to run the contract tests against the native arena.
 // ---------------------------------------------------------------------------
@@ -966,7 +959,7 @@ impl PyTree {
     }
 
     /// Batched PUCT. `eval_fn(batch_bytes, n, channels)` must return
-    /// `(values_bytes, policy_bytes)` — n f32 values and n*4096 f32 logits,
+    /// `(values_bytes, policy_bytes)` — n values and n*policy_width logits,
     /// little-endian. Bytes, not lists: a batch of 16 is ~17k floats and list
     /// marshalling would cost more than the search it serves.
     #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
@@ -1047,7 +1040,11 @@ impl PyTree {
             *values.first().unwrap_or(&0.0)
         };
         if !self.arena.nodes[0].is_expanded {
-            let logits = if policies.len() >= 4096 { Some(&policies[..4096]) } else { None };
+            let logits = if policies.len() >= crate::encoding::LEGACY_POLICY_SIZE {
+                Some(policies.as_slice())
+            } else {
+                None
+            };
             self.arena.expand_with_policy(0, logits);
         }
         self.arena.backpropagate(0, root_value);
@@ -1154,10 +1151,16 @@ impl PyTree {
                         } else {
                             *nn_values.get(nn_cursor).unwrap_or(&0.0)
                         };
-                        let start = nn_cursor * 4096;
+                        let policy_width = if nn_nodes.is_empty() {
+                            crate::encoding::LEGACY_POLICY_SIZE
+                        } else {
+                            nn_policies.len() / nn_nodes.len()
+                        };
+                        let start = nn_cursor * policy_width;
                         if !self.arena.nodes[*node].is_expanded {
-                            let logits = if nn_policies.len() >= start + 4096 {
-                                Some(&nn_policies[start..start + 4096])
+                            let logits = if policy_width >= crate::encoding::LEGACY_POLICY_SIZE
+                                && nn_policies.len() >= start + policy_width {
+                                Some(&nn_policies[start..start + policy_width])
                             } else {
                                 None
                             };

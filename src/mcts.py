@@ -659,9 +659,11 @@ class MCTS:
 
     def _single_move_priors(self, legal_actions, policy_logits):
         """Priors for single-move plies (Black, and either White half-move)."""
-        from data_processor import move_to_index
+        from encoding import move_to_policy_index
 
-        indices = [move_to_index(m) for m in legal_actions]
+        promotion_aware = len(policy_logits) > POLICY_SIZE
+        indices = [move_to_policy_index(m, promotion_aware)
+                   for m in legal_actions]
         probs = _softmax_masked(policy_logits, indices,
                                 temperature=self.policy_temperature)
         return [(move, probs.get(idx, 1.0 / len(legal_actions)))
@@ -673,11 +675,12 @@ class MCTS:
         Uses P(m1) from the policy head, distributed uniformly across the m2
         continuations for each m1:  P(m1, m2) = P(m1) / |m2s|.
         """
-        from data_processor import move_to_index
+        from encoding import move_to_policy_index
 
         m1_groups = defaultdict(list)
+        promotion_aware = len(policy_logits) > POLICY_SIZE
         for m1, m2 in legal_actions:
-            m1_groups[move_to_index(m1)].append((m1, m2))
+            m1_groups[move_to_policy_index(m1, promotion_aware)].append((m1, m2))
 
         m1_probs = _softmax_masked(policy_logits, list(m1_groups.keys()),
                                    temperature=self.policy_temperature)

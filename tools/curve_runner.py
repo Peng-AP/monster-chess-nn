@@ -14,7 +14,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL = os.path.join("models", "fresh_start_v19", "best_value_net.pt")
+MODEL = os.path.join("models", "fresh_start_v20", "best_value_net.pt")
 # Overridable so a partial comparison (e.g. solver-on at 1600/3200 only)
 # reuses this runner instead of growing another ad-hoc shell loop.
 POINTS = [int(x) for x in os.environ.get(

@@ -56,7 +56,7 @@ def main():
     ap.add_argument("--positions", type=int, default=400)
     ap.add_argument("--sims", type=int, default=400)
     ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--model", default="models/fresh_start_v19/best_value_net.pt")
+    ap.add_argument("--model", default="models/fresh_start_v20/best_value_net.pt")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     args = ap.parse_args()
 

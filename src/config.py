@@ -56,7 +56,12 @@ BLACK_PAWN_PROGRESS_LAYER = 16
 TENSOR_SHAPE = (8, 8, 17)
 
 # Policy head
-POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
+POLICY_SIZE = 4096       # legacy flat from_sq(64) * to_sq(64) encoding
+# Optional LC0-style extension.  A source/destination action cannot distinguish
+# q/r/b/n promotions.  There are two promotion ranks, eight source files,
+# three destination-file offsets and four promoted pieces: 2*8*3*4 = 192.
+PROMOTION_POLICY_SIZE = 192
+PROMOTION_AWARE_POLICY_SIZE = POLICY_SIZE + PROMOTION_POLICY_SIZE
 C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
 FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
 POLICY_TEMPERATURE = 1.0 # scale policy logits before legal-move softmax
@@ -69,6 +74,7 @@ POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 POLICY_HEAD_CHANNELS = 32  # policy head bottleneck channels (widened from 16 for fresh start)
 POLICY_HEAD_TYPE = "dense"  # "dense" or compact source-to-destination "attention"
 POLICY_ATTENTION_CHANNELS = 32
+SIDE_POLICY_ADAPTERS = False  # opt-in White/Black residual attention projection
 STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
@@ -126,7 +132,7 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 # to) models/best_value_net.pt, which has never existed — so play.py silently
 # fell back to the heuristic and a fresh iterate.py run would believe there was
 # no incumbent at all. Both now resolve the real one through this constant.
-INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v17", "best_value_net.pt")
+INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v20", "best_value_net.pt")
 
 # Data retention (data_processor.py)
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)

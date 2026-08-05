@@ -129,7 +129,7 @@ def match(model, sims, games, seed, on_sims=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="models/fresh_start_v19/best_value_net.pt")
+    ap.add_argument("--model", default="models/fresh_start_v20/best_value_net.pt")
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--sims", type=int, default=200)
     ap.add_argument("--plies", type=int, default=30)

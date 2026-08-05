@@ -22,7 +22,8 @@ except ImportError:
     mn = None
 
 import config  # noqa: E402
-from encoding import fen_to_tensor, move_to_index  # noqa: E402
+from encoding import (fen_to_tensor, move_to_index,
+                      promotion_move_to_index)  # noqa: E402
 from monster_chess import MonsterChessGame  # noqa: E402
 import chess  # noqa: E402
 
@@ -100,6 +101,13 @@ class TestPolicyIndex(unittest.TestCase):
     def test_index_range(self):
         self.assertEqual(mn.move_to_index("a1a1"), 0)
         self.assertEqual(mn.move_to_index("h8h8"), config.POLICY_SIZE - 1)
+
+    def test_matches_distinct_promotion_indices(self):
+        for uci in ("a7a8q", "c7d8n", "h2g1r", "e2e1b"):
+            self.assertEqual(
+                mn.promotion_move_to_index(uci),
+                promotion_move_to_index(chess.Move.from_uci(uci)),
+            )
 
 
 if __name__ == "__main__":

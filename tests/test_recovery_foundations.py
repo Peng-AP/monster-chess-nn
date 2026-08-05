@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from encoding import fen_to_tensor
 from model_diff import convert_channels
-from train import _decisive_score
+from train import _checkpoint_regression_guard, _decisive_score
 import data_processor
 
 FENS = [
@@ -64,6 +64,34 @@ def test_decisive_score_none_when_side_missing():
         "policy_top1_white": 0.3, "policy_top1_black": None,
         "sign_acc_white": 0.8, "sign_acc_black": 0.8,
     }) is None
+
+
+def test_checkpoint_guard_rejects_policy_collapse_despite_better_scalar():
+    incumbent = {
+        "policy_ce": 2.0,
+        "policy_top1_white": 0.40,
+        "policy_top1_black": 0.35,
+    }
+    decisive = {"policy_top1_white": 0.39, "policy_top1_black": 0.34}
+    passed, reasons = _checkpoint_regression_guard(
+        2.84, decisive, incumbent,
+        max_policy_ce_regression=0.02, max_side_top1_drop=0.02)
+    assert not passed
+    assert any("policy_ce" in reason for reason in reasons)
+
+
+def test_checkpoint_guard_allows_small_bounded_tradeoff():
+    incumbent = {
+        "policy_ce": 2.0,
+        "policy_top1_white": 0.40,
+        "policy_top1_black": 0.35,
+    }
+    decisive = {"policy_top1_white": 0.395, "policy_top1_black": 0.345}
+    passed, reasons = _checkpoint_regression_guard(
+        2.02, decisive, incumbent,
+        max_policy_ce_regression=0.02, max_side_top1_drop=0.01)
+    assert passed
+    assert reasons == []
 
 
 @pytest.mark.parametrize("channels,expected", [(15, 15), (17, 17), (None, 17)])

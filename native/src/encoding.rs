@@ -132,27 +132,64 @@ fn encode_fen(
     encode(&board, is_white_turn, half_pending, channels).map_err(PyValueError::new_err)
 }
 
-/// Flat policy index, `from * 64 + to`.
-#[pyfunction]
-fn move_to_index(uci: &str) -> PyResult<usize> {
+pub const LEGACY_POLICY_SIZE: usize = 4096;
+pub const PROMOTION_AWARE_POLICY_SIZE: usize = 4288;
+
+/// Policy index for the legacy ABI or the distinct-promotion extension.
+pub fn policy_index(uci: &str, promotion_aware: bool) -> Result<usize, String> {
     let b = uci.as_bytes();
     if b.len() < 4 {
-        return Err(PyValueError::new_err("bad uci"));
+        return Err("bad uci".to_string());
     }
-    let sq = |f: u8, r: u8| -> PyResult<usize> {
+    let sq = |f: u8, r: u8| -> Result<usize, String> {
         let file = f.wrapping_sub(b'a');
         let rank = r.wrapping_sub(b'1');
         if file < 8 && rank < 8 {
             Ok((rank * 8 + file) as usize)
         } else {
-            Err(PyValueError::new_err("bad square"))
+            Err("bad square".to_string())
         }
     };
-    Ok(sq(b[0], b[1])? * 64 + sq(b[2], b[3])?)
+    let from = sq(b[0], b[1])?;
+    let to = sq(b[2], b[3])?;
+    if !promotion_aware || b.len() < 5 {
+        return Ok(from * 64 + to);
+    }
+    let color_band = match (b[1], b[3]) {
+        (b'7', b'8') => 0usize,
+        (b'2', b'1') => 1usize,
+        _ => return Err("promotion move does not cross a promotion rank".to_string()),
+    };
+    let direction = b[2] as i16 - b[0] as i16;
+    if !(-1..=1).contains(&direction) {
+        return Err("bad promotion destination".to_string());
+    }
+    let piece = match b[4].to_ascii_lowercase() {
+        b'q' => 0usize,
+        b'r' => 1usize,
+        b'b' => 2usize,
+        b'n' => 3usize,
+        _ => return Err("bad promotion piece".to_string()),
+    };
+    let from_file = (b[0] - b'a') as usize;
+    Ok(LEGACY_POLICY_SIZE + color_band * 96 + from_file * 12
+       + (direction + 1) as usize * 4 + piece)
+}
+
+/// Flat legacy policy index, `from * 64 + to`.
+#[pyfunction]
+fn move_to_index(uci: &str) -> PyResult<usize> {
+    policy_index(uci, false).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
+fn promotion_move_to_index(uci: &str) -> PyResult<usize> {
+    policy_index(uci, true).map_err(PyValueError::new_err)
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_fen, m)?)?;
     m.add_function(wrap_pyfunction!(move_to_index, m)?)?;
+    m.add_function(wrap_pyfunction!(promotion_move_to_index, m)?)?;
     Ok(())
 }

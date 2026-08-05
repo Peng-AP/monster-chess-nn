@@ -117,7 +117,7 @@ def main():
     ap.add_argument("--out-dir", default=None,
                     help="write corrected games here (default: alongside, "
                          "suffix _finished)")
-    ap.add_argument("--model", default="models/fresh_start_v19/best_value_net.pt")
+    ap.add_argument("--model", default="models/fresh_start_v20/best_value_net.pt")
     ap.add_argument("--black-sims", type=int, default=1600)
     ap.add_argument("--white-sims", type=int, default=400)
     ap.add_argument("--extra-turns", type=int, default=60)

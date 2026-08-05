@@ -14,7 +14,8 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from config import (
-    TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, POLICY_LOSS_WEIGHT,
+    TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, PROMOTION_AWARE_POLICY_SIZE,
+    POLICY_LOSS_WEIGHT,
     BATCH_SIZE, LEARNING_RATE, EPOCHS,
     VALUE_TARGET,
     VALUE_HEAD_MODE, WDL_LOSS_WEIGHT, WDL_DRAW_EPSILON,
@@ -22,6 +23,7 @@ from config import (
     VALUE_LOSS_EXPONENT, LR_GAMMA, RANDOM_SEED,
     WEIGHT_DECAY, GRAD_CLIP_NORM, WARMUP_EPOCHS, WARMUP_START_FACTOR,
     POLICY_HEAD_CHANNELS, POLICY_HEAD_TYPE, POLICY_ATTENTION_CHANNELS,
+    SIDE_POLICY_ADAPTERS,
     STEM_CHANNELS, RESIDUAL_BLOCK_CHANNELS,
     USE_SE_BLOCKS, SE_REDUCTION,
     SPATIAL_VALUE_HEAD, VALUE_HEAD_CONV_CHANNELS,
@@ -174,6 +176,8 @@ class DualHeadNet(nn.Module):
         policy_head_channels=POLICY_HEAD_CHANNELS,
         policy_head_type=POLICY_HEAD_TYPE,
         policy_attention_channels=POLICY_ATTENTION_CHANNELS,
+        side_policy_adapters=SIDE_POLICY_ADAPTERS,
+        promotion_policy=False,
         stem_channels=STEM_CHANNELS,
         residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
         use_se_blocks=USE_SE_BLOCKS,
@@ -192,6 +196,10 @@ class DualHeadNet(nn.Module):
         self.policy_head_channels = int(policy_head_channels)
         self.policy_head_type = str(policy_head_type)
         self.policy_attention_channels = int(policy_attention_channels)
+        self.side_policy_adapters = bool(side_policy_adapters)
+        self.promotion_policy = bool(promotion_policy)
+        self.policy_output_size = (PROMOTION_AWARE_POLICY_SIZE
+                                   if self.promotion_policy else POLICY_SIZE)
         self.stem_channels = int(stem_channels)
         self.residual_block_channels = tuple(int(c) for c in residual_block_channels)
         self.use_se_blocks = bool(use_se_blocks)
@@ -212,12 +220,18 @@ class DualHeadNet(nn.Module):
             raise ValueError("policy_head_type must be 'dense' or 'attention'")
         if self.policy_attention_channels <= 0:
             raise ValueError("policy_attention_channels must be > 0")
+        if self.side_policy_adapters and self.policy_head_type != "attention":
+            raise ValueError("side_policy_adapters requires the attention policy head")
         if self.moves_left_head_channels <= 0:
             raise ValueError("moves_left_head_channels must be > 0")
         if self.value_head_mode not in ("scalar", "wdl"):
             raise ValueError("value_head_mode must be 'scalar' or 'wdl'")
         if self.value_head_mode == "wdl" and not self.use_wdl_head:
             raise ValueError(f"value_head_mode='{self.value_head_mode}' requires use_wdl_head=True")
+        if self.use_wdl_head and self.value_head_mode == "scalar":
+            # A state_dict otherwise cannot distinguish an auxiliary WDL head
+            # from a WDL head used as the engine's primary value output.
+            self.register_buffer("_aux_wdl_head", torch.tensor(1, dtype=torch.uint8))
 
         # Stem
         self.stem = nn.Sequential(
@@ -258,10 +272,52 @@ class DualHeadNet(nn.Module):
                 1,
                 bias=True,
             )
+            if self.side_policy_adapters:
+                # Any pair of side-specific projections can be represented as
+                # shared +/- delta. Zero initialization starts from the exact
+                # shared-head geometry while allowing White and Black gradients
+                # to immediately separate the residual projection.
+                self.policy_side_adapter = nn.Conv2d(
+                    self.backbone_out_channels,
+                    2 * self.policy_attention_channels + 2,
+                    1,
+                    bias=True,
+                )
+                nn.init.zeros_(self.policy_side_adapter.weight)
+                nn.init.zeros_(self.policy_side_adapter.bias)
             # LC0's attention head includes learned move biases. This compact
             # table lets the net represent board geometry (source,destination)
             # without recreating the 8.4M-parameter dense layer.
             self.policy_relative_bias = nn.Parameter(torch.zeros(64, 64))
+        if self.promotion_policy:
+            # Twelve position-dependent deltas per source square:
+            # three destination directions x q/r/b/n.  Only the White rank-7
+            # and Black rank-2 source rows are read.  Zero initialization makes
+            # a lifted legacy checkpoint reproduce its old source/destination
+            # logits exactly until promotion-specific evidence is learned.
+            self.policy_promotion_delta = nn.Conv2d(
+                self.backbone_out_channels, 12, 1, bias=True)
+            nn.init.zeros_(self.policy_promotion_delta.weight)
+            nn.init.zeros_(self.policy_promotion_delta.bias)
+            self.register_buffer(
+                "_promotion_base_indices",
+                self._make_promotion_base_indices(),
+                persistent=False,
+            )
+
+    @staticmethod
+    def _make_promotion_base_indices():
+        indices = []
+        for from_rank, to_rank in ((6, 7), (1, 0)):
+            for from_file in range(8):
+                from_sq = from_rank * 8 + from_file
+                for direction in (-1, 0, 1):
+                    # Off-board cells are never legal or supervised, but still
+                    # occupy stable ABI slots.  Clamp only their unused base.
+                    to_file = min(7, max(0, from_file + direction))
+                    to_sq = to_rank * 8 + to_file
+                    indices.extend([from_sq * 64 + to_sq] * 4)
+        return torch.tensor(indices, dtype=torch.long)
 
     def _make_value_head(self):
         # No dropout (REWORK_PLAN.md Phase 2.2): heavy dropout on a small GAP feature
@@ -322,13 +378,17 @@ class DualHeadNet(nn.Module):
         fc = nn.Linear(self.policy_head_channels * 8 * 8, POLICY_SIZE)
         return conv, fc
 
-    def _policy_logits(self, backbone):
+    def _base_policy_logits(self, backbone, side_turn):
         if self.policy_head_type == "dense":
             p = self.policy_conv(backbone)
             p = p.flatten(1)
             return self.policy_fc(p)
 
-        projected = self.policy_attention(backbone).flatten(2).transpose(1, 2)
+        projected = self.policy_attention(backbone)
+        if self.side_policy_adapters:
+            side = side_turn.to(dtype=projected.dtype).view(-1, 1, 1, 1)
+            projected = projected + side * self.policy_side_adapter(backbone)
+        projected = projected.flatten(2).transpose(1, 2)
         width = self.policy_attention_channels
         query = projected[:, :, :width]
         key = projected[:, :, width:2 * width]
@@ -338,6 +398,18 @@ class DualHeadNet(nn.Module):
         logits = logits + source_bias.unsqueeze(2) + destination_bias.unsqueeze(1)
         logits = logits + self.policy_relative_bias.unsqueeze(0)
         return logits.flatten(1)
+
+    def _policy_logits(self, backbone, side_turn):
+        base_logits = self._base_policy_logits(backbone, side_turn)
+        if not self.promotion_policy:
+            return base_logits
+        delta = self.policy_promotion_delta(backbone)
+        white = delta[:, :, 6, :].permute(0, 2, 1).reshape(-1, 96)
+        black = delta[:, :, 1, :].permute(0, 2, 1).reshape(-1, 96)
+        promotion_delta = torch.cat((white, black), dim=1)
+        promotion_base = base_logits.index_select(
+            1, self._promotion_base_indices.to(base_logits.device))
+        return torch.cat((base_logits, promotion_base + promotion_delta), dim=1)
 
     def _forward_backbone(self, x):
         # x: (N, C, 8, 8)  — PyTorch uses channels-first
@@ -349,7 +421,7 @@ class DualHeadNet(nn.Module):
 
     def _compute_heads(self, backbone, side_turn):
         scalar_value = self.value_head(backbone)
-        policy = self._policy_logits(backbone)
+        policy = self._policy_logits(backbone, side_turn)
         wdl_logits = self.wdl_head(backbone) if self.use_wdl_head else None
 
         value = scalar_value
@@ -398,6 +470,16 @@ def infer_policy_head_config(state_dict):
     return "dense", infer_policy_head_channels(state_dict), POLICY_ATTENTION_CHANNELS
 
 
+def infer_side_policy_adapters(state_dict):
+    """Infer the optional side-conditioned residual attention projection."""
+    return any(key.startswith("policy_side_adapter.") for key in state_dict)
+
+
+def infer_promotion_policy(state_dict):
+    """Infer the optional distinct-promotion policy extension."""
+    return any(key.startswith("policy_promotion_delta.") for key in state_dict)
+
+
 def infer_input_channels(state_dict):
     """Infer the position encoding width from the checkpoint stem."""
     w = state_dict.get("stem.0.weight")
@@ -428,6 +510,8 @@ def infer_wdl_head_config(state_dict):
     )
     if not has_wdl:
         return False, "scalar"
+    if "_aux_wdl_head" in state_dict:
+        return True, "scalar"
     return True, "wdl"
 
 
@@ -487,6 +571,8 @@ def build_model(
     policy_head_channels=POLICY_HEAD_CHANNELS,
     policy_head_type=POLICY_HEAD_TYPE,
     policy_attention_channels=POLICY_ATTENTION_CHANNELS,
+    side_policy_adapters=SIDE_POLICY_ADAPTERS,
+    promotion_policy=False,
     stem_channels=STEM_CHANNELS,
     residual_block_channels=RESIDUAL_BLOCK_CHANNELS,
     use_se_blocks=USE_SE_BLOCKS,
@@ -503,6 +589,8 @@ def build_model(
         policy_head_channels=policy_head_channels,
         policy_head_type=policy_head_type,
         policy_attention_channels=policy_attention_channels,
+        side_policy_adapters=side_policy_adapters,
+        promotion_policy=promotion_policy,
         stem_channels=stem_channels,
         residual_block_channels=residual_block_channels,
         use_se_blocks=use_se_blocks,
@@ -521,6 +609,8 @@ def load_model_for_inference(checkpoint_path, device):
     state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
     input_channels = infer_input_channels(state_dict)
     policy_head_type, pol_ch, attention_ch = infer_policy_head_config(state_dict)
+    side_policy_adapters = infer_side_policy_adapters(state_dict)
+    promotion_policy = infer_promotion_policy(state_dict)
     stem_ch, block_ch = infer_backbone_architecture(state_dict)
     use_se_blocks, se_reduction = infer_se_config(state_dict)
     use_wdl_head, value_head_mode = infer_wdl_head_config(state_dict)
@@ -531,6 +621,8 @@ def load_model_for_inference(checkpoint_path, device):
         policy_head_channels=pol_ch,
         policy_head_type=policy_head_type,
         policy_attention_channels=attention_ch,
+        side_policy_adapters=side_policy_adapters,
+        promotion_policy=promotion_policy,
         stem_channels=stem_ch,
         residual_block_channels=block_ch,
         use_se_blocks=use_se_blocks,
@@ -562,7 +654,8 @@ def load_state_dict_flexible(model, state_dict):
     return len(compatible), skipped
 
 
-def load_data(data_dir, include_moves_left=False, include_legal_masks=False):
+def load_data(data_dir, include_moves_left=False, include_legal_masks=False,
+              include_capture_results=False):
     """Load processed training data and splits.
 
     The legacy 7-item return stays unchanged unless the optional auxiliary
@@ -610,11 +703,24 @@ def load_data(data_dir, include_moves_left=False, include_legal_masks=False):
                 "legal policy masking requested, but processed corpus lacks "
                 "legal_masks_packed.npy; re-run data_processor.py")
         legal_masks = np.load(masks_path)
-        if legal_masks.shape != (len(policies), POLICY_SIZE // 8):
+        expected_mask_bytes = (int(policies.shape[1]) + 7) // 8
+        if legal_masks.shape != (len(policies), expected_mask_bytes):
             raise ValueError(
                 "legal_masks_packed.npy must have shape "
-                f"({len(policies)}, {POLICY_SIZE // 8}), got {legal_masks.shape}")
+                f"({len(policies)}, {expected_mask_bytes}), got {legal_masks.shape}")
         base = base + (legal_masks,)
+    if include_capture_results:
+        capture_path = os.path.join(data_dir, "capture_results.npy")
+        if not os.path.exists(capture_path):
+            raise FileNotFoundError(
+                "capture-result training requested, but processed corpus lacks "
+                "capture_results.npy; re-run data_processor.py")
+        capture_results = np.load(capture_path)
+        if capture_results.shape != (len(policies),):
+            raise ValueError(
+                "capture_results.npy must align with policies.npy; got "
+                f"{capture_results.shape} for {len(policies)} rows")
+        base = base + (capture_results,)
     return base
 
 
@@ -646,7 +752,10 @@ def configure_policy_head_only(model, enabled=False):
                 if parameter.requires_grad]
     trainable = []
     for name, parameter in model.named_parameters():
-        keep = name == "policy_relative_bias" or name.startswith("policy_attention.")
+        keep = (name == "policy_relative_bias"
+                or name.startswith("policy_attention.")
+                or name.startswith("policy_side_adapter.")
+                or name.startswith("policy_promotion_delta."))
         parameter.requires_grad_(keep)
         if keep:
             trainable.append(name)
@@ -655,9 +764,35 @@ def configure_policy_head_only(model, enabled=False):
     return trainable
 
 
+def configure_promotion_head_only(model, enabled=False):
+    """Freeze the lifted v20 model except for promotion-choice deltas."""
+    if not enabled:
+        return [name for name, parameter in model.named_parameters()
+                if parameter.requires_grad]
+    if not model.promotion_policy:
+        raise ValueError("promotion-head-only training requires promotion policy")
+    model._freeze_backbone_batchnorm = True
+    trainable = []
+    for name, parameter in model.named_parameters():
+        keep = name.startswith("policy_promotion_delta.")
+        parameter.requires_grad_(keep)
+        if keep:
+            trainable.append(name)
+    return trainable
+
+
+def _set_training_mode(model):
+    """Enter training mode without mutating frozen backbone BN statistics."""
+    model.train()
+    if getattr(model, "_freeze_backbone_batchnorm", False):
+        for module in model.modules():
+            if isinstance(module, nn.modules.batchnorm._BatchNorm):
+                module.eval()
+
+
 def get_targets(mcts_values, game_results, target_type):
     """Build value training targets based on the chosen strategy."""
-    if target_type == "game_result":
+    if target_type in ("game_result", "capture_result"):
         return game_results
     elif target_type == "mcts_value":
         return mcts_values
@@ -744,7 +879,9 @@ def _unpack_aux_loader_batch(batch, use_moves_left_head=False,
                              use_legal_policy_mask=False):
     """Extend the stable legacy unpacker with opt-in auxiliary tensors."""
     if not use_moves_left_head and not use_legal_policy_mask:
-        return _unpack_loader_batch(batch) + (None, None, None)
+        # DataLoader currently collates TensorDataset samples into a list,
+        # while tests and external callers commonly provide tuples.
+        return tuple(_unpack_loader_batch(batch)) + (None, None, None)
     if len(batch) < 5:
         raise ValueError("Auxiliary loaders require policy and value weights")
     X_b, yv_b, yp_b, ypw_b, yvw_b = batch[:5]
@@ -821,6 +958,18 @@ def mask_policy_logits(logits, legal_masks_packed):
     return logits.masked_fill(~legal, torch.finfo(logits.dtype).min), legal
 
 
+def mask_inactive_promotion_logits(logits, targets):
+    """Hide extension logits on rows with no promotion action target."""
+    if logits.shape[1] != PROMOTION_AWARE_POLICY_SIZE:
+        return logits
+    inactive = targets[:, POLICY_SIZE:].sum(dim=1) <= 0
+    if not torch.any(inactive):
+        return logits
+    active_mask = torch.ones_like(logits, dtype=torch.bool)
+    active_mask[inactive, POLICY_SIZE:] = False
+    return logits.masked_fill(~active_mask, torch.finfo(logits.dtype).min)
+
+
 def weighted_policy_cross_entropy(logits, targets, weights,
                                   legal_masks_packed=None):
     """Soft-target policy CE normalized over enabled, optionally legal moves."""
@@ -830,6 +979,12 @@ def weighted_policy_cross_entropy(logits, targets, weights,
         enabled = weights.reshape(-1) > 0
         if torch.any(illegal_mass[enabled] > 1e-5):
             raise ValueError("policy target assigns mass to an illegal move")
+    elif logits.shape[1] == PROMOTION_AWARE_POLICY_SIZE:
+        # On ordinary positions the extension has no semantic legal action.
+        # Excluding it makes a lifted model's loss exactly the legacy 4096-way
+        # loss, so 98%+ ordinary rows cannot train the small delta head merely
+        # to suppress impossible promotions.
+        logits = mask_inactive_promotion_logits(logits, targets)
     losses = F.cross_entropy(logits, targets, reduction="none")
     weights = weights.to(device=losses.device, dtype=losses.dtype).reshape(-1)
     total_weight = weights.sum()
@@ -874,7 +1029,7 @@ def _train_epoch(model, loader, optimizer, device, policy_weight, grad_clip_norm
                   value_head_mode="scalar", use_moves_left_head=False,
                   moves_left_loss_weight=0.0, use_legal_policy_mask=False,
                   ema=None):
-    model.train()
+    _set_training_mode(model)
     total_loss = 0.0
     total_val_loss = 0.0
     total_pol_loss = 0.0
@@ -973,6 +1128,36 @@ def _decisive_score(decisive):
     return min(top1) + min(sign)
 
 
+def _checkpoint_regression_guard(policy_ce, decisive, incumbent_metrics,
+                                 max_policy_ce_regression=None,
+                                 max_side_top1_drop=None):
+    """Protect a stronger selection scalar from material policy regression.
+
+    The incumbent is the currently saved checkpoint, not an independent
+    per-metric maximum.  This keeps the rule Pareto-like and prevents the v21
+    failure mode where a tiny sign-score gain overwrote a much cleaner policy.
+    """
+    if incumbent_metrics is None:
+        return True, []
+    reasons = []
+    if max_policy_ce_regression is not None:
+        limit = incumbent_metrics["policy_ce"] * (1 + max_policy_ce_regression)
+        if policy_ce > limit:
+            reasons.append(
+                f"policy_ce {policy_ce:.4f} exceeds guarded limit {limit:.4f}")
+    if max_side_top1_drop is not None:
+        for side in ("white", "black"):
+            key = f"policy_top1_{side}"
+            current = decisive.get(key)
+            incumbent = incumbent_metrics.get(key)
+            if (current is not None and incumbent is not None
+                    and current < incumbent - max_side_top1_drop):
+                reasons.append(
+                    f"{key} {current:.4f} falls more than "
+                    f"{max_side_top1_drop:.4f} below {incumbent:.4f}")
+    return not reasons, reasons
+
+
 @torch.no_grad()
 def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
                 wdl_loss_weight=0.0, value_head_mode="scalar",
@@ -1047,6 +1232,9 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
         policy_for_metrics = policy_pred
         if legal_b is not None:
             policy_for_metrics, _ = mask_policy_logits(policy_pred, legal_b)
+        else:
+            policy_for_metrics = mask_inactive_promotion_logits(
+                policy_for_metrics, yp_b)
         pol_correct = policy_for_metrics.argmax(dim=1) == yp_b.argmax(dim=1)
         val_nondraw = yv_b.reshape(-1) != 0
         sign_correct = torch.sign(value_pred.reshape(-1)) == torch.sign(yv_b.reshape(-1))
@@ -1110,6 +1298,10 @@ def main():
     parser.add_argument("--train-policy-head-only", action="store_true",
                         help="Freeze the backbone/value head and refine only the "
                              "attention policy head; requires --resume-from")
+    parser.add_argument(
+        "--train-promotion-head-only", action="store_true",
+        help="Freeze v20 and train only distinct-promotion deltas; requires "
+             "--promotion-policy and --resume-from")
     parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
     parser.add_argument("--ema-decay", type=float, default=0.0,
                         help="EMA decay for validation/checkpoints; 0 disables")
@@ -1123,11 +1315,19 @@ def main():
     parser.add_argument("--se-reduction", type=int, default=SE_REDUCTION,
                         help=f"SE channel reduction ratio (default: {SE_REDUCTION})")
     parser.add_argument("--target", type=str, default=VALUE_TARGET,
-                        choices=["game_result", "mcts_value"],
+                        choices=["game_result", "mcts_value", "capture_result"],
                         help=f"Value training target (default: {VALUE_TARGET})")
     parser.add_argument("--value-head", type=str, default=VALUE_HEAD_MODE,
                         choices=["scalar", "wdl"],
                         help=f"Value head mode (default: {VALUE_HEAD_MODE})")
+    parser.add_argument("--aux-wdl-head", action=argparse.BooleanOptionalAction,
+                        default=False,
+                        help="Train a WDL auxiliary head while retaining the scalar "
+                             "value head as the engine output")
+    parser.add_argument("--wdl-target", choices=["same", "capture_result"],
+                        default="same",
+                        help="Source for WDL labels: the primary value target or raw "
+                             "capture-only terminal outcomes")
     parser.add_argument("--wdl-loss-weight", type=float, default=WDL_LOSS_WEIGHT,
                         help=f"CE weight for the WDL head (default: {WDL_LOSS_WEIGHT})")
     parser.add_argument("--spatial-value-head", action="store_true",
@@ -1156,6 +1356,17 @@ def main():
                         help="Checkpoint selection: 'decisive' = min-over-sides "
                              "policy top-1 + winner-sign on val (default); "
                              "'val_loss' = legacy aggregate validation loss")
+    parser.add_argument(
+        "--max-policy-ce-regression", type=float, default=None,
+        help="Reject a nominally better checkpoint if policy CE exceeds the "
+             "saved checkpoint by this relative fraction (for example 0.02)")
+    parser.add_argument(
+        "--max-side-top1-drop", type=float, default=None,
+        help="Reject a nominally better checkpoint if either color's policy "
+             "top-1 falls by more than this absolute fraction")
+    parser.add_argument(
+        "--save-selection-snapshots", action="store_true",
+        help="Also preserve every accepted best checkpoint by epoch")
     parser.add_argument("--stem-channels", type=int, default=STEM_CHANNELS,
                         help=f"Stem width (default: {STEM_CHANNELS})")
     parser.add_argument("--policy-head", choices=("dense", "attention"),
@@ -1164,6 +1375,16 @@ def main():
     parser.add_argument("--policy-attention-channels", type=int,
                         default=POLICY_ATTENTION_CHANNELS,
                         help="Query/key width for --policy-head=attention")
+    parser.add_argument("--side-policy-adapters",
+                        action=argparse.BooleanOptionalAction,
+                        default=SIDE_POLICY_ADAPTERS,
+                        help="Add a small side-conditioned residual projection "
+                             "to the attention policy head")
+    parser.add_argument(
+        "--promotion-policy", action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use the 4288-logit policy with distinct q/r/b/n promotions; "
+             "requires a promotion-aware processed corpus")
     parser.add_argument("--res-channels", type=str, default=None,
                         help="Comma-separated residual block widths, e.g. "
                              "'96,96,128,128' (default: config tower)")
@@ -1179,8 +1400,19 @@ def main():
         raise ValueError("--policy-loss-weight must be > 0")
     if args.black_policy_weight <= 0:
         raise ValueError("--black-policy-weight must be > 0")
+    if (args.max_policy_ce_regression is not None
+            and args.max_policy_ce_regression < 0):
+        raise ValueError("--max-policy-ce-regression must be >= 0")
+    if args.max_side_top1_drop is not None and args.max_side_top1_drop < 0:
+        raise ValueError("--max-side-top1-drop must be >= 0")
     if args.train_policy_head_only and not args.resume_from:
         raise ValueError("--train-policy-head-only requires --resume-from")
+    if args.train_promotion_head_only and not args.resume_from:
+        raise ValueError("--train-promotion-head-only requires --resume-from")
+    if args.train_promotion_head_only and not args.promotion_policy:
+        raise ValueError("--train-promotion-head-only requires --promotion-policy")
+    if args.train_promotion_head_only and args.train_policy_head_only:
+        raise ValueError("head-only training modes are mutually exclusive")
     if not (0.0 < args.lr_gamma <= 1.0):
         raise ValueError("--lr-gamma must be in (0, 1]")
     if args.se_reduction <= 0:
@@ -1195,11 +1427,17 @@ def main():
         raise ValueError("--moves-left-head-channels must be > 0")
     if args.policy_attention_channels <= 0:
         raise ValueError("--policy-attention-channels must be > 0")
+    if args.side_policy_adapters and args.policy_head != "attention":
+        raise ValueError("--side-policy-adapters requires --policy-head=attention")
     if args.ema_decay < 0 or args.ema_decay >= 1:
         raise ValueError("--ema-decay must be 0 (off) or in (0, 1)")
-    if args.value_head == "scalar" and args.wdl_loss_weight > 0:
+    if args.aux_wdl_head and args.value_head == "wdl":
+        raise ValueError("--aux-wdl-head is only valid with --value-head=scalar")
+    use_wdl_mode = args.value_head == "wdl" or args.aux_wdl_head
+    if not use_wdl_mode and args.wdl_loss_weight > 0:
         print("Warning: --wdl-loss-weight ignored because --value-head=scalar")
-    use_wdl_mode = args.value_head == "wdl"
+    if not use_wdl_mode and args.wdl_target != "same":
+        print("Warning: --wdl-target ignored because no WDL head is enabled")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1212,9 +1450,17 @@ def main():
     print(f"Loading data from {args.data_dir}...")
     loaded = load_data(
         args.data_dir, include_moves_left=args.moves_left_head,
-        include_legal_masks=args.legal_policy_mask)
+        include_legal_masks=args.legal_policy_mask,
+        include_capture_results=(args.target == "capture_result" or (
+            use_wdl_mode and args.wdl_target == "capture_result")))
     (positions, mcts_values, game_results, policies, policy_weights,
      value_weights, splits) = loaded[:7]
+    expected_policy_size = (PROMOTION_AWARE_POLICY_SIZE
+                            if args.promotion_policy else POLICY_SIZE)
+    if policies.ndim != 2 or policies.shape[1] != expected_policy_size:
+        raise ValueError(
+            f"--promotion-policy={args.promotion_policy} expects policies.npy "
+            f"width {expected_policy_size}, got {policies.shape}")
     policy_weights = apply_black_policy_weight(
         policy_weights, positions, args.black_policy_weight)
     cursor = 7
@@ -1225,6 +1471,11 @@ def main():
     legal_masks_packed = None
     if args.legal_policy_mask:
         legal_masks_packed = loaded[cursor]
+        cursor += 1
+    capture_results = None
+    if args.target == "capture_result" or (
+            use_wdl_mode and args.wdl_target == "capture_result"):
+        capture_results = loaded[cursor]
 
     train_idx = splits["train"]
     val_idx = splits["val"]
@@ -1236,8 +1487,19 @@ def main():
         )
 
     game_results_side = to_side_perspective(game_results, positions)
-    wdl_targets = build_wdl_targets(game_results_side, draw_epsilon=args.wdl_draw_epsilon)
-    value_targets = get_targets(mcts_values, game_results_side, args.target)
+    capture_results_side = (
+        to_side_perspective(capture_results, positions)
+        if capture_results is not None else None)
+    value_results_side = (
+        capture_results_side
+        if args.target == "capture_result" else game_results_side)
+    wdl_results_side = (
+        capture_results_side
+        if args.wdl_target == "capture_result" else value_results_side)
+    wdl_targets = build_wdl_targets(
+        wdl_results_side, draw_epsilon=args.wdl_draw_epsilon)
+    value_targets = get_targets(
+        mcts_values, value_results_side, args.target)
 
     print(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
     print(f"Value target: {args.target}")
@@ -1250,6 +1512,7 @@ def main():
             f"loss={losses} draw={draws} win={wins} "
             f"(draw_epsilon={args.wdl_draw_epsilon:.3f}, ce_w={args.wdl_loss_weight:.3f})"
         )
+        print(f"WDL target source: {args.wdl_target}")
     print(f"Policy loss weight: {args.policy_loss_weight}")
     print(f"Black policy-example weight: {args.black_policy_weight}")
     if args.moves_left_head:
@@ -1268,6 +1531,8 @@ def main():
         input_channels=data_channels,
         policy_head_type=args.policy_head,
         policy_attention_channels=args.policy_attention_channels,
+        side_policy_adapters=args.side_policy_adapters,
+        promotion_policy=args.promotion_policy,
         stem_channels=args.stem_channels,
         residual_block_channels=res_channels,
         use_se_blocks=args.use_se_blocks,
@@ -1285,6 +1550,9 @@ def main():
     print(f"Policy head channels: {model.policy_head_channels}")
     print(f"Policy head: {model.policy_head_type} "
           f"(attention channels={model.policy_attention_channels})")
+    print(f"Side policy adapters: {model.side_policy_adapters}")
+    print(f"Promotion-aware policy: {model.promotion_policy} "
+          f"(output width={model.policy_output_size})")
     print(f"Stem channels: {model.stem_channels}")
     print(f"Residual blocks: {list(model.residual_block_channels)}")
     print(f"SE blocks: {model.use_se_blocks} (reduction={model.se_reduction})")
@@ -1305,10 +1573,16 @@ def main():
             f"loaded {loaded_count} tensors, skipped {len(skipped_keys)} incompatible"
         )
 
-    trainable_parameter_names = configure_policy_head_only(
-        model, args.train_policy_head_only)
+    if args.train_promotion_head_only:
+        trainable_parameter_names = configure_promotion_head_only(model, True)
+    else:
+        trainable_parameter_names = configure_policy_head_only(
+            model, args.train_policy_head_only)
     if args.train_policy_head_only:
         print("Training policy head only: " + ", ".join(trainable_parameter_names))
+    if args.train_promotion_head_only:
+        print("Training promotion head only: "
+              + ", ".join(trainable_parameter_names))
 
     optimizer, decay_count, no_decay_count = build_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay,
@@ -1325,6 +1599,7 @@ def main():
     os.makedirs(args.model_dir, exist_ok=True)
     checkpoint_path = os.path.join(args.model_dir, "best_value_net.pt")
     best_selection_value = float("inf")
+    best_checkpoint_metrics = None
     best_epoch = None
     patience_counter = 0
     patience = args.patience
@@ -1342,6 +1617,9 @@ def main():
         "policy_head_channels": int(model.policy_head_channels),
         "policy_head_type": str(model.policy_head_type),
         "policy_attention_channels": int(model.policy_attention_channels),
+        "side_policy_adapters": bool(model.side_policy_adapters),
+        "promotion_policy": bool(model.promotion_policy),
+        "policy_output_size": int(model.policy_output_size),
         "stem_channels": int(model.stem_channels),
         "residual_block_channels": [int(x) for x in model.residual_block_channels],
         "residual_block_count": int(model.residual_block_count),
@@ -1358,6 +1636,7 @@ def main():
         "resume_loaded_tensors": int(resume_loaded_count) if resume_loaded_count is not None else None,
         "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
         "train_policy_head_only": bool(args.train_policy_head_only),
+        "train_promotion_head_only": bool(args.train_promotion_head_only),
         "trainable_parameter_names": trainable_parameter_names,
         "optimizer": {
             "name": "AdamW",
@@ -1524,17 +1803,46 @@ def main():
         else:
             selection_value = val_loss
             selection_desc = f"val_loss={val_loss:.4f}"
-        if selection_value < best_selection_value:
+        guard_ok, guard_reasons = _checkpoint_regression_guard(
+            val_p, val_decisive, best_checkpoint_metrics,
+            max_policy_ce_regression=args.max_policy_ce_regression,
+            max_side_top1_drop=args.max_side_top1_drop,
+        )
+        nominal_improvement = selection_value < best_selection_value
+        should_stop = False
+        if nominal_improvement and guard_ok:
             best_selection_value = selection_value
             best_epoch = epoch
+            best_checkpoint_metrics = {
+                "policy_ce": float(val_p),
+                "policy_top1_white": val_decisive["policy_top1_white"],
+                "policy_top1_black": val_decisive["policy_top1_black"],
+            }
             patience_counter = 0
             torch.save(eval_model.state_dict(), checkpoint_path)
+            if args.save_selection_snapshots:
+                torch.save(
+                    eval_model.state_dict(),
+                    os.path.join(args.model_dir,
+                                 f"selected_epoch_{epoch:03d}.pt"),
+                )
             print(f"  -> saved best model ({selection_desc})")
         else:
+            if nominal_improvement and not guard_ok:
+                print("  -> checkpoint rejected by regression guard: "
+                      + "; ".join(guard_reasons))
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"Early stopping at epoch {epoch}")
-                break
+                should_stop = True
+        run_metadata["epochs"][-1]["checkpoint"] = {
+            "nominal_improvement": bool(nominal_improvement),
+            "guard_passed": bool(guard_ok),
+            "guard_reasons": guard_reasons,
+            "saved": bool(nominal_improvement and guard_ok),
+        }
+        if should_stop:
+            break
 
     # Load best model for test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
