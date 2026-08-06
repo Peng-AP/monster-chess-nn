@@ -53,11 +53,15 @@ SIMS = 400
 # 2026-08-05: the owner promoted the Wide64 LC0 successor as v20 after two
 # calibrated reads improved both colors over the approved 32-channel model.
 # The strongest engine, not a historical label, is the bar. No threshold moved.
-BAR = "vs_v20"
-AGGREGATE_LEGS = ("vs_v20", "vs_ramp")
+# 2026-08-06: the owner playtested the gen-5 teacher-3200 epoch-2 candidate
+# ("very strong player") and promoted it as v21. It had already passed this
+# gate against v20 and confirmed on a disjoint opening seed. The bar follows
+# the strongest engine, so it moves to v21. No threshold moved.
+BAR = "vs_v21"
+AGGREGATE_LEGS = ("vs_v21", "vs_ramp")
 
 NUMBERED_INCUMBENT = os.path.join(
-    ROOT, "models", "fresh_start_v20", "best_value_net.pt")
+    ROOT, "models", "fresh_start_v21", "best_value_net.pt")
 BAR_MODEL = NUMBERED_INCUMBENT
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
@@ -67,17 +71,17 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v20_confirm"
+CONFIRM_LEG = "vs_v21_confirm"
 CONFIRM_SEED_OFFSET = 424242
 
 # (leg name, opponent path or None for the heuristic anchor, games)
 FULL_LEGS = [
-    ("vs_v20", BAR_MODEL, 40),
+    ("vs_v21", BAR_MODEL, 40),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v20", BAR_MODEL, 4),
+    ("vs_v21", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]
