@@ -1,4 +1,6 @@
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +12,23 @@ import reanalyze
 
 
 class ReanalysisContracts(unittest.TestCase):
+    def test_teacher_rows_are_not_reanalyzed_recursively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mixed.jsonl"
+            base = {
+                "fen": "8/8/8/8/8/8/8/K6k w - - 0 1",
+                "current_player": "white",
+                "policy": {"a1a2": 1.0},
+            }
+            teacher = dict(base, source="deep_search_reanalysis")
+            path.write_text(
+                json.dumps(base) + "\n" + json.dumps(teacher) + "\n",
+                encoding="utf-8",
+            )
+            rows = list(reanalyze.iter_records(directory))
+            self.assertEqual(len(rows), 1)
+            self.assertNotIn("source", rows[0]["record"])
+
     def test_js_is_zero_for_identical_policy(self):
         policy = {"a1a2": 0.25, "a1b1": 0.75}
         self.assertAlmostEqual(

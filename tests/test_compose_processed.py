@@ -61,6 +61,22 @@ class ProcessedCompositionContracts(unittest.TestCase):
                 compose_processed.inspect_sources(
                     [f"one={one}", f"two={two}"])
 
+    def test_policy_only_multiplier_changes_only_value_masked_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, out = root / "source", root / "out"
+            make_source(source, 1)
+            np.save(source / "value_weights.npy",
+                    np.array([1, 0, 0], np.float32))
+            np.save(source / "policy_weights.npy",
+                    np.array([1, 1, 0], np.float32))
+            sources, arrays = compose_processed.inspect_sources(
+                [f"source={source}"])
+            sources[0]["policy_only_multiplier"] = 4.0
+            compose_processed.compose(sources, arrays, str(out), 2)
+            self.assertEqual(
+                np.load(out / "policy_weights.npy").tolist(), [1, 4, 0])
+
     def test_balancing_smooths_general_strata_without_growing_split(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

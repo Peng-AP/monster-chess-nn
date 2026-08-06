@@ -132,6 +132,17 @@ def parse_source(spec):
     return name, os.path.abspath(path)
 
 
+def parse_policy_only_multiplier(spec):
+    name, separator, value = spec.partition("=")
+    if not separator or not name or not value:
+        raise ValueError(
+            f"policy-only multiplier must be NAME=FLOAT, got {spec!r}")
+    multiplier = float(value)
+    if multiplier <= 0:
+        raise ValueError("policy-only multiplier must be positive")
+    return name, multiplier
+
+
 def inspect_sources(specs):
     sources = []
     names = set()
@@ -196,9 +207,22 @@ def _copy_array(filename, sources, output_dir, chunk_rows):
         shape=shape)
     offset = 0
     for source, array in zip(sources, arrays):
+        value_weights = None
+        multiplier = float(source.get("policy_only_multiplier", 1.0))
+        if filename == "policy_weights.npy" and multiplier != 1.0:
+            value_weights = np.load(
+                os.path.join(source["path"], "value_weights.npy"),
+                mmap_mode="r")
         for start in range(0, len(array), chunk_rows):
             end = min(len(array), start + chunk_rows)
-            target[offset + start:offset + end] = array[start:end]
+            block = np.asarray(array[start:end])
+            if value_weights is not None:
+                policy_only = ((np.asarray(value_weights[start:end]) == 0)
+                               & (block > 0))
+                if policy_only.any():
+                    block = block.copy()
+                    block[policy_only] *= multiplier
+            target[offset + start:offset + end] = block
         offset += len(array)
         print(f"  {filename}: copied {source['name']} ({len(array):,} rows)",
               flush=True)
@@ -289,6 +313,10 @@ def main():
     ap.add_argument("--balance-alpha", type=float, default=0.0,
                     help="0 disables; 1 fully equalizes side/outcome/phase strata")
     ap.add_argument("--balance-seed", type=int, default=42)
+    ap.add_argument(
+        "--policy-only-multiplier", action="append", default=[],
+        help="multiply enabled policy weights whose value weight is zero in "
+             "one source, as NAME=FLOAT; repeatable")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     if args.chunk_rows <= 0:
@@ -299,6 +327,15 @@ def main():
         ap.error(f"output directory already exists: {args.output_dir}")
     try:
         sources, arrays = inspect_sources(args.source)
+        multipliers = dict(parse_policy_only_multiplier(spec)
+                           for spec in args.policy_only_multiplier)
+        unknown = set(multipliers) - {source["name"] for source in sources}
+        if unknown:
+            raise ValueError("policy-only multiplier names unknown source(s): "
+                             + ", ".join(sorted(unknown)))
+        for source in sources:
+            source["policy_only_multiplier"] = float(
+                multipliers.get(source["name"], 1.0))
     except (ValueError, FileNotFoundError) as exc:
         ap.error(str(exc))
     plan = {

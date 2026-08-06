@@ -96,6 +96,12 @@ def iter_records(source_dir):
                     if not line.strip():
                         continue
                     record = json.loads(line)
+                    # A follow-up/deeper reanalysis pass may share a tree with
+                    # earlier teacher output. Teachers are targets, not fresh
+                    # source positions; recursively teaching from them would
+                    # duplicate positions and lose the original split parent.
+                    if record.get("source") == "deep_search_reanalysis":
+                        continue
                     if (record.get("fen") and record.get("current_player")
                             in ("white", "black") and record.get("policy")):
                         yield {
