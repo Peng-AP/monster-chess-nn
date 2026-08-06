@@ -22,6 +22,7 @@ problem after every fix currently available.
     py -3 tools/finish_unconverted.py --source data/raw/combined_v19_K --limit 40
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -45,36 +46,31 @@ def load_game(path):
         return [json.loads(line) for line in fh if line.strip()]
 
 
-def final_state(records):
-    """Rebuild the state the game ended in, with its history and turn count.
+def resume_state(records):
+    """Rebuild the position the game stopped in, ready to play on.
 
-    A FEN alone under-determines a Monster Chess position (pending flag, turn
-    count, move history), so the state is rebuilt by replaying rather than
-    parsed from the last record.
+    Replaying the game forward is not possible: generation retains records
+    side-selectively (`data_generation._should_skip_record`), so consecutive
+    records are not consecutive plies and no single action connects them.
+
+    The final record is enough on its own. `fen` plus `half` pins the position
+    exactly, because the state machine keeps `board.turn` pointing at the side
+    genuinely to move even between White's two half-moves.
+
+    Two deliberate losses. `turn_count` restarts at 0, because these games
+    stopped *at* MAX_GAME_TURNS and would otherwise be terminal on arrival —
+    playing past the cap is the entire point. And the move stack starts empty,
+    so the oscillation penalty is inactive for the first few plies.
     """
-    game = MonsterChessGame(records[0]["fen"])
-    for i in range(len(records) - 1):
-        want = " ".join(records[i + 1]["fen"].split()[:4])
-        played = None
-        for action in game.get_search_actions():
-            probe = game.clone()
-            probe.apply_search_action(action)
-            if " ".join(probe.fen().split()[:4]) == want:
-                played = action
-                break
-        if played is None:
-            return None
-        game.apply_search_action(played)
+    last = records[-1]
+    game = MonsterChessGame(last["fen"])
+    game.white_half_pending = bool(last.get("half"))
     return game
 
 
-def resume(game, white_engine, black_sims, extra_turns, model_path):
-    """Play on from `game`. Returns (converted, new_records, plies)."""
+def resume(game, white_engine, black_engine, bot, extra_turns):
+    """Play on from `game`. Returns (converted, new_records, applied_plies)."""
     records = []
-    bot = ScriptedMate()          # repaired: material guard + preflight, both on
-    nn = NNEvaluator(model_path)
-    black_engine = NativeMCTS(num_simulations=black_sims, eval_fn=nn,
-                              allow_early_stop=True)
     start_turn = game.turn_count
     while game.turn_count - start_turn < extra_turns:
         if game.board.king(chess.WHITE) is None:
@@ -126,6 +122,8 @@ def main():
 
     sources = args.source or [os.path.join(ROOT, "data", "raw", "combined_v19_K")]
     targets = []
+    seen = set()
+    duplicates = 0
     for source in sources:
         for dirpath, _d, names in os.walk(source):
             for name in sorted(names):
@@ -136,33 +134,55 @@ def main():
                     records = load_game(path)
                 except Exception:
                     continue
-                if records and records[0].get("game_result") == DOMINANT_UNFINISHED:
-                    targets.append((path, records))
+                if not records or records[0].get(
+                        "game_result") != DOMINANT_UNFINISHED:
+                    continue
+                # The corpus variants are largely copies of one another: 631
+                # matching files hold 208 distinct games. Without this, most of
+                # the run re-finishes games it already finished, and the
+                # conversion rate is weighted by how often a game was copied.
+                digest = hashlib.sha1(
+                    json.dumps(records, sort_keys=True).encode()).hexdigest()
+                if digest in seen:
+                    duplicates += 1
+                    continue
+                seen.add(digest)
+                targets.append((path, records))
                 if args.limit and len(targets) >= args.limit:
                     break
             if args.limit and len(targets) >= args.limit:
                 break
 
-    print(f"{len(targets)} unconverted (-0.5) games to attempt", flush=True)
+    print(f"{len(targets)} unconverted (-0.5) games to attempt "
+          f"({duplicates} duplicate copies skipped)", flush=True)
     if not targets:
         return
 
+    # One model, one set of engines, reused across every game. Building these
+    # per game reloads the net from disk each time and dominates the run.
     nn = NNEvaluator(args.model)
     white_engine = NativeMCTS(num_simulations=args.white_sims, eval_fn=nn,
                               allow_early_stop=True)
+    black_engine = NativeMCTS(num_simulations=args.black_sims, eval_fn=nn,
+                              allow_early_stop=True)
+    bot = ScriptedMate()          # repaired: material guard + preflight, both on
     out_dir = args.out_dir or os.path.join(ROOT, "data", "raw", "finished_conversions")
     os.makedirs(out_dir, exist_ok=True)
 
     converted = unreachable = failed = 0
     extra_plies = []
     started = time.time()
-    for path, records in targets:
-        game = final_state(records)
+    for index, (path, records) in enumerate(targets, 1):
+        game = resume_state(records)
         if game is None:
             unreachable += 1
             continue
-        ok, new_records, plies = resume(game, white_engine, args.black_sims,
-                                        args.extra_turns, args.model)
+        ok, new_records, plies = resume(game, white_engine, black_engine, bot,
+                                        args.extra_turns)
+        rate = converted / max(1, index - 1) if index > 1 else 0.0
+        print(f"[{index}/{len(targets)}] {'CONVERTED' if ok else 'no'} "
+              f"({plies} black moves) running rate {rate:.1%} "
+              f"elapsed {(time.time() - started) / 60:.1f}m", flush=True)
         if not ok:
             failed += 1
             continue
@@ -171,6 +191,11 @@ def main():
         merged = [dict(r) for r in records] + new_records
         for r in merged:
             r["game_result"] = -1        # a real capture, actually played
+        # The ramp target is a function of plies_to_end, and extending a game
+        # invalidates every original one. Recompute over the merged list in the
+        # same record-index units the generator uses.
+        for i, r in enumerate(merged):
+            r["plies_to_end"] = len(merged) - 1 - i
         name = os.path.basename(path).replace(".jsonl", "_finished.jsonl")
         with open(os.path.join(out_dir, name), "w", encoding="utf-8") as fh:
             for r in merged:
@@ -178,7 +203,9 @@ def main():
 
     elapsed = time.time() - started
     summary = {
+        "sources": [os.path.relpath(s, ROOT) for s in sources],
         "attempted": len(targets),
+        "duplicate_copies_skipped": duplicates,
         "converted": converted,
         "conversion_rate": round(converted / len(targets), 4) if targets else None,
         "still_unconverted": failed,
