@@ -2,8 +2,9 @@
 
 One generation is a reproducible state machine:
 
-    generate -> reanalyze -> process -> compose -> train
-             -> offline_gate -> binding_gate -> self_skew -> promote
+    generate -> reanalyze -> process -> compose -> train -> checkpoint_screen
+             -> offline_gate -> binding_gate -> high_fidelity_gate
+             -> self_skew -> promote
 
 The current champion is never overwritten.  A passing candidate is archived
 under ``models/bootstrap/champions`` and selected through ``champion.json``.
@@ -52,8 +53,10 @@ PHASES = (
     "process",
     "compose",
     "train",
+    "checkpoint_screen",
     "offline_gate",
     "binding_gate",
+    "high_fidelity_gate",
     "self_skew",
     "promote",
 )
@@ -287,9 +290,12 @@ def _paths_for_generation(run_root, generation):
                             f"bootstrap_replay_{namespace}_gen_{generation:04d}",
         "candidate_dir": ROOT / "models" / "candidates" /
                          f"bootstrap_{namespace}_gen_{generation:04d}",
+        "training_candidate": ROOT / "models" / "candidates" /
+                              f"bootstrap_{namespace}_gen_{generation:04d}" /
+                              "best_value_net.pt",
         "candidate": ROOT / "models" / "candidates" /
                      f"bootstrap_{namespace}_gen_{generation:04d}" /
-                     "best_value_net.pt",
+                     "arena_selected.pt",
         "training_rejection": ROOT / "models" / "candidates" /
                               f"bootstrap_{namespace}_gen_{generation:04d}" /
                               "selection_rejected.json",
@@ -427,8 +433,23 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         train.append("--aux-wdl-head")
 
     offline_report = paths["reports"] / "offline_model_diff.json"
+    checkpoint_report = paths["reports"] / "checkpoint_screen.json"
     gate_report = paths["reports"] / "binding_gate.json"
+    high_fidelity_report = paths["reports"] / "high_fidelity_gate.json"
     self_skew_report = paths["reports"] / "self_skew.json"
+    checkpoint_screen = [
+        "tools/checkpoint_screen.py",
+        "--model-dir", str(paths["candidate_dir"]),
+        "--incumbent", str(incumbent),
+        "--output-model", str(paths["candidate"]),
+        "--report-path", str(checkpoint_report),
+        "--games", str(args.checkpoint_screen_games),
+        "--sims", str(args.checkpoint_screen_sims),
+        "--workers", str(args.workers),
+        "--engine", args.engine,
+        "--seed", str(seed + 350_000),
+        "--stall-timeout", str(args.worker_stall_timeout),
+    ]
     offline = [
         "tools/model_diff.py",
         "--candidate", str(paths["candidate"]),
@@ -454,6 +475,16 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--stall-timeout", str(args.worker_stall_timeout),
         "--report-path", str(gate_report),
     ]
+    high_fidelity = [
+        "tools/confirm_candidates.py",
+        "--bar", str(incumbent),
+        "--candidate", f"bootstrap_candidate={paths['candidate']}",
+        "--games", str(args.high_fidelity_games),
+        "--sims", str(args.high_fidelity_sims),
+        "--workers", str(args.workers),
+        "--seed", str(seed + 450_000),
+        "--out", str(high_fidelity_report),
+    ]
     self_skew = [
         "tools/match.py",
         "--model-a", str(paths["candidate"]),
@@ -475,9 +506,15 @@ def _command_plan(args, generation, incumbent, architecture, paths,
                     "outputs": [str(paths["new_processed"] / "splits.npz")]},
         "compose": {"commands": [compose],
                     "outputs": [str(paths["replay_processed"] / "replay_manifest.json")]},
-        "train": {"commands": [train], "outputs": [str(paths["candidate"])]},
+        "train": {"commands": [train],
+                  "outputs": [str(paths["training_candidate"])]},
+        "checkpoint_screen": {"commands": [checkpoint_screen],
+                              "outputs": [str(paths["candidate"]),
+                                          str(checkpoint_report)]},
         "offline_gate": {"commands": [offline], "outputs": [str(offline_report)]},
         "binding_gate": {"commands": [binding], "outputs": [str(gate_report)]},
+        "high_fidelity_gate": {"commands": [high_fidelity],
+                               "outputs": [str(high_fidelity_report)]},
         "self_skew": {"commands": [self_skew], "outputs": [str(self_skew_report)]},
         "promote": {"commands": [], "outputs": [str(CHAMPION_POINTER)]},
     }
@@ -595,6 +632,10 @@ def _promote(state, paths):
         "predecessor": state["incumbent"],
         "run_state": state["paths"]["state"],
         "gate_report": _rel(Path(paths["reports"]) / "binding_gate.json"),
+        "high_fidelity_report": _rel(
+            Path(paths["reports"]) / "high_fidelity_gate.json"),
+        "checkpoint_screen_report": _rel(
+            Path(paths["reports"]) / "checkpoint_screen.json"),
         "self_skew_report": _rel(Path(paths["reports"]) / "self_skew.json"),
     }
     _atomic_json(CHAMPION_POINTER, pointer)
@@ -619,7 +660,9 @@ def _acquire_lock(path):
 def _validate_args(args):
     for name in ("games", "sims", "workers", "epochs", "batch_size",
                  "reanalysis_sample", "reanalysis_keep", "reanalysis_sims",
-                 "offline_positions", "self_skew_games",
+                 "offline_positions", "checkpoint_screen_games",
+                 "checkpoint_screen_sims", "high_fidelity_games",
+                 "high_fidelity_sims", "self_skew_games",
                  "worker_stall_timeout"):
         if getattr(args, name, 1) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
@@ -768,6 +811,11 @@ def run_generation(args, generation=None):
                 if phase == "binding_gate":
                     report = _load_json(phase_plan["outputs"][0], {})
                     gate_passed = report.get("raw_verdict") == "PASS"
+                if phase == "high_fidelity_gate":
+                    report = _load_json(phase_plan["outputs"][0], {})
+                    results = report.get("results", [])
+                    gate_passed = bool(
+                        results and results[0].get("passes_both_colors"))
                 continue
 
             started = time.time()
@@ -862,6 +910,22 @@ def run_generation(args, generation=None):
                             _write_state(state, paths["state"])
                             print("Binding gate rejected the candidate; self-skew skipped.")
                             break
+                    if phase == "high_fidelity_gate":
+                        report = _load_json(phase_plan["outputs"][0], {})
+                        results = report.get("results", [])
+                        gate_passed = bool(
+                            results and results[0].get("passes_both_colors"))
+                        if not gate_passed:
+                            state["phases"][phase].update({
+                                "status": "completed", "verdict": "FAIL",
+                                "return_codes": return_codes,
+                                "elapsed_sec": round(time.time() - started, 1),
+                            })
+                            state["status"] = "rejected_high_fidelity"
+                            _write_state(state, paths["state"])
+                            print("High-fidelity two-color gate rejected the "
+                                  "candidate; self-skew skipped.")
+                            break
 
                 if state["phases"].get(phase, {}).get("status") == "running":
                     state["phases"][phase].update({
@@ -942,6 +1006,12 @@ def build_parser():
     )
     ap.add_argument("--gate-protocol", choices=("quick", "full"), default="full")
     ap.add_argument("--arena-sims", type=int, default=ITERATE_ARENA_SIMS)
+    ap.add_argument("--checkpoint-screen-games", type=int, default=20,
+                    help="same-opening games per preserved training checkpoint")
+    ap.add_argument("--checkpoint-screen-sims", type=int, default=400)
+    ap.add_argument("--high-fidelity-games", type=int, default=80,
+                    help="calibrated final confirmation games before promotion")
+    ap.add_argument("--high-fidelity-sims", type=int, default=800)
     ap.add_argument("--self-skew-games", type=int, default=80)
     ap.add_argument("--seed", type=int, default=RANDOM_SEED)
     ap.add_argument("--promote-on-pass", action="store_true",
@@ -977,7 +1047,8 @@ def main():
             can_continue = status == "promoted" or (
                 args.continue_after_reject
                 and status in ("rejected", "rejected_offline",
-                               "rejected_training", "passed_not_promoted"))
+                               "rejected_training", "rejected_high_fidelity",
+                               "passed_not_promoted"))
             if args.dry_run or not can_continue:
                 break
     finally:

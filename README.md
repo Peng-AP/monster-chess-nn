@@ -166,10 +166,14 @@ python src/iterate.py --generations 1 --promote-on-pass
 ```
 
 The resumable state machine is `generate → reanalyze → process → compose →
-train → offline_gate → binding_gate → self_skew → promote`. The offline
-comparison is advisory by default: it records held-out policy/value warnings,
-but actual games in the binding gate decide rejection. The legacy hard behavior
-is available with `--reject-on-offline-regression`. Each generation
+train → checkpoint_screen → offline_gate → binding_gate →
+high_fidelity_gate → self_skew → promote`. Every unique checkpoint preserved
+by validation receives a same-openings arena screen; the best worst-color result
+is only a nomination for the normal gates. The offline comparison is advisory
+by default: it records held-out policy/value warnings, but actual games decide
+rejection. A binding winner must also improve both calibrated colors in an
+independent 80-game, 800-simulation confirmation before promotion. The legacy
+hard offline behavior is available with `--reject-on-offline-regression`. Each generation
 has immutable state, command logs, and reports under `iterations/gen_NNNN/`.
 Resume an interrupted generation with the original experiment arguments plus
 `--resume`; changing a training or data argument is rejected. `--through-phase`
@@ -205,9 +209,10 @@ context, so the worker count stays explicit and bounded rather than following
 the host CPU count.
 
 Pipeline training evaluates the incumbent on the same validation rows before
-epoch one. Checkpoints are ranked by their worst-color policy and value-sign
-gains over that fixed baseline, and regression guards remain fixed to the
-incumbent rather than walking between epochs. If no epoch is safe, training
+epoch one. Validation preserves checkpoints using worst-color policy and
+value-sign gains over that fixed baseline; the checkpoint arena then tests
+every preserved model and ranks by its calibrated worst color. Regression
+guards remain fixed to the incumbent rather than walking between epochs. If no epoch is safe, training
 emits `selection_rejected.json` and the generation becomes
 `rejected_training`. The
 moves-left head exists as an opt-in experiment but is off in the first pipeline

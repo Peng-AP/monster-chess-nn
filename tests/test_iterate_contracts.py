@@ -20,6 +20,8 @@ class BootstrapPipelineContracts(unittest.TestCase):
         self.assertLess(it.PHASES.index("offline_gate"),
                         it.PHASES.index("binding_gate"))
         self.assertLess(it.PHASES.index("binding_gate"),
+                        it.PHASES.index("high_fidelity_gate"))
+        self.assertLess(it.PHASES.index("high_fidelity_gate"),
                         it.PHASES.index("self_skew"))
         self.assertEqual(it.PHASES[-1], "promote")
 
@@ -55,6 +57,8 @@ class BootstrapPipelineContracts(unittest.TestCase):
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
             offline_positions=1, self_skew_games=1,
+            checkpoint_screen_games=2, checkpoint_screen_sims=1,
+            high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, generations=2,
             promote_on_pass=False, gate_protocol="full",
         )
@@ -66,6 +70,8 @@ class BootstrapPipelineContracts(unittest.TestCase):
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
             offline_positions=1, self_skew_games=1,
+            checkpoint_screen_games=2, checkpoint_screen_sims=1,
+            high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, replay_balance_alpha=0.5,
             generations=2, promote_on_pass=False,
             continue_after_reject=True, gate_protocol="full",
@@ -77,6 +83,8 @@ class BootstrapPipelineContracts(unittest.TestCase):
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
             offline_positions=1, self_skew_games=1,
+            checkpoint_screen_games=2, checkpoint_screen_sims=1,
+            high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, generations=1,
             promote_on_pass=True, gate_protocol="quick",
         )

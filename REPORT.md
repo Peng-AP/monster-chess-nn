@@ -534,8 +534,8 @@ negative evidence. V20 remains incumbent.
 
 `src/iterate.py` was rebuilt as a resumable, manifest-driven state machine:
 
-`generate -> reanalyze -> process -> compose -> train -> offline_gate ->
-binding_gate -> self_skew -> promote`
+`generate -> reanalyze -> process -> compose -> train -> checkpoint_screen ->
+offline_gate -> binding_gate -> high_fidelity_gate -> self_skew -> promote`
 
 The new design keeps the exact v19_B/V20 processed recipe as an immutable replay
 anchor, mixes recent promoted generations, generates balanced league experience,
@@ -558,14 +558,43 @@ Numbered V21 still requires the existing owner playtest.
 The first production candidate demonstrated why that distinction matters. It
 improved held-out winner-sign accuracy by 1.53 points overall and 3.14 points on
 Black, while policy top-1 fell 1.15 points overall and 1.52 on White. The old
-1-point hard threshold rejected it without a game. That result is retained as
-an offline warning and the candidate is queued for the binding game protocol.
+1-point hard threshold rejected it without a game. Recovered play-testing then
+showed exactly why games must decide: the first 40-game V20 leg scored 0.650
+overall / 0.725 White / 0.575 Black, but the independent confirmation fell to
+0.3875 / 0.575 / 0.200. Across all 140 gate games it scored 0.793 as White and
+0.579 as Black. The candidate was correctly rejected for unstable real play,
+not for imperfect teacher imitation.
 
 The production loop now also honors the repository's measured eight-worker
 default instead of silently applying the obsolete four-worker NN cap. On this
 5060 Ti, prior 400-simulation measurement was 5.39 decisions/s at four workers,
 7.11 at eight, and 7.38 at twelve; fourteen exhausted memory. Eight therefore
 uses more of the available GPU while keeping useful failure headroom.
+
+**Four-generation production result (2026-08-06).** Every successfully trained
+generation received the binding game protocol. None promoted from its original
+validation-selected checkpoint. Generation two reached 0.5875 against V20 but
+fell to 0.5000 overall / 0.325 Black on confirmation; generations three and
+four scored 0.4750 and 0.4875 against V20. Generation four nevertheless exposed
+an actionable selection error: its preserved epoch two, not the proxy-selected
+epoch four, passed an independent full binding gate at 0.525 / 0.600 / 0.450,
+then 0.6875 / 0.800 / 0.575 on the fresh V20 confirmation. Across its 140 gate
+games it scored 0.821 White and 0.650 Black.
+
+The stronger 80-game, 800-simulation calibrated read correctly blocked
+promotion: epoch two improved White by 0.275 and aggregate by 0.119, but Black
+was 0.4375 versus the seeded V20 calibration's 0.475 (-0.0375). Epoch one's
+same-opening 800-simulation match was worse at 0.600 White / 0.3125 Black.
+Epoch two's 80-game self-match was also more color-skewed than V20: pooled White
+score 0.781 versus V20's recorded 0.694. This is evidence of a general White
+drift, not merely a weak conversion tail.
+
+The pipeline now arena-screens every unique `selected_epoch_*.pt` checkpoint,
+ranking by the minimum calibrated color delta before aggregate and Black
+tie-breaks. A binding winner must additionally pass the calibrated 80x800
+two-color confirmation. Thus all preserved models receive play, small screens
+cannot promote by themselves, and the generation-four epoch-two false positive
+would be rejected automatically.
 
 A live native smoke run completed generate -> reanalyze -> process: two games
 (one win per color), 200 self-play positions, two positions deep-searched, one
@@ -575,11 +604,11 @@ teacher retained, 201 raw rows / 402 augmented rows, and no illegal targets.
 
 ## 16. Next
 
-1. Run generation one with architecture fixed, inspect the offline report, and
-   let the full binding gate decide whether the bootstrap champion advances.
-2. If it passes, measure self-color skew and start generation two with promoted
-   replay. A bootstrap promotion is not automatically V21.
-3. After the pipeline has a clean control result, test moves-left as one isolated
+1. Run the next fixed-architecture generation with checkpoint arena selection
+   and the calibrated high-fidelity gate enabled. V20 remains champion.
+2. If it passes both game gates, measure self-color skew and start the following
+   generation with promoted replay. A bootstrap promotion is not automatically V21.
+3. After the pipeline has a clean promoted control result, test moves-left as one isolated
    model change. Do not bundle it with data or search changes.
 4. Track learning curves, replay composition, policy divergence and per-side
    gates across generations. Use failure positions for general reanalysis, not
@@ -615,7 +644,9 @@ form a split group with the source game; the same reproducer reads 0/40 and
 generated-batch completion checks, atomic staging for reanalysis/replay,
 non-overlapping phase seed ranges, full accepted-artifact hashes, a run-root
 lock, stale-checkpoint archiving on training retries, and memory-mapped replay
-loading. The complete suite passes 551 tests plus 3 subtests.
+loading. Run status now validates both the exact Windows PID column and process
+creation time, so PID reuse cannot resurrect dead entries. The current full
+unittest discovery passes 519 tests.
 
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.

@@ -96,9 +96,12 @@ unchanged, in `_get_white_actions`).
   and only the unchanged binding game gate rejects a successfully trained
   candidate. The first production arm had Black sign accuracy +3.14 points but
   was denied games by a White policy top-1 drop of 1.52 points under the old
-  rule; it is retained for a binding test. The loop also honors the measured
-  eight-worker GPU default (7.11 decisions/s versus 5.39 at four) instead of the
-  obsolete hard four-worker NN cap.
+  rule. Its recovered game gate scored 0.650 overall / 0.725 White / 0.575
+  Black in the first V20 leg, then failed the independent confirmation at
+  0.3875 / 0.575 / 0.200. It was therefore rejected for unstable play rather
+  than proxy metrics. The loop also honors the measured eight-worker GPU default
+  (7.11 decisions/s versus 5.39 at four) instead of the obsolete hard
+  four-worker NN cap.
 - **Bootstrap production contracts added (2026-08-06).** Processed
   champion-generated data is accepted into a run-local immutable registry
   immediately after processing, independent of whether its candidate later
@@ -110,6 +113,17 @@ unchanged, in `_get_white_actions`).
   optimizing worst-color policy/sign gains with fixed incumbent regression
   guards. If every epoch violates those guards, the generation ends as
   `rejected_training`; it cannot fall back to an unsafe or duplicate model.
+- **Bootstrap checkpoint play-testing hardened (2026-08-06).** Four production
+  generations all received real binding games. Generation four showed that the
+  validation proxy chose the wrong stopping point: preserved epoch two passed
+  a fresh full gate (V20 0.525 overall / 0.600 White / 0.450 Black, confirmation
+  0.6875 / 0.800 / 0.575), while selected epoch four failed. The 80-game,
+  800-simulation calibrated read still rejected epoch two: +0.275 White and
+  +0.119 aggregate, but -0.0375 Black. Its pooled self-match White score was
+  0.781 versus V20's 0.694, confirming increased White skew. The pipeline now
+  play-tests every unique preserved epoch, nominates by worst calibrated color,
+  and requires an independent calibrated 80x800 improvement in both colors
+  after the binding gate. V20 remains champion.
 - **Bootstrap production audit completed 2026-08-06.** Deep-search teachers
   now inherit the source game's train/validation/test split (the pre-fix demo
   leak was 10/40 and 61/180; both are now zero). Worker phases fail after a
