@@ -29,6 +29,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS = os.path.join(ROOT, "logs")
 DEFAULT_RECENT_MINUTES = 60
 DEFAULT_EXTERNAL_STALE_MINUTES = 30
+TAIL_BYTES = 256 * 1024
+DEFAULT_PRUNE_DAYS = 7
 
 
 def _windows_process_started_epoch(pid):
@@ -60,28 +62,58 @@ def _windows_process_started_epoch(pid):
         return None
 
 
-def _alive(pid, started_epoch=0):
+def _live_pids():
+    """Every running pid, from one `tasklist` call.
+
+    Asking about pids one at a time costs a subprocess spawn each: with a few
+    dozen recorded runs that was ~280ms per entry and made `status` take 14
+    seconds. One call answers for all of them.
+
+    Returns None if the snapshot cannot be taken, which sends callers back to
+    the per-pid path rather than silently reporting everything dead.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                             capture_output=True, text=True, timeout=30).stdout
+    except Exception:
+        return None
+    pids = set()
+    for row in csv.reader(out.splitlines()):
+        # Column 1 is the pid. Parsing the column (rather than scanning text)
+        # keeps a dead pid from matching inside another process's memory field.
+        if len(row) >= 2 and row[1].strip().isdigit():
+            pids.add(int(row[1]))
+    return pids
+
+
+def _alive(pid, started_epoch=0, live_pids=None):
     if pid is None:
         return False
     try:
         if os.name == "nt":
-            out = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                capture_output=True, text=True, timeout=15).stdout
-            # A substring check is unsafe: a dead PID can appear in another
-            # process's formatted memory-usage field and be reported alive.
-            # Parse tasklist's PID column and require an exact match instead.
-            for row in csv.reader(out.splitlines()):
-                if len(row) >= 2 and row[1].strip().isdigit():
-                    if int(row[1]) == int(pid):
-                        if started_epoch:
-                            process_started = _windows_process_started_epoch(pid)
-                            if process_started is not None:
-                                # Metadata has one-second precision and is
-                                # written immediately after Popen returns.
-                                return abs(process_started - started_epoch) <= 5
-                        return True
-            return False
+            if live_pids is None:
+                out = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                    capture_output=True, text=True, timeout=15).stdout
+                present = any(
+                    len(row) >= 2 and row[1].strip().isdigit()
+                    and int(row[1]) == int(pid)
+                    for row in csv.reader(out.splitlines()))
+            else:
+                present = int(pid) in live_pids
+            if not present:
+                return False
+            if started_epoch:
+                # Cheap in-process call, no spawn: qualifying by creation time
+                # stops a recycled pid resurrecting a finished run.
+                process_started = _windows_process_started_epoch(pid)
+                if process_started is not None:
+                    # Metadata has one-second precision and is written
+                    # immediately after Popen returns.
+                    return abs(process_started - started_epoch) <= 5
+            return True
         os.kill(pid, 0)
         return True
     except Exception:
@@ -97,8 +129,14 @@ def _last_progress(path, lookback=200):
     if not os.path.exists(path):
         return ""
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
+        # Only the tail can be the latest progress line, and these logs append
+        # for hours. Reading the last chunk keeps status flat in log size; a
+        # split multi-byte character at the seek point is absorbed by
+        # errors="replace" and can only affect the first line, never the last.
+        with open(path, "rb") as fh:
+            size = fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, size - TAIL_BYTES))
+            text = fh.read().decode("utf-8", errors="replace")
     except Exception:
         return ""
     lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n") if ln.strip()]
@@ -128,12 +166,13 @@ def _last_activity(meta_path, log_path, started_epoch):
     return max(candidates)
 
 
-def _run_state(meta, last_activity, now, external_stale_seconds):
+def _run_state(meta, last_activity, now, external_stale_seconds, live_pids=None):
     """Classify a record without letting pid-less adopted jobs live forever."""
     pid = meta.get("pid")
     if pid is not None:
         started_epoch = _started_epoch(meta.get("started"))
-        return ("RUNNING" if _alive(pid, started_epoch=started_epoch)
+        return ("RUNNING" if _alive(pid, started_epoch=started_epoch,
+                                    live_pids=live_pids)
                 else "finished")
     if now - last_activity <= external_stale_seconds:
         return "external"
@@ -171,6 +210,7 @@ def cmd_status(args):
     now = time.time()
     recent_seconds = max(0, args.recent_minutes) * 60
     external_stale_seconds = max(0, args.external_stale_minutes) * 60
+    live_pids = _live_pids()
     records = []
     for meta_name in metas:
         meta_path = os.path.join(LOGS, meta_name)
@@ -183,7 +223,8 @@ def cmd_status(args):
         started_epoch = _started_epoch(meta.get("started"))
         log_path = os.path.join(LOGS, f"{name}.log")
         last_activity = _last_activity(meta_path, log_path, started_epoch)
-        state = _run_state(meta, last_activity, now, external_stale_seconds)
+        state = _run_state(meta, last_activity, now, external_stale_seconds,
+                           live_pids=live_pids)
         elapsed = max(0, now - started_epoch) if started_epoch else 0
         progress = _last_progress(log_path)[:70]
         records.append((name, state, elapsed, last_activity, progress))
@@ -208,10 +249,52 @@ def cmd_status(args):
               "use status --all for history")
 
 
+def cmd_prune(args):
+    """Move old finished runs to logs/archive/. Never touches a live run."""
+    archive = os.path.join(LOGS, "archive")
+    os.makedirs(archive, exist_ok=True)
+    now = time.time()
+    cutoff = max(0, args.days) * 86400
+    live_pids = _live_pids()
+    moved = kept = 0
+    for meta_name in sorted(f for f in os.listdir(LOGS) if f.endswith(".json")):
+        meta_path = os.path.join(LOGS, meta_name)
+        try:
+            with open(meta_path, encoding="utf-8") as fh:
+                meta = json.load(fh)
+        except Exception:
+            continue
+        name = meta.get("name", meta_name[:-5])
+        log_path = os.path.join(LOGS, f"{name}.log")
+        started_epoch = _started_epoch(meta.get("started"))
+        last_activity = _last_activity(meta_path, log_path, started_epoch)
+        state = _run_state(meta, last_activity, now,
+                           max(0, args.external_stale_minutes) * 60,
+                           live_pids=live_pids)
+        if state in ("RUNNING", "external") or now - last_activity < cutoff:
+            kept += 1
+            continue
+        for src in (meta_path, log_path):
+            if os.path.exists(src):
+                target = os.path.join(archive, os.path.basename(src))
+                if os.path.exists(target):
+                    os.remove(target)
+                os.replace(src, target)
+        moved += 1
+        if args.verbose:
+            print(f"  archived {name}")
+    print(f"archived {moved} run(s) idle over {args.days}d, kept {kept}; "
+          f"archive at logs/archive/")
+
+
 def cmd_tail(args):
     path = os.path.join(LOGS, f"{args.name}.log")
     if not os.path.exists(path):
-        raise SystemExit(f"no log at {path}")
+        archived = os.path.join(LOGS, "archive", f"{args.name}.log")
+        if os.path.exists(archived):
+            path = archived        # pruning must not make a log unreadable
+        else:
+            raise SystemExit(f"no log at {path}")
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         text = fh.read().replace("\r", "\n")
     lines = [ln for ln in text.split("\n") if ln.strip()]
@@ -243,6 +326,16 @@ def main():
         help=("consider pid-less external runs stale after no log activity "
               f"(default: {DEFAULT_EXTERNAL_STALE_MINUTES})"))
     status.set_defaults(func=cmd_status)
+
+    prune = sub.add_parser(
+        "prune", help="archive old finished runs (never touches a live one)")
+    prune.add_argument("--days", type=float, default=DEFAULT_PRUNE_DAYS,
+                       help=f"archive runs idle this long (default: "
+                            f"{DEFAULT_PRUNE_DAYS})")
+    prune.add_argument("--external-stale-minutes", type=float,
+                       default=DEFAULT_EXTERNAL_STALE_MINUTES)
+    prune.add_argument("--verbose", action="store_true")
+    prune.set_defaults(func=cmd_prune)
 
     tail = sub.add_parser("tail", help="last lines of one run's log")
     tail.add_argument("--name", required=True)
