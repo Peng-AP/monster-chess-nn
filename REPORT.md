@@ -505,19 +505,70 @@ failed. V20 remains incumbent. Artifacts:
 
 ---
 
-## 14. Next
+## 14. Conversion-adapter closeout (2026-08-05)
 
-1. **Post-E5 training ladder — complete, all rejected.** Base / e1500 /
-   owner41 scored 0.250 / 0.100 / 0.075 as Black against `v19_B`; see §9.
-2. **V20 remains the promoted bar.** Do not promote any v21 screen checkpoint.
-   Policy-regression-safe checkpointing and distinct promotions are now done.
-   Next, keep v20 and the promotion head frozen and test a deterministic
-   post-promotion Black-only policy adapter; unlike the failed side adapter,
-   it must be exactly inactive outside the known conversion phase.
-3. **Curve control** — same-deck Python 200-sim read; trace a divergence only
-   if that controlled comparison establishes one.
-4. **E6 / pruning conversation** — with the depth data, the plateau, and the
-   AB-prover scoping ready (owner has this queued).
+The proposed phase-specific conversion adapters were tested and rejected. They
+did not create a repeatable Black improvement and would encode a narrow game
+given that normal training/search should learn:
+
+| candidate | games | overall | White | Black | result |
+|---|---:|---:|---:|---:|---|
+| broad owner conversion adapter | 40 | 0.4875 | 0.725 | 0.250 | reject |
+| micro post-promotion adapter | 40 | 0.4500 | 0.700 | 0.200 | reject |
+| deep defense distillation, screen | 20 | 0.6750 | 0.750 | 0.600 | advanced |
+| deep defense distillation, binding v20 leg | 40 | 0.4500 | 0.675 | 0.225 | reject |
+| immediate-capture distillation, screen | 20 | 0.5750 | 0.750 | 0.400 | advanced |
+| immediate-capture distillation, confirmation | 40 | 0.4250 | 0.600 | 0.250 | reject |
+| V20-only capture teacher, screen | 20 | 0.6000 | 0.800 | 0.400 | reject: White-led variance |
+
+The immediate-capture probe itself rose from 3/20 correct captures for V20 to
+11/20 for the candidate, demonstrating that the isolated target was learnable.
+That did not translate to general strength or Black conversion. The conclusion
+is not to add a more elaborate tactical gate: obvious capture/promotion facts
+must be learned as part of the general policy. These artifacts are retained as
+negative evidence. V20 remains incumbent.
+
+---
+
+## 15. Iterative bootstrap pipeline (2026-08-05)
+
+`src/iterate.py` was rebuilt as a resumable, manifest-driven state machine:
+
+`generate -> reanalyze -> process -> compose -> train -> offline_gate ->
+binding_gate -> self_skew -> promote`
+
+The new design keeps the exact v19_B/V20 processed recipe as an immutable replay
+anchor, mixes recent promoted generations, generates balanced league experience,
+and uses deeper champion search on ordinary positions to create policy-only
+teachers. Teachers are ranked by policy divergence, value change, and changed
+top action; the pipeline reserves 60% for Black without selecting a tactical
+motif. Conservative end-to-end fine-tuning starts from the incumbent. The
+moves-left head is available but deliberately off for generation one.
+
+Every phase records commands, outputs, logs, timings, and status in
+`iterations/gen_NNNN/state.json`. Resume rejects argument drift. An offline
+policy/value regression check runs before the costly binding gate. Only an
+explicit `--promote-on-pass` can update `models/bootstrap/champion.json`, only a
+full gate can promote, and no numbered release checkpoint is overwritten.
+Numbered V21 still requires the existing owner playtest.
+
+A live native smoke run completed generate -> reanalyze -> process: two games
+(one win per color), 200 self-play positions, two positions deep-searched, one
+teacher retained, 201 raw rows / 402 augmented rows, and no illegal targets.
+
+---
+
+## 16. Next
+
+1. Run generation one with architecture fixed, inspect the offline report, and
+   let the full binding gate decide whether the bootstrap champion advances.
+2. If it passes, measure self-color skew and start generation two with promoted
+   replay. A bootstrap promotion is not automatically V21.
+3. After the pipeline has a clean control result, test moves-left as one isolated
+   model change. Do not bundle it with data or search changes.
+4. Track learning curves, replay composition, policy divergence and per-side
+   gates across generations. Use failure positions for general reanalysis, not
+   hand-authored tactical rules.
 
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.
