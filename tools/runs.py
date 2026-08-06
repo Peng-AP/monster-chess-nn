@@ -255,6 +255,34 @@ def cmd_status(args):
               "use status --all for history")
 
 
+def cmd_stop(args):
+    """Stop a run and everything it spawned.
+
+    Killing the recorded pid alone is not enough and has caused real damage: a
+    `queue_after` wrapper that has already launched its command dies while the
+    command keeps running, orphaned, writing into the same output directory and
+    the same log as its replacement. Windows does not reparent-and-kill, so the
+    tree has to be taken explicitly.
+    """
+    meta_path = os.path.join(LOGS, f"{args.name}.json")
+    try:
+        with open(meta_path, encoding="utf-8") as fh:
+            meta = json.load(fh)
+    except Exception:
+        raise SystemExit(f"no run named {args.name}")
+    pid = meta.get("pid")
+    if pid is None:
+        raise SystemExit(f"{args.name} has no recorded pid (external run)")
+    if os.name == "nt":
+        out = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                             capture_output=True, text=True).stdout.strip()
+        print(out or f"{args.name}: nothing to stop")
+    else:
+        import signal
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+        print(f"{args.name}: killed process group {pid}")
+
+
 def cmd_prune(args):
     """Move old finished runs to logs/archive/. Never touches a live run."""
     archive = os.path.join(LOGS, "archive")
@@ -332,6 +360,11 @@ def main():
         help=("consider pid-less external runs stale after no log activity "
               f"(default: {DEFAULT_EXTERNAL_STALE_MINUTES})"))
     status.set_defaults(func=cmd_status)
+
+    stop = sub.add_parser(
+        "stop", help="kill a run AND its children (never just the pid)")
+    stop.add_argument("--name", required=True)
+    stop.set_defaults(func=cmd_stop)
 
     prune = sub.add_parser(
         "prune", help="archive old finished runs (never touches a live one)")

@@ -196,12 +196,20 @@ def main():
                 if not records or records[0].get(
                         "game_result") != DOMINANT_UNFINISHED:
                     continue
-                # The corpus variants are largely copies of one another: 631
-                # matching files hold 208 distinct games. Without this, most of
-                # the run re-finishes games it already finished, and the
-                # conversion rate is weighted by how often a game was copied.
+                # Deduplicate on the RESUME STATE, not on file content. The
+                # corpus variants are largely copies of one another (631 files
+                # hold 208 content-distinct games), but content alone is too
+                # weak a key: the same game recorded with different retained
+                # records hashes differently while posing the identical
+                # experiment. Those 208 hold only 143 distinct resume
+                # positions. Since the last record's position and pending flag
+                # fully determine the continuation, they are the honest key --
+                # anything coarser weights the conversion rate by how often a
+                # game happened to be copied.
+                last = records[-1]
                 digest = hashlib.sha1(
-                    json.dumps(records, sort_keys=True).encode()).hexdigest()
+                    f"{last['fen']}|{int(bool(last.get('half')))}".encode()
+                ).hexdigest()
                 if digest in seen:
                     duplicates += 1
                     continue
