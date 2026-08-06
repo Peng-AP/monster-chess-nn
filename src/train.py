@@ -1128,14 +1128,31 @@ def _decisive_score(decisive):
     return min(top1) + min(sign)
 
 
+def _relative_decisive_score(decisive, baseline):
+    """Score the worst per-color gains over a fixed incumbent baseline."""
+    keys = (
+        "policy_top1_white", "policy_top1_black",
+        "sign_acc_white", "sign_acc_black",
+    )
+    if baseline is None or any(
+            decisive.get(key) is None or baseline.get(key) is None
+            for key in keys):
+        return None, {}
+    deltas = {key: float(decisive[key] - baseline[key]) for key in keys}
+    score = min(deltas["policy_top1_white"],
+                deltas["policy_top1_black"])
+    score += min(deltas["sign_acc_white"], deltas["sign_acc_black"])
+    return float(score), deltas
+
+
 def _checkpoint_regression_guard(policy_ce, decisive, incumbent_metrics,
                                  max_policy_ce_regression=None,
                                  max_side_top1_drop=None):
     """Protect a stronger selection scalar from material policy regression.
 
-    The incumbent is the currently saved checkpoint, not an independent
-    per-metric maximum.  This keeps the rule Pareto-like and prevents the v21
-    failure mode where a tiny sign-score gain overwrote a much cleaner policy.
+    The reference is either the fixed resume checkpoint or, for legacy runs,
+    the currently saved checkpoint. This keeps the rule Pareto-like and
+    prevents a tiny sign-score gain from overwriting a much cleaner policy.
     """
     if incumbent_metrics is None:
         return True, []
@@ -1357,6 +1374,10 @@ def main():
                              "policy top-1 + winner-sign on val (default); "
                              "'val_loss' = legacy aggregate validation loss")
     parser.add_argument(
+        "--select-relative-to-resume", action="store_true",
+        help="rank epochs by worst-color policy/sign gains over the fixed "
+             "--resume-from checkpoint on the same validation split")
+    parser.add_argument(
         "--max-policy-ce-regression", type=float, default=None,
         help="Reject a nominally better checkpoint if policy CE exceeds the "
              "saved checkpoint by this relative fraction (for example 0.02)")
@@ -1405,6 +1426,8 @@ def main():
         raise ValueError("--max-policy-ce-regression must be >= 0")
     if args.max_side_top1_drop is not None and args.max_side_top1_drop < 0:
         raise ValueError("--max-side-top1-drop must be >= 0")
+    if args.select_relative_to_resume and not args.resume_from:
+        raise ValueError("--select-relative-to-resume requires --resume-from")
     if args.train_policy_head_only and not args.resume_from:
         raise ValueError("--train-policy-head-only requires --resume-from")
     if args.train_promotion_head_only and not args.resume_from:
@@ -1675,6 +1698,51 @@ def main():
         "epochs": [],
     }
 
+    selection_baseline = None
+    if args.select_relative_to_resume:
+        baseline_loader = _make_loader(
+            positions[val_idx], value_targets[val_idx], policies[val_idx],
+            args.batch_size, shuffle=False,
+            y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
+            y_policy_weight=policy_weights[val_idx],
+            y_value_weight=value_weights[val_idx],
+            y_moves_left=(moves_left[val_idx]
+                          if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights[val_idx]
+                                 if args.moves_left_head else None),
+            y_legal_masks_packed=(legal_masks_packed[val_idx]
+                                  if args.legal_policy_mask else None),
+        )
+        baseline_model = ema.module if ema is not None else model
+        (_base_loss, _base_v, base_policy_ce, _base_mae, _base_mse,
+         _base_wdl, _base_wdl_acc, _base_moves_left,
+         base_decisive) = _eval_epoch(
+            baseline_model, baseline_loader, device, args.policy_loss_weight,
+            use_wdl_head=use_wdl_mode,
+            wdl_loss_weight=(args.wdl_loss_weight if use_wdl_mode else 0.0),
+            value_head_mode=args.value_head,
+            use_moves_left_head=args.moves_left_head,
+            moves_left_loss_weight=(args.moves_left_loss_weight
+                                    if args.moves_left_head else 0.0),
+            use_legal_policy_mask=args.legal_policy_mask,
+        )
+        selection_baseline = {
+            "policy_ce": float(base_policy_ce),
+            **{key: (float(value) if value is not None else None)
+               for key, value in base_decisive.items()},
+        }
+        run_metadata["selection_baseline"] = selection_baseline
+        def _percent(value):
+            return "n/a" if value is None else f"{value:.1%}"
+        print(
+            "Selection baseline: "
+            f"policy_ce={base_policy_ce:.4f} "
+            f"top1(W={_percent(base_decisive['policy_top1_white'])} "
+            f"B={_percent(base_decisive['policy_top1_black'])}) "
+            f"sign(W={_percent(base_decisive['sign_acc_white'])} "
+            f"B={_percent(base_decisive['sign_acc_black'])})"
+        )
+
     # Training loop
     for epoch in range(1, args.epochs + 1):
         epoch_targets = value_targets
@@ -1797,14 +1865,24 @@ def main():
         # Checkpoint selection. "decisive" maximizes min-over-sides policy
         # top-1 + winner-sign; falls back to val_loss only if a side has no
         # val samples. Lower selection value = better for both modes.
-        if args.select_metric == "decisive" and val_decisive["score"] is not None:
+        relative_score = None
+        relative_deltas = {}
+        if args.select_relative_to_resume:
+            relative_score, relative_deltas = _relative_decisive_score(
+                val_decisive, selection_baseline)
+        if relative_score is not None:
+            selection_value = -relative_score
+            selection_desc = f"incumbent_relative_score={relative_score:+.4f}"
+        elif args.select_metric == "decisive" and val_decisive["score"] is not None:
             selection_value = -val_decisive["score"]
             selection_desc = f"decisive_score={val_decisive['score']:.4f}"
         else:
             selection_value = val_loss
             selection_desc = f"val_loss={val_loss:.4f}"
         guard_ok, guard_reasons = _checkpoint_regression_guard(
-            val_p, val_decisive, best_checkpoint_metrics,
+            val_p, val_decisive,
+            selection_baseline if args.select_relative_to_resume
+            else best_checkpoint_metrics,
             max_policy_ce_regression=args.max_policy_ce_regression,
             max_side_top1_drop=args.max_side_top1_drop,
         )
@@ -1840,9 +1918,34 @@ def main():
             "guard_passed": bool(guard_ok),
             "guard_reasons": guard_reasons,
             "saved": bool(nominal_improvement and guard_ok),
+            "relative_score": relative_score,
+            "relative_deltas": relative_deltas,
         }
         if should_stop:
             break
+
+    if best_epoch is None:
+        rejection = {
+            "status": "rejected_training",
+            "reason": "no epoch passed fixed incumbent regression guards",
+            "selection_baseline": selection_baseline,
+            "epochs": run_metadata["epochs"],
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        rejection_path = os.path.join(args.model_dir, "selection_rejected.json")
+        run_metadata["status"] = "rejected_training"
+        run_metadata["best_selection_value"] = None
+        run_metadata["best_epoch"] = None
+        run_metadata["checkpoint_path"] = None
+        run_metadata["end_timestamp"] = rejection["timestamp"]
+        with open(metadata_path, "w") as f:
+            json.dump(run_metadata, f, indent=2)
+        with open(rejection_path, "w") as f:
+            json.dump(rejection, f, indent=2)
+        print("TRAINING SELECTION: REJECT — no epoch passed the fixed "
+              "incumbent guards")
+        print(f"Selection rejection saved to {rejection_path}")
+        raise SystemExit(2)
 
     # Load best model for test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))

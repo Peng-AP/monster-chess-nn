@@ -61,6 +61,33 @@ class ProcessedCompositionContracts(unittest.TestCase):
                 compose_processed.inspect_sources(
                     [f"one={one}", f"two={two}"])
 
+    def test_balancing_smooths_general_strata_without_growing_split(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            n = 12
+            positions = np.zeros((n, 8, 8, 15), np.float32)
+            positions[:, 0, 0, 12] = -1
+            positions[-3:, 0, 0, 12] = 1
+            for row in range(n):
+                positions[row, :, :, :min(12, row + 1)] = 0
+                for piece in range(min(12, row + 1)):
+                    positions[row, piece // 8, piece % 8, piece] = 1
+            np.save(root / "positions.npy", positions)
+            captures = np.ones(n, np.float32)
+            captures[-3:] = np.array([1, 0, -1], np.float32)
+            np.save(root / "capture_results.npy", captures)
+            indices = np.arange(n, dtype=np.int64)
+            balanced, report = compose_processed.balance_training_indices(
+                str(root), indices, alpha=0.5, seed=7, chunk_rows=4)
+            self.assertEqual(len(balanced), len(indices))
+            self.assertTrue(report["enabled"])
+            source = [row["source_rows"] for row in report["strata"]
+                      if row["source_rows"]]
+            sampled = [row["sampled_rows"] for row in report["strata"]
+                       if row["source_rows"]]
+            self.assertLessEqual(max(sampled) - min(sampled),
+                                 max(source) - min(source))
+
 
 if __name__ == "__main__":
     unittest.main()

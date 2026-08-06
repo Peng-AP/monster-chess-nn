@@ -29,6 +29,100 @@ OPTIONAL_ARRAYS = (
     "legal_masks_packed.npy",
     "capture_results.npy",
 )
+TURN_LAYER = 12
+
+
+def _allocate_counts(counts, total, alpha):
+    """Allocate a fixed sample budget with inverse-frequency smoothing."""
+    counts = np.asarray(counts, dtype=np.int64)
+    active = counts > 0
+    weights = np.zeros(len(counts), dtype=np.float64)
+    weights[active] = counts[active].astype(np.float64) ** (1.0 - alpha)
+    exact = weights / weights.sum() * int(total)
+    allocated = np.floor(exact).astype(np.int64)
+    remainder = int(total - allocated.sum())
+    if remainder:
+        order = np.argsort(-(exact - allocated), kind="stable")
+        allocated[order[:remainder]] += 1
+    return allocated
+
+
+def balance_training_indices(output_dir, train_indices, alpha=0.5, seed=42,
+                             chunk_rows=2048):
+    """Smooth side/outcome/phase strata without changing split membership.
+
+    Phase boundaries are corpus quantiles of remaining piece count, rather
+    than hand-authored tactical rules. True capture outcome is used when
+    available; otherwise +/-0.5 move-limit labels are treated as draws.
+    """
+    train_indices = np.asarray(train_indices, dtype=np.int64)
+    if alpha <= 0 or len(train_indices) == 0:
+        return train_indices, {"enabled": False, "alpha": float(alpha)}
+    if not 0 <= alpha <= 1:
+        raise ValueError("balance alpha must be in [0, 1]")
+
+    positions = np.load(os.path.join(output_dir, "positions.npy"), mmap_mode="r")
+    if positions.shape[-1] <= TURN_LAYER:
+        raise ValueError(
+            f"balanced replay requires turn layer {TURN_LAYER}, got "
+            f"{positions.shape[-1]} channels")
+    result_name = ("capture_results.npy"
+                   if os.path.exists(os.path.join(output_dir,
+                                                  "capture_results.npy"))
+                   else "game_results.npy")
+    results = np.load(os.path.join(output_dir, result_name), mmap_mode="r")
+    side = np.empty(len(train_indices), dtype=np.int8)
+    material = np.empty(len(train_indices), dtype=np.float32)
+    outcome = np.empty(len(train_indices), dtype=np.int8)
+    for start in range(0, len(train_indices), chunk_rows):
+        end = min(len(train_indices), start + chunk_rows)
+        idx = train_indices[start:end]
+        block = np.asarray(positions[idx])
+        white = block[:, 0, 0, TURN_LAYER] > 0
+        side[start:end] = white.astype(np.int8)
+        material[start:end] = block[:, :, :, :12].sum(axis=(1, 2, 3))
+        relative = np.asarray(results[idx]) * np.where(white, 1.0, -1.0)
+        if result_name == "capture_results.npy":
+            outcome[start:end] = np.where(relative > 0, 2,
+                                          np.where(relative < 0, 0, 1))
+        else:
+            outcome[start:end] = np.where(relative > 0.75, 2,
+                                          np.where(relative < -0.75, 0, 1))
+
+    lower, upper = np.quantile(material, (1 / 3, 2 / 3))
+    phase = np.digitize(material, (lower, upper), right=True).astype(np.int8)
+    stratum = side * 9 + outcome * 3 + phase
+    counts = np.bincount(stratum, minlength=18)
+    target_counts = _allocate_counts(counts, len(train_indices), alpha)
+    rng = np.random.default_rng(seed)
+    selected = []
+    for key, target in enumerate(target_counts):
+        if target <= 0:
+            continue
+        members = train_indices[stratum == key]
+        selected.append(rng.choice(
+            members, size=int(target), replace=target > len(members)))
+    balanced = np.concatenate(selected).astype(np.int64, copy=False)
+    rng.shuffle(balanced)
+    labels = []
+    for key in range(18):
+        labels.append({
+            "side": "white" if key // 9 else "black",
+            "outcome": ("loss", "draw", "win")[(key % 9) // 3],
+            "phase": ("late", "middle", "early")[key % 3],
+            "source_rows": int(counts[key]),
+            "sampled_rows": int(target_counts[key]),
+        })
+    return balanced, {
+        "enabled": True,
+        "alpha": float(alpha),
+        "seed": int(seed),
+        "result_source": result_name,
+        "material_quantiles": [float(lower), float(upper)],
+        "source_rows": int(len(train_indices)),
+        "sampled_rows": int(len(balanced)),
+        "strata": labels,
+    }
 
 
 def parse_source(spec):
@@ -112,7 +206,8 @@ def _copy_array(filename, sources, output_dir, chunk_rows):
     del target
 
 
-def compose(sources, arrays, output_dir, chunk_rows=2048):
+def compose(sources, arrays, output_dir, chunk_rows=2048, balance_alpha=0.0,
+            balance_seed=42):
     os.makedirs(output_dir)
     for filename in arrays:
         _copy_array(filename, sources, output_dir, chunk_rows)
@@ -136,10 +231,21 @@ def compose(sources, arrays, output_dir, chunk_rows=2048):
                     f"{source['name']}::{value}" for value in ids.get(split, []))
         offset += source["rows"]
 
+    raw_train = (np.concatenate(combined_splits["train"])
+                 if combined_splits["train"]
+                 else np.empty(0, dtype=np.int64))
+    train, balance = balance_training_indices(
+        output_dir, raw_train, balance_alpha, balance_seed, chunk_rows)
+    final_splits = {
+        "train": train,
+        "val": (np.concatenate(combined_splits["val"])
+                if combined_splits["val"] else np.empty(0, dtype=np.int64)),
+        "test": (np.concatenate(combined_splits["test"])
+                 if combined_splits["test"] else np.empty(0, dtype=np.int64)),
+    }
     np.savez(
         os.path.join(output_dir, "splits.npz"),
-        **{split: np.concatenate(parts) if parts else np.empty(0, dtype=np.int64)
-           for split, parts in combined_splits.items()},
+        **final_splits,
     )
     with open(os.path.join(output_dir, "split_game_ids.json"), "w",
               encoding="utf-8") as handle:
@@ -155,9 +261,9 @@ def compose(sources, arrays, output_dir, chunk_rows=2048):
             "path": os.path.relpath(source["path"], ROOT).replace("\\", "/"),
         } for source in sources],
         "split_rows": {
-            split: int(sum(len(part) for part in parts))
-            for split, parts in combined_splits.items()
+            split: int(len(indices)) for split, indices in final_splits.items()
         },
+        "training_balance": balance,
     }
     with open(os.path.join(output_dir, "replay_manifest.json"), "w",
               encoding="utf-8") as handle:
@@ -171,10 +277,15 @@ def main():
                     help="processed source as NAME=PATH; repeatable")
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--chunk-rows", type=int, default=2048)
+    ap.add_argument("--balance-alpha", type=float, default=0.0,
+                    help="0 disables; 1 fully equalizes side/outcome/phase strata")
+    ap.add_argument("--balance-seed", type=int, default=42)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     if args.chunk_rows <= 0:
         ap.error("--chunk-rows must be positive")
+    if not 0 <= args.balance_alpha <= 1:
+        ap.error("--balance-alpha must be in [0, 1]")
     if os.path.exists(args.output_dir):
         ap.error(f"output directory already exists: {args.output_dir}")
     try:
@@ -190,7 +301,8 @@ def main():
     print(json.dumps(plan, indent=2))
     if args.dry_run:
         return
-    manifest = compose(sources, arrays, args.output_dir, args.chunk_rows)
+    manifest = compose(sources, arrays, args.output_dir, args.chunk_rows,
+                       args.balance_alpha, args.balance_seed)
     print(json.dumps(manifest, indent=2))
 
 

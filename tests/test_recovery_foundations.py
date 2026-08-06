@@ -12,7 +12,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from encoding import fen_to_tensor
 from model_diff import convert_channels
-from train import _checkpoint_regression_guard, _decisive_score
+from train import (
+    _checkpoint_regression_guard,
+    _decisive_score,
+    _relative_decisive_score,
+)
 import data_processor
 
 FENS = [
@@ -64,6 +68,21 @@ def test_decisive_score_none_when_side_missing():
         "policy_top1_white": 0.3, "policy_top1_black": None,
         "sign_acc_white": 0.8, "sign_acc_black": 0.8,
     }) is None
+
+
+def test_relative_score_uses_worst_color_gains():
+    baseline = {
+        "policy_top1_white": 0.40, "policy_top1_black": 0.30,
+        "sign_acc_white": 0.80, "sign_acc_black": 0.75,
+    }
+    candidate = {
+        "policy_top1_white": 0.50, "policy_top1_black": 0.31,
+        "sign_acc_white": 0.85, "sign_acc_black": 0.77,
+    }
+    score, deltas = _relative_decisive_score(candidate, baseline)
+    assert score == pytest.approx(0.03)
+    assert deltas["policy_top1_white"] == pytest.approx(0.10)
+    assert deltas["policy_top1_black"] == pytest.approx(0.01)
 
 
 def test_checkpoint_guard_rejects_policy_collapse_despite_better_scalar():

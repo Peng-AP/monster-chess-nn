@@ -23,6 +23,8 @@ import time
 import re
 from pathlib import Path
 
+import numpy as np
+
 from config import (
     PROJECT_ROOT,
     RANDOM_SEED,
@@ -184,16 +186,62 @@ def _checkpoint_spec(checkpoint):
     }
 
 
+def _accepted_registry_path(run_root):
+    return Path(run_root) / "accepted_data.json"
+
+
+def _accept_generation_data(state, paths, run_root):
+    """Register immutable champion-generated data before candidate training."""
+    processed = Path(paths["new_processed"])
+    required = ("positions.npy", "policies.npy", "splits.npz")
+    missing = [name for name in required if not (processed / name).exists()]
+    if missing:
+        raise RuntimeError(f"cannot accept incomplete processed data: {missing}")
+    positions = np.load(processed / "positions.npy", mmap_mode="r")
+    with np.load(processed / "splits.npz") as split_file:
+        split_rows = {name: int(len(split_file[name]))
+                      for name in ("train", "val", "test")}
+    acceptance = {
+        "generation": int(state["generation"]),
+        "accepted_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "path": _rel(processed),
+        "rows": int(len(positions)),
+        "split_rows": split_rows,
+        "splits_sha256": _sha256(processed / "splits.npz"),
+        "incumbent": state["incumbent"],
+        "incumbent_sha256": state["incumbent_sha256"],
+        "run_state": state["paths"]["state"],
+    }
+    registry_path = _accepted_registry_path(run_root)
+    registry = _load_json(registry_path, {"schema_version": 1, "entries": []})
+    entries = [row for row in registry.get("entries", [])
+               if int(row.get("generation", -1)) != state["generation"]]
+    entries.append(acceptance)
+    entries.sort(key=lambda row: int(row["generation"]))
+    registry.update({"schema_version": 1, "entries": entries})
+    _atomic_json(registry_path, registry)
+    state["data_acceptance"] = acceptance
+    return acceptance
+
+
 def _recent_replay_sources(run_root, before_generation, count):
+    registry = _load_json(_accepted_registry_path(run_root), {"entries": []})
     rows = []
-    for path in sorted(Path(run_root).glob("gen_*/state.json")):
-        state = _load_json(path, {})
-        generation = int(state.get("generation", 0))
-        if generation >= before_generation or state.get("status") != "promoted":
+    for entry in registry.get("entries", []):
+        generation = int(entry.get("generation", 0))
+        processed = entry.get("path")
+        if generation >= before_generation or not processed:
             continue
-        processed = state.get("paths", {}).get("new_processed")
-        if processed and _absolute(processed).exists():
-            rows.append((generation, _absolute(processed)))
+        resolved = _absolute(processed)
+        if not resolved.exists():
+            raise FileNotFoundError(
+                f"accepted replay generation {generation} is missing: {resolved}")
+        expected_sha = entry.get("splits_sha256")
+        if expected_sha and _sha256(resolved / "splits.npz") != expected_sha:
+            raise RuntimeError(
+                f"accepted replay generation {generation} was modified: {resolved}")
+        rows.append((generation, resolved))
+    rows.sort(key=lambda row: row[0])
     return rows[-max(0, count):] if count else []
 
 
@@ -228,6 +276,9 @@ def _paths_for_generation(run_root, generation):
         "candidate": ROOT / "models" / "candidates" /
                      f"bootstrap_{namespace}_gen_{generation:04d}" /
                      "best_value_net.pt",
+        "training_rejection": ROOT / "models" / "candidates" /
+                              f"bootstrap_{namespace}_gen_{generation:04d}" /
+                              "selection_rejected.json",
     }
 
 
@@ -307,7 +358,9 @@ def _command_plan(args, generation, incumbent, architecture, paths,
     for old_generation, source in replay_sources:
         compose += ["--source", f"gen_{old_generation:04d}={source}"]
     compose += ["--source", f"gen_{generation:04d}={paths['new_processed']}",
-                "--output-dir", str(paths["replay_processed"])]
+                "--output-dir", str(paths["replay_processed"]),
+                "--balance-alpha", str(args.replay_balance_alpha),
+                "--balance-seed", str(seed + 707)]
 
     moves_left = bool(architecture["moves_left_head"] or args.moves_left_head)
     train = [
@@ -328,6 +381,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--target", "game_result",
         "--value-head", architecture["value_head"],
         "--select-metric", "decisive",
+        "--select-relative-to-resume",
         "--stem-channels", str(architecture["stem_channels"]),
         "--res-channels", ",".join(map(str, architecture["residual_channels"])),
         "--policy-head", architecture["policy_head"],
@@ -526,13 +580,18 @@ def _validate_args(args):
         raise ValueError("--replay-generations must be positive")
     if not 0 <= args.reanalysis_black_fraction <= 1:
         raise ValueError("--reanalysis-black-fraction must be in [0, 1]")
+    if not 0 <= getattr(args, "replay_balance_alpha", 0.0) <= 1:
+        raise ValueError("--replay-balance-alpha must be in [0, 1]")
     for name in ("lr", "lr_gamma", "ema_decay", "moves_left_loss_weight",
                  "max_policy_ce_regression", "max_side_top1_drop",
                  "offline_margin"):
         if getattr(args, name, 0) < 0:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
-    if args.generations > 1 and not args.promote_on_pass:
-        raise ValueError("multiple generations require --promote-on-pass")
+    if (args.generations > 1 and not args.promote_on_pass
+            and not getattr(args, "continue_after_reject", False)):
+        raise ValueError(
+            "multiple generations require --promote-on-pass or "
+            "--continue-after-reject")
     if args.promote_on_pass and args.gate_protocol != "full":
         raise ValueError("promotion requires --gate-protocol=full")
 
@@ -624,6 +683,9 @@ def run_generation(args, generation=None):
             if (previous.get("status") == "completed"
                     and _phase_outputs_exist(phase_plan)):
                 print(f"[{phase}] already completed; resuming after it")
+                if phase == "process" and not state.get("data_acceptance"):
+                    _accept_generation_data(state, paths, run_root)
+                    _write_state(state, paths["state"])
                 if phase == "binding_gate":
                     report = _load_json(phase_plan["outputs"][0], {})
                     gate_passed = report.get("raw_verdict") == "PASS"
@@ -661,12 +723,27 @@ def run_generation(args, generation=None):
                     log_path = paths["logs"] / f"{phase}.log"
                     for command in phase_plan["commands"]:
                         return_codes.append(_run_command(command, log_path))
+                    if (phase == "train" and any(code != 0 for code in return_codes)
+                            and Path(paths["training_rejection"]).exists()):
+                        state["phases"][phase].update({
+                            "status": "completed", "verdict": "REJECT",
+                            "rejection_report": _rel(paths["training_rejection"]),
+                            "return_codes": return_codes,
+                            "elapsed_sec": round(time.time() - started, 1),
+                        })
+                        state["status"] = "rejected_training"
+                        _write_state(state, paths["state"])
+                        print("Fixed-incumbent checkpoint selection rejected "
+                              "every epoch.")
+                        break
                     allowed_failure = phase in ("offline_gate", "binding_gate")
                     if any(code != 0 for code in return_codes) and not allowed_failure:
                         raise RuntimeError(
                             f"{phase} command failed with {return_codes}")
                     if not _phase_outputs_exist(phase_plan):
                         raise RuntimeError(f"{phase} did not produce its declared outputs")
+                    if phase == "process":
+                        _accept_generation_data(state, paths, run_root)
                     if phase == "offline_gate" and any(code != 0 for code in return_codes):
                         state["phases"][phase].update({
                             "status": "completed", "verdict": "FAIL",
@@ -740,7 +817,9 @@ def build_parser():
     ap.add_argument("--reanalysis-black-fraction", type=float, default=0.60,
                     help="share of deep-search teachers reserved for Black")
     ap.add_argument("--replay-generations", type=int, default=4,
-                    help="current plus this many recent promoted generations")
+                    help="maximum generation datasets in replay, including current")
+    ap.add_argument("--replay-balance-alpha", type=float, default=0.5,
+                    help="smooth train replay across side/outcome/phase strata")
     ap.add_argument("--epochs", type=int, default=ITERATE_EPOCHS)
     ap.add_argument("--patience", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=256)
@@ -762,6 +841,9 @@ def build_parser():
     ap.add_argument("--seed", type=int, default=RANDOM_SEED)
     ap.add_argument("--promote-on-pass", action="store_true",
                     help="archive a passing candidate and advance champion.json")
+    ap.add_argument("--continue-after-reject", action="store_true",
+                    help="continue accumulating accepted data with the current "
+                         "champion after a candidate rejection")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--through-phase", choices=PHASES, default=None,
                     help="stop after this phase, leaving a resumable run")
@@ -783,7 +865,11 @@ def main():
         status = run_generation(args, generation=generation)
         resume_once = False
         args.resume = False
-        if args.dry_run or status not in ("promoted",):
+        can_continue = status == "promoted" or (
+            args.continue_after_reject
+            and status in ("rejected", "rejected_offline",
+                           "rejected_training", "passed_not_promoted"))
+        if args.dry_run or not can_continue:
             break
 
 

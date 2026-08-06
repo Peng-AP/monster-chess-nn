@@ -570,8 +570,30 @@ teacher retained, 201 raw rows / 402 augmented rows, and no illegal targets.
    gates across generations. Use failure positions for general reanalysis, not
    hand-authored tactical rules.
 
+---
+
+## 17. Bootstrap production contracts (2026-08-06)
+
+The three prerequisites for cumulative model iteration are implemented:
+
+1. Processed champion data is entered into a run-local `accepted_data.json`
+   registry before training. Candidate rejection no longer discards its source
+   self-play or deep-search teachers.
+2. Replay preserves validation/test membership and smooths the fixed-size
+   training index budget across side, true outcome, and corpus-derived
+   material-phase thirds. The default square-root smoothing (`alpha=0.5`)
+   avoids both raw-majority domination and full rare-stratum equalization.
+3. Every training run evaluates the resume checkpoint on the same validation
+   rows. Epochs are ranked by worst-color policy/sign gains over that fixed
+   incumbent, with policy-CE and per-side top-1 guards also fixed to it. A run
+   with no safe epoch ends as `rejected_training` with a structured report.
+
+Explicit `--continue-after-reject` runs can now accumulate accepted data while
+V20 remains champion; automatic promotion and numbered releases retain all
+existing gates.
+
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.
 
-*Updated 2026-08-05. Predecessor reports retire to git history per project
+*Updated 2026-08-06. Predecessor reports retire to git history per project
 convention.*

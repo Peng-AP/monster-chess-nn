@@ -176,8 +176,21 @@ Self-play is augmented by ordinary-position deep search, not tactical rules:
 `tools/reanalyze.py` selects positions where deeper champion search most
 changes the policy/value and writes policy-only teachers, with 60% of the
 pipeline's teacher budget reserved for Black. `tools/compose_processed.py`
-combines the exact immutable v19_B/V20 anchor, recent promoted replay, and the
-current generation while preserving the original split memberships. The
+combines the exact immutable v19_B/V20 anchor, recent accepted replay, and the
+current generation while preserving validation/test membership. Processed
+self-play is registered in `accepted_data.json` before candidate training, so
+useful champion data survives a rejected model. The training split is
+deterministically smoothed across side, true outcome, and corpus-derived
+material-phase quantiles; this is general replay balancing, not a tactical
+rule. `--continue-after-reject` permits explicit multi-generation data
+accumulation while leaving the champion unchanged.
+
+Pipeline training evaluates the incumbent on the same validation rows before
+epoch one. Checkpoints are ranked by their worst-color policy and value-sign
+gains over that fixed baseline, and regression guards remain fixed to the
+incumbent rather than walking between epochs. If no epoch is safe, training
+emits `selection_rejected.json` and the generation becomes
+`rejected_training`. The
 moves-left head exists as an opt-in experiment but is off in the first pipeline
 generation so infrastructure and architecture changes are not conflated.
 

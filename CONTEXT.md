@@ -91,6 +91,17 @@ unchanged, in `_get_white_actions`).
   deep-search teacher, 402 augmented rows, and no illegal targets. The first
   real generation must hold architecture fixed; moves-left remains opt-in so a
   pipeline result is not confounded with a model change.
+- **Bootstrap production contracts added (2026-08-06).** Processed
+  champion-generated data is accepted into a run-local immutable registry
+  immediately after processing, independent of whether its candidate later
+  passes. Recent accepted generations therefore accumulate across explicit
+  `--continue-after-reject` runs. Replay keeps validation/test membership
+  unchanged and deterministically smooths only the training indices across
+  side, true capture outcome, and material-count phase quantiles. Checkpoint
+  selection now compares every epoch against V20 on identical validation rows,
+  optimizing worst-color policy/sign gains with fixed incumbent regression
+  guards. If every epoch violates those guards, the generation ends as
+  `rejected_training`; it cannot fall back to an unsafe or duplicate model.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black
