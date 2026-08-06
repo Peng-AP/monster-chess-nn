@@ -107,6 +107,56 @@ def resume(game, white_engine, black_engine, bot, extra_turns):
     return game.board.king(chess.WHITE) is None, records, len(records)
 
 
+_WORKER = {}
+
+
+def _init_worker(model_path, white_sims, black_sims, batch_size):
+    """Build one model and one set of engines per process, once."""
+    nn = NNEvaluator(model_path)
+    _WORKER["white"] = NativeMCTS(num_simulations=white_sims, eval_fn=nn,
+                                  batch_size=batch_size, allow_early_stop=True)
+    _WORKER["black"] = NativeMCTS(num_simulations=black_sims, eval_fn=nn,
+                                  batch_size=batch_size, allow_early_stop=True)
+    _WORKER["bot"] = ScriptedMate()   # material guard + preflight, both on
+
+
+def _finish_one(task):
+    """Resume one game and write it if it converts. Runs in a worker."""
+    path, digest, extra_turns, out_dir = task
+    try:
+        records = load_game(path)
+    except Exception:
+        return {"path": path, "unreachable": True, "converted": False,
+                "plies": 0}
+    game = resume_state(records)
+    if game is None:
+        return {"path": path, "unreachable": True, "converted": False,
+                "plies": 0}
+    ok, new_records, plies = resume(game, _WORKER["white"], _WORKER["black"],
+                                    _WORKER["bot"], extra_turns)
+    if not ok:
+        return {"path": path, "unreachable": False, "converted": False,
+                "plies": plies}
+    merged = [dict(r) for r in records] + new_records
+    for r in merged:
+        r["game_result"] = -1            # a real capture, actually played
+    # The ramp target is a function of plies_to_end, and extending a game
+    # invalidates every original one. Recompute over the merged list in the
+    # same record-index units the generator uses.
+    for i, r in enumerate(merged):
+        r["plies_to_end"] = len(merged) - 1 - i
+    # Basenames repeat across source corpora (several hold a game_00005.jsonl),
+    # so the digest prefix keeps two different games from overwriting one
+    # another in a flat output directory.
+    stem = os.path.basename(path).replace(".jsonl", "")
+    name = f"{stem}_{digest[:8]}_finished.jsonl"
+    with open(os.path.join(out_dir, name), "w", encoding="utf-8") as fh:
+        for r in merged:
+            fh.write(json.dumps(r) + "\n")
+    return {"path": path, "unreachable": False, "converted": True,
+            "plies": plies}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", action="append", default=[])
@@ -123,6 +173,9 @@ def main():
                          "keep the GPU busy; this tool is single-process, so "
                          "wider batches pay. 64 fills 74-91%% at these sim "
                          "counts, 256 only 31-66%%.")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="games run in parallel. Games are independent, so "
+                         "this changes throughput and nothing else.")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
@@ -153,7 +206,7 @@ def main():
                     duplicates += 1
                     continue
                 seen.add(digest)
-                targets.append((path, records))
+                targets.append((path, digest))
                 if args.limit and len(targets) >= args.limit:
                     break
             if args.limit and len(targets) >= args.limit:
@@ -164,50 +217,47 @@ def main():
     if not targets:
         return
 
-    # One model, one set of engines, reused across every game. Building these
-    # per game reloads the net from disk each time and dominates the run.
-    nn = NNEvaluator(args.model)
-    white_engine = NativeMCTS(num_simulations=args.white_sims, eval_fn=nn,
-                              batch_size=args.batch_size,
-                              allow_early_stop=True)
-    black_engine = NativeMCTS(num_simulations=args.black_sims, eval_fn=nn,
-                              batch_size=args.batch_size,
-                              allow_early_stop=True)
-    bot = ScriptedMate()          # repaired: material guard + preflight, both on
     out_dir = args.out_dir or os.path.join(ROOT, "data", "raw", "finished_conversions")
     os.makedirs(out_dir, exist_ok=True)
 
     converted = unreachable = failed = 0
     extra_plies = []
     started = time.time()
-    for index, (path, records) in enumerate(targets, 1):
-        game = resume_state(records)
-        if game is None:
+    tasks = [(path, digest, args.extra_turns, out_dir)
+             for path, digest in targets]
+    init_args = (args.model, args.white_sims, args.black_sims, args.batch_size)
+
+    def account(done, outcome):
+        """Fold one finished game into the totals and report it."""
+        nonlocal converted, unreachable, failed
+        if outcome["unreachable"]:
             unreachable += 1
-            continue
-        ok, new_records, plies = resume(game, white_engine, black_engine, bot,
-                                        args.extra_turns)
-        rate = converted / max(1, index - 1) if index > 1 else 0.0
-        print(f"[{index}/{len(targets)}] {'CONVERTED' if ok else 'no'} "
-              f"({plies} black moves) running rate {rate:.1%} "
-              f"elapsed {(time.time() - started) / 60:.1f}m", flush=True)
-        if not ok:
+        elif outcome["converted"]:
+            converted += 1
+            extra_plies.append(outcome["plies"])
+        else:
             failed += 1
-            continue
-        converted += 1
-        extra_plies.append(plies)
-        merged = [dict(r) for r in records] + new_records
-        for r in merged:
-            r["game_result"] = -1        # a real capture, actually played
-        # The ramp target is a function of plies_to_end, and extending a game
-        # invalidates every original one. Recompute over the merged list in the
-        # same record-index units the generator uses.
-        for i, r in enumerate(merged):
-            r["plies_to_end"] = len(merged) - 1 - i
-        name = os.path.basename(path).replace(".jsonl", "_finished.jsonl")
-        with open(os.path.join(out_dir, name), "w", encoding="utf-8") as fh:
-            for r in merged:
-                fh.write(json.dumps(r) + "\n")
+        label = ("unreplayable" if outcome["unreachable"]
+                 else "CONVERTED" if outcome["converted"] else "no")
+        print(f"[{done}/{len(tasks)}] {label} ({outcome['plies']} black moves) "
+              f"running rate {converted / done:.1%} "
+              f"elapsed {(time.time() - started) / 60:.1f}m", flush=True)
+
+    if args.workers > 1:
+        # Games are independent and each game's search is unaffected by how
+        # many run alongside it, so this is a pure throughput win -- the
+        # conversion rate is identical to the serial run.
+        import concurrent.futures as cf
+        with cf.ProcessPoolExecutor(max_workers=args.workers,
+                                    initializer=_init_worker,
+                                    initargs=init_args) as pool:
+            for done, outcome in enumerate(
+                    pool.map(_finish_one, tasks, chunksize=1), 1):
+                account(done, outcome)
+    else:
+        _init_worker(*init_args)
+        for done, task in enumerate(tasks, 1):
+            account(done, _finish_one(task))
 
     elapsed = time.time() - started
     summary = {
@@ -223,6 +273,7 @@ def main():
         "black_sims": args.black_sims,
         "white_sims": args.white_sims,
         "batch_size": args.batch_size,
+        "workers": args.workers,
         "extra_turns": args.extra_turns,
         "out_dir": os.path.relpath(out_dir, ROOT),
         "elapsed_sec": round(elapsed, 1),
