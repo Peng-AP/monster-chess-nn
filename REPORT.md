@@ -604,15 +604,16 @@ teacher retained, 201 raw rows / 402 augmented rows, and no illegal targets.
 
 ## 16. Next
 
-1. Run the next fixed-architecture generation with checkpoint arena selection
-   and the calibrated high-fidelity gate enabled. V20 remains champion.
-2. If it passes both game gates, measure self-color skew and start the following
-   generation with promoted replay. A bootstrap promotion is not automatically V21.
-3. After the pipeline has a clean promoted control result, test moves-left as one isolated
-   model change. Do not bundle it with data or search changes.
-4. Track learning curves, replay composition, policy divergence and per-side
-   gates across generations. Use failure positions for general reanalysis, not
-   hand-authored tactical rules.
+1. Owner-playtest `bootstrap_gen5_teacher3200_full` epoch two. It has cleared
+   every automated gate but remains a candidate; V20 remains the numbered
+   incumbent until that decision.
+2. Register the candidate as the bootstrap champion only after acceptance, then
+   generate the next replay generation from it. Bootstrap acceptance is not
+   automatically numbered V21.
+3. Test moves-left as one isolated architecture change against the accepted
+   fixed-architecture control. Do not bundle it with a data/search change.
+4. Keep the staged epoch arena and two independent V20 gates. Use general
+   failure-position reanalysis rather than hand-authored tactical rules.
 
 ---
 
@@ -646,10 +647,60 @@ non-overlapping phase seed ranges, full accepted-artifact hashes, a run-root
 lock, stale-checkpoint archiving on training retries, and memory-mapped replay
 loading. Run status now validates both the exact Windows PID column and process
 creation time, so PID reuse cannot resurrect dead entries. The current full
-unittest discovery passes 519 tests.
+unittest discovery passes 522 tests.
 
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.
+
+---
+
+## 18. Weighted deep-teacher recovery (2026-08-06)
+
+The generation-five failure was data dilution, not evidence that V20 was the
+wrong initialization. The full replay held 625,456 rows, while the 1600-sim
+policy-only teachers represented only about 1--2% of enabled policy weight.
+The unweighted candidate's strict 80x800 read gained +0.2375 White but changed
+Black by -0.0875. Giving those teachers 4x policy weight produced a near-pass:
++0.025 Black / +0.0375 White at 80x800, but its fresh binding confirmation
+fell to 0.500 overall / 0.275 Black. Restricting replay to anchor plus latest
+generation was worse: all five full-screen finalists lost Black strength.
+
+The controlled recovery kept full replay, V20 initialization, 4x teacher
+weight, 12/5 training, and the architecture fixed, while increasing teacher
+search from 1600 to 3200 simulations. The new pass sampled 8,000 ordinary
+positions (60% Black), retained 4,000, and raised action-change rate from
+77.9% to 86.4% and mean policy JS from 0.291 to 0.323. After augmentation and
+replay balancing, 7,109 teacher rows contributed 6.01% of effective training
+policy weight, essentially the same share as the prior 5.94% experiment.
+
+All seven epochs received games. Epoch two won the full checkpoint screen at
++0.100 Black / +0.050 White / +0.075 overall. It then passed the independent
+calibrated 80-game, 800-simulation read at **+0.0125 Black / +0.1375 White /
++0.075 overall**. Its full binding results were:
+
+| leg | overall | White | Black |
+|---|---:|---:|---:|
+| V20, initial seed | 0.650 | 0.825 | 0.475 |
+| ramp | 0.900 | 1.000 | 0.800 |
+| heuristic | 0.950 | 1.000 | 0.900 |
+| V20, fresh confirmation | 0.550 | 0.675 | 0.425 |
+
+The 80-game self-match measured pooled White 0.5875 / Black 0.4125, reducing
+V20's 0.3875 color gap to 0.175. On the 400-position Black promotion-defense
+search deck, capture choice rose 0.640 -> 0.6675 and capture visit share rose
+0.5232 -> 0.5678; refusals despite a higher capture Q rose 10 -> 14, so this is
+a broadly positive diagnostic rather than a perfect conversion result. The
+first 12-worker binding attempt encountered a transient CUDA error and emitted
+no result; the exact protocol and seed completed at the measured stable
+eight-worker default. Full discovery passes 522 tests.
+
+This checkpoint is the first bootstrap successor to clear every automated
+gate. It remains an owner-playtest candidate, not V21. Evidence:
+`gen5_teacher3200_full_checkpoint_screen_20260806.json`,
+`gen5_teacher3200_full_epoch2_800_confirmation_20260806.json`,
+`gen5_teacher3200_full_epoch2_binding_20260806.json`,
+`gen5_teacher3200_full_epoch2_self_skew_20260806.json`, and
+`promotion_defense_search_20260806_140554.json`.
 
 *Updated 2026-08-06. Predecessor reports retire to git history per project
 convention.*

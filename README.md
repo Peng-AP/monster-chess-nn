@@ -218,6 +218,17 @@ emits `selection_rejected.json` and the generation becomes
 moves-left head exists as an opt-in experiment but is off in the first pipeline
 generation so infrastructure and architecture changes are not conflated.
 
+The first fixed-architecture bootstrap successor to clear all automated gates
+is
+`models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt`.
+It uses the full replay with 4x policy-only teachers searched at 3200
+simulations. The calibrated 80x800 confirmation measured +0.0125 Black,
++0.1375 White, and +0.075 overall versus V20. A separate full binding gate
+passed both V20 seeds (initial 0.650 overall / 0.825 White / 0.475 Black;
+confirmation 0.550 / 0.675 / 0.425), plus ramp and heuristic retention. Its
+80-game self-match reduced pooled White skew from V20's 0.6938 to 0.5875.
+This is a candidate for the owner's release playtest, not a numbered V21.
+
 ## Evaluation
 
 Two complementary automated measurements, both reporting per-side results:

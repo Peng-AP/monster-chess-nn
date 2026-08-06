@@ -124,13 +124,25 @@ unchanged, in `_get_white_actions`).
   play-tests every unique preserved epoch, nominates by worst calibrated color,
   and requires an independent calibrated 80x800 improvement in both colors
   after the binding gate. V20 remains champion.
+- **First bootstrap successor cleared every automated gate (2026-08-06).**
+  `models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt`
+  keeps the V20 architecture and fine-tunes the full replay with 4x-weighted,
+  policy-only teachers searched at 3200 simulations. Its calibrated 80-game,
+  800-simulation read improved **+0.0125 Black / +0.1375 White / +0.075
+  overall**. The independent full binding protocol then scored 0.650 / 0.825 /
+  0.475 against V20 and 0.550 / 0.675 / 0.425 on the fresh V20 confirmation;
+  it also retained 0.900 against ramp and 0.950 against the heuristic. Its
+  equal-settings self-match reduced pooled White score from V20's 0.6938 to
+  **0.5875**. This is the strongest bootstrap successor candidate, but it is
+  not V21 until the owner playtests and promotes it.
 - **Bootstrap production audit completed 2026-08-06.** Deep-search teachers
   now inherit the source game's train/validation/test split (the pre-fix demo
   leak was 10/40 and 61/180; both are now zero). Worker phases fail after a
   bounded no-progress interval, generated batches have an explicit completion
   floor, reanalysis/replay publish atomically, replay artifacts are fully
   hashed, phase seeds do not overlap, concurrent loops are locked out, and
-  pipeline training memory-maps the large replay arrays.
+  pipeline training memory-maps the large replay arrays. Full discovery now
+  passes 522 tests.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black
