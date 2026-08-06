@@ -7,8 +7,8 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite:
-522 passing plus 3 subtests after the 2026-08-05 successor work.**
+active evidence set). Every bug below is pinned by a regression test. **Suite: 562 passing
+plus 3 subtests, verified 2026-08-06 by full discovery.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
 
@@ -391,7 +391,7 @@ and the training loss still fails if any enabled illegal target survives.
   approved/confirmed checkpoints remain. Completed logs and superseded setup
   JSON moved into archives; exact targets and recovery notes are in
   `logs/archive/cleanup_20260805_manifest.md`.
-- **`benchmarks/INDEX.md`** — 143 artifacts, 21 families, newest marked,
+- **`benchmarks/INDEX.md`** — 224 artifacts, 30 families, newest marked,
   headline extracted. Files are never moved: docs cite them by exact name.
 - **`tools/build_native.ps1`** — vcvars + PYO3_PYTHON + build + install +
   import check as one step; fails loudly when the `.pyd` is locked instead of
@@ -465,8 +465,8 @@ Implemented and tested infrastructure from this screen:
 
 Evidence: `v21_initial_screen_20260805.json`,
 `v21_attention128_confirmation_20260805.json`, and the five
-`v21_*capture_wdl*20260805.json` artifacts. Final verification: **532 passed,
-10 warnings, 3 subtests passed**. The best Black-leaning lead is
+`v21_*capture_wdl*20260805.json` artifacts. Verification at that point:
+**532 passed, 10 warnings, 3 subtests**. The best Black-leaning lead is
 `v21_mixed_capture_wdl_w003` (SHA-256
 `9b29cf111497483c44527edae64e6b29adbe81502aa14ac8c8f42e056e68c9af`), but
 it is rejected, not v21.
@@ -646,8 +646,8 @@ generated-batch completion checks, atomic staging for reanalysis/replay,
 non-overlapping phase seed ranges, full accepted-artifact hashes, a run-root
 lock, stale-checkpoint archiving on training retries, and memory-mapped replay
 loading. Run status now validates both the exact Windows PID column and process
-creation time, so PID reuse cannot resurrect dead entries. The current full
-unittest discovery passes 522 tests.
+creation time, so PID reuse cannot resurrect dead entries. Full unittest
+discovery passed 522 tests at that point (562 as of 2026-08-06).
 
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.
@@ -692,7 +692,8 @@ search deck, capture choice rose 0.640 -> 0.6675 and capture visit share rose
 a broadly positive diagnostic rather than a perfect conversion result. The
 first 12-worker binding attempt encountered a transient CUDA error and emitted
 no result; the exact protocol and seed completed at the measured stable
-eight-worker default. Full discovery passes 522 tests.
+eight-worker default. Full discovery passed 522 tests at that point (562 as of
+2026-08-06).
 
 This checkpoint is the first bootstrap successor to clear every automated
 gate. It remains an owner-playtest candidate, not V21. Evidence:
