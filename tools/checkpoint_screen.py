@@ -1,10 +1,9 @@
-"""Play-test every preserved training checkpoint and nominate one for gates.
+"""Play-test preserved epochs with successive halving and nominate one for gates.
 
-Validation metrics decide which epochs are worth preserving; arena play decides
-which preserved epoch advances.  Every unique ``selected_epoch_*.pt`` model is
-tested on the same openings against the incumbent, after one incumbent
-self-calibration match.  The screen only nominates a checkpoint: the normal
-binding and high-fidelity gates remain decisive.
+Every unique ``selected_epoch_*.pt`` model receives a cheap paired-color probe.
+The strongest probe results, the offline-selected epoch, and the Black-best
+epoch advance to the normal calibrated screen.  The screen only nominates a
+checkpoint: the binding and high-fidelity gates remain decisive.
 """
 from __future__ import annotations
 
@@ -34,19 +33,45 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def weights_sha256(path: Path) -> str:
+    """Hash tensor contents, independent of torch's zip serialization."""
+    import torch
+
+    state = torch.load(path, map_location="cpu", weights_only=True)
+    digest = hashlib.sha256()
+    for name in sorted(state):
+        value = state[name]
+        digest.update(name.encode("utf-8"))
+        if torch.is_tensor(value):
+            tensor = value.detach().cpu().contiguous()
+            digest.update(str(tensor.dtype).encode("ascii"))
+            digest.update(repr(tuple(tensor.shape)).encode("ascii"))
+            digest.update(tensor.numpy().tobytes())
+        else:
+            digest.update(repr(value).encode("utf-8"))
+    return digest.hexdigest()
+
+
 def discover_checkpoints(model_dir: Path) -> list[dict]:
     paths = sorted(model_dir.glob("selected_epoch_*.pt"))
     best = model_dir / "best_value_net.pt"
+    best_weights_digest = weights_sha256(best) if best.is_file() else None
     if best.is_file():
         paths.append(best)
     unique = []
     seen = set()
     for path in paths:
-        digest = sha256(path)
-        if digest in seen:
+        weights_digest = weights_sha256(path)
+        if weights_digest in seen:
             continue
-        seen.add(digest)
-        unique.append({"name": path.stem, "path": path, "sha256": digest})
+        seen.add(weights_digest)
+        unique.append({
+            "name": path.stem,
+            "path": path,
+            "sha256": sha256(path),
+            "weights_sha256": weights_digest,
+            "offline_selected": weights_digest == best_weights_digest,
+        })
     return unique
 
 
@@ -68,6 +93,16 @@ def calibrated_result(candidate: dict, calibration: dict) -> dict:
 def rank_key(result: dict) -> tuple[float, float, float]:
     delta = result["deltas"]
     return (result["minimum_color_delta"], delta["aggregate"], delta["black"])
+
+
+def choose_finalists(results: list[dict], count: int) -> list[dict]:
+    """Keep arena leaders plus safeguards against proxy and White bias."""
+    ranked = sorted(results, key=rank_key, reverse=True)
+    selected_names = {result["name"] for result in ranked[:count]}
+    selected_names.add(max(results, key=lambda result: result["deltas"]["black"])["name"])
+    selected_names.update(
+        result["name"] for result in results if result["offline_selected"])
+    return [result for result in ranked if result["name"] in selected_names]
 
 
 def save_json(path: Path, payload) -> None:
@@ -92,13 +127,20 @@ def main() -> None:
     parser.add_argument("--report-path", required=True)
     parser.add_argument("--games", type=int, default=20)
     parser.add_argument("--sims", type=int, default=400)
+    parser.add_argument("--probe-games", type=int, default=8)
+    parser.add_argument("--probe-sims", type=int, default=200)
+    parser.add_argument("--finalists", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20260806)
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--engine", choices=("python", "native"), default="native")
     parser.add_argument("--stall-timeout", type=float, default=600.0)
     args = parser.parse_args()
-    if args.games < 2 or args.games % 2 or args.sims <= 0 or args.workers <= 0:
-        parser.error("games must be positive and even; sims/workers must be > 0")
+    if (args.games < 2 or args.games % 2 or args.sims <= 0
+            or args.probe_games < 2 or args.probe_games % 2
+            or args.probe_sims <= 0 or args.finalists <= 0
+            or args.workers <= 0):
+        parser.error("game counts must be positive and even; sims, finalists, "
+                     "and workers must be > 0")
 
     model_dir = Path(args.model_dir).resolve()
     incumbent = Path(args.incumbent).resolve()
@@ -110,29 +152,69 @@ def main() -> None:
     if not incumbent.is_file():
         raise FileNotFoundError(incumbent)
 
-    print(f"[checkpoint-screen] calibrating incumbent: {args.games} games "
+    print(f"[checkpoint-screen] probe calibration: {args.probe_games} games "
+          f"@ {args.probe_sims}", flush=True)
+    probe_calibration = run_match(
+        str(incumbent), str(incumbent), args.probe_games, args.probe_sims,
+        args.seed,
+        workers=args.workers, engine=args.engine,
+        stall_timeout=args.stall_timeout)
+    probe_results = []
+    for checkpoint in checkpoints:
+        print(f"[checkpoint-screen] probe {checkpoint['name']}", flush=True)
+        match = run_match(
+            str(checkpoint["path"]), str(incumbent), args.probe_games,
+            args.probe_sims,
+            args.seed, workers=args.workers, engine=args.engine,
+            stall_timeout=args.stall_timeout)
+        result = calibrated_result(match, probe_calibration)
+        result.update({
+            "name": checkpoint["name"],
+            "checkpoint": checkpoint["path"].relative_to(ROOT).as_posix(),
+            "checkpoint_sha256": checkpoint["sha256"],
+            "weights_sha256": checkpoint["weights_sha256"],
+            "offline_selected": checkpoint["offline_selected"],
+            "match": match,
+        })
+        probe_results.append(result)
+        delta = result["deltas"]
+        print(f"[checkpoint-screen] probe {checkpoint['name']}: "
+              f"dB={delta['black']:+.3f} dW={delta['white']:+.3f} "
+              f"dAll={delta['aggregate']:+.3f}", flush=True)
+
+    finalists = choose_finalists(probe_results, args.finalists)
+    finalist_names = {result["name"] for result in finalists}
+    print(f"[checkpoint-screen] finalists: "
+          f"{', '.join(result['name'] for result in finalists)}", flush=True)
+    screen_seed = args.seed + 1
+    print(f"[checkpoint-screen] full calibration: {args.games} games "
           f"@ {args.sims}", flush=True)
     calibration = run_match(
-        str(incumbent), str(incumbent), args.games, args.sims, args.seed,
+        str(incumbent), str(incumbent), args.games, args.sims, screen_seed,
         workers=args.workers, engine=args.engine,
         stall_timeout=args.stall_timeout)
     results = []
-    for checkpoint in checkpoints:
-        print(f"[checkpoint-screen] {checkpoint['name']} vs incumbent", flush=True)
+    checkpoint_by_name = {checkpoint["name"]: checkpoint
+                          for checkpoint in checkpoints}
+    for probe in finalists:
+        checkpoint = checkpoint_by_name[probe["name"]]
+        print(f"[checkpoint-screen] full {checkpoint['name']}", flush=True)
         match = run_match(
             str(checkpoint["path"]), str(incumbent), args.games, args.sims,
-            args.seed, workers=args.workers, engine=args.engine,
+            screen_seed, workers=args.workers, engine=args.engine,
             stall_timeout=args.stall_timeout)
         result = calibrated_result(match, calibration)
         result.update({
             "name": checkpoint["name"],
             "checkpoint": checkpoint["path"].relative_to(ROOT).as_posix(),
             "checkpoint_sha256": checkpoint["sha256"],
+            "weights_sha256": checkpoint["weights_sha256"],
+            "offline_selected": checkpoint["offline_selected"],
             "match": match,
         })
         results.append(result)
         delta = result["deltas"]
-        print(f"[checkpoint-screen] {checkpoint['name']}: "
+        print(f"[checkpoint-screen] full {checkpoint['name']}: "
               f"dB={delta['black']:+.3f} dW={delta['white']:+.3f} "
               f"dAll={delta['aggregate']:+.3f}", flush=True)
 
@@ -146,13 +228,22 @@ def main() -> None:
         "incumbent_sha256": sha256(incumbent),
         "games": args.games,
         "sims": args.sims,
-        "seed": args.seed,
+        "seed": screen_seed,
+        "probe": {
+            "games": args.probe_games,
+            "sims": args.probe_sims,
+            "seed": args.seed,
+            "calibration": probe_calibration,
+            "results": probe_results,
+            "finalist_names": sorted(finalist_names),
+        },
         "calibration": calibration,
         "results": results,
         "selected": {
             "name": selected["name"],
             "checkpoint": selected["checkpoint"],
             "checkpoint_sha256": selected["checkpoint_sha256"],
+            "weights_sha256": selected["weights_sha256"],
             "arena_model": output_model.relative_to(ROOT).as_posix(),
             "arena_model_sha256": sha256(output_model),
             "rank_key": list(rank_key(selected)),

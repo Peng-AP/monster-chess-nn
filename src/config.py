@@ -150,7 +150,7 @@ ITERATE_GATE_THRESHOLD = 0.55    # min candidate score vs incumbent
 ITERATE_ANCHOR_GAMES = 20        # anchor benchmark games per candidate
 ITERATE_ANCHOR_EPSILON = 0.05    # allowed anchor-score regression
 ITERATE_MAX_GENERATION_AGE = 4   # processing window in generations
-ITERATE_EPOCHS = 30              # training epochs per generation
+ITERATE_EPOCHS = 12              # V20 fine-tuning ceiling; early epochs dominate
 
 # White-king aggression (heuristic eval, adopted 2026-07-07). 1.0/1.0 = the
 # original GA-tuned baseline; these values scale the White-king terms:

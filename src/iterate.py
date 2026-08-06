@@ -984,7 +984,7 @@ def build_parser():
     ap.add_argument("--min-generation-success-rate", type=float, default=1.0,
                     help="minimum saved/requested ratio for every game batch")
     ap.add_argument("--epochs", type=int, default=ITERATE_EPOCHS)
-    ap.add_argument("--patience", type=int, default=10)
+    ap.add_argument("--patience", type=int, default=5)
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--lr", type=float, default=0.0002,
                     help="fine-tuning LR; V20 scratch recipe used 0.002")

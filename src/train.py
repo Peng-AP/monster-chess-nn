@@ -2,6 +2,7 @@ import argparse
 import copy
 import json
 import os
+from pathlib import Path
 import random
 import re
 import subprocess
@@ -1393,7 +1394,8 @@ def main():
              "top-1 falls by more than this absolute fraction")
     parser.add_argument(
         "--save-selection-snapshots", action="store_true",
-        help="Also preserve every accepted best checkpoint by epoch")
+        help="Preserve every completed epoch for downstream arena screening; "
+             "offline selection still controls best_value_net.pt")
     parser.add_argument("--stem-channels", type=int, default=STEM_CHANNELS,
                         help=f"Stem width (default: {STEM_CHANNELS})")
     parser.add_argument("--policy-head", choices=("dense", "attention"),
@@ -1638,6 +1640,11 @@ def main():
             archived_name = f"interrupted_{run_id}_{os.getpid()}_{stale_name}"
             os.replace(stale_path, os.path.join(args.model_dir, archived_name))
             print(f"Archived stale training artifact: {archived_name}")
+    for stale_path in sorted(Path(args.model_dir).glob("selected_epoch_*.pt")):
+        archived_name = (f"interrupted_{run_id}_{os.getpid()}_"
+                         f"{stale_path.name}")
+        os.replace(stale_path, Path(args.model_dir) / archived_name)
+        print(f"Archived stale training artifact: {archived_name}")
     best_selection_value = float("inf")
     best_checkpoint_metrics = None
     best_epoch = None
@@ -1905,6 +1912,18 @@ def main():
         )
         nominal_improvement = selection_value < best_selection_value
         should_stop = False
+        snapshot_saved = False
+        if args.save_selection_snapshots:
+            # Bootstrap candidates must receive games before rejection.  Saving
+            # only new offline bests lets validation metrics silently discard
+            # later epochs, even though those metrics are only a weak proxy for
+            # actual playing strength.
+            torch.save(
+                eval_model.state_dict(),
+                os.path.join(args.model_dir,
+                             f"selected_epoch_{epoch:03d}.pt"),
+            )
+            snapshot_saved = True
         if nominal_improvement and guard_ok:
             best_selection_value = selection_value
             best_epoch = epoch
@@ -1915,12 +1934,6 @@ def main():
             }
             patience_counter = 0
             torch.save(eval_model.state_dict(), checkpoint_path)
-            if args.save_selection_snapshots:
-                torch.save(
-                    eval_model.state_dict(),
-                    os.path.join(args.model_dir,
-                                 f"selected_epoch_{epoch:03d}.pt"),
-                )
             print(f"  -> saved best model ({selection_desc})")
         else:
             if nominal_improvement and not guard_ok:
@@ -1935,6 +1948,7 @@ def main():
             "guard_passed": bool(guard_ok),
             "guard_reasons": guard_reasons,
             "saved": bool(nominal_improvement and guard_ok),
+            "snapshot_saved": snapshot_saved,
             "relative_score": relative_score,
             "relative_deltas": relative_deltas,
         }
