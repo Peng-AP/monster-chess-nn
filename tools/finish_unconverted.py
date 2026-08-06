@@ -117,6 +117,12 @@ def main():
     ap.add_argument("--black-sims", type=int, default=1600)
     ap.add_argument("--white-sims", type=int, default=400)
     ap.add_argument("--extra-turns", type=int, default=60)
+    ap.add_argument("--batch-size", type=int, default=16,
+                    help="MCTS leaf-parallel width. The 16 default suits "
+                         "multi-worker generation, where sibling processes "
+                         "keep the GPU busy; this tool is single-process, so "
+                         "wider batches pay. 64 fills 74-91%% at these sim "
+                         "counts, 256 only 31-66%%.")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
@@ -162,8 +168,10 @@ def main():
     # per game reloads the net from disk each time and dominates the run.
     nn = NNEvaluator(args.model)
     white_engine = NativeMCTS(num_simulations=args.white_sims, eval_fn=nn,
+                              batch_size=args.batch_size,
                               allow_early_stop=True)
     black_engine = NativeMCTS(num_simulations=args.black_sims, eval_fn=nn,
+                              batch_size=args.batch_size,
                               allow_early_stop=True)
     bot = ScriptedMate()          # repaired: material guard + preflight, both on
     out_dir = args.out_dir or os.path.join(ROOT, "data", "raw", "finished_conversions")
@@ -213,6 +221,8 @@ def main():
         "mean_extra_black_moves": (round(sum(extra_plies) / len(extra_plies), 1)
                                    if extra_plies else None),
         "black_sims": args.black_sims,
+        "white_sims": args.white_sims,
+        "batch_size": args.batch_size,
         "extra_turns": args.extra_turns,
         "out_dir": os.path.relpath(out_dir, ROOT),
         "elapsed_sec": round(elapsed, 1),
