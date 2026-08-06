@@ -18,6 +18,7 @@ they have been going, and their most recent progress line. Older entries are
 hidden automatically; use ``status --all`` when the history is useful.
 """
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -30,15 +31,57 @@ DEFAULT_RECENT_MINUTES = 60
 DEFAULT_EXTERNAL_STALE_MINUTES = 30
 
 
-def _alive(pid):
+def _windows_process_started_epoch(pid):
+    """Return a Windows process creation timestamp without extra dependencies."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        query_limited_information = 0x1000
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(
+            query_limited_information, False, int(pid))
+        if not handle:
+            return None
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
+        try:
+            if not kernel32.GetProcessTimes(
+                    handle, ctypes.byref(creation), ctypes.byref(exit_time),
+                    ctypes.byref(kernel), ctypes.byref(user)):
+                return None
+        finally:
+            kernel32.CloseHandle(handle)
+        ticks = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+        return ticks / 10_000_000 - 11_644_473_600
+    except Exception:
+        return None
+
+
+def _alive(pid, started_epoch=0):
     if pid is None:
         return False
     try:
         if os.name == "nt":
             out = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                 capture_output=True, text=True, timeout=15).stdout
-            return str(pid) in out
+            # A substring check is unsafe: a dead PID can appear in another
+            # process's formatted memory-usage field and be reported alive.
+            # Parse tasklist's PID column and require an exact match instead.
+            for row in csv.reader(out.splitlines()):
+                if len(row) >= 2 and row[1].strip().isdigit():
+                    if int(row[1]) == int(pid):
+                        if started_epoch:
+                            process_started = _windows_process_started_epoch(pid)
+                            if process_started is not None:
+                                # Metadata has one-second precision and is
+                                # written immediately after Popen returns.
+                                return abs(process_started - started_epoch) <= 5
+                        return True
+            return False
         os.kill(pid, 0)
         return True
     except Exception:
@@ -89,7 +132,9 @@ def _run_state(meta, last_activity, now, external_stale_seconds):
     """Classify a record without letting pid-less adopted jobs live forever."""
     pid = meta.get("pid")
     if pid is not None:
-        return "RUNNING" if _alive(pid) else "finished"
+        started_epoch = _started_epoch(meta.get("started"))
+        return ("RUNNING" if _alive(pid, started_epoch=started_epoch)
+                else "finished")
     if now - last_activity <= external_stale_seconds:
         return "external"
     return "stale"

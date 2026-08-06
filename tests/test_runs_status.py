@@ -18,6 +18,26 @@ import runs  # noqa: E402
 
 
 class RunsStatusTests(unittest.TestCase):
+    @mock.patch.object(runs.os, "name", "nt")
+    @mock.patch.object(runs.subprocess, "run")
+    def test_windows_alive_requires_exact_pid_column_match(self, run):
+        run.return_value.stdout = (
+            '"python.exe","9012","Console","1","28,104 K"\n')
+
+        self.assertFalse(runs._alive(28104))
+        self.assertTrue(runs._alive(9012))
+
+    @mock.patch.object(runs.os, "name", "nt")
+    @mock.patch.object(runs, "_windows_process_started_epoch")
+    @mock.patch.object(runs.subprocess, "run")
+    def test_windows_alive_rejects_reused_pid(self, run, process_started):
+        run.return_value.stdout = (
+            '"python.exe","9012","Console","1","28,104 K"\n')
+        process_started.return_value = 2_000.0
+
+        self.assertFalse(runs._alive(9012, started_epoch=1_000.0))
+        self.assertTrue(runs._alive(9012, started_epoch=2_002.0))
+
     def _record(self, directory, name, pid, age_seconds):
         now = time.time()
         started = time.strftime(
