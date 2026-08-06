@@ -135,6 +135,14 @@ unchanged, in `_get_white_actions`).
   equal-settings self-match reduced pooled White score from V20's 0.6938 to
   **0.5875**. This is the strongest bootstrap successor candidate, but it is
   not V21 until the owner playtests and promotes it.
+- **Moves-left follow-up did not clear the Black stability bar (2026-08-06).**
+  An otherwise identical auxiliary-head arm learned the remaining-length
+  target and produced two positive checkpoints in the full A/B screen. Epoch
+  six beat the fixed successor at 80x800 (+0.025 Black / +0.100 White), but
+  failed the fresh V20 binding Black leg at 0.375 < 0.400. The earlier,
+  Black-leaning epoch three independently read -0.050 Black / +0.1375 White
+  against the fixed successor. Keep the head implemented and opt-in; do not
+  promote this arm.
 - **Bootstrap production audit completed 2026-08-06.** Deep-search teachers
   now inherit the source game's train/validation/test split (the pre-fix demo
   leak was 10/40 and 61/180; both are now zero). Worker phases fail after a

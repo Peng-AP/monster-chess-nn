@@ -610,8 +610,8 @@ teacher retained, 201 raw rows / 402 augmented rows, and no illegal targets.
 2. Register the candidate as the bootstrap champion only after acceptance, then
    generate the next replay generation from it. Bootstrap acceptance is not
    automatically numbered V21.
-3. Test moves-left as one isolated architecture change against the accepted
-   fixed-architecture control. Do not bundle it with a data/search change.
+3. Keep moves-left opt-in: the isolated arm improved White but did not clear
+   the Black stability bar. Do not tune it into the gate from this result.
 4. Keep the staged epoch arena and two independent V20 gates. Use general
    failure-position reanalysis rather than hand-authored tactical rules.
 
@@ -701,6 +701,41 @@ gate. It remains an owner-playtest candidate, not V21. Evidence:
 `gen5_teacher3200_full_epoch2_binding_20260806.json`,
 `gen5_teacher3200_full_epoch2_self_skew_20260806.json`, and
 `promotion_defense_search_20260806_140554.json`.
+
+---
+
+## 19. Moves-left isolated A/B (2026-08-06)
+
+With the fixed-architecture successor established, moves-left was tested as
+one isolated change. The arm used the same V20 initialization, 3200-teacher
+replay, seed, optimizer, 12/5 schedule, and per-epoch shuffle; only the
+8,321-parameter auxiliary head and its 0.01 Huber loss were enabled. Trusted
+remaining-length labels covered 71.7% of training rows.
+
+All eight epochs received games directly against the fixed successor. Epoch
+six won the full screen at +0.100 Black / +0.200 White / +0.150 overall, and
+epoch seven also read +0.050 / +0.200. Epoch six then passed the independent
+80x800 A/B at **+0.025 Black / +0.100 White / +0.0625 overall**. It did not
+clear the absolute binding gate:
+
+| leg | overall | White | Black |
+|---|---:|---:|---:|
+| V20, initial seed | 0.7125 | 0.900 | 0.525 |
+| ramp | 0.825 | 0.975 | 0.675 |
+| heuristic | 1.000 | 1.000 | 1.000 |
+| V20, fresh confirmation | 0.6125 | 0.850 | **0.375** |
+
+The one failure is binding: fresh-confirmation Black missed the unchanged
+0.400 floor by half a point. The earlier epoch three was separately tested
+because both its offline metrics and full screen were more Black-leaning; its
+independent 80x800 A/B failed at -0.050 Black / +0.1375 White. The head learns
+a real length signal and may improve White/general play, but this run does not
+show a stable Black improvement. The fixed-architecture epoch-two successor
+remains the owner-playtest candidate. Evidence:
+`gen5_teacher3200_full_mlh_vs_control_checkpoint_screen_20260806.json`,
+`gen5_teacher3200_full_mlh_epoch6_800_vs_control_20260806.json`,
+`gen5_teacher3200_full_mlh_epoch6_binding_20260806.json`, and
+`gen5_teacher3200_full_mlh_epoch3_800_vs_control_20260806.json`.
 
 *Updated 2026-08-06. Predecessor reports retire to git history per project
 convention.*

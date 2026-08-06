@@ -1,0 +1,1036 @@
+{
+  "experiment": "bootstrap_checkpoint_arena_screen",
+  "binding": false,
+  "incumbent": "models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt",
+  "incumbent_sha256": "06d89341423c29db83d75cdb1b33b651d9a2287b40e47432f84dbc1d73f72531",
+  "games": 20,
+  "sims": 400,
+  "seed": 967241,
+  "probe": {
+    "games": 8,
+    "sims": 200,
+    "seed": 967240,
+    "calibration": {
+      "match": "bootstrap_gen5_teacher3200_full vs bootstrap_gen5_teacher3200_full",
+      "name_a": "bootstrap_gen5_teacher3200_full",
+      "name_b": "bootstrap_gen5_teacher3200_full",
+      "games": 8,
+      "sims": 200,
+      "sims_b": 200,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 967240,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.4375,
+      "a_as_white": {
+        "games": 4,
+        "wins": 3,
+        "losses": 0,
+        "draws": 1,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 1,
+        "score": 0.875,
+        "mean_plies": 75.0,
+        "mean_plies_when_won": 25.0,
+        "mean_plies_when_lost": null
+      },
+      "a_as_black": {
+        "games": 4,
+        "wins": 0,
+        "losses": 4,
+        "draws": 0,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 0,
+        "score": 0.0,
+        "mean_plies": 35.0,
+        "mean_plies_when_won": null,
+        "mean_plies_when_lost": 35.0
+      },
+      "elapsed_sec": 20.2,
+      "timestamp": "2026-08-06T14:30:46"
+    },
+    "results": [
+      {
+        "deltas": {
+          "white": -0.5,
+          "black": 0.375,
+          "aggregate": -0.0625
+        },
+        "minimum_color_delta": -0.5,
+        "passes_both_colors": false,
+        "name": "selected_epoch_001",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_001.pt",
+        "checkpoint_sha256": "8a1fe87cf58b69c22e0683bbe7c4b6d715cde46aef6ed584e365e668fc664527",
+        "weights_sha256": "074d94699963d4a2eebd06e80d5eebbe6f2c4986045f37af0eff0a1ea3ecb8bd",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.375,
+          "a_as_white": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 1,
+            "score": 0.375,
+            "mean_plies": 116.75,
+            "mean_plies_when_won": 35.0,
+            "mean_plies_when_lost": 103.5
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.375,
+            "mean_plies": 99.25,
+            "mean_plies_when_won": 63.0,
+            "mean_plies_when_lost": 54.5
+          },
+          "elapsed_sec": 24.6,
+          "timestamp": "2026-08-06T14:31:10"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.125,
+          "black": 0.375,
+          "aggregate": 0.125
+        },
+        "minimum_color_delta": -0.125,
+        "passes_both_colors": false,
+        "name": "selected_epoch_002",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_002.pt",
+        "checkpoint_sha256": "572cf8622942d4a01da13f6b310b5c5f48315c451e5bc19785a4ff8af8c4024f",
+        "weights_sha256": "3eb3393d77724d2e16a5ea8301f449792ba5ae3d97ff1bddabccec926e525cd1",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 4,
+            "wins": 2,
+            "losses": 0,
+            "draws": 2,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 2,
+            "score": 0.75,
+            "mean_plies": 136.75,
+            "mean_plies_when_won": 48.5,
+            "mean_plies_when_lost": null
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.375,
+            "mean_plies": 98.5,
+            "mean_plies_when_won": 117.0,
+            "mean_plies_when_lost": 26.0
+          },
+          "elapsed_sec": 25.2,
+          "timestamp": "2026-08-06T14:31:36"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.5,
+          "black": 0.0,
+          "aggregate": -0.25
+        },
+        "minimum_color_delta": -0.5,
+        "passes_both_colors": false,
+        "name": "selected_epoch_003",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_003.pt",
+        "checkpoint_sha256": "e113ceac770bddad08125054f8079c7c188c8b2adc9d1db9260c539369a794b8",
+        "weights_sha256": "0efe4aaed518528784785cdbce1819f58172e8b3fdda2a3dfb2c2419cf31d3cc",
+        "offline_selected": true,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.1875,
+          "a_as_white": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 1,
+            "score": 0.375,
+            "mean_plies": 102.5,
+            "mean_plies_when_won": 38.0,
+            "mean_plies_when_lost": 73.5
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 0,
+            "losses": 4,
+            "draws": 0,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 0,
+            "score": 0.0,
+            "mean_plies": 31.25,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 31.25
+          },
+          "elapsed_sec": 19.8,
+          "timestamp": "2026-08-06T14:31:55"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.125,
+          "black": 0.125,
+          "aggregate": 0.0
+        },
+        "minimum_color_delta": -0.125,
+        "passes_both_colors": false,
+        "name": "selected_epoch_004",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_004.pt",
+        "checkpoint_sha256": "7588897cb9fffcd74e37a2563866c75d17c4e6a2bfd9cf45ddc7d27c41eda07d",
+        "weights_sha256": "ee3255ab8c866cb96f940f166081b5f8235acaffd24609ac9df4862efe0d7015",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.4375,
+          "a_as_white": {
+            "games": 4,
+            "wins": 2,
+            "losses": 0,
+            "draws": 2,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 2,
+            "score": 0.75,
+            "mean_plies": 124.0,
+            "mean_plies_when_won": 23.0,
+            "mean_plies_when_lost": null
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 0,
+            "losses": 3,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.125,
+            "mean_plies": 80.25,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 32.0
+          },
+          "elapsed_sec": 23.3,
+          "timestamp": "2026-08-06T14:32:19"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.125,
+          "black": 0.375,
+          "aggregate": 0.125
+        },
+        "minimum_color_delta": -0.125,
+        "passes_both_colors": false,
+        "name": "selected_epoch_005",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_005.pt",
+        "checkpoint_sha256": "b91b001413dc7a62edf34734ca673ed11a720f75817c61b483599e0455d50ed6",
+        "weights_sha256": "956670d859c0534dc923c04452587b8e1884388ca46b05d3300d8bd70725745c",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 4,
+            "wins": 2,
+            "losses": 0,
+            "draws": 2,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 2,
+            "score": 0.75,
+            "mean_plies": 135.25,
+            "mean_plies_when_won": 45.5,
+            "mean_plies_when_lost": null
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.375,
+            "mean_plies": 105.25,
+            "mean_plies_when_won": 114.0,
+            "mean_plies_when_lost": 41.0
+          },
+          "elapsed_sec": 28.5,
+          "timestamp": "2026-08-06T14:32:47"
+        }
+      },
+      {
+        "deltas": {
+          "white": 0.0,
+          "black": 0.25,
+          "aggregate": 0.125
+        },
+        "minimum_color_delta": 0.0,
+        "passes_both_colors": false,
+        "name": "selected_epoch_006",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_006.pt",
+        "checkpoint_sha256": "7fecf2af5ab5561dc86abce0a7dcf4031382b06eef9febe43f068047d6d26f1c",
+        "weights_sha256": "0cf69f3e7ffbca074dcdcb4836a92a739c5ab98054ce1bf9070ef4fa0667885e",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 4,
+            "wins": 3,
+            "losses": 0,
+            "draws": 1,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 1,
+            "score": 0.875,
+            "mean_plies": 86.25,
+            "mean_plies_when_won": 40.0,
+            "mean_plies_when_lost": null
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 3,
+            "draws": 0,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 0,
+            "score": 0.25,
+            "mean_plies": 87.0,
+            "mean_plies_when_won": 117.0,
+            "mean_plies_when_lost": 77.0
+          },
+          "elapsed_sec": 25.6,
+          "timestamp": "2026-08-06T14:33:13"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.125,
+          "black": 0.375,
+          "aggregate": 0.125
+        },
+        "minimum_color_delta": -0.125,
+        "passes_both_colors": false,
+        "name": "selected_epoch_007",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_007.pt",
+        "checkpoint_sha256": "13a6ceede11b8d0cc418d10f2d1cbfef97272af5a011bbbb76a572407af3b991",
+        "weights_sha256": "770707fe92ad97a26df9d3a122c4edcea0ae9e7f11d4a1126ed43b1a6ca0aae6",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 4,
+            "wins": 2,
+            "losses": 0,
+            "draws": 2,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 2,
+            "score": 0.75,
+            "mean_plies": 124.0,
+            "mean_plies_when_won": 23.0,
+            "mean_plies_when_lost": null
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.375,
+            "mean_plies": 118.0,
+            "mean_plies_when_won": 120.0,
+            "mean_plies_when_lost": 63.5
+          },
+          "elapsed_sec": 32.2,
+          "timestamp": "2026-08-06T14:33:45"
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.25,
+          "black": 0.375,
+          "aggregate": 0.0625
+        },
+        "minimum_color_delta": -0.25,
+        "passes_both_colors": false,
+        "name": "selected_epoch_008",
+        "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_008.pt",
+        "checkpoint_sha256": "9a6ec02203119d35689e132952dcc949c89ab0180e44e2da709bfed41855f695",
+        "weights_sha256": "41b1cecac599f67d7e0ff05cfd3b5a0bd4234c06b3547e7f8e6654b0945f7ed3",
+        "offline_selected": false,
+        "match": {
+          "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+          "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+          "name_b": "bootstrap_gen5_teacher3200_full",
+          "games": 8,
+          "sims": 200,
+          "sims_b": 200,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 967240,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5,
+          "a_as_white": {
+            "games": 4,
+            "wins": 2,
+            "losses": 1,
+            "draws": 1,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 1,
+            "score": 0.625,
+            "mean_plies": 90.0,
+            "mean_plies_when_won": 22.5,
+            "mean_plies_when_lost": 90.0
+          },
+          "a_as_black": {
+            "games": 4,
+            "wins": 1,
+            "losses": 2,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.375,
+            "mean_plies": 118.0,
+            "mean_plies_when_won": 93.0,
+            "mean_plies_when_lost": 77.0
+          },
+          "elapsed_sec": 28.4,
+          "timestamp": "2026-08-06T14:34:13"
+        }
+      }
+    ],
+    "finalist_names": [
+      "selected_epoch_001",
+      "selected_epoch_002",
+      "selected_epoch_003",
+      "selected_epoch_005",
+      "selected_epoch_006",
+      "selected_epoch_007"
+    ]
+  },
+  "calibration": {
+    "match": "bootstrap_gen5_teacher3200_full vs bootstrap_gen5_teacher3200_full",
+    "name_a": "bootstrap_gen5_teacher3200_full",
+    "name_b": "bootstrap_gen5_teacher3200_full",
+    "games": 20,
+    "sims": 400,
+    "sims_b": 400,
+    "batch_a": null,
+    "batch_b": null,
+    "seed": 967241,
+    "search_a": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "search_b": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "opening_temp_plies": 16,
+    "workers": 8,
+    "a_score": 0.525,
+    "a_as_white": {
+      "games": 10,
+      "wins": 5,
+      "losses": 3,
+      "draws": 2,
+      "time_leaning_wins": 0,
+      "time_leaning_losses": 2,
+      "score": 0.6,
+      "mean_plies": 90.0,
+      "mean_plies_when_won": 39.0,
+      "mean_plies_when_lost": 85.0
+    },
+    "a_as_black": {
+      "games": 10,
+      "wins": 4,
+      "losses": 5,
+      "draws": 1,
+      "time_leaning_wins": 1,
+      "time_leaning_losses": 0,
+      "score": 0.45,
+      "mean_plies": 85.6,
+      "mean_plies_when_won": 90.0,
+      "mean_plies_when_lost": 54.2
+    },
+    "elapsed_sec": 89.1,
+    "timestamp": "2026-08-06T14:35:42"
+  },
+  "results": [
+    {
+      "deltas": {
+        "white": 0.20000000000000007,
+        "black": 0.10000000000000003,
+        "aggregate": 0.15000000000000002
+      },
+      "minimum_color_delta": 0.10000000000000003,
+      "passes_both_colors": true,
+      "name": "selected_epoch_006",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_006.pt",
+      "checkpoint_sha256": "7fecf2af5ab5561dc86abce0a7dcf4031382b06eef9febe43f068047d6d26f1c",
+      "weights_sha256": "0cf69f3e7ffbca074dcdcb4836a92a739c5ab98054ce1bf9070ef4fa0667885e",
+      "offline_selected": false,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.675,
+        "a_as_white": {
+          "games": 10,
+          "wins": 7,
+          "losses": 1,
+          "draws": 2,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 2,
+          "score": 0.8,
+          "mean_plies": 72.5,
+          "mean_plies_when_won": 28.14,
+          "mean_plies_when_lost": 78.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 4,
+          "losses": 3,
+          "draws": 3,
+          "time_leaning_wins": 3,
+          "time_leaning_losses": 0,
+          "score": 0.55,
+          "mean_plies": 124.8,
+          "mean_plies_when_won": 101.25,
+          "mean_plies_when_lost": 56.0
+        },
+        "elapsed_sec": 97.5,
+        "timestamp": "2026-08-06T14:37:20"
+      }
+    },
+    {
+      "deltas": {
+        "white": -0.09999999999999998,
+        "black": 0.0,
+        "aggregate": -0.050000000000000044
+      },
+      "minimum_color_delta": -0.09999999999999998,
+      "passes_both_colors": false,
+      "name": "selected_epoch_002",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_002.pt",
+      "checkpoint_sha256": "572cf8622942d4a01da13f6b310b5c5f48315c451e5bc19785a4ff8af8c4024f",
+      "weights_sha256": "3eb3393d77724d2e16a5ea8301f449792ba5ae3d97ff1bddabccec926e525cd1",
+      "offline_selected": false,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.475,
+        "a_as_white": {
+          "games": 10,
+          "wins": 4,
+          "losses": 4,
+          "draws": 2,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 2,
+          "score": 0.5,
+          "mean_plies": 113.0,
+          "mean_plies_when_won": 68.0,
+          "mean_plies_when_lost": 102.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 3,
+          "losses": 4,
+          "draws": 3,
+          "time_leaning_wins": 3,
+          "time_leaning_losses": 0,
+          "score": 0.45,
+          "mean_plies": 117.5,
+          "mean_plies_when_won": 99.0,
+          "mean_plies_when_lost": 50.75
+        },
+        "elapsed_sec": 116.4,
+        "timestamp": "2026-08-06T14:39:16"
+      }
+    },
+    {
+      "deltas": {
+        "white": 0.0,
+        "black": -0.10000000000000003,
+        "aggregate": -0.050000000000000044
+      },
+      "minimum_color_delta": -0.10000000000000003,
+      "passes_both_colors": false,
+      "name": "selected_epoch_005",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_005.pt",
+      "checkpoint_sha256": "b91b001413dc7a62edf34734ca673ed11a720f75817c61b483599e0455d50ed6",
+      "weights_sha256": "956670d859c0534dc923c04452587b8e1884388ca46b05d3300d8bd70725745c",
+      "offline_selected": false,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.475,
+        "a_as_white": {
+          "games": 10,
+          "wins": 4,
+          "losses": 2,
+          "draws": 4,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 4,
+          "score": 0.6,
+          "mean_plies": 118.7,
+          "mean_plies_when_won": 26.0,
+          "mean_plies_when_lost": 91.5
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 1,
+          "losses": 4,
+          "draws": 5,
+          "time_leaning_wins": 5,
+          "time_leaning_losses": 0,
+          "score": 0.35,
+          "mean_plies": 143.0,
+          "mean_plies_when_won": 63.0,
+          "mean_plies_when_lost": 60.5
+        },
+        "elapsed_sec": 131.2,
+        "timestamp": "2026-08-06T14:41:28"
+      }
+    },
+    {
+      "deltas": {
+        "white": 0.20000000000000007,
+        "black": 0.04999999999999999,
+        "aggregate": 0.125
+      },
+      "minimum_color_delta": 0.04999999999999999,
+      "passes_both_colors": true,
+      "name": "selected_epoch_007",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_007.pt",
+      "checkpoint_sha256": "13a6ceede11b8d0cc418d10f2d1cbfef97272af5a011bbbb76a572407af3b991",
+      "weights_sha256": "770707fe92ad97a26df9d3a122c4edcea0ae9e7f11d4a1126ed43b1a6ca0aae6",
+      "offline_selected": false,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.65,
+        "a_as_white": {
+          "games": 10,
+          "wins": 7,
+          "losses": 1,
+          "draws": 2,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 2,
+          "score": 0.8,
+          "mean_plies": 80.3,
+          "mean_plies_when_won": 39.29,
+          "mean_plies_when_lost": 78.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 3,
+          "losses": 3,
+          "draws": 4,
+          "time_leaning_wins": 4,
+          "time_leaning_losses": 0,
+          "score": 0.5,
+          "mean_plies": 125.1,
+          "mean_plies_when_won": 86.0,
+          "mean_plies_when_lost": 31.0
+        },
+        "elapsed_sec": 104.2,
+        "timestamp": "2026-08-06T14:43:12"
+      }
+    },
+    {
+      "deltas": {
+        "white": 0.20000000000000007,
+        "black": 0.0,
+        "aggregate": 0.09999999999999998
+      },
+      "minimum_color_delta": 0.0,
+      "passes_both_colors": false,
+      "name": "selected_epoch_001",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_001.pt",
+      "checkpoint_sha256": "8a1fe87cf58b69c22e0683bbe7c4b6d715cde46aef6ed584e365e668fc664527",
+      "weights_sha256": "074d94699963d4a2eebd06e80d5eebbe6f2c4986045f37af0eff0a1ea3ecb8bd",
+      "offline_selected": false,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.625,
+        "a_as_white": {
+          "games": 10,
+          "wins": 7,
+          "losses": 1,
+          "draws": 2,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 2,
+          "score": 0.8,
+          "mean_plies": 83.9,
+          "mean_plies_when_won": 38.0,
+          "mean_plies_when_lost": 123.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 3,
+          "losses": 4,
+          "draws": 3,
+          "time_leaning_wins": 3,
+          "time_leaning_losses": 0,
+          "score": 0.45,
+          "mean_plies": 107.3,
+          "mean_plies_when_won": 84.0,
+          "mean_plies_when_lost": 36.5
+        },
+        "elapsed_sec": 98.0,
+        "timestamp": "2026-08-06T14:44:50"
+      }
+    },
+    {
+      "deltas": {
+        "white": 0.050000000000000044,
+        "black": 0.14999999999999997,
+        "aggregate": 0.09999999999999998
+      },
+      "minimum_color_delta": 0.050000000000000044,
+      "passes_both_colors": true,
+      "name": "selected_epoch_003",
+      "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_003.pt",
+      "checkpoint_sha256": "e113ceac770bddad08125054f8079c7c188c8b2adc9d1db9260c539369a794b8",
+      "weights_sha256": "0efe4aaed518528784785cdbce1819f58172e8b3fdda2a3dfb2c2419cf31d3cc",
+      "offline_selected": true,
+      "match": {
+        "match": "bootstrap_gen5_teacher3200_full_mlh vs bootstrap_gen5_teacher3200_full",
+        "name_a": "bootstrap_gen5_teacher3200_full_mlh",
+        "name_b": "bootstrap_gen5_teacher3200_full",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 967241,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.625,
+        "a_as_white": {
+          "games": 10,
+          "wins": 5,
+          "losses": 2,
+          "draws": 3,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 3,
+          "score": 0.65,
+          "mean_plies": 99.7,
+          "mean_plies_when_won": 27.2,
+          "mean_plies_when_lost": 93.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 5,
+          "losses": 3,
+          "draws": 2,
+          "time_leaning_wins": 2,
+          "time_leaning_losses": 0,
+          "score": 0.6,
+          "mean_plies": 113.1,
+          "mean_plies_when_won": 115.8,
+          "mean_plies_when_lost": 34.0
+        },
+        "elapsed_sec": 100.2,
+        "timestamp": "2026-08-06T14:46:30"
+      }
+    }
+  ],
+  "selected": {
+    "name": "selected_epoch_006",
+    "checkpoint": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/selected_epoch_006.pt",
+    "checkpoint_sha256": "7fecf2af5ab5561dc86abce0a7dcf4031382b06eef9febe43f068047d6d26f1c",
+    "weights_sha256": "0cf69f3e7ffbca074dcdcb4836a92a739c5ab98054ce1bf9070ef4fa0667885e",
+    "arena_model": "models/candidates/bootstrap_gen5_teacher3200_full_mlh/arena_selected.pt",
+    "arena_model_sha256": "7fecf2af5ab5561dc86abce0a7dcf4031382b06eef9febe43f068047d6d26f1c",
+    "rank_key": [
+      0.10000000000000003,
+      0.15000000000000002,
+      0.10000000000000003
+    ]
+  },
+  "timestamp": "2026-08-06T14:46:30"
+}

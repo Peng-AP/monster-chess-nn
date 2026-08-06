@@ -228,6 +228,10 @@ passed both V20 seeds (initial 0.650 overall / 0.825 White / 0.475 Black;
 confirmation 0.550 / 0.675 / 0.425), plus ramp and heuristic retention. Its
 80-game self-match reduced pooled White skew from V20's 0.6938 to 0.5875.
 This is a candidate for the owner's release playtest, not a numbered V21.
+The isolated moves-left auxiliary follow-up did not supersede it: epoch six
+passed a direct 80x800 A/B but failed the fresh V20 Black floor at 0.375, and
+the earlier epoch three lost 0.050 Black in its independent A/B confirmation.
+The head remains available but off by default.
 
 ## Evaluation
 
