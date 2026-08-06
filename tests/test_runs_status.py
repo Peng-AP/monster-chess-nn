@@ -131,6 +131,17 @@ class LivePidSnapshotTests(unittest.TestCase):
             runs._alive(9012, started_epoch=2_002.0, live_pids={9012}))
 
     @mock.patch.object(runs.os, "name", "nt")
+    @mock.patch.object(runs, "_windows_process_started_epoch",
+                       return_value=None)
+    def test_pid_recycled_into_an_unqueryable_process_reads_as_finished(self, _q):
+        # Seen in the wild: a finished run's pid became svchost.exe, whose
+        # creation time cannot be read. The guard used to fall through to True,
+        # so the run showed RUNNING forever -- and anything waiting on it via
+        # queue_after would have waited forever too.
+        self.assertFalse(
+            runs._alive(24368, started_epoch=1_000.0, live_pids={24368}))
+
+    @mock.patch.object(runs.os, "name", "nt")
     @mock.patch.object(runs.subprocess, "run", side_effect=OSError("boom"))
     def test_unavailable_snapshot_falls_back_rather_than_reporting_dead(self, _r):
         # None means "ask per pid", not "nothing is running" — otherwise a

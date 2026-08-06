@@ -109,10 +109,16 @@ def _alive(pid, started_epoch=0, live_pids=None):
                 # Cheap in-process call, no spawn: qualifying by creation time
                 # stops a recycled pid resurrecting a finished run.
                 process_started = _windows_process_started_epoch(pid)
-                if process_started is not None:
-                    # Metadata has one-second precision and is written
-                    # immediately after Popen returns.
-                    return abs(process_started - started_epoch) <= 5
+                if process_started is None:
+                    # Unreadable creation time means the pid is not ours. A run
+                    # we launched is always queryable; a pid Windows has since
+                    # recycled into a service process is not. Observed for real:
+                    # a finished run's pid became svchost.exe and read as alive
+                    # forever, because this used to fall through to True.
+                    return False
+                # Metadata has one-second precision and is written immediately
+                # after Popen returns.
+                return abs(process_started - started_epoch) <= 5
             return True
         os.kill(pid, 0)
         return True
