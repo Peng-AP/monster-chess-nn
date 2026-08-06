@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import tempfile
@@ -11,84 +12,68 @@ if str(SRC_DIR) not in sys.path:
 import iterate as it
 
 
-class GateTests(unittest.TestCase):
-    def test_gate_requires_arena_threshold(self):
-        ok, reason = it.gate_passes(
-            arena_score=0.54, candidate_anchor_score=0.9,
-            incumbent_anchor_score=0.5, threshold=0.55, anchor_epsilon=0.05)
-        self.assertFalse(ok)
-        self.assertIn("arena", reason)
+class BootstrapPipelineContracts(unittest.TestCase):
+    def test_phase_order_puts_cheap_gate_before_matches(self):
+        self.assertLess(it.PHASES.index("offline_gate"),
+                        it.PHASES.index("binding_gate"))
+        self.assertLess(it.PHASES.index("binding_gate"),
+                        it.PHASES.index("self_skew"))
+        self.assertEqual(it.PHASES[-1], "promote")
 
-    def test_gate_requires_no_anchor_regression(self):
-        ok, reason = it.gate_passes(
-            arena_score=0.60, candidate_anchor_score=0.40,
-            incumbent_anchor_score=0.70, threshold=0.55, anchor_epsilon=0.05)
-        self.assertFalse(ok)
-        self.assertIn("anchor", reason)
+    def test_next_generation_uses_isolated_run_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(it._next_generation(directory), 1)
+            os.makedirs(os.path.join(directory, "gen_0003"))
+            os.makedirs(os.path.join(directory, "gen_notes"))
+            os.makedirs(os.path.join(directory, "gen_0011"))
+            self.assertEqual(it._next_generation(directory), 12)
 
-    def test_gate_allows_small_anchor_dip(self):
-        ok, _reason = it.gate_passes(
-            arena_score=0.60, candidate_anchor_score=0.67,
-            incumbent_anchor_score=0.70, threshold=0.55, anchor_epsilon=0.05)
-        self.assertTrue(ok)
+    def test_promoting_multiple_generations_must_be_explicit(self):
+        args = argparse.Namespace(
+            games=1, sims=1, workers=1, epochs=1, batch_size=1,
+            reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
+            offline_positions=1, self_skew_games=1,
+            reanalysis_black_fraction=0.5, generations=2,
+            promote_on_pass=False, gate_protocol="full",
+        )
+        with self.assertRaisesRegex(ValueError, "promote-on-pass"):
+            it._validate_args(args)
 
-    def test_gate_skips_anchor_test_without_baseline(self):
-        ok, _reason = it.gate_passes(
-            arena_score=0.60, candidate_anchor_score=0.10,
-            incumbent_anchor_score=None, threshold=0.55, anchor_epsilon=0.05)
-        self.assertTrue(ok)
+    def test_quick_gate_can_never_promote(self):
+        args = argparse.Namespace(
+            games=1, sims=1, workers=1, epochs=1, batch_size=1,
+            reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
+            offline_positions=1, self_skew_games=1,
+            reanalysis_black_fraction=0.5, generations=1,
+            promote_on_pass=True, gate_protocol="quick",
+        )
+        with self.assertRaisesRegex(ValueError, "full"):
+            it._validate_args(args)
 
-    def test_gate_rejects_a_one_sided_collapse_the_aggregate_hides(self):
-        """The exact shape that reached a playtest twice: a passing mean over
-        a collapsed color (router run 2 was White 0.35 / Black 0.80)."""
-        ok, reason = it.gate_passes(
-            arena_score=0.575, candidate_anchor_score=0.9,
-            incumbent_anchor_score=0.5, threshold=0.55, anchor_epsilon=0.05,
-            arena_side_scores={"white": 0.35, "black": 0.80})
-        self.assertFalse(ok)
-        self.assertIn("white", reason)
-        self.assertIn("per-side floor", reason)
+    def test_champion_resolution_falls_back_to_immutable_v20(self):
+        resolved = it._resolve_champion(explicit=it.DEFAULT_CHAMPION)
+        self.assertEqual(resolved, it.DEFAULT_CHAMPION.resolve())
 
-    def test_gate_allows_balanced_sides_above_the_floor(self):
-        ok, _reason = it.gate_passes(
-            arena_score=0.60, candidate_anchor_score=0.9,
-            incumbent_anchor_score=0.5, threshold=0.55, anchor_epsilon=0.05,
-            arena_side_scores={"white": 0.55, "black": 0.65})
-        self.assertTrue(ok)
+    def test_architecture_inference_reads_v20_attention_geometry(self):
+        spec = it._checkpoint_spec(it.DEFAULT_CHAMPION)
+        self.assertEqual(spec["policy_head"], "attention")
+        self.assertEqual(spec["policy_attention_channels"], 64)
+        self.assertEqual(spec["input_channels"], 15)
+        self.assertEqual(spec["value_head"], "scalar")
 
-    def test_side_floor_is_not_weakenable_below_the_documented_bar(self):
-        """Gates are never relaxed to let a recipe through (repo rule)."""
-        self.assertGreaterEqual(it.ARENA_SIDE_FLOOR, 0.40)
+    def test_pipeline_never_overwrites_numbered_v20(self):
+        source = Path(it.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("shutil.copy(candidate, INCUMBENT", source)
+        self.assertIn("champion.json", source)
 
-    def test_run_arena_reports_per_side_scores(self):
-        import inspect
-        doc = inspect.getdoc(it.run_arena)
-        self.assertIn("white", doc)
-        self.assertIn("black", doc)
-
-
-class HelperTests(unittest.TestCase):
-    def test_next_generation_counts_nn_gen_dirs(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(it._next_generation(tmp), 1)
-            os.makedirs(os.path.join(tmp, "nn_gen3"))
-            os.makedirs(os.path.join(tmp, "nn_gen7_blackfocus"))
-            os.makedirs(os.path.join(tmp, "heuristic_v4"))
-            self.assertEqual(it._next_generation(tmp), 8)
-
-    def test_resolve_project_path_handles_relative_existing_path(self):
-        rel = os.path.join("data", "raw", "human_games")
-        resolved = it._resolve_project_path(rel)
-        self.assertTrue(os.path.isabs(resolved))
-
-    def test_latest_incumbent_anchor_score_uses_last_promotion(self):
-        history = {"generations": [
-            {"promoted": True, "candidate_anchor_score": 0.5},
-            {"promoted": False, "candidate_anchor_score": 0.9},
-            {"promoted": True, "candidate_anchor_score": 0.7},
-            {"promoted": False, "candidate_anchor_score": 0.2},
-        ]}
-        self.assertEqual(it._latest_incumbent_anchor_score(history), 0.7)
+    def test_resume_rejects_configuration_drift(self):
+        args = argparse.Namespace(games=100, resume=True, dry_run=False,
+                                  through_phase="train", generations=1)
+        state = {"config": {"games": 200, "resume": False,
+                            "dry_run": False, "through_phase": None,
+                            "generations": 1}}
+        with self.assertRaisesRegex(ValueError, "resume configuration differs"):
+            it._assert_resume_config(args, state)
 
 
 if __name__ == "__main__":

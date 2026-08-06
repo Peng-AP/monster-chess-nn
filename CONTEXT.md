@@ -78,14 +78,27 @@ unchanged, in `_get_white_actions`).
   rows. Held-out full-policy top-1 on promotion rows rose 7.8% -> 57.8% (val)
   and 4.1% -> 64.5% (test), but the binding gate was 0.5125 then 0.5000 versus
   v20; confirmation Black scored 0.325 below the 0.40 floor. Keep the
-  representation fix, reject `v21_promotion_policy_exact` as v21, and combine
-  it only with a separately gated Black-conversion improvement.
+  representation fix and reject `v21_promotion_policy_exact` as v21. Do not
+  turn obvious tactical givens into phase-specific gates or adapters; they
+  must emerge from general training and search.
+- **The iterative bootstrap pipeline is implemented (2026-08-05).**
+  `src/iterate.py` is now a resumable manifest-driven state machine covering
+  self-play, Black-weighted general deep-search reanalysis, isolated processing,
+  replay composition on the exact v19_B/V20 anchor, conservative end-to-end
+  fine-tuning, offline regression checks, the binding gate, self-color skew,
+  and explicit promotion. It never overwrites numbered V20. A live smoke run
+  completed generate -> reanalyze -> process with 2 games, 200 positions, one
+  deep-search teacher, 402 augmented rows, and no illegal targets. The first
+  real generation must hold architecture fixed; moves-left remains opt-in so a
+  pipeline result is not confounded with a model change.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black
   conversion is a big problem.**"*
-- **The live problem is Black conversion** — above all the post-promotion
-  class (law 1a). The campaign targeting it is `DIRECTIVE.md`.
+- **The live problem is Black conversion**, but the next intervention is
+  general iterative learning rather than a post-promotion rule patch. The
+  pipeline reserves 60% of deep-search teachers for Black and retains explicit
+  per-side promotion floors.
 - **The earlier, unpromoted v20-named experiment closed 2026-08-03: both arms
   rejected** (`v20` Black 0.10
   vs v19; `v20w` PASS-then-FAIL — its gate pass was move-limit relabels, Black

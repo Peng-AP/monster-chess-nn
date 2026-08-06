@@ -135,8 +135,19 @@ def evaluate_legs(legs):
 
 
 def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
-             engine=None):
-    spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
+             engine=None, bar_model=None, sparring_model=None):
+    base_spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
+    bar_model = bar_model or BAR_MODEL
+    sparring_model = sparring_model or SPARRING
+    # Keep the named protocol and thresholds fixed while allowing an iterative
+    # bootstrap run to point the bar at its current promoted champion.
+    spec = []
+    for name, opponent, games in base_spec:
+        if name == BAR:
+            opponent = bar_model
+        elif name == "vs_ramp":
+            opponent = sparring_model
+        spec.append((name, opponent, games))
     from match import run_match
 
     legs = {}
@@ -181,6 +192,8 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
         "raw_verdict": verdict,
         "failures": failures,
         "bar": BAR,
+        "bar_model": os.path.relpath(bar_model, ROOT),
+        "sparring_model": os.path.relpath(sparring_model, ROOT),
         "confirmed": CONFIRM_LEG in legs,
         "thresholds": {
             "per_side_floor": PER_SIDE_FLOOR,
@@ -209,22 +222,38 @@ def main():
                     help="search simulations per move (default: %(default)s); "
                          "verdict thresholds are unchanged")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
+    ap.add_argument("--bar-model", default=BAR_MODEL,
+                    help="current champion used for both bar legs")
+    ap.add_argument("--sparring-model", default=SPARRING,
+                    help="distinct-style floor-bearing opponent")
+    ap.add_argument("--report-path", default=None,
+                    help="write the report to this exact path")
     args = ap.parse_args()
 
     if not os.path.exists(args.model):
         ap.error(f"no such model: {args.model}")
+    if not os.path.exists(args.bar_model):
+        ap.error(f"no such bar model: {args.bar_model}")
+    if not os.path.exists(args.sparring_model):
+        ap.error(f"no such sparring model: {args.sparring_model}")
 
     if args.sims <= 0:
         ap.error("--sims must be positive")
 
     out = run_gate(args.model, args.protocol, args.seed, args.workers,
-                   sims=args.sims, engine=args.engine)
+                   sims=args.sims, engine=args.engine,
+                   bar_model=args.bar_model,
+                   sparring_model=args.sparring_model)
 
-    os.makedirs(args.out_dir, exist_ok=True)
-    tag = "gate" if out["binding"] else "gate_rehearsal"
-    path = os.path.join(
-        args.out_dir,
-        f"{tag}_{out['candidate']}_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    if args.report_path:
+        path = os.path.abspath(args.report_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    else:
+        os.makedirs(args.out_dir, exist_ok=True)
+        tag = "gate" if out["binding"] else "gate_rehearsal"
+        path = os.path.join(
+            args.out_dir,
+            f"{tag}_{out['candidate']}_{time.strftime('%Y%m%d_%H%M%S')}.json")
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
 

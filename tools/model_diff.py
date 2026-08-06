@@ -165,6 +165,8 @@ def main():
     ap.add_argument("--margin", type=float, default=0.01,
                     help="allowed drop vs incumbent on each gated metric")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
+    ap.add_argument("--report-path", default=None,
+                    help="write the report to this exact path")
     ap.add_argument("--opening-only", action="store_true",
                     help=f"restrict to opening positions (>= "
                          f"{OPENING_MIN_WHITE_PAWNS} White pawns and >= "
@@ -237,9 +239,13 @@ def main():
         "failures": failures,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-    os.makedirs(args.out_dir, exist_ok=True)
-    path = os.path.join(
-        args.out_dir, f"model_diff_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    if args.report_path:
+        path = os.path.abspath(args.report_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    else:
+        os.makedirs(args.out_dir, exist_ok=True)
+        path = os.path.join(
+            args.out_dir, f"model_diff_{time.strftime('%Y%m%d_%H%M%S')}.json")
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"Saved to {path}")

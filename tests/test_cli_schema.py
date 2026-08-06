@@ -24,11 +24,12 @@ class CliSchemaSmoke(unittest.TestCase):
         code, out = _run_help("iterate.py")
         self.assertEqual(code, 0)
         self.assertIn("--generations", out)
-        self.assertIn("--gate-threshold", out)
-        self.assertIn("--arena-games", out)
-        self.assertIn("--anchor-epsilon", out)
-        self.assertIn("--blackfocus-games", out)
-        self.assertIn("--max-generation-age", out)
+        self.assertIn("--reanalysis-sample", out)
+        self.assertIn("--replay-generations", out)
+        self.assertIn("--gate-protocol", out)
+        self.assertIn("--promote-on-pass", out)
+        self.assertIn("--resume", out)
+        self.assertIn("--dry-run", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")

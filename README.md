@@ -151,11 +151,35 @@ intact. An 80-game equal-settings self-match at 400 sims measured a White score
 of 0.6938 and Black score of 0.3063 (47 White wins, 16 Black wins, 17 draws),
 so the current operating point remains materially White-skewed.
 
-Run one full generate → process → train → gate cycle:
+Preview one complete bootstrap generation without writing anything:
 
 ```bash
-python src/iterate.py --generations 1
+python src/iterate.py --dry-run
 ```
+
+Then run it. Promotion is deliberately explicit and is allowed only after the
+full binding gate; it advances the bootstrap champion pointer but does not
+create a numbered release or bypass the owner's release playtest.
+
+```bash
+python src/iterate.py --generations 1 --promote-on-pass
+```
+
+The resumable state machine is `generate → reanalyze → process → compose →
+train → offline_gate → binding_gate → self_skew → promote`. Each generation
+has immutable state, command logs, and reports under `iterations/gen_NNNN/`.
+Resume an interrupted generation with the original experiment arguments plus
+`--resume`; changing a training or data argument is rejected. `--through-phase`
+can stop safely after any phase.
+
+Self-play is augmented by ordinary-position deep search, not tactical rules:
+`tools/reanalyze.py` selects positions where deeper champion search most
+changes the policy/value and writes policy-only teachers, with 60% of the
+pipeline's teacher budget reserved for Black. `tools/compose_processed.py`
+combines the exact immutable v19_B/V20 anchor, recent promoted replay, and the
+current generation while preserving the original split memberships. The
+moves-left head exists as an opt-in experiment but is off in the first pipeline
+generation so infrastructure and architecture changes are not conflated.
 
 ## Evaluation
 
@@ -211,7 +235,7 @@ src/
   data_processor.py    # raw JSONL -> training tensors, leak-free splits
   train.py             # network, training loop, checkpoint selection
   benchmark.py         # fixed heuristic-anchor benchmark
-  iterate.py           # generate -> process -> train -> gate loop
+  iterate.py           # resumable self-play/reanalysis/replay/train/gate loop
   scripted_mate.py     # deterministic K+heavies-vs-bare-K conversion (verified)
   play.py / play.ipynb # play against the engine (terminal / notebook)
 tools/                 # gate, matches, probes, corpus and deck builders
@@ -219,6 +243,8 @@ tools/                 # gate, matches, probes, corpus and deck builders
   match.py             # head-to-head, the single match JSON schema
   value_side_bias.py   # per-side value calibration on held-out games
   promotion_defense_probe.py  # search behaviour + conversion from a deck
+  reanalyze.py         # general deep-search policy teachers
+  compose_processed.py # immutable processed-corpus replay composition
   phase3_driver.py     # train+gate a set of corpus arms unattended
 tests/                 # contract tests
 benchmarks/            # benchmark and match JSON history

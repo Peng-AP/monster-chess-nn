@@ -175,6 +175,8 @@ def main():
                     help="default: 16 for NN-vs-NN, 0 vs the heuristic anchor")
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
+    ap.add_argument("--report-path", default=None,
+                    help="write the report to this exact path")
     args = ap.parse_args()
 
     out = run_match(args.model_a, args.model_b, args.games, args.sims,
@@ -188,9 +190,13 @@ def main():
                     policy_temperature_b=args.policy_temperature_b)
     name_a, name_b = out["name_a"], out["name_b"]
 
-    os.makedirs(args.out_dir, exist_ok=True)
-    path = os.path.join(args.out_dir,
-                        f"match_{name_a}_vs_{name_b}_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    if args.report_path:
+        path = os.path.abspath(args.report_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    else:
+        os.makedirs(args.out_dir, exist_ok=True)
+        path = os.path.join(args.out_dir,
+                            f"match_{name_a}_vs_{name_b}_{time.strftime('%Y%m%d_%H%M%S')}.json")
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(json.dumps(out, indent=2))
