@@ -185,6 +185,16 @@ material-phase quantiles; this is general replay balancing, not a tactical
 rule. `--continue-after-reject` permits explicit multi-generation data
 accumulation while leaving the champion unchanged.
 
+Reanalysis teachers inherit their source game's split, so an alternate deep
+policy for a position can never cross from training into validation/test.
+Reanalysis, generation, gates, and self-skew matches all have bounded
+no-progress timeouts; every generated batch must meet its configured saved-game
+rate before processing. Reanalysis and replay composition publish completed
+directories atomically, accepted replay hashes every required artifact, and a
+run-root lock prevents concurrent bootstrap loops. Large replay position and
+policy arrays are memory-mapped during pipeline training to keep later
+generations inside host-memory limits.
+
 Pipeline training evaluates the incumbent on the same validation rows before
 epoch one. Checkpoints are ranked by their worst-color policy and value-sign
 gains over that fixed baseline, and regression guards remain fixed to the

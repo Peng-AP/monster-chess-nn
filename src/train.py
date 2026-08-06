@@ -655,16 +655,19 @@ def load_state_dict_flexible(model, state_dict):
 
 
 def load_data(data_dir, include_moves_left=False, include_legal_masks=False,
-              include_capture_results=False):
+              include_capture_results=False, memory_map=False):
     """Load processed training data and splits.
 
     The legacy 7-item return stays unchanged unless the optional auxiliary
     arrays are requested.
     """
-    positions = np.load(os.path.join(data_dir, "positions.npy"))
+    mmap_mode = "r" if memory_map else None
+    positions = np.load(os.path.join(data_dir, "positions.npy"),
+                        mmap_mode=mmap_mode)
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
-    policies = np.load(os.path.join(data_dir, "policies.npy"))
+    policies = np.load(os.path.join(data_dir, "policies.npy"),
+                       mmap_mode=mmap_mode)
     policy_weights_path = os.path.join(data_dir, "policy_weights.npy")
     if os.path.exists(policy_weights_path):
         policy_weights = np.load(policy_weights_path)
@@ -1303,6 +1306,9 @@ def main():
     parser.add_argument("--patience", type=int, default=10,
                         help="Early-stopping patience in non-improving epochs (default: 10)")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    parser.add_argument(
+        "--memory-map-data", action="store_true",
+        help="memory-map large position/policy arrays to reduce replay RAM")
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
     parser.add_argument("--lr-gamma", type=float, default=LR_GAMMA,
                         help=f"Per-epoch StepLR decay after warmup "
@@ -1475,7 +1481,8 @@ def main():
         args.data_dir, include_moves_left=args.moves_left_head,
         include_legal_masks=args.legal_policy_mask,
         include_capture_results=(args.target == "capture_result" or (
-            use_wdl_mode and args.wdl_target == "capture_result")))
+            use_wdl_mode and args.wdl_target == "capture_result")),
+        memory_map=args.memory_map_data)
     (positions, mcts_values, game_results, policies, policy_weights,
      value_weights, splits) = loaded[:7]
     expected_policy_size = (PROMOTION_AWARE_POLICY_SIZE
@@ -1620,13 +1627,22 @@ def main():
 
     # Checkpoint setup
     os.makedirs(args.model_dir, exist_ok=True)
+    run_id = time.strftime("%Y%m%d_%H%M%S")
     checkpoint_path = os.path.join(args.model_dir, "best_value_net.pt")
+    # A phase retry must never mistake a checkpoint from an interrupted
+    # attempt for the current attempt's selected model. Preserve it as
+    # evidence, but move it out of the canonical path before epoch one.
+    for stale_name in ("best_value_net.pt", "selection_rejected.json"):
+        stale_path = os.path.join(args.model_dir, stale_name)
+        if os.path.exists(stale_path):
+            archived_name = f"interrupted_{run_id}_{os.getpid()}_{stale_name}"
+            os.replace(stale_path, os.path.join(args.model_dir, archived_name))
+            print(f"Archived stale training artifact: {archived_name}")
     best_selection_value = float("inf")
     best_checkpoint_metrics = None
     best_epoch = None
     patience_counter = 0
     patience = args.patience
-    run_id = time.strftime("%Y%m%d_%H%M%S")
     metadata_path = os.path.join(args.model_dir, f"train_run_{run_id}.json")
     run_metadata = {
         "run_id": run_id,
@@ -1695,6 +1711,7 @@ def main():
             "val": int(len(val_idx)),
             "test": int(len(test_idx)),
         },
+        "memory_map_data": bool(args.memory_map_data),
         "epochs": [],
     }
 

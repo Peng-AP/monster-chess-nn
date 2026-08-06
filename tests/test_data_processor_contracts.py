@@ -101,6 +101,23 @@ class SplitAndConvertTests(unittest.TestCase):
         self.assertEqual(
             len(ids["train"]) + len(ids["val"]) + len(ids["test"]), 40)
 
+    def test_reanalysis_teacher_inherits_source_game_split(self):
+        games = self._games(20, -1) + self._games(20, 1)
+        source = games[7]
+        teacher = {
+            **source,
+            "game_id": "reanalysis/teacher_00000.jsonl",
+            "split_parent": source["game_id"],
+        }
+        split = dp._split_games_by_result(games + [teacher], seed=42)
+        membership = {
+            game["game_id"]: name
+            for name, members in split.items()
+            for game in members
+        }
+        self.assertEqual(
+            membership[source["game_id"]], membership[teacher["game_id"]])
+
     def test_convert_flat_no_weighting(self):
         games = self._games(2, -1)
         (X, y_value, y_result, y_policy, y_policy_weight,

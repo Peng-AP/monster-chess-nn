@@ -592,6 +592,16 @@ Explicit `--continue-after-reject` runs can now accumulate accepted data while
 V20 remains champion; automatic promotion and numbered releases retain all
 existing gates.
 
+The production audit on 2026-08-06 found that standalone deep-search teacher
+files were being independently split: 10/40 demo-generation-one teachers and
+61/180 generation-two teachers crossed their source game's split. Teachers now
+form a split group with the source game; the same reproducer reads 0/40 and
+0/180. The audit also added no-progress timeouts to every worker phase, strict
+generated-batch completion checks, atomic staging for reanalysis/replay,
+non-overlapping phase seed ranges, full accepted-artifact hashes, a run-root
+lock, stale-checkpoint archiving on training retries, and memory-mapped replay
+loading. The complete suite passes 551 tests plus 3 subtests.
+
 Open owner decisions: §7.4's hand-corrected label; the `combined_v16` copy;
 the 23 legacy unreplayable games. The bar is no longer open.
 

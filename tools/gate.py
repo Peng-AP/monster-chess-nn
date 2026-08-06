@@ -135,7 +135,8 @@ def evaluate_legs(legs):
 
 
 def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
-             engine=None, bar_model=None, sparring_model=None):
+             engine=None, bar_model=None, sparring_model=None,
+             stall_timeout=600.0):
     base_spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
     bar_model = bar_model or BAR_MODEL
     sparring_model = sparring_model or SPARRING
@@ -158,7 +159,8 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
               flush=True)
         t0 = time.time()
         legs[name] = run_match(model, opponent, games, sims, leg_seed,
-                               workers=workers, engine=engine)
+                               workers=workers, engine=engine,
+                               stall_timeout=stall_timeout)
         print(f"[gate]   {name}: a_score={legs[name]['a_score']} "
               f"W={legs[name]['a_as_white']['score']} "
               f"B={legs[name]['a_as_black']['score']} "
@@ -220,7 +222,9 @@ def main():
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--sims", type=int, default=SIMS,
                     help="search simulations per move (default: %(default)s); "
-                         "verdict thresholds are unchanged")
+                             "verdict thresholds are unchanged")
+    ap.add_argument("--stall-timeout", type=float, default=600.0,
+                    help="fail if no match game completes for this many seconds")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     ap.add_argument("--bar-model", default=BAR_MODEL,
                     help="current champion used for both bar legs")
@@ -237,13 +241,14 @@ def main():
     if not os.path.exists(args.sparring_model):
         ap.error(f"no such sparring model: {args.sparring_model}")
 
-    if args.sims <= 0:
-        ap.error("--sims must be positive")
+    if args.sims <= 0 or args.stall_timeout <= 0:
+        ap.error("--sims and --stall-timeout must be positive")
 
     out = run_gate(args.model, args.protocol, args.seed, args.workers,
                    sims=args.sims, engine=args.engine,
                    bar_model=args.bar_model,
-                   sparring_model=args.sparring_model)
+                   sparring_model=args.sparring_model,
+                   stall_timeout=args.stall_timeout)
 
     if args.report_path:
         path = os.path.abspath(args.report_path)

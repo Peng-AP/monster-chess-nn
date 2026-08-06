@@ -98,6 +98,9 @@ class BootstrapPipelineContracts(unittest.TestCase):
                     np.zeros((3, 8, 8, 15), np.float32))
             np.save(processed / "policies.npy",
                     np.zeros((3, 4096), np.float32))
+            for name in ("mcts_values.npy", "game_results.npy",
+                         "policy_weights.npy", "value_weights.npy"):
+                np.save(processed / name, np.zeros((3,), np.float32))
             np.savez(processed / "splits.npz",
                      train=np.array([0]), val=np.array([1]),
                      test=np.array([2]))
@@ -121,6 +124,37 @@ class BootstrapPipelineContracts(unittest.TestCase):
                      test=np.array([2]))
             with self.assertRaisesRegex(RuntimeError, "was modified"):
                 it._recent_replay_sources(root, 2, 4)
+
+    def test_generation_quality_rejects_incomplete_batch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / "generation_summary.json"
+            summary.write_text(json.dumps({
+                "num_games_requested": 100,
+                "saved_games": 99,
+                "failed_games": 1,
+                "timed_out_games": 0,
+                "skipped_empty": 0,
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "success rate"):
+                it._validate_generation_summaries(
+                    {"outputs": [str(summary)]}, minimum_success_rate=1.0)
+
+    def test_generation_and_league_seeds_do_not_overlap(self):
+        args = it.build_parser().parse_args([])
+        architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
+        paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
+        plan = it._command_plan(
+            args, 99, it.DEFAULT_CHAMPION, architecture, paths, [])
+        commands = plan["generate"]["commands"]
+
+        def seed(command):
+            return int(command[command.index("--seed") + 1])
+
+        selfplay = set(range(seed(commands[0]), seed(commands[0]) + args.games))
+        for command in commands[1:]:
+            count = int(command[command.index("--num-games") + 1])
+            league = set(range(seed(command), seed(command) + count))
+            self.assertTrue(selfplay.isdisjoint(league))
 
 
 if __name__ == "__main__":

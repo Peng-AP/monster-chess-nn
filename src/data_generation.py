@@ -6,7 +6,7 @@ import random
 import signal
 import time
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 from tqdm import tqdm
 
@@ -563,6 +563,8 @@ def main():
     parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
     parser.add_argument("--workers", type=int, default=None,
                         help=f"Number of parallel workers (default: {DEFAULT_GAME_WORKERS})")
+    parser.add_argument("--stall-timeout", type=float, default=600.0,
+                        help="stop if no game completes for this many seconds")
     parser.add_argument("--use-model", type=str, default=None,
                         help="Path to trained .pt model for NN evaluation")
     parser.add_argument("--hybrid-eval", action="store_true",
@@ -620,6 +622,8 @@ def main():
         raise ValueError("--hybrid-eval requires --use-model")
     if args.simulations <= 0:
         raise ValueError("--simulations must be > 0")
+    if args.stall_timeout <= 0:
+        raise ValueError("--stall-timeout must be > 0")
     if args.simulations_min is not None and args.simulations_min <= 0:
         raise ValueError("--simulations-min must be > 0")
     if args.simulations_max is not None and args.simulations_max <= 0:
@@ -788,26 +792,20 @@ def main():
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
-            try:
-                # Timeout scales with sim budget: a 150-turn game at max sims
-                # can legitimately take 10+ minutes.  Allow ~0.02s per sim
-                # per turn × MAX_GAME_TURNS, with a floor of 600s.
-                per_game_budget = max(600, int(sim_max * MAX_GAME_TURNS * 0.025))
-                # Total timeout = per-game budget scaled by number of sequential
-                # batches (num_games / workers), plus 120s overhead.
-                # Previously used per_game_budget + 60 (per-game budget as batch
-                # budget), which caused systematic data loss for slower games.
-                #
-                # IMPORTANT: cap per_game_budget for batch timeout at 600s.
-                # The worker's game_deadline already handles legitimate slow games
-                # (and allows up to the full per_game_budget inside the game loop).
-                # The batch timeout must be short enough to catch a CUDA or worker
-                # deadlock within a few hours rather than 30+.  If a game-logic
-                # loop hangs, the worker's deadline breaks it; if CUDA deadlocks,
-                # the batch timeout below is the only escape hatch.
-                per_game_budget_batch = min(per_game_budget, 600)
-                total_timeout = per_game_budget_batch * max(1, args.num_games // workers) + 120
-                for future in as_completed(futures, timeout=total_timeout):
+            pending = set(futures)
+            while pending:
+                done, pending = wait(
+                    pending, timeout=args.stall_timeout,
+                    return_when=FIRST_COMPLETED)
+                if not done:
+                    hung = len(pending)
+                    tqdm.write(
+                        f"\n  WARNING: no game completed for "
+                        f"{args.stall_timeout:.0f}s; killing {hung} pending workers")
+                    timed_out_games += hung
+                    pbar.update(hung)
+                    break
+                for future in done:
                     try:
                         game_id, _sim_used, records, elapsed, aborted = future.result()
                     except Exception as e:
@@ -843,11 +841,6 @@ def main():
                         winner = "Draw"
                     tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
                     pbar.update(1)
-            except TimeoutError:
-                hung = sum(1 for f in futures if not f.done())
-                tqdm.write(f"\n  WARNING: {hung} game(s) timed out after 600s, killing workers")
-                timed_out_games += hung
-                pbar.update(hung)
     finally:
         terminate_pool(executor)
 
@@ -897,6 +890,7 @@ def main():
                 "moves": int(args.temperature_moves),
             },
             "workers": int(workers),
+            "stall_timeout": float(args.stall_timeout),
             "train_side": args.train_side,
             "curriculum": bool(args.curriculum),
             "curriculum_live_results": bool(args.curriculum_live_results),

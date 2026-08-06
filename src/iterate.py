@@ -193,7 +193,11 @@ def _accepted_registry_path(run_root):
 def _accept_generation_data(state, paths, run_root):
     """Register immutable champion-generated data before candidate training."""
     processed = Path(paths["new_processed"])
-    required = ("positions.npy", "policies.npy", "splits.npz")
+    required = (
+        "positions.npy", "mcts_values.npy", "game_results.npy",
+        "policies.npy", "policy_weights.npy", "value_weights.npy",
+        "splits.npz",
+    )
     missing = [name for name in required if not (processed / name).exists()]
     if missing:
         raise RuntimeError(f"cannot accept incomplete processed data: {missing}")
@@ -208,6 +212,9 @@ def _accept_generation_data(state, paths, run_root):
         "rows": int(len(positions)),
         "split_rows": split_rows,
         "splits_sha256": _sha256(processed / "splits.npz"),
+        "artifact_sha256": {
+            name: _sha256(processed / name) for name in required
+        },
         "incumbent": state["incumbent"],
         "incumbent_sha256": state["incumbent_sha256"],
         "run_state": state["paths"]["state"],
@@ -240,6 +247,12 @@ def _recent_replay_sources(run_root, before_generation, count):
         if expected_sha and _sha256(resolved / "splits.npz") != expected_sha:
             raise RuntimeError(
                 f"accepted replay generation {generation} was modified: {resolved}")
+        for name, digest in entry.get("artifact_sha256", {}).items():
+            artifact = resolved / name
+            if not artifact.exists() or _sha256(artifact) != digest:
+                raise RuntimeError(
+                    f"accepted replay generation {generation} artifact "
+                    f"was modified: {artifact}")
         rows.append((generation, resolved))
     rows.sort(key=lambda row: row[0])
     return rows[-max(0, count):] if count else []
@@ -291,6 +304,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--num-games", str(args.games),
         "--simulations", str(args.sims),
         "--workers", str(args.workers),
+        "--stall-timeout", str(args.worker_stall_timeout),
         "--use-model", str(incumbent),
         "--record-all-plies",
         "--seed", str(seed),
@@ -300,8 +314,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         black_games = (args.league_games + 1) // 2
         white_games = args.league_games // 2
         for side, games, output, side_seed in (
-                ("black", black_games, paths["league_black"], seed + 101),
-                ("white", white_games, paths["league_white"], seed + 202)):
+                ("black", black_games, paths["league_black"], seed + 100_000),
+                ("white", white_games, paths["league_white"], seed + 200_000)):
             if games <= 0:
                 continue
             generated_commands.append([
@@ -311,6 +325,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
                 "--simulations", str(args.sims),
                 "--opponent-sims", str(args.sims),
                 "--workers", str(args.workers),
+                "--stall-timeout", str(args.worker_stall_timeout),
                 "--use-model", str(incumbent),
                 "--opponent-pool-dir", str(CHAMPIONS_DIR),
                 "--opponent-pool-size", str(args.opponent_pool_size),
@@ -339,7 +354,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--simulations", str(args.reanalysis_sims),
         "--engine", args.engine,
         "--workers", str(args.workers),
-        "--seed", str(seed + 303),
+        "--seed", str(seed + 300_000),
+        "--stall-timeout", str(args.worker_stall_timeout),
     ]
     process = [
         "src/data_processor.py",
@@ -360,7 +376,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
     compose += ["--source", f"gen_{generation:04d}={paths['new_processed']}",
                 "--output-dir", str(paths["replay_processed"]),
                 "--balance-alpha", str(args.replay_balance_alpha),
-                "--balance-seed", str(seed + 707)]
+                "--balance-seed", str(seed + 700_000)]
 
     moves_left = bool(architecture["moves_left_head"] or args.moves_left_head)
     train = [
@@ -370,6 +386,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--epochs", str(args.epochs),
         "--patience", str(args.patience),
         "--batch-size", str(args.batch_size),
+        "--memory-map-data",
         "--lr", str(args.lr),
         "--lr-gamma", str(args.lr_gamma),
         "--policy-loss-weight", "1.0",
@@ -431,7 +448,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--engine", args.engine,
         "--sims", str(args.arena_sims),
         "--workers", str(args.workers),
-        "--seed", str(seed + 404),
+        "--seed", str(seed + 400_000),
+        "--stall-timeout", str(args.worker_stall_timeout),
         "--report-path", str(gate_report),
     ]
     self_skew = [
@@ -442,7 +460,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--sims", str(args.arena_sims),
         "--engine", args.engine,
         "--workers", str(args.workers),
-        "--seed", str(seed + 505),
+        "--seed", str(seed + 500_000),
+        "--stall-timeout", str(args.worker_stall_timeout),
         "--report-path", str(self_skew_report),
     ]
     return {
@@ -493,6 +512,37 @@ def _write_state(state, state_path):
 
 def _phase_outputs_exist(phase_plan):
     return all(Path(path).exists() for path in phase_plan.get("outputs", []))
+
+
+def _validate_generation_summaries(phase_plan, minimum_success_rate=1.0):
+    """Reject incomplete game batches before they enter processed replay."""
+    rows = []
+    for output in phase_plan.get("outputs", []):
+        summary = _load_json(output)
+        if not isinstance(summary, dict):
+            raise RuntimeError(f"invalid generation summary: {output}")
+        requested = int(summary.get("num_games_requested", 0))
+        saved = int(summary.get("saved_games", -1))
+        if requested <= 0 or saved < 0 or saved > requested:
+            raise RuntimeError(
+                f"invalid requested/saved game counts in {output}: "
+                f"requested={requested}, saved={saved}")
+        rate = saved / requested
+        row = {
+            "summary": _rel(output),
+            "requested": requested,
+            "saved": saved,
+            "success_rate": rate,
+            "failed": int(summary.get("failed_games", 0)),
+            "timed_out": int(summary.get("timed_out_games", 0)),
+            "skipped_empty": int(summary.get("skipped_empty", 0)),
+        }
+        rows.append(row)
+        if rate < minimum_success_rate:
+            raise RuntimeError(
+                f"generation success rate {rate:.3f} is below required "
+                f"{minimum_success_rate:.3f}: {output}")
+    return rows
 
 
 def _run_command(command, log_path):
@@ -567,8 +617,9 @@ def _acquire_lock(path):
 def _validate_args(args):
     for name in ("games", "sims", "workers", "epochs", "batch_size",
                  "reanalysis_sample", "reanalysis_keep", "reanalysis_sims",
-                 "offline_positions", "self_skew_games"):
-        if getattr(args, name) <= 0:
+                 "offline_positions", "self_skew_games",
+                 "worker_stall_timeout"):
+        if getattr(args, name, 1) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
     if args.reanalysis_keep > args.reanalysis_sample:
         raise ValueError("--reanalysis-keep must be <= --reanalysis-sample")
@@ -582,6 +633,8 @@ def _validate_args(args):
         raise ValueError("--reanalysis-black-fraction must be in [0, 1]")
     if not 0 <= getattr(args, "replay_balance_alpha", 0.0) <= 1:
         raise ValueError("--replay-balance-alpha must be in [0, 1]")
+    if not 0 < getattr(args, "min_generation_success_rate", 1.0) <= 1:
+        raise ValueError("--min-generation-success-rate must be in (0, 1]")
     for name in ("lr", "lr_gamma", "ema_decay", "moves_left_loss_weight",
                  "max_policy_ce_regression", "max_side_top1_drop",
                  "offline_margin"):
@@ -598,7 +651,12 @@ def _validate_args(args):
 
 def _assert_resume_config(args, state):
     """Prevent a resumed generation from silently changing its experiment."""
-    ignored = {"resume", "dry_run", "through_phase", "generations"}
+    ignored = {
+        "resume", "dry_run", "through_phase", "generations",
+        # Operational hardening may be added between a safely stopped phase
+        # and its resume without changing the experiment's statistical recipe.
+        "worker_stall_timeout", "min_generation_success_rate",
+    }
     current = {
         key: (str(value) if isinstance(value, Path) else value)
         for key, value in vars(args).items() if key not in ignored
@@ -652,6 +710,14 @@ def run_generation(args, generation=None):
 
     plan = _command_plan(
         args, generation, incumbent, architecture, paths, replay_sources)
+    if existing:
+        # A code-hardened resume may legitimately change operational commands
+        # for pending phases. Never rewrite the command record for data that a
+        # completed phase already produced.
+        old_plan = existing.get("plan", {})
+        for phase, phase_state in existing.get("phases", {}).items():
+            if phase_state.get("status") == "completed" and phase in old_plan:
+                plan[phase] = old_plan[phase]
     state = existing or _initial_state(
         args, generation, incumbent, architecture, paths, replay_sources, plan)
 
@@ -672,6 +738,12 @@ def run_generation(args, generation=None):
         _archive_incumbent(incumbent)
         state["status"] = "running"
         state["plan"] = plan
+        state.setdefault("executions", []).append({
+            "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "pid": os.getpid(),
+            "git_commit": _git_commit(),
+            "resume": bool(existing),
+        })
         _write_state(state, paths["state"])
         stop_index = PHASES.index(args.through_phase) if args.through_phase else len(PHASES) - 1
         gate_passed = None
@@ -683,6 +755,10 @@ def run_generation(args, generation=None):
             if (previous.get("status") == "completed"
                     and _phase_outputs_exist(phase_plan)):
                 print(f"[{phase}] already completed; resuming after it")
+                if phase == "generate":
+                    state["generation_quality"] = _validate_generation_summaries(
+                        phase_plan, args.min_generation_success_rate)
+                    _write_state(state, paths["state"])
                 if phase == "process" and not state.get("data_acceptance"):
                     _accept_generation_data(state, paths, run_root)
                     _write_state(state, paths["state"])
@@ -742,6 +818,9 @@ def run_generation(args, generation=None):
                             f"{phase} command failed with {return_codes}")
                     if not _phase_outputs_exist(phase_plan):
                         raise RuntimeError(f"{phase} did not produce its declared outputs")
+                    if phase == "generate":
+                        state["generation_quality"] = _validate_generation_summaries(
+                            phase_plan, args.min_generation_success_rate)
                     if phase == "process":
                         _accept_generation_data(state, paths, run_root)
                     if phase == "offline_gate" and any(code != 0 for code in return_codes):
@@ -810,6 +889,8 @@ def build_parser():
     ap.add_argument("--opponent-pool-size", type=int, default=5)
     ap.add_argument("--sims", type=int, default=ITERATE_SIMS)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--worker-stall-timeout", type=float, default=600.0,
+                    help="fail a generation/reanalysis/match after no progress")
     ap.add_argument("--engine", choices=("python", "native"), default="native")
     ap.add_argument("--reanalysis-sample", type=int, default=4000)
     ap.add_argument("--reanalysis-keep", type=int, default=1000)
@@ -820,6 +901,8 @@ def build_parser():
                     help="maximum generation datasets in replay, including current")
     ap.add_argument("--replay-balance-alpha", type=float, default=0.5,
                     help="smooth train replay across side/outcome/phase strata")
+    ap.add_argument("--min-generation-success-rate", type=float, default=1.0,
+                    help="minimum saved/requested ratio for every game batch")
     ap.add_argument("--epochs", type=int, default=ITERATE_EPOCHS)
     ap.add_argument("--patience", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=256)
@@ -856,21 +939,31 @@ def main():
     args = build_parser().parse_args()
     _validate_args(args)
     run_root = _absolute(args.run_root)
-    resume_once = args.resume
-    for _ in range(args.generations):
-        generation = (_latest_generation(run_root) if resume_once
-                      else _next_generation(run_root))
-        if generation is None:
-            raise ValueError("--resume requested but no generation exists")
-        status = run_generation(args, generation=generation)
-        resume_once = False
-        args.resume = False
-        can_continue = status == "promoted" or (
-            args.continue_after_reject
-            and status in ("rejected", "rejected_offline",
-                           "rejected_training", "passed_not_promoted"))
-        if args.dry_run or not can_continue:
-            break
+    root_lock = run_root / "run.lock"
+    if not args.dry_run:
+        _acquire_lock(root_lock)
+    try:
+        resume_once = args.resume
+        for _ in range(args.generations):
+            generation = (_latest_generation(run_root) if resume_once
+                          else _next_generation(run_root))
+            if generation is None:
+                raise ValueError("--resume requested but no generation exists")
+            status = run_generation(args, generation=generation)
+            resume_once = False
+            args.resume = False
+            can_continue = status == "promoted" or (
+                args.continue_after_reject
+                and status in ("rejected", "rejected_offline",
+                               "rejected_training", "passed_not_promoted"))
+            if args.dry_run or not can_continue:
+                break
+    finally:
+        if not args.dry_run:
+            try:
+                root_lock.unlink()
+            except FileNotFoundError:
+                pass
 
 
 if __name__ == "__main__":

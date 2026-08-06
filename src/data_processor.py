@@ -79,12 +79,21 @@ def load_all_games(raw_dir, include_human=True,
             continue
         input_positions += len(records)
         result = records[-1].get("game_result", 0)
+        source_record = records[0].get("source_record")
+        split_parent = None
+        if isinstance(source_record, dict) and source_record.get("path"):
+            # Deep-search teachers are alternate labels for an existing
+            # position, not independent games.  Keep every teacher in the
+            # source game's split so the same FEN cannot leak from training
+            # into validation/test under a new teacher filename.
+            split_parent = str(source_record["path"]).replace("\\", "/")
         games.append({
             "game_id": rel,
             "records": records,
             "source_kind": _source_kind_from_rel(rel, is_human),
             "result_bucket": _result_bucket(result),
             "generation": _generation_from_game_id(rel),
+            "split_parent": split_parent,
         })
 
     input_games = len(games)
@@ -145,13 +154,29 @@ def _result_bucket(result):
 
 
 def _split_games_by_result(games, seed):
-    """Stratified game-level split (80/10/10) by result bucket."""
-    rng = np.random.default_rng(seed)
-    by_bucket = {-1: [], 0: [], 1: []}
-    for game in games:
-        by_bucket[game["result_bucket"]].append(game)
+    """Stratified group-level split (80/10/10) by result bucket.
 
-    split = {"train": [], "val": [], "test": []}
+    Ordinary games form one-member groups.  Reanalysis teachers carry a
+    ``split_parent`` pointing at their source game and therefore move with it.
+    This preserves game-level isolation even when one source position has
+    several alternate policy labels.
+    """
+    rng = np.random.default_rng(seed)
+    grouped = {}
+    for game in games:
+        key = game.get("split_parent") or game["game_id"]
+        entry = grouped.setdefault(key, {
+            "result_bucket": game["result_bucket"], "games": []})
+        if entry["result_bucket"] != game["result_bucket"]:
+            raise ValueError(
+                f"split group {key!r} contains conflicting result buckets")
+        entry["games"].append(game)
+
+    by_bucket = {-1: [], 0: [], 1: []}
+    for entry in grouped.values():
+        by_bucket[entry["result_bucket"]].append(entry["games"])
+
+    split_groups = {"train": [], "val": [], "test": []}
     for bucket in (-1, 0, 1):
         group = by_bucket[bucket]
         if not group:
@@ -161,26 +186,30 @@ def _split_games_by_result(games, seed):
         n = len(group)
         n_train = int(0.8 * n)
         n_val = int(0.1 * n)
-        split["train"].extend(group[:n_train])
-        split["val"].extend(group[n_train:n_train + n_val])
-        split["test"].extend(group[n_train + n_val:])
-
-    for key in ("train", "val", "test"):
-        rng.shuffle(split[key])
+        split_groups["train"].extend(group[:n_train])
+        split_groups["val"].extend(group[n_train:n_train + n_val])
+        split_groups["test"].extend(group[n_train + n_val:])
 
     # Small-dataset fallback: keep splits non-empty when possible.
-    if len(games) >= 3 and len(split["val"]) == 0:
-        donor = "test" if len(split["test"]) > 1 else "train"
-        if split[donor]:
-            split["val"].append(split[donor].pop())
-    if len(games) >= 2 and len(split["test"]) == 0:
-        donor = "val" if len(split["val"]) > 1 else "train"
-        if split[donor]:
-            split["test"].append(split[donor].pop())
-    if len(split["train"]) == 0:
-        donor = "test" if split["test"] else "val"
-        if split[donor]:
-            split["train"].append(split[donor].pop())
+    group_count = len(grouped)
+    if group_count >= 3 and len(split_groups["val"]) == 0:
+        donor = "test" if len(split_groups["test"]) > 1 else "train"
+        if split_groups[donor]:
+            split_groups["val"].append(split_groups[donor].pop())
+    if group_count >= 2 and len(split_groups["test"]) == 0:
+        donor = "val" if len(split_groups["val"]) > 1 else "train"
+        if split_groups[donor]:
+            split_groups["test"].append(split_groups[donor].pop())
+    if len(split_groups["train"]) == 0:
+        donor = "test" if split_groups["test"] else "val"
+        if split_groups[donor]:
+            split_groups["train"].append(split_groups[donor].pop())
+
+    split = {"train": [], "val": [], "test": []}
+    for key in split:
+        for group in split_groups[key]:
+            split[key].extend(group)
+        rng.shuffle(split[key])
 
     return split
 

@@ -208,9 +208,17 @@ def _copy_array(filename, sources, output_dir, chunk_rows):
 
 def compose(sources, arrays, output_dir, chunk_rows=2048, balance_alpha=0.0,
             balance_seed=42):
-    os.makedirs(output_dir)
+    output_dir = os.path.abspath(output_dir)
+    if os.path.exists(output_dir):
+        raise FileExistsError(f"output directory already exists: {output_dir}")
+    staging = os.path.join(
+        os.path.dirname(output_dir),
+        f".{os.path.basename(output_dir)}.tmp-{os.getpid()}")
+    if os.path.exists(staging):
+        raise FileExistsError(f"composition staging directory exists: {staging}")
+    os.makedirs(staging)
     for filename in arrays:
-        _copy_array(filename, sources, output_dir, chunk_rows)
+        _copy_array(filename, sources, staging, chunk_rows)
 
     combined_splits = {"train": [], "val": [], "test": []}
     combined_game_ids = {"train": [], "val": [], "test": []}
@@ -235,7 +243,7 @@ def compose(sources, arrays, output_dir, chunk_rows=2048, balance_alpha=0.0,
                  if combined_splits["train"]
                  else np.empty(0, dtype=np.int64))
     train, balance = balance_training_indices(
-        output_dir, raw_train, balance_alpha, balance_seed, chunk_rows)
+        staging, raw_train, balance_alpha, balance_seed, chunk_rows)
     final_splits = {
         "train": train,
         "val": (np.concatenate(combined_splits["val"])
@@ -244,10 +252,10 @@ def compose(sources, arrays, output_dir, chunk_rows=2048, balance_alpha=0.0,
                  if combined_splits["test"] else np.empty(0, dtype=np.int64)),
     }
     np.savez(
-        os.path.join(output_dir, "splits.npz"),
+        os.path.join(staging, "splits.npz"),
         **final_splits,
     )
-    with open(os.path.join(output_dir, "split_game_ids.json"), "w",
+    with open(os.path.join(staging, "split_game_ids.json"), "w",
               encoding="utf-8") as handle:
         json.dump(combined_game_ids, handle, indent=2)
 
@@ -265,9 +273,10 @@ def compose(sources, arrays, output_dir, chunk_rows=2048, balance_alpha=0.0,
         },
         "training_balance": balance,
     }
-    with open(os.path.join(output_dir, "replay_manifest.json"), "w",
+    with open(os.path.join(staging, "replay_manifest.json"), "w",
               encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
+    os.replace(staging, output_dir)
     return manifest
 
 

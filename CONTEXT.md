@@ -102,6 +102,13 @@ unchanged, in `_get_white_actions`).
   optimizing worst-color policy/sign gains with fixed incumbent regression
   guards. If every epoch violates those guards, the generation ends as
   `rejected_training`; it cannot fall back to an unsafe or duplicate model.
+- **Bootstrap production audit completed 2026-08-06.** Deep-search teachers
+  now inherit the source game's train/validation/test split (the pre-fix demo
+  leak was 10/40 and 61/180; both are now zero). Worker phases fail after a
+  bounded no-progress interval, generated batches have an explicit completion
+  floor, reanalysis/replay publish atomically, replay artifacts are fully
+  hashed, phase seeds do not overlap, concurrent loops are locked out, and
+  pipeline training memory-maps the large replay arrays.
 - Owner's read after playing the v19-era models: *"White isn't doing
   terribly — the play is coherent and attacking chances are taken; definitely
   improved. Black's defending play is a big improvement as well. **Black

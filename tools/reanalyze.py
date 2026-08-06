@@ -239,6 +239,8 @@ def main():
     ap.add_argument("--engine", choices=("python", "native"), default="native")
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--stall-timeout", type=float, default=600.0,
+                    help="fail if no deep-search task completes for this many seconds")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dry-run", action="store_true",
                     help="print the input census and planned sample only")
@@ -252,8 +254,8 @@ def main():
         ap.error("--black-fraction must be in [0, 1]")
     if args.sample <= 0 or args.keep <= 0 or args.keep > args.sample:
         ap.error("require 0 < --keep <= --sample")
-    if args.simulations <= 0 or args.workers <= 0:
-        ap.error("--simulations and --workers must be positive")
+    if args.simulations <= 0 or args.workers <= 0 or args.stall_timeout <= 0:
+        ap.error("--simulations, --workers, and --stall-timeout must be positive")
     if os.path.exists(args.output_dir):
         ap.error(f"output directory already exists: {args.output_dir}")
 
@@ -274,22 +276,54 @@ def main():
 
     started = time.time()
     results = []
-    with concurrent.futures.ProcessPoolExecutor(
-            max_workers=args.workers, initializer=_init_worker,
-            initargs=(args.model, args.simulations, args.engine,
-                      args.batch_size)) as pool:
-        futures = [pool.submit(_reanalyze_one, row) for row in sampled]
-        for done, future in enumerate(concurrent.futures.as_completed(futures), 1):
-            results.append(future.result())
-            if done % max(1, len(futures) // 20) == 0 or done == len(futures):
-                elapsed = time.time() - started
-                rate = done / elapsed if elapsed else 0.0
-                left = (len(futures) - done) / rate if rate else 0.0
-                print(f"[{done}/{len(futures)}] {elapsed / 60:.1f}m elapsed, "
-                      f"~{left / 60:.1f}m left", flush=True)
+    pool = concurrent.futures.ProcessPoolExecutor(
+        max_workers=args.workers, initializer=_init_worker,
+        initargs=(args.model, args.simulations, args.engine,
+                  args.batch_size))
+    futures = {pool.submit(_reanalyze_one, row) for row in sampled}
+    pending = set(futures)
+    completed = 0
+    try:
+        while pending:
+            done, pending = concurrent.futures.wait(
+                pending, timeout=args.stall_timeout,
+                return_when=concurrent.futures.FIRST_COMPLETED)
+            if not done:
+                raise TimeoutError(
+                    "deep-search reanalysis made no progress for "
+                    f"{args.stall_timeout:.0f}s ({len(pending)} tasks remain)")
+            for future in done:
+                results.append(future.result())
+                completed += 1
+                if (completed % max(1, len(futures) // 20) == 0
+                        or completed == len(futures)):
+                    elapsed = time.time() - started
+                    rate = completed / elapsed if elapsed else 0.0
+                    left = (len(futures) - completed) / rate if rate else 0.0
+                    print(f"[{completed}/{len(futures)}] "
+                          f"{elapsed / 60:.1f}m elapsed, "
+                          f"~{left / 60:.1f}m left", flush=True)
+    except BaseException:
+        # A CUDA-blocked worker does not reliably leave a ProcessPoolExecutor
+        # context.  Use the generation pipeline's tested bounded teardown so
+        # a stalled reanalysis cannot consume the rest of an unattended run.
+        from data_generation import terminate_pool
+        terminate_pool(pool)
+        raise
+    else:
+        pool.shutdown(wait=True)
 
     kept = select_top(results, min(args.keep, len(results)), args.black_fraction)
-    _write_teacher(args.output_dir, kept, args.model, args.simulations)
+    output_dir = os.path.abspath(args.output_dir)
+    # Build outside source_dir so an interrupted staging directory can never
+    # be ingested as raw teachers by data_processor.  The completed directory
+    # becomes visible in one rename on the same filesystem.
+    staging_parent = os.path.dirname(os.path.abspath(args.source_dir))
+    staging = os.path.join(
+        staging_parent, f".{os.path.basename(output_dir)}.tmp-{os.getpid()}")
+    if os.path.exists(staging):
+        raise FileExistsError(f"reanalysis staging directory exists: {staging}")
+    _write_teacher(staging, kept, args.model, args.simulations)
     summary = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "source_dir": os.path.relpath(args.source_dir, ROOT).replace("\\", "/"),
@@ -309,9 +343,10 @@ def main():
                                / len(kept) if kept else None),
         "elapsed_sec": round(time.time() - started, 1),
     }
-    with open(os.path.join(args.output_dir, "reanalysis_summary.json"), "w",
+    with open(os.path.join(staging, "reanalysis_summary.json"), "w",
               encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
+    os.replace(staging, output_dir)
     print(json.dumps(summary, indent=2))
 
 

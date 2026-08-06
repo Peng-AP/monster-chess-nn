@@ -80,7 +80,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               fpu_reduction_a=FPU_REDUCTION,
               fpu_reduction_b=FPU_REDUCTION,
               policy_temperature_a=POLICY_TEMPERATURE,
-              policy_temperature_b=POLICY_TEMPERATURE):
+              policy_temperature_b=POLICY_TEMPERATURE,
+              stall_timeout=600.0):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -103,12 +104,29 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     tasks += [(False, s, opening_temp_plies) for s in seeds[n_white:]]
 
     t0 = time.time()
-    with mp.Pool(workers, initializer=_init_worker,
-                 initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b,
-                           engine, c_puct_a, c_puct_b, fpu_reduction_a,
-                           fpu_reduction_b, policy_temperature_a,
-                           policy_temperature_b)) as pool:
-        results = pool.map(_play, tasks)
+    pool = mp.Pool(
+        workers, initializer=_init_worker,
+        initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b,
+                  engine, c_puct_a, c_puct_b, fpu_reduction_a,
+                  fpu_reduction_b, policy_temperature_a,
+                  policy_temperature_b))
+    try:
+        iterator = pool.imap_unordered(_play, tasks)
+        results = []
+        for _ in tasks:
+            try:
+                results.append(iterator.next(timeout=stall_timeout))
+            except mp.TimeoutError as exc:
+                raise TimeoutError(
+                    f"match made no progress for {stall_timeout:.0f}s "
+                    f"({games - len(results)} games remain)") from exc
+    except BaseException:
+        pool.terminate()
+        pool.join()
+        raise
+    else:
+        pool.close()
+        pool.join()
 
     from benchmark import summarize_side
     white_games = [(r, p) for r, p, aw in results if aw]
@@ -174,11 +192,15 @@ def main():
     ap.add_argument("--opening-temp-plies", type=int, default=None,
                     help="default: 16 for NN-vs-NN, 0 vs the heuristic anchor")
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
+    ap.add_argument("--stall-timeout", type=float, default=600.0,
+                    help="fail if no game completes for this many seconds")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     ap.add_argument("--report-path", default=None,
                     help="write the report to this exact path")
     args = ap.parse_args()
 
+    if args.stall_timeout <= 0:
+        ap.error("--stall-timeout must be positive")
     out = run_match(args.model_a, args.model_b, args.games, args.sims,
                     args.seed, args.opening_temp_plies, args.workers,
                     sims_b=args.sims_b, batch_a=args.batch_a,
@@ -187,7 +209,8 @@ def main():
                     fpu_reduction_a=args.fpu_reduction_a,
                     fpu_reduction_b=args.fpu_reduction_b,
                     policy_temperature_a=args.policy_temperature_a,
-                    policy_temperature_b=args.policy_temperature_b)
+                    policy_temperature_b=args.policy_temperature_b,
+                    stall_timeout=args.stall_timeout)
     name_a, name_b = out["name_a"], out["name_b"]
 
     if args.report_path:
