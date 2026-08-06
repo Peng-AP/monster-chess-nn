@@ -23,6 +23,25 @@ class BootstrapPipelineContracts(unittest.TestCase):
                         it.PHASES.index("self_skew"))
         self.assertEqual(it.PHASES[-1], "promote")
 
+    def test_offline_metrics_are_advisory_by_default(self):
+        args = it.build_parser().parse_args([])
+        architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
+        paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
+        command = it._command_plan(
+            args, 99, it.DEFAULT_CHAMPION, architecture, paths, [],
+        )["offline_gate"]["commands"][0]
+        self.assertNotIn("--enforce", command)
+
+        args.reject_on_offline_regression = True
+        command = it._command_plan(
+            args, 99, it.DEFAULT_CHAMPION, architecture, paths, [],
+        )["offline_gate"]["commands"][0]
+        self.assertIn("--enforce", command)
+
+    def test_iteration_uses_measured_game_worker_default(self):
+        args = it.build_parser().parse_args([])
+        self.assertEqual(args.workers, it.DEFAULT_GAME_WORKERS)
+
     def test_next_generation_uses_isolated_run_directories(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(it._next_generation(directory), 1)

@@ -91,6 +91,14 @@ unchanged, in `_get_white_actions`).
   deep-search teacher, 402 augmented rows, and no illegal targets. The first
   real generation must hold architecture fixed; moves-left remains opt-in so a
   pipeline result is not confounded with a model change.
+- **Bootstrap triage corrected (2026-08-06).** Held-out policy/value comparison
+  is advisory by default; imperfect self-play targets are not a strength oracle,
+  and only the unchanged binding game gate rejects a successfully trained
+  candidate. The first production arm had Black sign accuracy +3.14 points but
+  was denied games by a White policy top-1 drop of 1.52 points under the old
+  rule; it is retained for a binding test. The loop also honors the measured
+  eight-worker GPU default (7.11 decisions/s versus 5.39 at four) instead of the
+  obsolete hard four-worker NN cap.
 - **Bootstrap production contracts added (2026-08-06).** Processed
   champion-generated data is accepted into a run-local immutable registry
   immediately after processing, independent of whether its candidate later

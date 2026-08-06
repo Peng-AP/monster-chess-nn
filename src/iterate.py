@@ -32,6 +32,7 @@ from config import (
     ITERATE_SIMS,
     ITERATE_ARENA_SIMS,
     ITERATE_EPOCHS,
+    DEFAULT_GAME_WORKERS,
 )
 
 ROOT = Path(PROJECT_ROOT)
@@ -436,9 +437,10 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--split", "test",
         "--max-positions", str(args.offline_positions),
         "--margin", str(args.offline_margin),
-        "--enforce",
         "--report-path", str(offline_report),
     ]
+    if args.reject_on_offline_regression:
+        offline.append("--enforce")
     binding = [
         "tools/gate.py",
         "--model", str(paths["candidate"]),
@@ -655,7 +657,8 @@ def _assert_resume_config(args, state):
         "resume", "dry_run", "through_phase", "generations",
         # Operational hardening may be added between a safely stopped phase
         # and its resume without changing the experiment's statistical recipe.
-        "worker_stall_timeout", "min_generation_success_rate",
+        "worker_stall_timeout", "min_generation_success_rate", "workers",
+        "reject_on_offline_regression",
     }
     current = {
         key: (str(value) if isinstance(value, Path) else value)
@@ -833,6 +836,19 @@ def run_generation(args, generation=None):
                         _write_state(state, paths["state"])
                         print("Offline regression gate rejected the candidate.")
                         break
+                    if phase == "offline_gate":
+                        report = _load_json(phase_plan["outputs"][0], {})
+                        warnings = list(report.get("failures", []))
+                        if warnings:
+                            state["phases"][phase].update({
+                                "verdict": "WARN",
+                                "warnings": warnings,
+                            })
+                            print(
+                                "Offline comparison raised advisory warnings; "
+                                "continuing to the binding game gate.",
+                                flush=True,
+                            )
                     if phase == "binding_gate":
                         report = _load_json(phase_plan["outputs"][0], {})
                         gate_passed = report.get("raw_verdict") == "PASS"
@@ -888,7 +904,7 @@ def build_parser():
     ap.add_argument("--league-games", type=int, default=100)
     ap.add_argument("--opponent-pool-size", type=int, default=5)
     ap.add_argument("--sims", type=int, default=ITERATE_SIMS)
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--worker-stall-timeout", type=float, default=600.0,
                     help="fail a generation/reanalysis/match after no progress")
     ap.add_argument("--engine", choices=("python", "native"), default="native")
@@ -918,6 +934,12 @@ def build_parser():
     ap.add_argument("--max-side-top1-drop", type=float, default=0.01)
     ap.add_argument("--offline-positions", type=int, default=8192)
     ap.add_argument("--offline-margin", type=float, default=0.01)
+    ap.add_argument(
+        "--reject-on-offline-regression", action="store_true",
+        help="restore the legacy hard offline rejection; by default held-out "
+             "policy/sign regressions are recorded as warnings and every "
+             "successfully trained candidate reaches the binding game gate",
+    )
     ap.add_argument("--gate-protocol", choices=("quick", "full"), default="full")
     ap.add_argument("--arena-sims", type=int, default=ITERATE_ARENA_SIMS)
     ap.add_argument("--self-skew-games", type=int, default=80)

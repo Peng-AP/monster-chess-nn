@@ -683,9 +683,13 @@ def main():
             pool_candidates = pool_candidates[-args.opponent_pool_size:]
         opponent_pool_paths = pool_candidates
 
-    # With NN evaluation, use fewer workers (GPU memory)
+    # NN workers each own a CUDA context and model copy.  The shared project
+    # default is deliberately eight: this exact 5060 Ti measured 5.39, 7.11,
+    # and 7.38 decisions/s at 4, 8, and 12 workers respectively, while 14
+    # workers exhausted memory (tests/test_worker_defaults.py).  Do not
+    # silently undo an explicit/default eight-worker request with the old
+    # February-era four-worker cap.
     if model_path or opponent_model_path or opponent_pool_paths:
-        workers = min(workers, 4)
         if model_path:
             print(f"Using NN evaluator: {model_path}")
         if opponent_model_path:
@@ -694,7 +698,7 @@ def main():
             print(f"Using opponent pool ({len(opponent_pool_paths)} models):")
             for p in opponent_pool_paths:
                 print(f"  - {p}")
-        print(f"(Limiting to {workers} workers for NN memory)")
+        print(f"NN worker processes: {workers} (one CUDA context per worker)")
 
     if args.train_side != "both":
         print(f"Alternating training: {args.train_side} side is training "

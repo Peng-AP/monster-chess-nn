@@ -166,7 +166,10 @@ python src/iterate.py --generations 1 --promote-on-pass
 ```
 
 The resumable state machine is `generate → reanalyze → process → compose →
-train → offline_gate → binding_gate → self_skew → promote`. Each generation
+train → offline_gate → binding_gate → self_skew → promote`. The offline
+comparison is advisory by default: it records held-out policy/value warnings,
+but actual games in the binding gate decide rejection. The legacy hard behavior
+is available with `--reject-on-offline-regression`. Each generation
 has immutable state, command logs, and reports under `iterations/gen_NNNN/`.
 Resume an interrupted generation with the original experiment arguments plus
 `--resume`; changing a training or data argument is rejected. `--through-phase`
@@ -194,6 +197,12 @@ directories atomically, accepted replay hashes every required artifact, and a
 run-root lock prevents concurrent bootstrap loops. Large replay position and
 policy arrays are memory-mapped during pipeline training to keep later
 generations inside host-memory limits.
+
+Game-playing phases use the measured eight-worker default on the 5060 Ti. That
+setting delivered 7.11 decisions/s versus 5.39 at four workers; twelve workers
+only reached 7.38 and fourteen exhausted GPU memory. Each NN worker owns a CUDA
+context, so the worker count stays explicit and bounded rather than following
+the host CPU count.
 
 Pipeline training evaluates the incumbent on the same validation rows before
 epoch one. Checkpoints are ranked by their worst-color policy and value-sign

@@ -57,6 +57,10 @@ class TestNoRunnerDefaultsToCpuCount(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("DEFAULT_GAME_WORKERS", text, str(rel))
 
+    def test_generation_does_not_silently_restore_the_old_four_worker_cap(self):
+        text = (ROOT / "src" / "data_generation.py").read_text(encoding="utf-8")
+        self.assertNotIn("min(workers, 4)", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -546,11 +546,26 @@ motif. Conservative end-to-end fine-tuning starts from the incumbent. The
 moves-left head is available but deliberately off for generation one.
 
 Every phase records commands, outputs, logs, timings, and status in
-`iterations/gen_NNNN/state.json`. Resume rejects argument drift. An offline
-policy/value regression check runs before the costly binding gate. Only an
+`iterations/gen_NNNN/state.json`. Resume rejects statistical recipe drift. An
+offline policy/value comparison runs before the binding gate and records
+warnings, but is advisory by default: imperfect teacher imitation is not a
+playing-strength oracle, so every successfully trained candidate reaches actual
+games. `--reject-on-offline-regression` restores the legacy hard behavior. Only an
 explicit `--promote-on-pass` can update `models/bootstrap/champion.json`, only a
 full gate can promote, and no numbered release checkpoint is overwritten.
 Numbered V21 still requires the existing owner playtest.
+
+The first production candidate demonstrated why that distinction matters. It
+improved held-out winner-sign accuracy by 1.53 points overall and 3.14 points on
+Black, while policy top-1 fell 1.15 points overall and 1.52 on White. The old
+1-point hard threshold rejected it without a game. That result is retained as
+an offline warning and the candidate is queued for the binding game protocol.
+
+The production loop now also honors the repository's measured eight-worker
+default instead of silently applying the obsolete four-worker NN cap. On this
+5060 Ti, prior 400-simulation measurement was 5.39 decisions/s at four workers,
+7.11 at eight, and 7.38 at twelve; fourteen exhausted memory. Eight therefore
+uses more of the available GPU while keeping useful failure headroom.
 
 A live native smoke run completed generate -> reanalyze -> process: two games
 (one win per color), 200 self-play positions, two positions deep-searched, one
