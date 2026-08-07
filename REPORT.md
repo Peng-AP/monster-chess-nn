@@ -1127,5 +1127,61 @@ Black-leaning. The conversion corpus processes with **zero** masking. That arm
 is still worth running, but as "sharpen a weak gradient", not "create a missing
 one" -- and the probe above, not a gate, is the sensitive way to read it.
 
+---
+
+## 23. Three gate passes, three nulls (2026-08-07)
+
+Every arm that cleared the gate today was then played 800 games against v21:
+
+| arm | gate | pooled bar legs (80 games) | 800-game match |
+|---|---|---:|---:|
+| capture_wdl_w003 | PASS | 0.5375 (z=+0.67) | **0.4800** |
+| mlh_conversions | PASS | 0.5375 (z=+0.67) | **0.4825** |
+| capture_target | PASS | 0.5750 (z=+1.34) | **0.5019** |
+
+**Three for three.** Section 21.1 derived this from the per-side floor being
+checked on 20 games (SE 0.112); this is the demonstration. **A gate PASS at the
+current leg size means "not clearly worse", not "better."** v21 itself was
+promoted on such a pass. The thresholds are sound; the sample behind them is
+not, and the fix is games, not thresholds.
+
+### 23.1 The owner's -0.5 hypothesis
+
+Owner, 2026-08-07: "I'm suspicious that knowing the 225 is a -0.5 or whatever
+is causing the model to settle."
+
+Two mechanisms were checked. The network **cannot** see the clock -- the 17
+input channels carry pieces, turn, half-move, rank and pawn progress, with no
+turn-count plane -- and at 3200 sims the cap is far beyond search horizon
+mid-game. But the *target* rewards settling:
+
+| what actually happened | rows | mean `game_result` target |
+|---|---:|---:|
+| Black captured the king | 262,034 | -0.8414 |
+| no capture, hit the cap | 156,626 | **-0.4527** |
+| White captured the king | 206,796 | +0.9001 |
+
+**Reaching the cap with material intact is worth 54% of a win**, and 99.7% of
+capped rows receive a non-zero Black-favourable target. It requires no capture,
+only that the heuristic still favours Black -- which repeating a position
+preserves perfectly, while playing for a win risks it. `CONTEXT.md` records the
+2026-08-03 captures-only ruling and states the +-0.5 *training* label was
+deliberately left unchanged; this is that gap, measured.
+
+**Tested and it does not pay off.** `--target capture_result` (capped games
+score 0) measurably changed the value function in the predicted direction --
+distant Black-dominant positions repriced from -0.3882 to -0.2711 on
+`value_gradient_probe` -- and the play effect was Black **+0.0175 +- 0.0354**,
+White **-0.0325 +- 0.0354**, netting 0.5019 overall. The predicted trade
+appeared and was too small to matter. The interval permits a Black gain up to
+~+0.09, so this is "no large effect", not "no effect".
+
+### 23.2 What is now closed
+
+Conversion data (3 variants), capture-WDL (9 arms, 320 games), moves-left (3
+independent looks), Black-policy weighting, and the capture-only target. Also
+closed: search depth (section 21 depth study, 8x buys nothing) and the
+colour gap as a target (0.316 -> 0.345 at 8x search).
+
 *Updated 2026-08-07. Predecessor reports retire to git history per project
 convention.*
