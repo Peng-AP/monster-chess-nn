@@ -888,5 +888,87 @@ is conditional selection: the confirmation only runs if the first legs pass, so
 every observed confirmation is conditioned on an above-threshold first leg and
 regresses to the mean. That is why it is the valid test, not a suspect one.
 
+---
+
+## 21. Overnight replicate sweep (2026-08-07)
+
+Eleven-plus arms run unattended through `tools/overnight_sweep.py`, each
+training from v21 on a **byte-identical recipe** except for its one change and
+gating through unmodified `gate.py`. Arms cost ~15 min, not the 85 estimated,
+so the spare capacity went to replicates rather than to more first-attempt
+ideas.
+
+### 21.1 The finding that matters: the gate's per-side floor is low-powered
+
+The per-side floor is checked on **half a leg** -- a 40-game leg is 20 games per
+colour, **SE 0.112**. Simulating the floor against a known true rate:
+
+| true Black rate | clears 0.40 on one leg | clears **both** v21 legs |
+|---|---:|---:|
+| 0.425 (parity with v21) | 67.3% | **45.0%** |
+| 0.450 (better than v21) | 74.8% | **55.9%** |
+| 0.500 | 86.9% | 75.5% |
+
+**A candidate genuinely better than the incumbent on Black fails the gate
+roughly half the time on sampling noise alone.** Demonstrated live: the same
+recipe at seed 42 scored Black 0.425/0.450 and PASSED; at seed 43 it scored
+0.375 and FAILED, with a *higher* overall bar leg (0.5375 vs 0.5125). Only
+Black moved, and Black is where the noise is.
+
+This is **not** an argument to lower the floor. The threshold stands. The fix
+is sample size -- more games per leg, or pooled replicates -- neither of which
+touches the protocol. It does mean a single gate verdict has been carrying more
+weight than it can bear, which plausibly explains much of this project's
+historical pass/fail churn.
+
+### 21.2 Capture-WDL: two passes, no measurable effect
+
+`--aux-wdl-head --wdl-target capture_result --wdl-loss-weight 0.03`, the only
+signal that had ever moved Black for a principled reason.
+
+| arm | verdict | bar | confirm | confirm Black |
+|---|---|---:|---:|---:|
+| capture_wdl_w003 (seed 42) | PASS | 0.5125 | 0.5250 | 0.450 |
+| capture_wdl_plus_black_policy | PASS | 0.5500 | 0.5250 | 0.425 |
+| capture_wdl_w003_seed43 | FAIL | 0.5375 | -- | -- |
+| capture_wdl_w003_seed44 | FAIL | 0.5250 | 0.4875 | 0.375 |
+| capture_wdl_w001 | FAIL | -- | 0.4500 | 0.400 |
+
+Pooled over the four capture-WDL arms, 160 bar-leg games
+(`tools/replication_summary.py`):
+
+| pool | score | reference | z |
+|---|---:|---:|---:|
+| overall | 0.5312 | 0.500 | +0.79 |
+| White | 0.6312 | 0.600 | +0.56 |
+| Black | 0.4313 | 0.425 | +0.11 |
+
+**Indistinguishable from v21 on every measure.** Two of four passing is exactly
+what 21.1 predicts for a model at parity. Point estimate +0.031 (~22 Elo), 95%
+interval about [-0.046, +0.108]: **underpowered, not disproven.** All four bar
+legs did land above 0.50, which under a true-zero effect happens ~6% of the
+time -- weak, and the same data the pooled z already reflects.
+
+### 21.3 Two analysis errors worth not repeating
+
+**Per-colour scores must reference the incumbent's self-match, not 0.50.** A
+model identical to v21 does not score 0.50 per colour against it -- White is
+structurally advantaged, and v21's self-match splits White 0.600 / Black 0.425.
+Judged against 0.50 the capture-WDL pool read "White z=+2.45, distinguishable";
+against the correct reference it reads z=+0.56, nothing. The wrong baseline
+manufactures a White gain for every candidate.
+
+**The bar leg alone is not sufficient either.** It is unbiased with respect to
+*selection* (every arm plays it), but the conversion arms pooled to bar 0.6125
+(z=+2.01) while their confirmations pooled to 0.4500 -- high on the first
+opening set, parity on the second. Both legs together is the estimate.
+
+### 21.4 Black-policy weighting
+
+`--black-policy-weight 1.75` (`BLACK_WEIGHT_BALANCED`, never previously used):
+FAIL at 0.4875 on the bar leg. Black stayed at 0.425, exactly v21's self-match
+baseline, while White fell 0.600 -> 0.550. It did not help Black; it cost
+White. Combined with capture-WDL it was neither additive nor harmful.
+
 *Updated 2026-08-07. Predecessor reports retire to git history per project
 convention.*
