@@ -110,12 +110,15 @@ def resume(game, white_engine, black_engine, bot, extra_turns):
 _WORKER = {}
 
 
-def _init_worker(model_path, white_sims, black_sims, batch_size):
-    """Build one model and one set of engines per process, once."""
-    nn = NNEvaluator(model_path)
-    _WORKER["white"] = NativeMCTS(num_simulations=white_sims, eval_fn=nn,
+def _init_worker(model_path, white_model_path, white_sims, black_sims,
+                 batch_size):
+    """Build the models and engines per process, once."""
+    black_nn = NNEvaluator(model_path)
+    white_nn = (black_nn if white_model_path == model_path
+                else NNEvaluator(white_model_path))
+    _WORKER["white"] = NativeMCTS(num_simulations=white_sims, eval_fn=white_nn,
                                   batch_size=batch_size, allow_early_stop=True)
-    _WORKER["black"] = NativeMCTS(num_simulations=black_sims, eval_fn=nn,
+    _WORKER["black"] = NativeMCTS(num_simulations=black_sims, eval_fn=black_nn,
                                   batch_size=batch_size, allow_early_stop=True)
     _WORKER["bot"] = ScriptedMate()   # material guard + preflight, both on
 
@@ -163,10 +166,22 @@ def main():
     ap.add_argument("--out-dir", default=None,
                     help="write corrected games here (default: alongside, "
                          "suffix _finished)")
-    ap.add_argument("--model", default="models/fresh_start_v20/best_value_net.pt")
+    ap.add_argument("--model", default="models/fresh_start_v21/best_value_net.pt",
+                    help="the model Black converts with (default: the "
+                         "numbered incumbent)")
+    ap.add_argument("--white-model", default=None,
+                    help="model for White; defaults to --model. Separate so a "
+                         "rerun can hold the opponent fixed and change only "
+                         "Black -- otherwise two variables move at once and "
+                         "the conversion rate cannot be attributed.")
     ap.add_argument("--black-sims", type=int, default=1600)
     ap.add_argument("--white-sims", type=int, default=400)
-    ap.add_argument("--extra-turns", type=int, default=60)
+    ap.add_argument("--extra-turns", type=int, default=160,
+                    help="continuation budget in turn_count increments. A full "
+                         "round increments it TWICE (White completing its turn, "
+                         "then Black), so this is 2x the Black moves allowed: "
+                         "160 gives Black 80 moves. The previous 40 (=20 moves) "
+                         "was binding -- a conversion landed exactly on it.")
     ap.add_argument("--batch-size", type=int, default=16,
                     help="MCTS leaf-parallel width. The 16 default suits "
                          "multi-worker generation, where sibling processes "
@@ -233,7 +248,9 @@ def main():
     started = time.time()
     tasks = [(path, digest, args.extra_turns, out_dir)
              for path, digest in targets]
-    init_args = (args.model, args.white_sims, args.black_sims, args.batch_size)
+    white_model = args.white_model or args.model
+    init_args = (args.model, white_model, args.white_sims, args.black_sims,
+                 args.batch_size)
 
     def account(done, outcome):
         """Fold one finished game into the totals and report it."""
@@ -278,11 +295,14 @@ def main():
         "unreplayable": unreachable,
         "mean_extra_black_moves": (round(sum(extra_plies) / len(extra_plies), 1)
                                    if extra_plies else None),
+        "black_model": args.model,
+        "white_model": white_model,
         "black_sims": args.black_sims,
         "white_sims": args.white_sims,
         "batch_size": args.batch_size,
         "workers": args.workers,
         "extra_turns": args.extra_turns,
+        "extra_black_moves_allowed": args.extra_turns // 2,
         "out_dir": os.path.relpath(out_dir, ROOT),
         "elapsed_sec": round(elapsed, 1),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
