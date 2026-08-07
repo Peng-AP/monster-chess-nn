@@ -1045,5 +1045,59 @@ FAIL at 0.4875 on the bar leg. Black stayed at 0.425, exactly v21's self-match
 baseline, while White fell 0.600 -> 0.550. It did not help Black; it cost
 White. Combined with capture-WDL it was neither additive nor harmful.
 
+---
+
+## 22. The value head is flat in the won region (2026-08-07)
+
+Owner observation, from watching v21 self-play at 6400 sims: "a lot of draws
+and super long black wins are shuffling in a black dominant position." Measured
+across the fifteen exported games:
+
+| outcome | mean plies with White reduced to a BARE KING |
+|---|---:|
+| White wins | 1.0 |
+| Black wins | **70.8** |
+| Draws | **97.8** |
+
+Three of the five draws reach a bare White king by ply 54-78 and then shuffle
+**150-171 further plies** with 20-35 points of Black material on the board. The
+draws are not fortresses and not close games: they are completely won positions
+Black cannot finish. One Black "win" spent 150 plies bare before landing the
+capture.
+
+**Why there is no reason to hurry.** v21's value output across the shuffling
+stretch of the 171-ply draw:
+
+| plies since White went bare | 0 | 43 | 86 | 129 | 171 |
+|---|---:|---:|---:|---:|---:|
+| v21 value | -0.679 | -0.678 | -0.763 | -0.688 | **-0.677** |
+
+Standard deviation **0.039** over 172 plies. The 150-ply Black win is flatter
+still (sd 0.020) and only jumps to -1.000 when the capture is actually on the
+board. **The value head knows Black is winning and cannot tell 171 plies from
+one.** MCTS ranks moves by value; when every move returns -0.68 there is
+nothing to rank, so the search shuffles.
+
+Note the values sit at -0.68 to -0.92, *not* at the -0.5 ramp floor -- the head
+is not merely saturated, it is genuinely confident and genuinely gradient-free.
+
+**This is a different failure from section 20.5.** That one held the `-0.5`
+labels to be factually wrong, and was rejected: supplying correctly-labelled
+conversions failed at three weights and learning rates. This one says the
+labels can be perfectly correct and the *objective* still flat in the winning
+region, because `result * gamma^min(plies_to_end, horizon)` with horizon 60
+assigns the same target to every position more than 60 plies from the end.
+Correct data cannot create a gradient a target does not have -- which is a
+coherent explanation for why 20.5 came back null.
+
+**What follows.** The moves-left head is exactly a progress signal, and it was
+rejected (section 19) on a single confirmation leg at Black 0.375 -- a coin
+flip at 20 games per side by 21.1. It was also masked on 25% of rows, **99.1%
+of them Black-leaning**: blind in precisely this bare-king region. The
+conversion corpus built in 20.4 processes with **zero** moves-left masking,
+because those games carry real `plies_to_end`. Moves-left trained on that
+corpus is the one combination never tried, and it is the only tested mechanism
+that addresses the measured defect. Untested as of this writing.
+
 *Updated 2026-08-07. Predecessor reports retire to git history per project
 convention.*
