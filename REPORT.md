@@ -918,8 +918,18 @@ Black moved, and Black is where the noise is.
 This is **not** an argument to lower the floor. The threshold stands. The fix
 is sample size -- more games per leg, or pooled replicates -- neither of which
 touches the protocol. It does mean a single gate verdict has been carrying more
-weight than it can bear, which plausibly explains much of this project's
-historical pass/fail churn.
+weight than it can bear.
+
+**It does not mean the archive holds misjudged winners.** `tools/gate_triage.py`
+ranks every binding FAIL by how narrowly it missed: 18 of 27 missed by under one
+standard error, which sounds like a reservoir of rejected candidates. It is not.
+Thirteen of those were judged against v21 and have since been re-tested at 320
+and 800 games -- all genuinely null. The remaining near-misses were judged
+against **superseded bars** (v19, v19_B, ramp); an arm marginal against v19_B is
+not a candidate against v21, which beats v19_B 0.736 to 0.486 in the ladder.
+Only two were judged against v20. So the low power is real and matters for
+*future* decisions, while the record of past rejections has held up wherever it
+could be checked.
 
 ### 21.2 Capture-WDL: two passes, no measurable effect
 
