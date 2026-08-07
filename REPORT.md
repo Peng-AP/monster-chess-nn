@@ -943,11 +943,26 @@ Pooled over the four capture-WDL arms, 160 bar-leg games
 | White | 0.6312 | 0.600 | +0.56 |
 | Black | 0.4313 | 0.425 | +0.11 |
 
-**Indistinguishable from v21 on every measure.** Two of four passing is exactly
-what 21.1 predicts for a model at parity. Point estimate +0.031 (~22 Elo), 95%
-interval about [-0.046, +0.108]: **underpowered, not disproven.** All four bar
-legs did land above 0.50, which under a true-zero effect happens ~6% of the
-time -- weak, and the same data the pooled z already reflects.
+**Final, over all eight capture-WDL arms and 320 bar-leg games:**
+
+| pool | score | reference | SE | z |
+|---|---:|---:|---:|---:|
+| overall | 0.5234 | 0.500 | 0.0280 | +0.84 |
+| Black | 0.4469 | 0.425 | 0.0395 | +0.55 |
+| confirmation (6/8 arms) | 0.4917 | 0.500 | 0.0323 | -0.26 |
+
+**The recipe is a null.** Point estimate +0.023 (~16 Elo); effects above ~+0.08
+are excluded. The confirmation pool sits *below* parity despite being the
+biased-upward statistic. Four replicate seeds of the identical recipe went
+PASS, FAIL, FAIL, FAIL -- one in four, which is what 21.1 predicts at parity.
+
+The weight sweep is likewise flat: bar legs 0.5250 / 0.5125 / 0.5375 / 0.5500
+at weights 0.01 / 0.03 / 0.06 / 0.10, with only 0.03 passing. **0.03 was not a
+peak, it was the lucky draw.**
+
+The seed-42 checkpoint that opened the sweep with a PASS is the one the
+high-power 800-game match tests directly; the recipe-level answer above is
+already settled.
 
 ### 21.3 Two analysis errors worth not repeating
 
