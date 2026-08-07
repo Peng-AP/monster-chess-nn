@@ -96,8 +96,12 @@ PHASE2 = [
     {"name": "capture_wdl_w010", "data": BASE,
      "extra": ["--aux-wdl-head", "--wdl-target", "capture_result",
                "--wdl-loss-weight", "0.10"]},
-    # The capture signal on the conversion corpus: both target the same gap.
-    {"name": "capture_wdl_w003_conversions_w1", "data": CONV_W1, "extra": WDL},
+    # A third replicate replaced the planned capture-WDL-on-conversions arm.
+    # With the conversion corpus now 0/3 at the gate, an arm combining it with
+    # capture_wdl would be confounded: a failure could not distinguish a bad
+    # signal from a bad corpus, and an uninterpretable arm is worth less than
+    # another clean read on the only result that has passed.
+    {"name": "capture_wdl_w003_seed45", "data": BASE, "extra": WDL + ["--seed", "45"]},
 ]
 ARMS = ARMS + PHASE2
 

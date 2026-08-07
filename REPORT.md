@@ -831,12 +831,29 @@ confirmation replay did not: **Black 0.350 < 0.400**, aggregate 0.4875
 finisher rules out the obvious excuse -- the conversions are wins against a
 full-strength White, not against a handicapped one.
 
-Honest status: the *data* claim survives (~40% of `-0.5` is mislabelled); the
-*training* claim does not. Better data on this axis is not what Black is short
-of. Remaining ambiguity -- weight too high, learning rate too hot -- is under
-test in the overnight sweep, and 22 of the 57 games still carry a competing
-`-0.5` original in the anchor, which weakens rather than reverses the
-correction.
+The remaining excuses were then tested and all failed:
+
+| conversion arm | bar leg | confirmation | confirm Black |
+|---|---:|---:|---:|
+| weight 4, lr 1e-4 | 0.6250 | 0.4875 | 0.350 |
+| weight 1, lr 1e-4 | 0.5500 | 0.4750 | 0.375 |
+| weight 4, lr 3e-5 | 0.6750 | 0.4250 | 0.325 |
+
+A 4x change in effective share moved the outcome 0.025, and a 3x slower
+learning rate made it worse. All three cleared the first bar leg and collapsed
+on the fresh opening seed.
+
+**Status: the conversion axis is closed.** The *data* claim survives -- ~40% of
+the `-0.5` corpus is genuinely won against a full-strength opponent, confirmed
+by the symmetric finisher -- and the *training* claim is rejected across three
+independent variants. Better data on this axis is not what Black is short of.
+
+Two known imperfections do not rescue it: 22 of the 57 games still carry a
+competing `-0.5` original in the anchor (which weakens rather than reverses the
+correction), and 10,669 rows may simply be too few at any weight -- but weight
+1 and weight 4 landing 0.025 apart argues the share was never the binding
+constraint. **Do not revisit without a genuinely new reason**; four attempts
+(v22 plus three sweep arms) have now failed the same leg the same way.
 
 ### 20.6 Infrastructure
 
