@@ -7,8 +7,8 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 562 passing
-plus 3 subtests, verified 2026-08-06 by full discovery.**
+active evidence set). Every bug below is pinned by a regression test. **Suite: 579 passing
+plus 3 subtests, verified 2026-08-07 by full discovery.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
 
@@ -738,5 +738,138 @@ remains the owner-playtest candidate. Evidence:
 `gen5_teacher3200_full_mlh_epoch6_binding_20260806.json`, and
 `gen5_teacher3200_full_mlh_epoch3_800_vs_control_20260806.json`.
 
-*Updated 2026-08-06. Predecessor reports retire to git history per project
+---
+
+## 20. V21 promoted; the conversion thesis tested and rejected (2026-08-06/07)
+
+### 20.1 V21
+
+The owner playtested the gen-5 teacher-3200 epoch-two candidate ("it is a very
+strong player") and promoted it as **`models/fresh_start_v21`**. The promoted
+checkpoint's SHA-256 was verified byte-identical to the one the gate scored
+(`06d89341...`); `arena_selected.pt` and `selected_epoch_002.pt` are the same
+file. The gate bar moved to `vs_v21` and **no threshold moved** -- floor 0.40,
+aggregate 0.50, sims 400 unchanged. Two tests pin the bar (`test_gate_protocol`,
+`test_post_e5_driver`) and both required a deliberate edit, which is what they
+exist for. Manifest: `models/fresh_start_v21/promotion_manifest.json`.
+
+Recorded caveats: Black gained **+0.0125** at 80x800, inside noise, so the
+measured improvement is White-weighted like every recent arm; and the gain
+traces to the teacher recipe (3200 sims, 4x weight), not to iteration --
+generations one through four on the same recipe were all rejected.
+
+### 20.2 Progression tournament
+
+Seven models, 21 pairings, 30 games each, 630 games in 36.9 min
+(`benchmarks/tournament_progression.json`, `tools/tournament.py`):
+
+| player | overall | as White | as Black | colour gap |
+|---|---:|---:|---:|---:|
+| v21 | 0.736 | 0.867 | 0.606 | 0.261 |
+| lc0b_attn_ema | 0.728 | 0.872 | 0.583 | 0.289 |
+| v20 | 0.700 | 0.845 | 0.556 | 0.289 |
+| v19_B | 0.486 | 0.750 | 0.222 | 0.528 |
+| v19 | 0.389 | 0.572 | 0.205 | 0.367 |
+| v18_ramp | 0.244 | 0.406 | 0.083 | 0.322 |
+| v17 | 0.217 | 0.372 | 0.061 | 0.311 |
+
+**The ladder is monotonic with no inversions.** Black rose 0.061 -> 0.606, the
+largest single step landing on the attention+EMA change (v19_B -> v20). But
+**the colour gap stopped closing**: 0.528 -> 0.289 -> 0.261, so the last two
+promotions raised both colours together rather than fixing the asymmetry.
+v2-v5 could not be entered; they predate the current `DualHeadNet`.
+
+### 20.3 Leaf-parallel width settled
+
+Batch 16 vs batch 64, same net, 1600 sims, 200 games: **0.720 to batch 16 at
+6.22 SE** -- roughly 165 Elo (`benchmarks/match_fresh_start_v20_vs_fresh_start_v20_20260806_185310.json`).
+Wide in-tree batching is badly harmful here. An earlier recommendation of 64
+was made on *fill rate* (74-91% of the requested batch), which measures how
+full a batch is and says nothing about whether its leaves were well chosen.
+`benchmark.py`'s note that only a match settles it was correct.
+
+### 20.4 The unconverted-game finisher
+
+`tools/finish_unconverted.py` had never been run and was broken: it replayed
+each game forward from its opening record, but generation retains records
+side-selectively, so consecutive records are not consecutive plies and every
+game returned "unreplayable". It now resumes from the final record (`fen` plus
+`half` pin the position exactly) and runs 8-way parallel, verified
+byte-identical to serial output.
+
+Two counting corrections matter for reading the results. `extra_turns` counts
+`turn_count` increments and a full round increments it **twice**, so the flag
+is 2x the Black moves allowed. And deduplicating by file content was too weak:
+631 matching files hold 208 content-distinct games but only **143 distinct
+resume positions**, and resume state is the whole experiment.
+
+| run | Black | White | budget | rate |
+|---|---|---|---|---|
+| v20 | 1600 | 800 | 20 moves | 23.8% (34/143) |
+| v21 | 1600 | 800 | 80 moves | **39.9%** (57/143) |
+| v21 | 1600 | 1600 | 80 moves | **39.9%** (57/143) |
+
+Raising the budget was decisive: **24 of the 57 conversions needed more than 20
+Black moves**, out to 69, and mean depth went 5.5 -> 22.4. The symmetric run
+converted the same count and **46 of the same positions**, so doubling White's
+search changes which marginal positions fall, not how many. **~40% of the
+`-0.5` corpus is genuinely won against a full-strength opponent.**
+
+### 20.5 The thesis, tested
+
+The standing argument was that `-0.5` collides in the value target with real
+wins, and that supplying decisive conversions would move Black. Tested
+directly: 57 conversions stamped `value_weight`/`policy_weight` 4 (the
+sanctioned per-record lever -- `data_processor` bans source quotas by design),
+composed additively onto v21's exact five sources at 12.25% effective share,
+trained from v21 on the unchanged recipe.
+
+**It failed.** Offline, only epoch 1 improved (+0.0071) before five straight
+declines into early stopping. At the gate, every leg passed and the
+confirmation replay did not: **Black 0.350 < 0.400**, aggregate 0.4875
+(`benchmarks/gate_v22_conversions_w4_20260807_001755.json`). The symmetric
+finisher rules out the obvious excuse -- the conversions are wins against a
+full-strength White, not against a handicapped one.
+
+Honest status: the *data* claim survives (~40% of `-0.5` is mislabelled); the
+*training* claim does not. Better data on this axis is not what Black is short
+of. Remaining ambiguity -- weight too high, learning rate too hot -- is under
+test in the overnight sweep, and 22 of the 57 games still carry a competing
+`-0.5` original in the anchor, which weakens rather than reverses the
+correction.
+
+### 20.6 Infrastructure
+
+- `tools/tournament.py` -- round-robin with per-colour splits, resumable.
+- `tools/overnight_sweep.py` -- unattended train->gate->record queue,
+  resumable, deadline-aware, never touches a threshold.
+- `tools/queue_after.py` -- chains a run behind another by name.
+- `runs.py`: `status` went 13.7s -> 1.19s (one `tasklist` snapshot instead of
+  one spawn per record); added `stop` (tree-kill) and `prune` (archive).
+
+Two liveness bugs, both of which had already caused real damage. `runs.py`
+treated an **unqueryable recycled pid as alive** -- a finished run's pid became
+`svchost.exe` and read as RUNNING forever, which would have made `queue_after`
+wait for it indefinitely and silently skip a night's work. And plain `taskkill`
+on a `queue_after` wrapper **orphans the child it already launched**: an old
+finisher kept writing into the same output directory as its replacement for 24
+minutes, and a match fired early into a busy GPU.
+
+`gate.py` seeded legs `seed + 100*i` while `run_match` requires >=100,000
+separation. The current 40/40/20 legs are disjoint (verified: zero shared
+per-game seeds, bar and confirm 423,223 apart), but the margin was 81 and any
+leg past ~100 games would have overlapped -- two legs replaying the same
+openings read as independent agreement. The stride is now derived from leg
+size, with tests at both current and 400-game sizes.
+
+### 20.7 What the confirmation-leg pattern is
+
+Confirmation legs look systematically worse than first legs. Across all five
+gate runs holding both, confirm was worse on Black in **3 of 5, mean -0.035**,
+and `v19_B` went *up* +0.200 -- noise at ~0.08 SE per leg. The real mechanism
+is conditional selection: the confirmation only runs if the first legs pass, so
+every observed confirmation is conditioned on an above-threshold first leg and
+regresses to the mean. That is why it is the valid test, not a suspect one.
+
+*Updated 2026-08-07. Predecessor reports retire to git history per project
 convention.*
