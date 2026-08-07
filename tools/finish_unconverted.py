@@ -276,9 +276,14 @@ def main():
         with cf.ProcessPoolExecutor(max_workers=args.workers,
                                     initializer=_init_worker,
                                     initargs=init_args) as pool:
-            for done, outcome in enumerate(
-                    pool.map(_finish_one, tasks, chunksize=1), 1):
-                account(done, outcome)
+            # as_completed, not map: map yields in SUBMISSION order, so one slow
+            # game at the head blocks every finished result behind it and the
+            # log shows nothing for minutes while eight workers are busy. A
+            # game that fails burns the whole continuation budget, so the head
+            # of the queue is exactly where the slowest games are.
+            futures = [pool.submit(_finish_one, t) for t in tasks]
+            for done, future in enumerate(cf.as_completed(futures), 1):
+                account(done, future.result())
     else:
         _init_worker(*init_args)
         for done, task in enumerate(tasks, 1):
