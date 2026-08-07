@@ -1090,14 +1090,42 @@ assigns the same target to every position more than 60 plies from the end.
 Correct data cannot create a gradient a target does not have -- which is a
 coherent explanation for why 20.5 came back null.
 
-**What follows.** The moves-left head is exactly a progress signal, and it was
-rejected (section 19) on a single confirmation leg at Black 0.375 -- a coin
-flip at 20 games per side by 21.1. It was also masked on 25% of rows, **99.1%
-of them Black-leaning**: blind in precisely this bare-king region. The
-conversion corpus built in 20.4 processes with **zero** moves-left masking,
-because those games carry real `plies_to_end`. Moves-left trained on that
-corpus is the one combination never tried, and it is the only tested mechanism
-that addresses the measured defect. Untested as of this writing.
+### 22.1 Correction: the head is not flat, it is shallow
+
+The reading above was measured along a *shuffling* trajectory and does not
+support the causal claim made from it. If Black shuffles, the position barely
+changes, so the value barely changes -- flatness there is as easily the
+consequence of shuffling as its cause. The missing control was positions where
+progress genuinely happens.
+
+`tools/value_gradient_probe.py` supplies it, over 4,000 bare-king positions
+from `finished_conversions` whose true distance to capture is known:
+
+| plies to capture | n | mean value |
+|---:|---:|---:|
+| 0-5 | 156 | -0.6875 |
+| 6-15 | 260 | -0.5687 |
+| 16-30 | 390 | -0.5663 |
+| 31-60 | 743 | -0.5453 |
+| 61-120 | 1261 | -0.4652 |
+| 121+ | 1190 | -0.3882 |
+
+Spearman(plies_to_end, value) = **+0.42**, monotonic, spread **0.299**. **v21's
+value head does track distance to capture.** "The objective is flat in the won
+region" is withdrawn.
+
+What survives is narrower and better supported: within-bucket **sd is ~0.20**
+while adjacent buckets differ by only 0.02-0.09, so the progress trend is real
+but **shallow relative to positional noise**. MCTS compares candidate moves
+inside one position; a signal that weak is swamped there even though it is
+visible across thousands of positions. The defect is resolution, not absence.
+
+**What follows.** A moves-left head sharpens exactly this -- it was rejected
+(section 19) on a single confirmation leg at Black 0.375, a coin flip at 20
+games per side by 21.1, and it was masked on 25% of rows, 99.1% of them
+Black-leaning. The conversion corpus processes with **zero** masking. That arm
+is still worth running, but as "sharpen a weak gradient", not "create a missing
+one" -- and the probe above, not a gate, is the sensitive way to read it.
 
 *Updated 2026-08-07. Predecessor reports retire to git history per project
 convention.*
