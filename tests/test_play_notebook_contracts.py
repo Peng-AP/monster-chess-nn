@@ -31,18 +31,31 @@ class PlayNotebookContracts(unittest.TestCase):
             self.assertIn(f'importlib.reload({alias})', self.setup)
 
     def test_setup_discovers_candidate_and_rejected_models(self):
-        self.assertIn(
-            'os.path.join(MODEL_DIR, \"candidates\", \"*\", '
-            '\"best_value_net.pt\")',
-            self.setup,
-        )
+        self.assertIn('os.path.join(MODEL_DIR, \"candidates\", \"*\")',
+                      self.setup)
         self.assertIn(
             'os.path.join(MODEL_DIR, \"rejected\", \"*\", '
             '\"best_value_net.pt\")',
             self.setup,
         )
-        self.assertIn('candidate/{run_name}', self.setup)
         self.assertIn('rejected/{run_name}', self.setup)
+
+    def test_candidate_picker_offers_the_gate_scored_checkpoint(self):
+        """A candidate directory holds two different models.
+
+        `arena_selected.pt` is the epoch the arena chose and what the gates
+        scored; `best_value_net.pt` is the lowest-training-loss net and was
+        never gated. The picker globbed only the latter until 2026-08-06, so
+        selecting a candidate silently loaded the ungated model -- the owner
+        would have playtested something no gate ever measured.
+        """
+        self.assertIn('\"arena_selected.pt\"', self.setup)
+        # Both must be reachable, and the labels must say which is which.
+        self.assertIn('candidate [GATED] {run_name}', self.setup)
+        self.assertIn('candidate [{tag}] {run_name}', self.setup)
+        # The marker leads, because a dropdown truncates the tail.
+        self.assertLess(self.setup.index('candidate [GATED]'),
+                        self.setup.index('{run_name}\", arena'))
 
     def test_color_selector_is_beside_model_and_drives_standard_game(self):
         self.assertIn('_color_dropdown = widgets.Dropdown(', self.setup)

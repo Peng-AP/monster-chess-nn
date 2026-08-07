@@ -113,9 +113,19 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     try:
         iterator = pool.imap_unordered(_play, tasks)
         results = []
+        # A 200-game match at 1600 sims runs for the better part of an hour and
+        # used to print nothing until it was over, so "working" and "hung" were
+        # indistinguishable from the log. Report periodically instead.
+        step = max(1, games // 20)
         for _ in tasks:
             try:
                 results.append(iterator.next(timeout=stall_timeout))
+                done = len(results)
+                if done % step == 0 or done == games:
+                    rate = (time.time() - t0) / done
+                    print(f"  [{done}/{games}] {(time.time() - t0) / 60:.1f}m "
+                          f"elapsed, ~{rate * (games - done) / 60:.1f}m left",
+                          flush=True)
             except mp.TimeoutError as exc:
                 raise TimeoutError(
                     f"match made no progress for {stall_timeout:.0f}s "
