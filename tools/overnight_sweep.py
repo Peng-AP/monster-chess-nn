@@ -103,7 +103,17 @@ PHASE2 = [
     # another clean read on the only result that has passed.
     {"name": "capture_wdl_w003_seed45", "data": BASE, "extra": WDL + ["--seed", "45"]},
 ]
-ARMS = ARMS + PHASE2
+
+# Phase 3. The recipe's pooled effect after four seeds is +0.031 +- 0.039 --
+# underpowered rather than disproven. Three more seeds take the bar-leg pool
+# from 160 to 280 games (SE 0.0395 -> 0.0299), which is the difference between
+# "cannot tell" and a usable answer about the recipe.
+PHASE3 = [
+    {"name": "capture_wdl_w003_seed46", "data": BASE, "extra": WDL + ["--seed", "46"]},
+    {"name": "capture_wdl_w003_seed47", "data": BASE, "extra": WDL + ["--seed", "47"]},
+    {"name": "capture_wdl_w003_seed48", "data": BASE, "extra": WDL + ["--seed", "48"]},
+]
+ARMS = ARMS + PHASE2 + PHASE3
 
 # Measured 2026-08-07: arms run ~15 min (early stopping at epoch 6 plus a
 # ~7 min gate), not the 85 first guessed. Leaving the estimate high would make
