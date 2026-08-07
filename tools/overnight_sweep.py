@@ -74,7 +74,37 @@ ARMS = [
                "--black-policy-weight", "1.75"]},
 ]
 
-ESTIMATED_ARM_MINUTES = 85      # ~55 train + ~25 gate + slack
+# Phase 2. Arms ran ~15 min each rather than the estimated 85, leaving hours of
+# the window idle, so the spare capacity goes to the one thing that has to be
+# settled: capture_wdl_w003 passed by 0.34 SE, which is a pass, not a
+# measurement. Replicates on fresh seeds are worth more than any new idea --
+# a thin result that repeats three times is real, and one that does not is
+# noise we would otherwise have promoted.
+WDL = ["--aux-wdl-head", "--wdl-target", "capture_result",
+       "--wdl-loss-weight", "0.03"]
+PHASE2 = [
+    # Same recipe, different seed. The only question that matters right now.
+    {"name": "capture_wdl_w003_seed43", "data": BASE, "extra": WDL + ["--seed", "43"]},
+    {"name": "capture_wdl_w003_seed44", "data": BASE, "extra": WDL + ["--seed", "44"]},
+    # Is 0.03 a peak or a point on a flat line?
+    {"name": "capture_wdl_w001", "data": BASE,
+     "extra": ["--aux-wdl-head", "--wdl-target", "capture_result",
+               "--wdl-loss-weight", "0.01"]},
+    {"name": "capture_wdl_w006", "data": BASE,
+     "extra": ["--aux-wdl-head", "--wdl-target", "capture_result",
+               "--wdl-loss-weight", "0.06"]},
+    {"name": "capture_wdl_w010", "data": BASE,
+     "extra": ["--aux-wdl-head", "--wdl-target", "capture_result",
+               "--wdl-loss-weight", "0.10"]},
+    # The capture signal on the conversion corpus: both target the same gap.
+    {"name": "capture_wdl_w003_conversions_w1", "data": CONV_W1, "extra": WDL},
+]
+ARMS = ARMS + PHASE2
+
+# Measured 2026-08-07: arms run ~15 min (early stopping at epoch 6 plus a
+# ~7 min gate), not the 85 first guessed. Leaving the estimate high would make
+# the deadline guard refuse to start arms it had time for.
+ESTIMATED_ARM_MINUTES = 25
 
 
 def load_summary(path):
