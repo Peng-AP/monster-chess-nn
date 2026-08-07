@@ -115,8 +115,23 @@ def main():
     tiny = sum(1 for c in costs if abs(c) < 0.05)
     print(f"\n   near-ties (|cost| < 0.05) : {tiny}/{len(costs)}  {tiny/len(costs):.0%}")
     print(f"   real corrections (> 0.20) : {big}/{len(costs)}  {big/len(costs):.0%}")
-    print("\nMostly near-ties => distilling these corrections teaches little,")
-    print("and the 317 Elo lives in search's evaluation, not in its move choice.")
+    # Derive the verdict from the data. An earlier version printed "mostly
+    # near-ties" unconditionally and contradicted its own numbers on the first
+    # real run -- a canned conclusion is worse than none.
+    tie_frac, big_frac = tiny / len(costs), big / len(costs)
+    print()
+    if tie_frac > 0.5:
+        print("VERDICT: mostly near-ties -- distilling these corrections teaches")
+        print("little, and search's advantage lives in its evaluation rather than")
+        print("in its move choice, which a policy head cannot absorb.")
+    elif mean > 0.05:
+        print(f"VERDICT: the corrections are real (mean {mean:+.3f}, only "
+              f"{tie_frac:.0%} near-ties).")
+        print("There IS signal to distil, so a loop that fails to improve is")
+        print("failing at the training step, not for want of something to learn.")
+    else:
+        print(f"VERDICT: corrections are small on average (mean {mean:+.3f}) with "
+              f"{big_frac:.0%} large ones -- a thin tail carries the value.")
     print(f"\nelapsed {(time.time()-started)/60:.1f} min")
 
     out = args.out or os.path.join(
