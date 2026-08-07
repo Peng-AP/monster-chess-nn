@@ -72,13 +72,21 @@ def collect(prefix):
 # splits White 0.600 / Black 0.425. Judging a per-colour pool against 0.50 makes
 # every candidate look strong as White and weak as Black regardless of merit.
 # The overall (colour-balanced) score is the one that references 0.50.
-SELF_MATCH = {"white": 0.600, "black": 0.425}
+# (score, games_per_side). The reference is a MEASUREMENT, not a constant, and
+# carries its own error: v21's self-match was 80 games = 40 per side, SE 0.079.
+# Treating it as exact turned a 0.350 Black read into "z=-3.00, significantly
+# worse" when propagating both uncertainties gives z=-0.90 and no finding.
+SELF_MATCH = {"white": (0.600, 40), "black": (0.425, 40)}
+PARITY = (0.50, None)          # colour-balanced parity is exact by construction
 
 
-def band(pooled, se, reference=0.50):
+def band(pooled, se, reference=PARITY):
+    """z against a reference, propagating the reference's own error if it has one."""
     if se == 0:
         return "no games"
-    z = (pooled - reference) / se
+    ref, ref_n = reference if isinstance(reference, tuple) else (reference, None)
+    total_se = se if ref_n is None else math.sqrt(se ** 2 + 0.25 / ref_n)
+    z = (pooled - ref) / total_se
     if abs(z) < 1.0:
         return f"z={z:+.2f}  indistinguishable from parity"
     if abs(z) < 2.0:
@@ -132,7 +140,8 @@ def main():
             ref = SELF_MATCH[side]
             print(f"POOLED {args.leg} {side.upper():5} over {len(arms)} arms, "
                   f"{games} games: {pooled:.4f}  SE {se:.4f}  "
-                  f"vs v21 self-match {ref:.3f}   {band(pooled, se, ref)}")
+                  f"vs v21 self-match {ref[0]:.3f}+-{math.sqrt(0.25/ref[1]):.3f}   "
+                  f"{band(pooled, se, ref)}")
 
     print("-" * 76)
     if bar_games:
