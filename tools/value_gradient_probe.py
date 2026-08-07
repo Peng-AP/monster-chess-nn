@@ -101,8 +101,9 @@ def main():
     print(f"model      : {args.model}")
     print(f"positions  : {len(rows)} (bare White king, known distance to capture)")
     print(f"\nSpearman(plies_to_end, value) = {rho:+.4f}")
-    print("  a head with progress sense scores NEGATIVE here: fewer plies left")
-    print("  means closer to -1. Near zero is the section-22 defect.")
+    print("  POSITIVE is the healthy sign: fewer plies left -> value nearer -1,")
+    print("  so distance and value rise together. Near zero would mean the head")
+    print("  cannot tell a nearly-won position from a distant one.")
 
     print(f"\n{'plies to capture':>18} {'n':>6} {'mean value':>12} {'sd':>8}")
     buckets = [(0, 5), (6, 15), (16, 30), (31, 60), (61, 120), (121, 10 ** 6)]
