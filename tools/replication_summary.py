@@ -124,8 +124,7 @@ def main():
             allp, allg = bar_pts + con_pts, bar_games + con_games
             pooled_all = allp / allg
             se_all = math.sqrt(0.25 / allg)
-            print(f"
-POOLED BOTH LEGS, all {len(arms)} arms, {allg} games "
+            print(f"\nPOOLED BOTH LEGS, all {len(arms)} arms, {allg} games "
                   f"(unbiased: every arm played both)")
             print(f"   score {pooled_all:.4f}  SE {se_all:.4f}   "
                   f"{band(pooled_all, se_all)}")
