@@ -978,7 +978,57 @@ manufactures a White gain for every candidate.
 (z=+2.01) while their confirmations pooled to 0.4500 -- high on the first
 opening set, parity on the second. Both legs together is the estimate.
 
-### 21.4 Black-policy weighting
+### 21.4 The v21 self-match baseline was wrong, and it mattered
+
+Every per-colour judgement references the incumbent's self-match, because an
+identical model does not score 0.50 per colour (21.3). That reference had been
+measured on **80 games**. Re-measured at 800:
+
+| | White | Black | colour gap |
+|---|---:|---:|---:|
+| 80 games (used at promotion) | 0.600 | 0.425 | 0.175 |
+| **800 games (2026-08-07)** | **0.6675** | **0.3513** | **0.316** |
+
+Black was wrong by **0.074**, near two standard errors, and three things follow.
+
+**The v21 promotion's headline supporting claim does not survive.** The manifest
+records a gap narrowing from v20's 0.3875 to 0.175 -- called at the time "the
+most encouraging signal available". v21's true gap is 0.316, and v20's 0.3875
+was also an 80-game estimate. The narrowing was mostly noise. The promotion
+stands (gate cleared on disjoint seeds, owner playtested); this one supporting
+figure should not be cited. The manifest is annotated in place with the
+originals preserved.
+
+**A three-sigma scare evaporated.** The seed-42 checkpoint's high-power Black
+score of 0.3500 read z=-3.00 "significantly worse" against the old reference;
+against the true 0.3513 it is **z=-0.04**, exactly at parity. Treating a
+measured reference as exact can manufacture a three-sigma result in either
+direction. `tools/replication_summary.py` now propagates reference error.
+
+**Per-colour comparisons are confounded by opening set.** Candidate bar legs run
+on gate seed 20260801; the self-match ran on 27182818. Pooled per-colour reads
+flip sign depending on which baseline they reference. **Only the
+colour-balanced overall score of a direct match is reference-free** -- colours
+alternate within the same games, so equal strength gives exactly 0.50 by
+construction. Future comparisons should measure candidate and baseline on
+identical opening seeds.
+
+### 21.5 The decisive measurement
+
+`capture_wdl_w003` (seed 42, the arm that passed) vs v21, **800 games**:
+
+| | score | SE | |
+|---|---:|---:|---|
+| overall | **0.4800** | 0.0177 | 95% CI [0.445, 0.515] |
+| White | 0.6100 | 0.0250 | 194-106-100 |
+| Black | 0.3500 | 0.0250 | 83-203-114 |
+
+**Not better than v21.** And the cleanest confirmation of 21.1 in the whole
+run: this checkpoint read Black **0.425 / 0.450** across its two 40-game gate
+legs and **0.3500** over 400 -- same model, same opponent. It passed the gate
+on a lucky Black sample.
+
+### 21.6 Black-policy weighting
 
 `--black-policy-weight 1.75` (`BLACK_WEIGHT_BALANCED`, never previously used):
 FAIL at 0.4875 on the bar leg. Black stayed at 0.425, exactly v21's self-match
