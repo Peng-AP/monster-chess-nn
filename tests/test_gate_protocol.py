@@ -113,8 +113,12 @@ class TestTheBar(unittest.TestCase):
         # Replaying the same seeds would confirm nothing -- it is the sampled
         # opening set that moved the same matchup 0.575 -> 0.725.
         self.assertNotEqual(gate.CONFIRM_SEED_OFFSET, 0)
+        # Compare against the stride actually used, not a literal 100: the
+        # stride is now derived from leg size, and a hardcoded one here would
+        # keep passing while testing a formula the gate no longer runs.
+        stride = max(100, 2 * (max(g for _n, _o, g in gate.FULL_LEGS) + 1000))
         self.assertNotIn(gate.CONFIRM_SEED_OFFSET,
-                         [100 * i for i in range(len(gate.FULL_LEGS))])
+                         [stride * i for i in range(len(gate.FULL_LEGS))])
 
 
 class TestFailures(unittest.TestCase):
@@ -282,3 +286,42 @@ class TestRehearsalCannotPass(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLegSeedIsolation(unittest.TestCase):
+    """Legs must draw disjoint games, at any leg size.
+
+    run_match derives per-game seeds as leg_seed+i (White) and leg_seed+1000+i
+    (Black). A fixed stride of 100 kept today's 40/40/20 legs disjoint by a
+    margin of 81, but would have silently overlapped had a leg grown past ~100
+    games -- two legs replaying the same openings read as independent
+    agreement, which is the one thing the confirmation leg exists to prevent.
+    """
+
+    @staticmethod
+    def _game_seeds(base, games):
+        n_white = games // 2
+        n_black = games - n_white
+        return (set(base + i for i in range(n_white))
+                | set(base + 1000 + i for i in range(n_black)))
+
+    def _assert_disjoint(self, spec):
+        stride = max(100, 2 * (max(g for _n, _o, g in spec) + 1000))
+        seeds = {name: self._game_seeds(gate.SEED_BASE_FOR_TEST + stride * i, g)
+                 for i, (name, _o, g) in enumerate(spec)}
+        confirm = self._game_seeds(
+            gate.SEED_BASE_FOR_TEST + gate.CONFIRM_SEED_OFFSET, spec[0][2])
+        seeds[gate.CONFIRM_LEG] = confirm
+        names = list(seeds)
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                self.assertEqual(
+                    seeds[names[i]] & seeds[names[j]], set(),
+                    f"{names[i]} and {names[j]} share per-game seeds")
+
+    def test_current_legs_are_disjoint(self):
+        self._assert_disjoint(gate.FULL_LEGS)
+
+    def test_legs_stay_disjoint_when_game_counts_grow(self):
+        big = [(name, opp, 400) for name, opp, _g in gate.FULL_LEGS]
+        self._assert_disjoint(big)

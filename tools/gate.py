@@ -73,6 +73,7 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # the bar leg on a different opening seed and must clear it twice.
 CONFIRM_LEG = "vs_v21_confirm"
 CONFIRM_SEED_OFFSET = 424242
+SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
 # (leg name, opponent path or None for the heuristic anchor, games)
 FULL_LEGS = [
@@ -170,8 +171,16 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
               f"B={legs[name]['a_as_black']['score']} "
               f"({time.time() - t0:.0f}s)", flush=True)
 
+    # Leg seeds must not overlap. run_match draws per-game seeds at
+    # leg_seed + i (White) and leg_seed + 1000 + i (Black), so a stride of 100
+    # is only safe while legs stay small: at ~100 games a leg's White seeds
+    # reach the next leg's base, and past that its Black seeds collide too.
+    # Today's legs are 40/40/20 and the sets are disjoint, but the margin is 81
+    # -- small enough that raising a leg's game count would silently make two
+    # legs replay the same openings and look like independent agreement.
+    leg_stride = max(100, 2 * (max(games for _n, _o, games in spec) + 1000))
     for i, (name, opponent, games) in enumerate(spec):
-        play(name, opponent, games, seed + 100 * i)
+        play(name, opponent, games, seed + leg_stride * i)
 
     verdict, failures, totals = evaluate_legs(legs)
 
