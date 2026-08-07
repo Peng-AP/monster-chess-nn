@@ -274,10 +274,21 @@ class TestRehearsalCannotPass(unittest.TestCase):
         for name in full:
             self.assertLess(quick[name], full[name], name)
 
-    def test_full_protocol_is_twenty_per_side_against_both_models(self):
+    def test_the_bar_leg_carries_enough_games_to_decide(self):
+        """The deciding leg must resolve better than the noise it is judging.
+
+        At 40 games the per-side floor was checked on 20 (SE 0.112), and on
+        2026-08-07 three candidates cleared this gate and then scored 0.4800,
+        0.4825 and 0.5019 over 800 games each -- three false positives from
+        three passes (REPORT 23). 200 games puts 100 per side, SE 0.05. The
+        ramp and anchor legs stay small on purpose: they are floor checks and
+        have never been the deciding leg.
+        """
         games = {n: g for n, _o, g in gate.FULL_LEGS}
-        self.assertEqual(games[gate.BAR], 40)
+        self.assertGreaterEqual(games[gate.BAR], 200)
         self.assertEqual(games["vs_ramp"], 40)
+        self.assertGreater(games[gate.BAR], games["vs_ramp"],
+                           "the deciding leg must not be the smallest sample")
 
     def test_rehearsal_verdict_is_never_pass(self):
         source = (ROOT / "tools" / "gate.py").read_text(encoding="utf-8")

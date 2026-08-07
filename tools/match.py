@@ -74,6 +74,38 @@ def _play(task):
     return (result if a_is_white else -result), plies, a_is_white
 
 
+def _write_checkpoint(path, results, done, games, t0):
+    """Best-effort partial artifact. Never let a checkpoint failure kill a run."""
+    try:
+        w, b, score = _aggregate(results)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"partial": True, "games_requested": games,
+                       "games_played": done, "a_score": round(score, 4),
+                       "a_as_white": w, "a_as_black": b,
+                       "elapsed_sec": round(time.time() - t0, 1),
+                       "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")},
+                      fh, indent=2)
+        os.replace(tmp, path)
+    except Exception as exc:      # a partial write must never abort the match
+        print(f"  (checkpoint failed: {exc})", flush=True)
+
+
+def _aggregate(results):
+    """Fold finished games into (white, black, score). Used for the final
+    artifact and for every partial checkpoint, so a resumed read of a killed
+    run is the same shape as a completed one."""
+    from benchmark import summarize_side
+    white_games = [(r, p) for r, p, aw in results if aw]
+    black_games = [(r, p) for r, p, aw in results if not aw]
+    w = summarize_side(white_games)
+    b = summarize_side(black_games)
+    played = len(results)
+    score = ((w["wins"] + b["wins"] + 0.5 * (w["draws"] + b["draws"])) / played
+             if played else 0.0)
+    return w, b, score
+
+
 def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               workers=None, sims_b=None, batch_a=None, batch_b=None,
               engine=None, c_puct_a=C_PUCT, c_puct_b=C_PUCT,
@@ -81,7 +113,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               fpu_reduction_b=FPU_REDUCTION,
               policy_temperature_a=POLICY_TEMPERATURE,
               policy_temperature_b=POLICY_TEMPERATURE,
-              stall_timeout=600.0):
+              stall_timeout=600.0, checkpoint_path=None):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -126,6 +158,13 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
                     print(f"  [{done}/{games}] {(time.time() - t0) / 60:.1f}m "
                           f"elapsed, ~{rate * (games - done) / 60:.1f}m left",
                           flush=True)
+                    # Results lived only in this process's memory until the
+                    # final write, so killing a 400-game match at game 399
+                    # discarded every one of them. Checkpoint the aggregate so
+                    # a long run is always salvageable.
+                    if checkpoint_path:
+                        _write_checkpoint(checkpoint_path, results, done, games,
+                                          t0)
             except mp.TimeoutError as exc:
                 raise TimeoutError(
                     f"match made no progress for {stall_timeout:.0f}s "
@@ -138,12 +177,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         pool.close()
         pool.join()
 
-    from benchmark import summarize_side
-    white_games = [(r, p) for r, p, aw in results if aw]
-    black_games = [(r, p) for r, p, aw in results if not aw]
-    w = summarize_side(white_games)
-    b = summarize_side(black_games)
-    score = (w["wins"] + b["wins"] + 0.5 * (w["draws"] + b["draws"])) / games
+    w, b, score = _aggregate(results)
 
     name_a = os.path.basename(os.path.dirname(model_a)) or "model-a"
     name_b = (os.path.basename(os.path.dirname(model_b))
@@ -169,7 +203,24 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         "a_as_white": w, "a_as_black": b,
         "elapsed_sec": round(time.time() - t0, 1),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "_artifact_path": checkpoint_path,
     }
+
+
+def _artifact_path(args):
+    """Where this match will be written -- decided BEFORE the first game so
+    partial checkpoints and the final artifact share one path."""
+    if args.report_path:
+        path = os.path.abspath(args.report_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
+    os.makedirs(args.out_dir, exist_ok=True)
+    name_a = os.path.basename(os.path.dirname(args.model_a)) or "model-a"
+    name_b = (os.path.basename(os.path.dirname(args.model_b))
+              if args.model_b else "heuristic")
+    return os.path.join(
+        args.out_dir,
+        f"match_{name_a}_vs_{name_b}_{time.strftime('%Y%m%d_%H%M%S')}.json")
 
 
 def main():
@@ -220,16 +271,10 @@ def main():
                     fpu_reduction_b=args.fpu_reduction_b,
                     policy_temperature_a=args.policy_temperature_a,
                     policy_temperature_b=args.policy_temperature_b,
-                    stall_timeout=args.stall_timeout)
-    name_a, name_b = out["name_a"], out["name_b"]
-
-    if args.report_path:
-        path = os.path.abspath(args.report_path)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-    else:
-        os.makedirs(args.out_dir, exist_ok=True)
-        path = os.path.join(args.out_dir,
-                            f"match_{name_a}_vs_{name_b}_{time.strftime('%Y%m%d_%H%M%S')}.json")
+                    stall_timeout=args.stall_timeout,
+                    checkpoint_path=_artifact_path(args))
+    path = out["_artifact_path"]
+    out.pop("_artifact_path", None)
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(json.dumps(out, indent=2))

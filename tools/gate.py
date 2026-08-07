@@ -76,8 +76,17 @@ CONFIRM_SEED_OFFSET = 424242
 SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
 # (leg name, opponent path or None for the heuristic anchor, games)
+#
+# 2026-08-07: the bar leg went 40 -> 200 games. At 40 the per-side floor was
+# checked on 20 games (SE 0.112), and on that day THREE candidates cleared the
+# gate and then scored 0.4800 / 0.4825 / 0.5019 over 800 games each -- three
+# false positives out of three passes (REPORT 23). At 200 the bar leg's
+# per-side sample is 100 games (SE 0.05) and the confirmation replay matches
+# it. No threshold moved; only the evidence behind them. The ramp and anchor
+# legs stay small: they are floor checks that have never been the deciding
+# leg, and enlarging them would triple gate cost for nothing.
 FULL_LEGS = [
-    ("vs_v21", BAR_MODEL, 40),
+    ("vs_v21", BAR_MODEL, 200),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]

@@ -60,7 +60,74 @@ def _uses_heuristic_values(evaluator):
         hasattr(evaluator, "model") and hasattr(evaluator, "device"))
 
 
-def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE):
+# A batch-16 forward costs ~4.7 ms eager and ~0.5 ms replayed from a CUDA
+# graph -- 9.4x, measured 2026-08-07 on an idle 5060 Ti. Nearly all of the
+# eager cost is kernel-launch and dispatch overhead, not arithmetic: the same
+# call takes 4.7 ms at batch 1 and 4.3 ms at batch 256. Capturing it once and
+# replaying removes that overhead.
+#
+# This is why the cross-game inference server is not the answer: moving one
+# batch-16 request and its 256 KB reply through an mp.Queue costs 0.62 ms, more
+# than a graphed forward takes in total.
+GRAPH_ENV = "MONSTER_CUDA_GRAPH"
+
+
+def _graph_enabled():
+    value = os.environ.get(GRAPH_ENV, "1").strip().lower()
+    return value not in ("0", "false", "no", "off")
+
+
+class _GraphedForward:
+    """Replay captured forward passes -- one graph per batch size, no padding.
+
+    Graph capture needs a fixed shape, but the search submits variable batches
+    (the collection loop stops early when the frontier is exhausted). The first
+    implementation padded every call to `width`, which was 2.67x faster and
+    *changed move selection*: a partial batch run as padded-16 hits different
+    cuDNN kernels than a true batch-n, and in fp16 that shifts the largest
+    policy logits by a few ULPs -- enough to flip a move occasionally and
+    desynchronise a game.
+
+    Capturing one graph per distinct n keeps every call shaped exactly as the
+    eager path would have shaped it, so results stay bit-comparable with every
+    pre-graph measurement. Graphs are captured lazily and cached; at batch 16
+    that is at most 16 of them, a few MB of static buffers.
+    """
+
+    def __init__(self, torch, model, device, width, channels, half):
+        self.torch, self.model, self.device = torch, model, device
+        self.width, self.channels, self.half = width, channels, half
+        self._graphs = {}
+
+    def _capture(self, n):
+        torch = self.torch
+        static_in = torch.zeros(
+            (n, self.channels, 8, 8), device=self.device,
+            dtype=torch.half if self.half else torch.float32)
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream), torch.no_grad():
+            for _ in range(3):          # warm-up is required before capture
+                self.model(static_in)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph), torch.no_grad():
+            out_v, out_p = self.model(static_in)
+        return static_in, graph, out_v, out_p
+
+    def __call__(self, tensor, n):
+        entry = self._graphs.get(n)
+        if entry is None:
+            entry = self._capture(n)
+            self._graphs[n] = entry
+        static_in, graph, out_v, out_p = entry
+        static_in.copy_(tensor)
+        graph.replay()
+        return out_v, out_p
+
+
+def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
+                graph_width=None):
     """(eval_fn, input_channels) for `Tree.run_batched_puct`.
 
     Values come back in the SIDE-TO-MOVE perspective, exactly as the model
@@ -71,14 +138,31 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE):
 
     torch = nn_evaluator.torch
     channels = nn_evaluator.input_channels
+    half = bool(getattr(nn_evaluator, "_half", False))
+    device = nn_evaluator.device
+
+    graphed = None
+    if graph_width and device.type == "cuda" and _graph_enabled():
+        try:
+            graphed = _GraphedForward(torch, nn_evaluator.model, device,
+                                      int(graph_width), channels, half)
+        except Exception as exc:
+            # Capture can fail on driver/allocator quirks. Falling back to the
+            # eager path is a slowdown, never a wrong answer.
+            print(f"[native_mcts] CUDA graph capture unavailable ({exc}); "
+                  f"using eager forwards", flush=True)
+            graphed = None
 
     def eval_fn(buf, n, chans):
         array = np.frombuffer(buf, dtype=np.float32).reshape(n, chans, 8, 8)
-        tensor = torch.from_numpy(array.copy()).to(nn_evaluator.device)
-        if getattr(nn_evaluator, "_half", False):
+        tensor = torch.from_numpy(array.copy()).to(device)
+        if half:
             tensor = tensor.half()
-        with torch.no_grad():
-            value, policy = nn_evaluator.model(tensor)
+        if graphed is not None and n <= graphed.width:
+            value, policy = graphed(tensor, n)
+        else:
+            with torch.no_grad():
+                value, policy = nn_evaluator.model(tensor)
         policy = policy.reshape(n, -1).float() / policy_temperature
         return (value.reshape(-1).float().cpu().numpy().astype(np.float32).tobytes(),
                 policy.cpu().numpy().astype(np.float32).tobytes())
@@ -156,7 +240,8 @@ class NativeMCTS:
         self._heuristic_values = _uses_heuristic_values(eval_fn)
         if nn is not None:
             self._bridge, self._channels = make_bridge(
-                nn, policy_temperature=self.policy_temperature)
+                nn, policy_temperature=self.policy_temperature,
+                graph_width=self.batch_size)
         else:
             self._bridge, self._channels = None, None
 
