@@ -76,7 +76,12 @@ def collect(prefix):
 # carries its own error: v21's self-match was 80 games = 40 per side, SE 0.079.
 # Treating it as exact turned a 0.350 Black read into "z=-3.00, significantly
 # worse" when propagating both uncertainties gives z=-0.90 and no finding.
-SELF_MATCH = {"white": (0.600, 40), "black": (0.425, 40)}
+# Re-measured 2026-08-07 at 800 games (400/side): White 0.6675, Black 0.3513,
+# colour gap 0.316. The previous 80-game figures (0.600 / 0.425, gap 0.175)
+# were wrong by 0.14 on Black -- nearly 2 SE -- and that error propagated into
+# v21's promotion manifest as a "gap narrowing" that does not survive
+# measurement. Artifact: match_fresh_start_v21_vs_fresh_start_v21_20260807.
+SELF_MATCH = {"white": (0.6675, 400), "black": (0.3513, 400)}
 PARITY = (0.50, None)          # colour-balanced parity is exact by construction
 
 
