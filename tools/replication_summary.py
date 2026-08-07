@@ -33,9 +33,19 @@ def points(block):
     return block["wins"] + 0.5 * block["draws"], block["games"]
 
 
-def leg_points(leg):
+def leg_points(leg, side=None):
+    """Points and games for a leg, optionally restricted to one colour.
+
+    Black is worth pooling separately because it is what actually binds: the
+    per-side floor is checked on HALF a leg (20 games at SE 0.112), so a
+    candidate genuinely better than the incumbent on Black still fails roughly
+    half the time on sampling noise. Pass/fail across seeds is therefore close
+    to uninformative; the pooled Black rate is the signal.
+    """
     if not leg:
         return 0.0, 0
+    if side:
+        return points(leg.get(f"a_as_{side}"))
     pw, gw = points(leg.get("a_as_white"))
     pb, gb = points(leg.get("a_as_black"))
     return pw + pb, gw + gb
@@ -57,10 +67,18 @@ def collect(prefix):
     return by_arm
 
 
-def band(pooled, se):
+# A model identical to the incumbent does NOT score 0.50 per colour against it:
+# White is structurally advantaged in Monster Chess, so v21's own self-match
+# splits White 0.600 / Black 0.425. Judging a per-colour pool against 0.50 makes
+# every candidate look strong as White and weak as Black regardless of merit.
+# The overall (colour-balanced) score is the one that references 0.50.
+SELF_MATCH = {"white": 0.600, "black": 0.425}
+
+
+def band(pooled, se, reference=0.50):
     if se == 0:
         return "no games"
-    z = (pooled - 0.50) / se
+    z = (pooled - reference) / se
     if abs(z) < 1.0:
         return f"z={z:+.2f}  indistinguishable from parity"
     if abs(z) < 2.0:
@@ -98,6 +116,23 @@ def main():
               f"{(b or {}).get('a_score', float('nan')):8.4f} "
               f"{(c or {}).get('a_score', float('nan')):9.4f} "
               f"{(c or {}).get('a_as_black', {}).get('score', float('nan')):8.3f}")
+
+    # Per-colour pooling across every arm's bar leg -- the unbiased read on the
+    # constraint that actually decides these gates.
+    print("-" * 76)
+    for side in ("white", "black"):
+        pts = games = 0
+        for d in arms.values():
+            p_, g_ = leg_points((d.get("legs") or {}).get(args.leg), side)
+            pts += p_
+            games += g_
+        if games:
+            pooled = pts / games
+            se = math.sqrt(0.25 / games)
+            ref = SELF_MATCH[side]
+            print(f"POOLED {args.leg} {side.upper():5} over {len(arms)} arms, "
+                  f"{games} games: {pooled:.4f}  SE {se:.4f}  "
+                  f"vs v21 self-match {ref:.3f}   {band(pooled, se, ref)}")
 
     print("-" * 76)
     if bar_games:
