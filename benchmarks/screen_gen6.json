@@ -1,0 +1,1310 @@
+{
+  "experiment": "bootstrap_checkpoint_arena_screen",
+  "binding": false,
+  "incumbent": "models/candidates/scratch_v21corpus/best_value_net.pt",
+  "incumbent_sha256": "8e69beb64652e45157b6ef7c146aa49c848cd8509118b71be29e80e7c1495d64",
+  "games": 200,
+  "sims": 400,
+  "seed": 20260807,
+  "probe": {
+    "games": 40,
+    "sims": 400,
+    "seed": 20260806,
+    "calibration": {
+      "match": "scratch_v21corpus vs scratch_v21corpus",
+      "name_a": "scratch_v21corpus",
+      "name_b": "scratch_v21corpus",
+      "games": 40,
+      "sims": 400,
+      "sims_b": 400,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 20260806,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.5375,
+      "a_as_white": {
+        "games": 20,
+        "wins": 9,
+        "losses": 3,
+        "draws": 8,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 8,
+        "score": 0.65,
+        "mean_plies": 122.85,
+        "mean_plies_when_won": 39.33,
+        "mean_plies_when_lost": 101.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 5,
+        "losses": 8,
+        "draws": 7,
+        "time_leaning_wins": 7,
+        "time_leaning_losses": 0,
+        "score": 0.425,
+        "mean_plies": 116.9,
+        "mean_plies_when_won": 71.4,
+        "mean_plies_when_lost": 50.75
+      },
+      "elapsed_sec": 66.4,
+      "timestamp": "2026-08-08T00:18:25",
+      "_artifact_path": null
+    },
+    "results": [
+      {
+        "deltas": {
+          "white": -0.325,
+          "black": -0.425,
+          "aggregate": -0.375
+        },
+        "minimum_color_delta": -0.425,
+        "passes_both_colors": false,
+        "name": "selected_epoch_001",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_001.pt",
+        "checkpoint_sha256": "e47a13d0f7fc7a43715e54722cebe8e4b77ac5785ed1e8500cf7bef8836884dd",
+        "weights_sha256": "4858b9ea76f03dfac01aa3abb99fb6d8515cea335ac2918d39caccf86386632d",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.1625,
+          "a_as_white": {
+            "games": 20,
+            "wins": 0,
+            "losses": 7,
+            "draws": 13,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 13,
+            "score": 0.325,
+            "mean_plies": 175.8,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 84.43
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "draws": 0,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 0,
+            "score": 0.0,
+            "mean_plies": 24.15,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 24.15
+          },
+          "elapsed_sec": 56.0,
+          "timestamp": "2026-08-08T00:19:21",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.5,
+          "black": -0.425,
+          "aggregate": -0.46249999999999997
+        },
+        "minimum_color_delta": -0.5,
+        "passes_both_colors": false,
+        "name": "selected_epoch_002",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_002.pt",
+        "checkpoint_sha256": "66c3677f075ca448be2565e76f9ef502c0f62c604fd3ef650456f83c2236e0e4",
+        "weights_sha256": "9ef350c012e07450899a6c20661b08fcb61929a2b5c8fdd4b470519803d39922",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.075,
+          "a_as_white": {
+            "games": 20,
+            "wins": 0,
+            "losses": 14,
+            "draws": 6,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 5,
+            "score": 0.15,
+            "mean_plies": 118.35,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 72.64
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 0,
+            "losses": 20,
+            "draws": 0,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 0,
+            "score": 0.0,
+            "mean_plies": 32.9,
+            "mean_plies_when_won": null,
+            "mean_plies_when_lost": 32.9
+          },
+          "elapsed_sec": 43.0,
+          "timestamp": "2026-08-08T00:20:04",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.25,
+          "black": -0.19999999999999998,
+          "aggregate": -0.22499999999999998
+        },
+        "minimum_color_delta": -0.25,
+        "passes_both_colors": false,
+        "name": "selected_epoch_003",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_003.pt",
+        "checkpoint_sha256": "86abf59c7a3ec1aaa19233d37eb66b64dc997e80caa26aba1985d2060fbf24e8",
+        "weights_sha256": "999824bd1d6c940806178713e281d8eaff0685ccfb8a3cad7b4c5c11f43a8fbc",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.3125,
+          "a_as_white": {
+            "games": 20,
+            "wins": 4,
+            "losses": 8,
+            "draws": 8,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 8,
+            "score": 0.4,
+            "mean_plies": 131.35,
+            "mean_plies_when_won": 35.75,
+            "mean_plies_when_lost": 85.5
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 3,
+            "losses": 14,
+            "draws": 3,
+            "time_leaning_wins": 2,
+            "time_leaning_losses": 1,
+            "score": 0.225,
+            "mean_plies": 71.15,
+            "mean_plies_when_won": 83.0,
+            "mean_plies_when_lost": 35.64
+          },
+          "elapsed_sec": 56.3,
+          "timestamp": "2026-08-08T00:21:00",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": 0.0,
+          "black": 0.04999999999999999,
+          "aggregate": 0.025000000000000022
+        },
+        "minimum_color_delta": 0.0,
+        "passes_both_colors": false,
+        "name": "selected_epoch_004",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_004.pt",
+        "checkpoint_sha256": "1e16ab9e6c1e8ef4356d1a4a5b33481129f47a8d27e7238351eadb4baad5e4f7",
+        "weights_sha256": "10154f7c6615a0197deda370757e5f87501213f733bbb2afc3de58f917df9b88",
+        "offline_selected": true,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 20,
+            "wins": 10,
+            "losses": 4,
+            "draws": 6,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 6,
+            "score": 0.65,
+            "mean_plies": 105.55,
+            "mean_plies_when_won": 35.0,
+            "mean_plies_when_lost": 102.75
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 8,
+            "losses": 9,
+            "draws": 3,
+            "time_leaning_wins": 3,
+            "time_leaning_losses": 0,
+            "score": 0.475,
+            "mean_plies": 95.55,
+            "mean_plies_when_won": 92.62,
+            "mean_plies_when_lost": 55.0
+          },
+          "elapsed_sec": 53.3,
+          "timestamp": "2026-08-08T00:21:53",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.050000000000000044,
+          "black": 0.10000000000000003,
+          "aggregate": 0.025000000000000022
+        },
+        "minimum_color_delta": -0.050000000000000044,
+        "passes_both_colors": false,
+        "name": "selected_epoch_005",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_005.pt",
+        "checkpoint_sha256": "4a3c89b67d0defb24fb097fb67ecb28989a1218a8a691746f4bda6f0388f1cd0",
+        "weights_sha256": "1fcdd2b13b78ce613cb45976f870963ea7140f18cdfe61755574b5ae1b59d1e9",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5625,
+          "a_as_white": {
+            "games": 20,
+            "wins": 9,
+            "losses": 5,
+            "draws": 6,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 6,
+            "score": 0.6,
+            "mean_plies": 108.3,
+            "mean_plies_when_won": 40.67,
+            "mean_plies_when_lost": 90.0
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 8,
+            "losses": 7,
+            "draws": 5,
+            "time_leaning_wins": 5,
+            "time_leaning_losses": 0,
+            "score": 0.525,
+            "mean_plies": 105.1,
+            "mean_plies_when_won": 90.75,
+            "mean_plies_when_lost": 35.86
+          },
+          "elapsed_sec": 56.9,
+          "timestamp": "2026-08-08T00:22:50",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.025000000000000022,
+          "black": 0.0,
+          "aggregate": -0.012499999999999956
+        },
+        "minimum_color_delta": -0.025000000000000022,
+        "passes_both_colors": false,
+        "name": "selected_epoch_006",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_006.pt",
+        "checkpoint_sha256": "ce019f57000a44b9bd8263ca1ddf9358a601e2c3ff16631c81f3c9430368924b",
+        "weights_sha256": "2b18ba2dc268553326da23eed21f80c39092fcb5ebd410e66ca99c577371f13c",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.525,
+          "a_as_white": {
+            "games": 20,
+            "wins": 9,
+            "losses": 4,
+            "draws": 7,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 7,
+            "score": 0.625,
+            "mean_plies": 112.5,
+            "mean_plies_when_won": 36.33,
+            "mean_plies_when_lost": 87.0
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 6,
+            "losses": 9,
+            "draws": 5,
+            "time_leaning_wins": 5,
+            "time_leaning_losses": 0,
+            "score": 0.425,
+            "mean_plies": 99.6,
+            "mean_plies_when_won": 92.5,
+            "mean_plies_when_lost": 34.67
+          },
+          "elapsed_sec": 56.2,
+          "timestamp": "2026-08-08T00:23:47",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.09999999999999998,
+          "black": 0.0,
+          "aggregate": -0.04999999999999999
+        },
+        "minimum_color_delta": -0.09999999999999998,
+        "passes_both_colors": false,
+        "name": "selected_epoch_007",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_007.pt",
+        "checkpoint_sha256": "ffd4c7e160ab92c4cd136b27b8c14567b46942bd9c17684e5a4160740f36e846",
+        "weights_sha256": "cd76077ab0b9f9281b8b59f33a0f8c01e5ad2788795c46ab79317ad0c835b853",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.4875,
+          "a_as_white": {
+            "games": 20,
+            "wins": 8,
+            "losses": 6,
+            "draws": 6,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 6,
+            "score": 0.55,
+            "mean_plies": 111.35,
+            "mean_plies_when_won": 39.5,
+            "mean_plies_when_lost": 93.5
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 7,
+            "losses": 10,
+            "draws": 3,
+            "time_leaning_wins": 3,
+            "time_leaning_losses": 0,
+            "score": 0.425,
+            "mean_plies": 89.5,
+            "mean_plies_when_won": 100.29,
+            "mean_plies_when_lost": 41.3
+          },
+          "elapsed_sec": 52.0,
+          "timestamp": "2026-08-08T00:24:39",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.2,
+          "black": 0.07500000000000001,
+          "aggregate": -0.0625
+        },
+        "minimum_color_delta": -0.2,
+        "passes_both_colors": false,
+        "name": "selected_epoch_008",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_008.pt",
+        "checkpoint_sha256": "99401e09ba67fa56f67881ba61f72c6ddc4f67751341221cf3fb2b80338c400b",
+        "weights_sha256": "372168f4d10f81519d60f4e89c7759ad0798f84a98dc26447ca998822dcab914",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.475,
+          "a_as_white": {
+            "games": 20,
+            "wins": 6,
+            "losses": 8,
+            "draws": 6,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 6,
+            "score": 0.45,
+            "mean_plies": 115.8,
+            "mean_plies_when_won": 42.5,
+            "mean_plies_when_lost": 88.88
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 8,
+            "losses": 8,
+            "draws": 4,
+            "time_leaning_wins": 4,
+            "time_leaning_losses": 0,
+            "score": 0.5,
+            "mean_plies": 105.6,
+            "mean_plies_when_won": 105.38,
+            "mean_plies_when_lost": 46.12
+          },
+          "elapsed_sec": 56.6,
+          "timestamp": "2026-08-08T00:25:35",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.2,
+          "black": 0.10000000000000003,
+          "aggregate": -0.04999999999999999
+        },
+        "minimum_color_delta": -0.2,
+        "passes_both_colors": false,
+        "name": "selected_epoch_009",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_009.pt",
+        "checkpoint_sha256": "8ff5e33bc7efdcefa3d448769f4e97f0bbde2679a8e553b885b622fbcf995472",
+        "weights_sha256": "ec04c30452723e88f69e799240227e3008e37eb2444c95d220b30ddf0533ab7b",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.4875,
+          "a_as_white": {
+            "games": 20,
+            "wins": 7,
+            "losses": 9,
+            "draws": 4,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 4,
+            "score": 0.45,
+            "mean_plies": 96.55,
+            "mean_plies_when_won": 31.14,
+            "mean_plies_when_lost": 90.33
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 8,
+            "losses": 7,
+            "draws": 5,
+            "time_leaning_wins": 5,
+            "time_leaning_losses": 0,
+            "score": 0.525,
+            "mean_plies": 110.8,
+            "mean_plies_when_won": 101.25,
+            "mean_plies_when_lost": 40.14
+          },
+          "elapsed_sec": 53.8,
+          "timestamp": "2026-08-08T00:26:29",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.09999999999999998,
+          "black": 0.07500000000000001,
+          "aggregate": -0.012499999999999956
+        },
+        "minimum_color_delta": -0.09999999999999998,
+        "passes_both_colors": false,
+        "name": "selected_epoch_010",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_010.pt",
+        "checkpoint_sha256": "76ab1cf91b04a1615b65e686902dd2448ecf0cf775bcf9daf271f6a1a3f08358",
+        "weights_sha256": "7ed61ee83fea90ce697ad2e0294cafaf6f124cb14e101c0aa0faf110a4be1f0d",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.525,
+          "a_as_white": {
+            "games": 20,
+            "wins": 6,
+            "losses": 4,
+            "draws": 10,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 10,
+            "score": 0.55,
+            "mean_plies": 135.0,
+            "mean_plies_when_won": 31.5,
+            "mean_plies_when_lost": 65.25
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 7,
+            "losses": 7,
+            "draws": 6,
+            "time_leaning_wins": 6,
+            "time_leaning_losses": 0,
+            "score": 0.5,
+            "mean_plies": 117.55,
+            "mean_plies_when_won": 102.0,
+            "mean_plies_when_lost": 41.0
+          },
+          "elapsed_sec": 65.9,
+          "timestamp": "2026-08-08T00:27:35",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": 0.025000000000000022,
+          "black": -0.07500000000000001,
+          "aggregate": -0.025000000000000022
+        },
+        "minimum_color_delta": -0.07500000000000001,
+        "passes_both_colors": false,
+        "name": "selected_epoch_011",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_011.pt",
+        "checkpoint_sha256": "96a5fe17c67dc97ac86e4d2dde5e0a72b859a5541d5772f0c0f752a52cec8432",
+        "weights_sha256": "953020fcad4112a1fef6ca78129068e0def6ff274a4106f5d5689acb1cfda0dc",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.5125,
+          "a_as_white": {
+            "games": 20,
+            "wins": 10,
+            "losses": 3,
+            "draws": 7,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 7,
+            "score": 0.675,
+            "mean_plies": 113.05,
+            "mean_plies_when_won": 44.0,
+            "mean_plies_when_lost": 82.0
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 5,
+            "losses": 11,
+            "draws": 4,
+            "time_leaning_wins": 3,
+            "time_leaning_losses": 0,
+            "score": 0.35,
+            "mean_plies": 94.55,
+            "mean_plies_when_won": 117.0,
+            "mean_plies_when_lost": 36.91
+          },
+          "elapsed_sec": 52.4,
+          "timestamp": "2026-08-08T00:28:27",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": 0.0,
+          "black": -0.09999999999999998,
+          "aggregate": -0.04999999999999999
+        },
+        "minimum_color_delta": -0.09999999999999998,
+        "passes_both_colors": false,
+        "name": "selected_epoch_012",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_012.pt",
+        "checkpoint_sha256": "c57bb0cf358aa625b3bb5756e5589aa3f3165668841caa9ad9bd804084095121",
+        "weights_sha256": "76ebb1a5691f81eb87931a99072613fe3458d896abf795cf1c1cb875d802ecbc",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.4875,
+          "a_as_white": {
+            "games": 20,
+            "wins": 9,
+            "losses": 3,
+            "draws": 8,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 8,
+            "score": 0.65,
+            "mean_plies": 115.2,
+            "mean_plies_when_won": 29.67,
+            "mean_plies_when_lost": 79.0
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 3,
+            "losses": 10,
+            "draws": 7,
+            "time_leaning_wins": 7,
+            "time_leaning_losses": 0,
+            "score": 0.325,
+            "mean_plies": 113.8,
+            "mean_plies_when_won": 88.0,
+            "mean_plies_when_lost": 43.7
+          },
+          "elapsed_sec": 58.5,
+          "timestamp": "2026-08-08T00:29:26",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.07500000000000007,
+          "black": -0.175,
+          "aggregate": -0.125
+        },
+        "minimum_color_delta": -0.175,
+        "passes_both_colors": false,
+        "name": "selected_epoch_013",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_013.pt",
+        "checkpoint_sha256": "bc537091c99a49f769aa8d6bea1a552476ae1f69ba603dc0f2fa875a42f7a299",
+        "weights_sha256": "671e84e52be5440e83da4a8081b27a4dd661acce1528e956a517ce75a7e559ff",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.4125,
+          "a_as_white": {
+            "games": 20,
+            "wins": 9,
+            "losses": 6,
+            "draws": 5,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 5,
+            "score": 0.575,
+            "mean_plies": 97.95,
+            "mean_plies_when_won": 41.33,
+            "mean_plies_when_lost": 77.0
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 2,
+            "losses": 12,
+            "draws": 6,
+            "time_leaning_wins": 6,
+            "time_leaning_losses": 0,
+            "score": 0.25,
+            "mean_plies": 99.9,
+            "mean_plies_when_won": 147.0,
+            "mean_plies_when_lost": 29.5
+          },
+          "elapsed_sec": 52.7,
+          "timestamp": "2026-08-08T00:30:19",
+          "_artifact_path": null
+        }
+      },
+      {
+        "deltas": {
+          "white": -0.025000000000000022,
+          "black": -0.14999999999999997,
+          "aggregate": -0.08749999999999997
+        },
+        "minimum_color_delta": -0.14999999999999997,
+        "passes_both_colors": false,
+        "name": "selected_epoch_014",
+        "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_014.pt",
+        "checkpoint_sha256": "2d49c2686f72681fbf4239f4f172a3f3bcd27290b163a59efdbce0a04bcaf126",
+        "weights_sha256": "db9c70c5c87e8df5c4938ec14e9d777122577114818f8972fd12d01480ed3e48",
+        "offline_selected": false,
+        "match": {
+          "match": "gen6_capture_scratch vs scratch_v21corpus",
+          "name_a": "gen6_capture_scratch",
+          "name_b": "scratch_v21corpus",
+          "games": 40,
+          "sims": 400,
+          "sims_b": 400,
+          "batch_a": null,
+          "batch_b": null,
+          "seed": 20260806,
+          "search_a": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "search_b": {
+            "c_puct": 1.5,
+            "fpu_reduction": 0.3,
+            "policy_temperature": 1.0
+          },
+          "opening_temp_plies": 16,
+          "workers": 8,
+          "a_score": 0.45,
+          "a_as_white": {
+            "games": 20,
+            "wins": 10,
+            "losses": 5,
+            "draws": 5,
+            "time_leaning_wins": 0,
+            "time_leaning_losses": 5,
+            "score": 0.625,
+            "mean_plies": 98.35,
+            "mean_plies_when_won": 38.6,
+            "mean_plies_when_lost": 91.2
+          },
+          "a_as_black": {
+            "games": 20,
+            "wins": 5,
+            "losses": 14,
+            "draws": 1,
+            "time_leaning_wins": 1,
+            "time_leaning_losses": 0,
+            "score": 0.275,
+            "mean_plies": 63.2,
+            "mean_plies_when_won": 93.0,
+            "mean_plies_when_lost": 41.0
+          },
+          "elapsed_sec": 41.6,
+          "timestamp": "2026-08-08T00:31:00",
+          "_artifact_path": null
+        }
+      }
+    ],
+    "finalist_names": [
+      "selected_epoch_004",
+      "selected_epoch_005",
+      "selected_epoch_006",
+      "selected_epoch_011"
+    ]
+  },
+  "calibration": {
+    "match": "scratch_v21corpus vs scratch_v21corpus",
+    "name_a": "scratch_v21corpus",
+    "name_b": "scratch_v21corpus",
+    "games": 200,
+    "sims": 400,
+    "sims_b": 400,
+    "batch_a": null,
+    "batch_b": null,
+    "seed": 20260807,
+    "search_a": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "search_b": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "opening_temp_plies": 16,
+    "workers": 8,
+    "a_score": 0.525,
+    "a_as_white": {
+      "games": 100,
+      "wins": 42,
+      "losses": 18,
+      "draws": 40,
+      "time_leaning_wins": 0,
+      "time_leaning_losses": 40,
+      "score": 0.62,
+      "mean_plies": 123.47,
+      "mean_plies_when_won": 41.48,
+      "mean_plies_when_lost": 89.17
+    },
+    "a_as_black": {
+      "games": 100,
+      "wins": 28,
+      "losses": 42,
+      "draws": 30,
+      "time_leaning_wins": 30,
+      "time_leaning_losses": 0,
+      "score": 0.43,
+      "mean_plies": 108.66,
+      "mean_plies_when_won": 85.82,
+      "mean_plies_when_lost": 40.79
+    },
+    "elapsed_sec": 296.8,
+    "timestamp": "2026-08-08T00:35:57",
+    "_artifact_path": null
+  },
+  "results": [
+    {
+      "deltas": {
+        "white": -0.05500000000000005,
+        "black": 0.0,
+        "aggregate": -0.027500000000000024
+      },
+      "minimum_color_delta": -0.05500000000000005,
+      "passes_both_colors": false,
+      "name": "selected_epoch_004",
+      "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_004.pt",
+      "checkpoint_sha256": "1e16ab9e6c1e8ef4356d1a4a5b33481129f47a8d27e7238351eadb4baad5e4f7",
+      "weights_sha256": "10154f7c6615a0197deda370757e5f87501213f733bbb2afc3de58f917df9b88",
+      "offline_selected": true,
+      "match": {
+        "match": "gen6_capture_scratch vs scratch_v21corpus",
+        "name_a": "gen6_capture_scratch",
+        "name_b": "scratch_v21corpus",
+        "games": 200,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 20260807,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.4975,
+        "a_as_white": {
+          "games": 100,
+          "wins": 34,
+          "losses": 21,
+          "draws": 45,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 44,
+          "score": 0.565,
+          "mean_plies": 133.7,
+          "mean_plies_when_won": 37.82,
+          "mean_plies_when_lost": 93.29
+        },
+        "a_as_black": {
+          "games": 100,
+          "wins": 30,
+          "losses": 44,
+          "draws": 26,
+          "time_leaning_wins": 26,
+          "time_leaning_losses": 0,
+          "score": 0.43,
+          "mean_plies": 102.76,
+          "mean_plies_when_won": 88.2,
+          "mean_plies_when_lost": 40.45
+        },
+        "elapsed_sec": 293.9,
+        "timestamp": "2026-08-08T00:40:51",
+        "_artifact_path": null
+      }
+    },
+    {
+      "deltas": {
+        "white": -0.025000000000000022,
+        "black": -0.08500000000000002,
+        "aggregate": -0.05500000000000005
+      },
+      "minimum_color_delta": -0.08500000000000002,
+      "passes_both_colors": false,
+      "name": "selected_epoch_006",
+      "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_006.pt",
+      "checkpoint_sha256": "ce019f57000a44b9bd8263ca1ddf9358a601e2c3ff16631c81f3c9430368924b",
+      "weights_sha256": "2b18ba2dc268553326da23eed21f80c39092fcb5ebd410e66ca99c577371f13c",
+      "offline_selected": false,
+      "match": {
+        "match": "gen6_capture_scratch vs scratch_v21corpus",
+        "name_a": "gen6_capture_scratch",
+        "name_b": "scratch_v21corpus",
+        "games": 200,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 20260807,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.47,
+        "a_as_white": {
+          "games": 100,
+          "wins": 42,
+          "losses": 23,
+          "draws": 35,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 35,
+          "score": 0.595,
+          "mean_plies": 115.44,
+          "mean_plies_when_won": 39.5,
+          "mean_plies_when_lost": 87.39
+        },
+        "a_as_black": {
+          "games": 100,
+          "wins": 22,
+          "losses": 53,
+          "draws": 25,
+          "time_leaning_wins": 25,
+          "time_leaning_losses": 0,
+          "score": 0.345,
+          "mean_plies": 95.65,
+          "mean_plies_when_won": 90.95,
+          "mean_plies_when_lost": 36.58
+        },
+        "elapsed_sec": 251.2,
+        "timestamp": "2026-08-08T00:45:02",
+        "_artifact_path": null
+      }
+    },
+    {
+      "deltas": {
+        "white": -0.03500000000000003,
+        "black": -0.07,
+        "aggregate": -0.05250000000000005
+      },
+      "minimum_color_delta": -0.07,
+      "passes_both_colors": false,
+      "name": "selected_epoch_005",
+      "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_005.pt",
+      "checkpoint_sha256": "4a3c89b67d0defb24fb097fb67ecb28989a1218a8a691746f4bda6f0388f1cd0",
+      "weights_sha256": "1fcdd2b13b78ce613cb45976f870963ea7140f18cdfe61755574b5ae1b59d1e9",
+      "offline_selected": false,
+      "match": {
+        "match": "gen6_capture_scratch vs scratch_v21corpus",
+        "name_a": "gen6_capture_scratch",
+        "name_b": "scratch_v21corpus",
+        "games": 200,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 20260807,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.4725,
+        "a_as_white": {
+          "games": 100,
+          "wins": 38,
+          "losses": 21,
+          "draws": 41,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 41,
+          "score": 0.585,
+          "mean_plies": 126.61,
+          "mean_plies_when_won": 40.76,
+          "mean_plies_when_lost": 89.86
+        },
+        "a_as_black": {
+          "games": 100,
+          "wins": 25,
+          "losses": 53,
+          "draws": 22,
+          "time_leaning_wins": 22,
+          "time_leaning_losses": 0,
+          "score": 0.36,
+          "mean_plies": 94.27,
+          "mean_plies_when_won": 95.64,
+          "mean_plies_when_lost": 39.36
+        },
+        "elapsed_sec": 271.6,
+        "timestamp": "2026-08-08T00:49:34",
+        "_artifact_path": null
+      }
+    },
+    {
+      "deltas": {
+        "white": -0.015000000000000013,
+        "black": -0.08999999999999997,
+        "aggregate": -0.05250000000000005
+      },
+      "minimum_color_delta": -0.08999999999999997,
+      "passes_both_colors": false,
+      "name": "selected_epoch_011",
+      "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_011.pt",
+      "checkpoint_sha256": "96a5fe17c67dc97ac86e4d2dde5e0a72b859a5541d5772f0c0f752a52cec8432",
+      "weights_sha256": "953020fcad4112a1fef6ca78129068e0def6ff274a4106f5d5689acb1cfda0dc",
+      "offline_selected": false,
+      "match": {
+        "match": "gen6_capture_scratch vs scratch_v21corpus",
+        "name_a": "gen6_capture_scratch",
+        "name_b": "scratch_v21corpus",
+        "games": 200,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 20260807,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.4725,
+        "a_as_white": {
+          "games": 100,
+          "wins": 40,
+          "losses": 19,
+          "draws": 41,
+          "time_leaning_wins": 1,
+          "time_leaning_losses": 39,
+          "score": 0.605,
+          "mean_plies": 123.16,
+          "mean_plies_when_won": 38.2,
+          "mean_plies_when_lost": 82.26
+        },
+        "a_as_black": {
+          "games": 100,
+          "wins": 20,
+          "losses": 52,
+          "draws": 28,
+          "time_leaning_wins": 27,
+          "time_leaning_losses": 0,
+          "score": 0.34,
+          "mean_plies": 104.42,
+          "mean_plies_when_won": 103.2,
+          "mean_plies_when_lost": 39.96
+        },
+        "elapsed_sec": 268.8,
+        "timestamp": "2026-08-08T00:54:03",
+        "_artifact_path": null
+      }
+    }
+  ],
+  "selected": {
+    "name": "selected_epoch_004",
+    "checkpoint": "models/candidates/gen6_capture_scratch/selected_epoch_004.pt",
+    "checkpoint_sha256": "1e16ab9e6c1e8ef4356d1a4a5b33481129f47a8d27e7238351eadb4baad5e4f7",
+    "weights_sha256": "10154f7c6615a0197deda370757e5f87501213f733bbb2afc3de58f917df9b88",
+    "arena_model": "models/candidates/gen6_capture_scratch/screen_nominee.pt",
+    "arena_model_sha256": "1e16ab9e6c1e8ef4356d1a4a5b33481129f47a8d27e7238351eadb4baad5e4f7",
+    "rank_key": [
+      -0.05500000000000005,
+      -0.027500000000000024,
+      0.0
+    ]
+  },
+  "timestamp": "2026-08-08T00:54:03"
+}
