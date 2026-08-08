@@ -57,12 +57,19 @@ SIMS = 400
 # ("very strong player") and promoted it as v21. It had already passed this
 # gate against v20 and confirmed on a disjoint opening seed. The bar follows
 # the strongest engine, so it moves to v21. No threshold moved.
-BAR = "vs_v21"
-AGGREGATE_LEGS = ("vs_v21", "vs_ramp")
+# 2026-08-07: the owner promoted the from-scratch epoch-4 model as **v21b** --
+# "it'll be the gate but I'm not impressed enough for it to be 22". So the bar
+# and the version number separate again, exactly as they did when v17 held the
+# number and v18_ramp was the bar. v21b cleared the first 200-game bar leg
+# (pooled 0.5713 over 400 games, z=+2.85) and beat v21 over 800 games. No
+# threshold moved.
+BAR = "vs_v21b"
+AGGREGATE_LEGS = ("vs_v21b", "vs_ramp")
 
 NUMBERED_INCUMBENT = os.path.join(
     ROOT, "models", "fresh_start_v21", "best_value_net.pt")
-BAR_MODEL = NUMBERED_INCUMBENT
+BAR_MODEL = os.path.join(
+    ROOT, "models", "fresh_start_v21b", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -71,7 +78,7 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v21_confirm"
+CONFIRM_LEG = "vs_v21b_confirm"
 CONFIRM_SEED_OFFSET = 424242
 SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
@@ -86,12 +93,12 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # legs stay small: they are floor checks that have never been the deciding
 # leg, and enlarging them would triple gate cost for nothing.
 FULL_LEGS = [
-    ("vs_v21", BAR_MODEL, 200),
+    ("vs_v21b", BAR_MODEL, 200),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v21", BAR_MODEL, 4),
+    ("vs_v21b", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]
