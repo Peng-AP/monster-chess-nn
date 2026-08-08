@@ -1,5 +1,14 @@
 """Play-test preserved epochs with successive halving and nominate one for gates.
 
+Sample sizes raised 2026-08-07. The old defaults (8-game probes, 20-game
+finals) cannot rank checkpoints: at 20 games the standard error is 0.112, and
+on that day five finalists spanning 0.187 were ranked confidently on samples
+that could not resolve them -- while an 800-game match showed the same weights
+scoring 1.6 SE away from their screen result. Probes now play 40 games at the
+gate's own sim count and finals play 200 (SE 0.035), which is the resolution
+needed to separate checkpoints that differ by the ~40 Elo measured between
+epoch 4 and epoch 10 of a from-scratch run.
+
 Every unique ``selected_epoch_*.pt`` model receives a cheap paired-color probe.
 The strongest probe results, the offline-selected epoch, and the Black-best
 epoch advance to the normal calibrated screen.  The screen only nominates a
@@ -125,10 +134,10 @@ def main() -> None:
     parser.add_argument("--incumbent", required=True)
     parser.add_argument("--output-model", required=True)
     parser.add_argument("--report-path", required=True)
-    parser.add_argument("--games", type=int, default=20)
+    parser.add_argument("--games", type=int, default=200)
     parser.add_argument("--sims", type=int, default=400)
-    parser.add_argument("--probe-games", type=int, default=8)
-    parser.add_argument("--probe-sims", type=int, default=200)
+    parser.add_argument("--probe-games", type=int, default=40)
+    parser.add_argument("--probe-sims", type=int, default=400)
     parser.add_argument("--finalists", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20260806)
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
