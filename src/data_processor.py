@@ -17,6 +17,8 @@ import re
 import numpy as np
 from tqdm import tqdm
 
+import sparse_policy
+
 from config import (
     TENSOR_SHAPE, POLICY_SIZE, PROMOTION_AWARE_POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
@@ -629,7 +631,13 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     np.save(os.path.join(output_dir, "positions.npy"), X)
     np.save(os.path.join(output_dir, "mcts_values.npy"), y_value)
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
-    np.save(os.path.join(output_dir, "policies.npy"), y_policy)
+    # Policy targets go out sparse: measured density is 0.16% (6.6 non-zeros
+    # in 4096), so the dense form was ~416x its own content and was pushing
+    # training off the page cache. See src/sparse_policy.py.
+    builder = sparse_policy.Builder(y_policy.shape[1])
+    for start in range(0, len(y_policy), 8192):
+        builder.add_dense(y_policy[start:start + 8192])
+    builder.save(output_dir)
     np.save(os.path.join(output_dir, "policy_weights.npy"), y_policy_weight)
     np.save(os.path.join(output_dir, "value_weights.npy"), y_value_weight)
     np.save(os.path.join(output_dir, "moves_left.npy"), y_moves_left)

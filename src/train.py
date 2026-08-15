@@ -14,6 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
+import sparse_policy
+
 from config import (
     TENSOR_SHAPE, TURN_LAYER, POLICY_SIZE, PROMOTION_AWARE_POLICY_SIZE,
     POLICY_LOSS_WEIGHT,
@@ -667,8 +669,10 @@ def load_data(data_dir, include_moves_left=False, include_legal_masks=False,
                         mmap_mode=mmap_mode)
     mcts_values = np.load(os.path.join(data_dir, "mcts_values.npy"))
     game_results = np.load(os.path.join(data_dir, "game_results.npy"))
-    policies = np.load(os.path.join(data_dir, "policies.npy"),
-                       mmap_mode=mmap_mode)
+    # Either representation, whichever the corpus has. Sparse corpora hand
+    # back dense rows on indexing, so nothing downstream changes -- see
+    # src/sparse_policy.py for why the dense form was costing whole epochs.
+    policies = sparse_policy.open_policies(data_dir, mmap_mode=mmap_mode)
     policy_weights_path = os.path.join(data_dir, "policy_weights.npy")
     if os.path.exists(policy_weights_path):
         policy_weights = np.load(policy_weights_path)

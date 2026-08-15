@@ -14,7 +14,14 @@ import time
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
+import sparse_policy  # noqa: E402  (needs sys.path above)
+
+# "policies.npy" stays the LOGICAL name for the policy array throughout this
+# tool. On disk a source may hold it densely or as policies_sparse.npz; the
+# composed output is always sparse, so a corpus built from legacy dense
+# sources is converted once here rather than every epoch of every run.
 CORE_ARRAYS = (
     "positions.npy",
     "mcts_values.npy",
@@ -154,10 +161,12 @@ def inspect_sources(specs):
         if not os.path.isdir(path):
             raise FileNotFoundError(f"processed source not found: {path}")
         for filename in CORE_ARRAYS + ("splits.npz",):
+            if filename == "policies.npy" and sparse_policy.has_sparse(path):
+                continue
             if not os.path.exists(os.path.join(path, filename)):
                 raise FileNotFoundError(f"{name} lacks {filename}: {path}")
         position = np.load(os.path.join(path, "positions.npy"), mmap_mode="r")
-        policy = np.load(os.path.join(path, "policies.npy"), mmap_mode="r")
+        policy = sparse_policy.open_policies(path, mmap_mode="r")
         sources.append({
             "name": name,
             "path": path,
@@ -165,7 +174,9 @@ def inspect_sources(specs):
             "position_shape": tuple(position.shape[1:]),
             "policy_shape": tuple(policy.shape[1:]),
             "arrays": [filename for filename in CORE_ARRAYS + OPTIONAL_ARRAYS
-                       if os.path.exists(os.path.join(path, filename))],
+                       if os.path.exists(os.path.join(path, filename))
+                       or (filename == "policies.npy"
+                           and sparse_policy.has_sparse(path))],
         })
     if not sources:
         raise ValueError("at least one --source is required")
@@ -187,7 +198,33 @@ def inspect_sources(specs):
     return sources, common
 
 
+def _copy_policies(sources, output_dir, chunk_rows):
+    """Concatenate every source's policy targets into one sparse array.
+
+    Sparse sources are appended without ever materialising their dense form;
+    legacy dense sources are encoded block by block, so peak memory is one
+    chunk rather than one 13 GB array.
+    """
+    widths = {int(sparse_policy.open_policies(s["path"], mmap_mode="r").shape[1])
+              for s in sources}
+    if len(widths) != 1:
+        raise ValueError(f"policy ABI mismatch across sources: {sorted(widths)}")
+    builder = sparse_policy.Builder(widths.pop())
+    for source in sources:
+        policies = sparse_policy.open_policies(source["path"], mmap_mode="r")
+        if isinstance(policies, sparse_policy.SparsePolicyTargets):
+            builder.add_sparse(policies)
+        else:
+            for block in sparse_policy.iter_dense_blocks(policies, chunk_rows):
+                builder.add_dense(block)
+        print(f"  policies: copied {source['name']} "
+              f"({len(policies):,} rows)", flush=True)
+    builder.save(output_dir)
+
+
 def _copy_array(filename, sources, output_dir, chunk_rows):
+    if filename == "policies.npy":
+        return _copy_policies(sources, output_dir, chunk_rows)
     arrays = [np.load(os.path.join(source["path"], filename), mmap_mode="r")
               for source in sources]
     first = arrays[0]
