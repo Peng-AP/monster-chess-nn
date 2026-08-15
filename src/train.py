@@ -819,14 +819,122 @@ def build_wdl_targets(values, draw_epsilon=WDL_DRAW_EPSILON):
     return labels
 
 
+class _IndexedBatchDataset:
+    """Gather numpy/CSR rows only when DataLoader asks for a batch.
+
+    TensorDataset requires every selected policy row to be dense before the
+    first batch. On the accumulated corpus that recreated an 11+ GB tensor
+    every epoch even though each policy has about seven non-zero entries.
+    ``__getitems__`` receives the exact local indices chosen by DataLoader's
+    existing sampler, maps them to corpus rows, and densifies only that batch.
+    """
+
+    def __init__(self, rows, X, y_val, y_pol, y_wdl=None,
+                 y_policy_weight=None, y_value_weight=None,
+                 y_moves_left=None, y_moves_left_weight=None,
+                 y_legal_masks_packed=None):
+        self.rows = np.asarray(rows, dtype=np.int64)
+        self.X, self.y_val, self.y_pol = X, y_val, y_pol
+        self.y_wdl = y_wdl
+        self.y_policy_weight = y_policy_weight
+        self.y_value_weight = y_value_weight
+        self.y_moves_left = y_moves_left
+        self.y_moves_left_weight = y_moves_left_weight
+        self.y_legal_masks_packed = y_legal_masks_packed
+
+    def __len__(self):
+        return len(self.rows)
+
+    @staticmethod
+    def _array(source, rows):
+        return np.asarray(source[rows])
+
+    def _batch(self, local_rows):
+        rows = self.rows[np.asarray(local_rows, dtype=np.int64)]
+        X = self._array(self.X, rows).transpose(0, 3, 1, 2)
+        values = self._array(self.y_val, rows)
+        policies = self._array(self.y_pol, rows)
+        parts = [torch.from_numpy(X),
+                 torch.from_numpy(values).unsqueeze(1),
+                 torch.from_numpy(policies)]
+        if self.y_policy_weight is None:
+            parts.append(torch.ones((len(rows),), dtype=torch.float32))
+        else:
+            parts.append(torch.from_numpy(
+                self._array(self.y_policy_weight, rows)).float())
+        if self.y_value_weight is None:
+            parts.append(torch.ones((len(rows),), dtype=torch.float32))
+        else:
+            parts.append(torch.from_numpy(
+                self._array(self.y_value_weight, rows)).float())
+        if self.y_wdl is not None:
+            parts.append(torch.from_numpy(
+                self._array(self.y_wdl, rows)).long())
+        if self.y_moves_left is not None:
+            parts.append(torch.from_numpy(
+                self._array(self.y_moves_left, rows)).float().unsqueeze(1))
+            if self.y_moves_left_weight is None:
+                parts.append(torch.ones((len(rows),), dtype=torch.float32))
+            else:
+                parts.append(torch.from_numpy(
+                    self._array(self.y_moves_left_weight, rows)).float())
+        if self.y_legal_masks_packed is not None:
+            parts.append(torch.from_numpy(
+                self._array(self.y_legal_masks_packed, rows)).to(torch.uint8))
+        return tuple(parts)
+
+    def __getitems__(self, local_rows):
+        return self._batch(local_rows)
+
+    def __getitem__(self, local_row):
+        # DataLoader uses __getitems__ for batching. Keep the scalar protocol
+        # correct for direct Dataset access and future sampler variants.
+        return tuple(tensor[0] for tensor in self._batch([local_row]))
+
+
+def _identity_batch(batch):
+    return batch
+
+
 def _make_loader(X, y_val, y_pol, batch_size, shuffle=True, generator=None,
                  y_wdl=None, y_policy_weight=None, y_value_weight=None,
                  y_moves_left=None, y_moves_left_weight=None,
-                 y_legal_masks_packed=None):
+                 y_legal_masks_packed=None, row_indices=None):
     """Create a DataLoader from numpy arrays.
 
     Transposes X from (N, 8, 8, C) to (N, C, 8, 8) for PyTorch.
     """
+    if (row_indices is not None
+            and not isinstance(y_pol, sparse_policy.SparsePolicyTargets)):
+        # Preserve the established dense-corpus path exactly. Batchwise fancy
+        # reads from a 13 GB dense memmap trade RAM for random disk I/O and are
+        # slower than the recipe that produced v20-v21. New composed corpora
+        # are sparse and take the bounded path below.
+        rows = np.asarray(row_indices, dtype=np.int64)
+        X, y_val, y_pol = X[rows], y_val[rows], y_pol[rows]
+        y_wdl = y_wdl[rows] if y_wdl is not None else None
+        y_policy_weight = (y_policy_weight[rows]
+                           if y_policy_weight is not None else None)
+        y_value_weight = (y_value_weight[rows]
+                          if y_value_weight is not None else None)
+        y_moves_left = (y_moves_left[rows]
+                        if y_moves_left is not None else None)
+        y_moves_left_weight = (y_moves_left_weight[rows]
+                               if y_moves_left_weight is not None else None)
+        y_legal_masks_packed = (y_legal_masks_packed[rows]
+                                if y_legal_masks_packed is not None else None)
+        row_indices = None
+    if row_indices is not None:
+        ds = _IndexedBatchDataset(
+            row_indices, X, y_val, y_pol, y_wdl=y_wdl,
+            y_policy_weight=y_policy_weight, y_value_weight=y_value_weight,
+            y_moves_left=y_moves_left,
+            y_moves_left_weight=y_moves_left_weight,
+            y_legal_masks_packed=y_legal_masks_packed)
+        return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
+                          pin_memory=True, num_workers=0, generator=generator,
+                          collate_fn=_identity_batch)
+
     X_t = torch.from_numpy(X.transpose(0, 3, 1, 2))  # channels-first
     y_v = torch.from_numpy(y_val).unsqueeze(1)         # (N, 1)
     y_p = torch.from_numpy(y_pol)                      # (N, 4096)
@@ -1723,23 +1831,25 @@ def main():
             "test": int(len(test_idx)),
         },
         "memory_map_data": bool(args.memory_map_data),
+        "batchwise_sparse_policy": isinstance(
+            policies, sparse_policy.SparsePolicyTargets),
         "epochs": [],
     }
 
     selection_baseline = None
     if args.select_relative_to_resume:
         baseline_loader = _make_loader(
-            positions[val_idx], value_targets[val_idx], policies[val_idx],
+            positions, value_targets, policies,
             args.batch_size, shuffle=False,
-            y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
-            y_policy_weight=policy_weights[val_idx],
-            y_value_weight=value_weights[val_idx],
-            y_moves_left=(moves_left[val_idx]
-                          if args.moves_left_head else None),
-            y_moves_left_weight=(moves_left_weights[val_idx]
+            y_wdl=wdl_targets if use_wdl_mode else None,
+            y_policy_weight=policy_weights,
+            y_value_weight=value_weights,
+            y_moves_left=(moves_left if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights
                                  if args.moves_left_head else None),
-            y_legal_masks_packed=(legal_masks_packed[val_idx]
+            y_legal_masks_packed=(legal_masks_packed
                                   if args.legal_policy_mask else None),
+            row_indices=val_idx,
         )
         baseline_model = ema.module if ema is not None else model
         (_base_loss, _base_v, base_policy_ce, _base_mae, _base_mse,
@@ -1787,39 +1897,39 @@ def main():
         train_gen.manual_seed(args.seed + epoch)
         epoch_train_idx = train_idx
         val_loader = _make_loader(
-            positions[val_idx],
-            epoch_targets[val_idx],
-            policies[val_idx],
+            positions,
+            epoch_targets,
+            policies,
             args.batch_size,
             shuffle=False,
-            y_wdl=wdl_targets[val_idx] if use_wdl_mode else None,
-            y_policy_weight=policy_weights[val_idx],
-            y_value_weight=value_weights[val_idx],
-            y_moves_left=(moves_left[val_idx]
-                          if args.moves_left_head else None),
-            y_moves_left_weight=(moves_left_weights[val_idx]
+            y_wdl=wdl_targets if use_wdl_mode else None,
+            y_policy_weight=policy_weights,
+            y_value_weight=value_weights,
+            y_moves_left=(moves_left if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights
                                  if args.moves_left_head else None),
-            y_legal_masks_packed=(legal_masks_packed[val_idx]
+            y_legal_masks_packed=(legal_masks_packed
                                   if args.legal_policy_mask else None),
+            row_indices=val_idx,
         )
 
         # Keep policy labels aligned with selected train indices.
         train_loader = _make_loader(
-            positions[epoch_train_idx],
-            epoch_targets[epoch_train_idx],
-            policies[epoch_train_idx],
+            positions,
+            epoch_targets,
+            policies,
             args.batch_size,
             shuffle=True,
             generator=train_gen,
-            y_wdl=wdl_targets[epoch_train_idx] if use_wdl_mode else None,
-            y_policy_weight=policy_weights[epoch_train_idx],
-            y_value_weight=value_weights[epoch_train_idx],
-            y_moves_left=(moves_left[epoch_train_idx]
-                          if args.moves_left_head else None),
-            y_moves_left_weight=(moves_left_weights[epoch_train_idx]
+            y_wdl=wdl_targets if use_wdl_mode else None,
+            y_policy_weight=policy_weights,
+            y_value_weight=value_weights,
+            y_moves_left=(moves_left if args.moves_left_head else None),
+            y_moves_left_weight=(moves_left_weights
                                  if args.moves_left_head else None),
-            y_legal_masks_packed=(legal_masks_packed[epoch_train_idx]
+            y_legal_masks_packed=(legal_masks_packed
                                   if args.legal_policy_mask else None),
+            row_indices=epoch_train_idx,
         )
 
         train_loss, train_v, train_p, train_wdl, train_moves_left = _train_epoch(
@@ -1985,19 +2095,20 @@ def main():
     # Load best model for test evaluation
     model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
     test_loader = _make_loader(
-        positions[test_idx],
-        value_targets[test_idx],
-        policies[test_idx],
+        positions,
+        value_targets,
+        policies,
         args.batch_size,
         shuffle=False,
-        y_wdl=wdl_targets[test_idx] if use_wdl_mode else None,
-        y_policy_weight=policy_weights[test_idx],
-        y_value_weight=value_weights[test_idx],
-        y_moves_left=(moves_left[test_idx] if args.moves_left_head else None),
-        y_moves_left_weight=(moves_left_weights[test_idx]
+        y_wdl=wdl_targets if use_wdl_mode else None,
+        y_policy_weight=policy_weights,
+        y_value_weight=value_weights,
+        y_moves_left=(moves_left if args.moves_left_head else None),
+        y_moves_left_weight=(moves_left_weights
                              if args.moves_left_head else None),
-        y_legal_masks_packed=(legal_masks_packed[test_idx]
+        y_legal_masks_packed=(legal_masks_packed
                               if args.legal_policy_mask else None),
+        row_indices=test_idx,
     )
     (test_loss, test_v, test_p, test_mae, test_mse, test_wdl, test_wdl_acc,
      test_moves_left, test_decisive) = _eval_epoch(

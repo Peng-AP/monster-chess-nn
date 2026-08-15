@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -236,6 +237,78 @@ class TestTrainerLoadsSparseCorpora(unittest.TestCase):
         np.testing.assert_array_equal(
             np.asarray(load_data(a, memory_map=True)[3][rows]),
             np.asarray(load_data(b, memory_map=True)[3][rows]))
+
+
+class TestBatchwiseTrainerParity(unittest.TestCase):
+    def test_sparse_batches_match_legacy_loader_and_order_exactly(self):
+        from train import _make_loader
+
+        rows, width = 13, 31
+        rng = np.random.default_rng(44)
+        positions = rng.random((rows, 8, 8, 15)).astype(np.float32)
+        values = rng.uniform(-1, 1, rows).astype(np.float32)
+        dense = make_dense(rows=rows, width=width, seed=19)
+        policy_weight = rng.random(rows).astype(np.float32)
+        value_weight = rng.random(rows).astype(np.float32)
+        wdl = rng.integers(0, 3, rows, dtype=np.int64)
+        moves = rng.random(rows).astype(np.float32)
+        moves_weight = rng.random(rows).astype(np.float32)
+        legal = rng.integers(0, 256, (rows, 4), dtype=np.uint8)
+        selected = np.asarray([8, 1, 12, 3, 3, 6, 0, 10, 5], dtype=np.int64)
+
+        builder = sparse_policy.Builder(width)
+        builder.add_dense(dense)
+        base = builder.build()
+        sizes = []
+
+        class TrackingTargets(sparse_policy.SparsePolicyTargets):
+            def _densify(self, batch_rows):
+                sizes.append(len(batch_rows))
+                return super()._densify(batch_rows)
+
+        sparse = TrackingTargets(base.indices, base.values, base.offsets,
+                                 base.width)
+        old_gen, new_gen = torch.Generator(), torch.Generator()
+        dense_gen = torch.Generator()
+        old_gen.manual_seed(9001)
+        new_gen.manual_seed(9001)
+        dense_gen.manual_seed(9001)
+        legacy = _make_loader(
+            positions[selected], values[selected], dense[selected], 4,
+            shuffle=True, generator=old_gen, y_wdl=wdl[selected],
+            y_policy_weight=policy_weight[selected],
+            y_value_weight=value_weight[selected],
+            y_moves_left=moves[selected],
+            y_moves_left_weight=moves_weight[selected],
+            y_legal_masks_packed=legal[selected])
+        indexed = _make_loader(
+            positions, values, sparse, 4, shuffle=True, generator=new_gen,
+            y_wdl=wdl, y_policy_weight=policy_weight,
+            y_value_weight=value_weight, y_moves_left=moves,
+            y_moves_left_weight=moves_weight,
+            y_legal_masks_packed=legal, row_indices=selected)
+        dense_indexed = _make_loader(
+            positions, values, dense, 4, shuffle=True, generator=dense_gen,
+            y_wdl=wdl, y_policy_weight=policy_weight,
+            y_value_weight=value_weight, y_moves_left=moves,
+            y_moves_left_weight=moves_weight,
+            y_legal_masks_packed=legal, row_indices=selected)
+
+        legacy_batches, indexed_batches = list(legacy), list(indexed)
+        dense_batches = list(dense_indexed)
+        self.assertEqual(len(legacy_batches), len(indexed_batches))
+        self.assertEqual(len(legacy_batches), len(dense_batches))
+        for old, new, dense_new in zip(legacy_batches, indexed_batches,
+                                       dense_batches):
+            self.assertEqual(len(old), len(new))
+            for old_tensor, new_tensor, dense_tensor in zip(
+                    old, new, dense_new):
+                self.assertTrue(torch.equal(old_tensor, new_tensor))
+                self.assertTrue(torch.equal(old_tensor, dense_tensor))
+        self.assertTrue(sizes)
+        self.assertLessEqual(max(sizes), 4,
+                             "sparse policy targets were densified above the "
+                             "configured batch size")
 
 
 class TestCallSitesUseTheSharedReader(unittest.TestCase):

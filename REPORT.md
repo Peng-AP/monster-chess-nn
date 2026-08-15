@@ -1314,12 +1314,16 @@ unexplained regression weeks later. Verified on real gen-8 data: 4,000 sampled
 rows round-trip bit-identical, and a shuffled batch-256 gather bit-identical.
 Corpus **17.3 GB → 3.68 GB**.
 
-**Not fixed:** `_make_loader` still builds a `TensorDataset`, so the ~11.5 GB
-dense epoch tensor is still allocated — now from a 40 MB in-RAM source rather
-than from disk. Densifying per batch would remove it, but that means
-restructuring the sampler, and the batch order is part of a recipe that
-produced two working generations. It needs a test proving the batch sequence
-stays bit-identical before it lands. Generation 9 is the clean read.
+**Batchwise loading fixed (2026-08-15).** `_IndexedBatchDataset` now receives
+the exact local permutation produced by the existing DataLoader sampler, maps
+it to corpus rows, and densifies only the requested policy batch. At batch 256
+that allocation is 4 MB instead of ~11.5 GB. Its parity test uses shuffled,
+repeated indices plus WDL, moves-left, policy/value weights and legal masks;
+every tensor and the complete batch order are bit-identical to the legacy
+loader. Dense legacy corpora deliberately retain their established eager path
+because random batch reads from a 13 GB dense memmap are slower; newly composed
+corpora use CSR and the bounded path. Generation 9 is the first production
+timing and strength read.
 
 ## 26. Generation 8: a third increment that fails the gate (2026-08-15)
 
