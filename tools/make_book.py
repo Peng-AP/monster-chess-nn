@@ -42,7 +42,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from config import DEFAULT_GAME_WORKERS  # noqa: E402  (needs sys.path above)
+from config import DEFAULT_GAME_WORKERS, POLICY_TEMPERATURE  # noqa: E402
 
 SCHEMA_VERSION = 1
 _engine = {}
@@ -104,6 +104,8 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
     attempts = max(entries, int(entries * oversample))
     tasks = [(seed + i, plies, temperature) for i in range(attempts)]
     start = len(book)
+    completed = 0
+    dropped_duplicate = 0
 
     t0 = time.time()
     pool = mp.Pool(workers, initializer=_init_worker,
@@ -111,6 +113,7 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
     dropped_terminal = 0
     try:
         for i, res in enumerate(pool.imap_unordered(_walk, tasks), 1):
+            completed = i
             if res is None:
                 dropped_terminal += 1
             else:
@@ -118,6 +121,8 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
                 if key not in seen:
                     seen.add(key)
                     book.append(res)
+                else:
+                    dropped_duplicate += 1
             if i % max(1, attempts // 5) == 0:
                 print(f"  [{i}/{attempts}] {len(book) - start} from this "
                       f"model, {(time.time() - t0) / 60:.1f}m", flush=True)
@@ -128,7 +133,10 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
         pool.join()
     return {"model": os.path.relpath(model, ROOT).replace("\\", "/"),
             "contributed": len(book) - start,
+            "attempts_requested": attempts,
+            "attempts_completed": completed,
             "dropped_terminal": dropped_terminal,
+            "dropped_duplicate": dropped_duplicate,
             "minutes": round((time.time() - t0) / 60, 2)}
 
 
@@ -220,6 +228,7 @@ def main():
         "model_sha256": ", ".join(sha256(m) for m in models),
         "plies": args.plies, "sims": args.sims,
         "temperature": args.temperature, "seed": args.seed,
+        "search_policy_temperature": POLICY_TEMPERATURE,
         "oversample": args.oversample,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "stats": stats,

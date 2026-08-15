@@ -1,24 +1,15 @@
-"""Run one bootstrap generation with the apparatus lessons of 2026-08-07.
+"""Run one accumulated, from-scratch bootstrap generation.
 
-The loop's training step was the defect, not its data. Measured that day:
-training a fresh network on the accumulated corpus beat the fine-tuned champion
-by ~31 Elo (800 games), and inside a from-scratch run the offline checkpoint
-metric discarded a further ~52 Elo by preferring epoch 4 to epoch 12. Both are
-apparatus faults; neither is about the game.
+The loop's original fine-tuning step and offline-only checkpoint choice both
+discarded measured playing strength.  This driver keeps the recipe that fixed
+those apparatus faults: generate from the supplied incumbent, accumulate the
+new corpus, train fresh at the successful v20 learning rate, select preserved
+epochs by calibrated play, and gate the nominee against that same incumbent.
 
-So this generation:
-
-  * generates from **e4**, the strongest model on record (gate-passed at the
-    200-game bar leg, pooled 0.5713 over 400 games, z=+2.85)
-  * **accumulates** onto the gen-5 corpus, matching how gen 2-5 were built
-  * trains **from scratch** at lr 2e-3 rather than resuming at 1e-4
-  * selects the checkpoint by **play** at 200-game finals, not validation fit
-  * gates the nominee against **e4** rather than v21, because the bar is the
-    strongest engine on record
-
-The question it answers is whether the loop *compounds*: one fresh-training
-generation already beat v21, and if generation 7 then beats e4 by a similar
-margin the loop works and only ever needed a competent training step.
+``--extra-source`` explicitly carries successful or informative prior
+generations forward.  Nothing infers ancestry from directory names: the log
+therefore records the exact data list and incumbent used by each generation.
+An optional paired book gives the screen and gate disjoint position blocks.
 
 Stages run in order and the driver **stops on the first failure** -- an
 unattended chain that carries on past a broken stage produces a confident
@@ -45,7 +36,11 @@ _ap.add_argument("--extra-source", action="append", default=[],
 _ap.add_argument("--book", default=None,
                  help="paired opening book used for checkpoint selection and "
                       "the gate; their entry blocks are disjoint")
+_ap.add_argument("--book-offset", type=int, default=0,
+                 help="first book entry reserved for this generation")
 _args = _ap.parse_args()
+if _args.book_offset < 0:
+    _ap.error("--book-offset must be non-negative")
 
 GEN = _args.generation
 RAW = f"iterations/gen_{GEN:04d}/raw"
@@ -102,7 +97,7 @@ def stage(name, cmd, marker=None, validator=None):
 def main():
     started = time.time()
     print(f"generation {GEN}: from-scratch training, play-based selection, "
-          f"gate against e4", flush=True)
+          f"gate against {INCUMBENT}", flush=True)
 
     stage("generate", [
         "src/data_generation.py", "--engine", "native",
@@ -149,7 +144,8 @@ def main():
         "--report-path", f"benchmarks/screen_gen{GEN}.json",
     ]
     if _args.book:
-        screen += ["--book", _args.book, "--book-offset", "0"]
+        screen += ["--book", _args.book, "--book-offset",
+                   str(_args.book_offset)]
     stage("screen", screen, marker=f"benchmarks/screen_gen{GEN}.json")
 
     nominee = f"{MODEL_DIR}/screen_nominee.pt"
@@ -165,7 +161,8 @@ def main():
     # The default screen consumes 20 probe entries plus 100 final entries.
     # Start the binding gate after them so selection cannot train on its test.
     if _args.book:
-        gate += ["--book", _args.book, "--book-offset", "120"]
+        gate += ["--book", _args.book, "--book-offset",
+                 str(_args.book_offset + 120)]
     stage("gate", gate)
 
     print(f"\ngeneration {GEN} complete in "
