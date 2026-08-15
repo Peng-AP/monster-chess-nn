@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -20,10 +21,19 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "src"))
 
 import match  # noqa: E402
+import make_book  # noqa: E402
 
 
 def entry(i):
     return {"fen": f"fen-{i}", "half": bool(i % 2), "turn_count": i}
+
+
+class TestBookDistribution(unittest.TestCase):
+    @mock.patch("benchmark._build_engine")
+    def test_action_temperature_does_not_also_sharpen_policy(self, build):
+        build.return_value = (object(), "test")
+        make_book._init_worker("model.pt", 700, "native")
+        build.assert_called_once_with("model.pt", 700, None, engine="native")
 
 
 class TestPairedLayout(unittest.TestCase):

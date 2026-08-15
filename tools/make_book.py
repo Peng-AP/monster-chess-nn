@@ -48,10 +48,13 @@ SCHEMA_VERSION = 1
 _engine = {}
 
 
-def _init_worker(model, sims, engine, temperature):
+def _init_worker(model, sims, engine):
     from benchmark import _build_engine
-    _engine["e"], _ = _build_engine(model, sims, None, engine=engine,
-                                    policy_temperature=temperature)
+    # Match the arena exactly: policy logits enter search at the configured
+    # engine default (1.0), while ``temperature`` below samples only the final
+    # root visit counts. Applying 0.5 at both layers made the old builder much
+    # more deterministic than tools/match.py despite claiming parity.
+    _engine["e"], _ = _build_engine(model, sims, None, engine=engine)
 
 
 def _walk(task):
@@ -104,7 +107,7 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
 
     t0 = time.time()
     pool = mp.Pool(workers, initializer=_init_worker,
-                   initargs=(model, sims, engine, temperature))
+                   initargs=(model, sims, engine))
     dropped_terminal = 0
     try:
         for i, res in enumerate(pool.imap_unordered(_walk, tasks), 1):
