@@ -469,6 +469,10 @@ def main():
                          "entry twice with colours reversed and turns opening "
                          "sampling off. Scores are NOT comparable to non-book "
                          "scores.")
+    ap.add_argument("--book-offset", type=int, default=0,
+                    help="first book entry to use. Reserve a disjoint block "
+                         "for any run that must not replay another's openings "
+                         "-- under a book a fresh seed changes nothing.")
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--stall-timeout", type=float, default=600.0,
                     help="fail if no game completes for this many seconds")
@@ -489,7 +493,8 @@ def main():
                     policy_temperature_a=args.policy_temperature_a,
                     policy_temperature_b=args.policy_temperature_b,
                     stall_timeout=args.stall_timeout,
-                    checkpoint_path=_artifact_path(args), book=args.book)
+                    checkpoint_path=_artifact_path(args), book=args.book,
+                    book_offset=args.book_offset)
     path = out["_artifact_path"]
     out.pop("_artifact_path", None)
     with open(path, "w") as f:
