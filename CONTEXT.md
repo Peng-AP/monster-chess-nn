@@ -34,7 +34,38 @@ en passant is conferred only by the **last** move of White's turn; White may
 not **end** its turn with its own king attacked (forced-blunder exception
 unchanged, in `_get_white_actions`).
 
-## 2. Where the project stands (2026-08-05)
+## 2. Where the project stands (2026-08-15)
+
+**The bootstrap loop works, and its defect was never the game.** Two apparatus
+faults cost more than every recipe idea combined: fine-tuning from the champion
+instead of training fresh (~31 Elo, 800 games, CI [0.5104, 0.5796]) and offline
+checkpoint selection instead of play-based (~52 Elo, z=+4.17). A single 35-minute
+from-scratch run beat the model five generations of fine-tuning had produced.
+
+| model | role |
+|---|---|
+| `models/fresh_start_v21b` | **the bar.** Owner: *"it'll be the gate but I'm not impressed enough for it to be 22."* Playtest still outstanding. |
+| `models/fresh_start_v21` | holds the version number. The bar and the number are separate again, exactly as when v17 held the number and v18_ramp was the bar. |
+| `models/candidates/gen7_scratch/screen_nominee.pt` | passed the gate against v21b (pooled 0.5600 over 400 games, z=+2.40); the working bar inside the bootstrap loop. |
+| `models/candidates/gen8_scratch/screen_nominee.pt` | **failed** the gate on one item — Black 0.3950 against the 0.40 floor — while beating gen7 on both colours. No promotion. |
+
+**Three consecutive increments of comparable size; the third fails on a floor
+that moves.** Gen7's self-match Black is 0.3000, so a candidate must beat the
+bar by +0.10 on Black merely to reach an absolute 0.40. Two decisions are open
+and are the owner's alone: whether the per-side floor should be absolute or
+relative to the bar's self-match, and whether generation 9 generates from gen7
+or gen8. See `REPORT.md` §26.
+
+**A live caveat on all historical match numbers.** Opening diversity comes from
+16 plies of temperature-0.5 sampling, and play after it is deterministic — two
+games sharing an opening are *identical*. The book builder measured only ~20%
+unique positions from that mechanism, which would mean 800-game matches
+contained ~200 distinct games and their intervals are too narrow by ~2x. This
+is an inference from the builder, **not** a measurement of a match; it is
+directly testable and should be tested before it is believed (`REPORT.md`
+§24.3).
+
+### The v20-era ledger (2026-08-05, retained)
 
 - **Incumbent and formal gate bar: `models/fresh_start_v20`.** The owner
   promoted the preserved `lc0b_attention_ema_wide64` checkpoint on 2026-08-05.
@@ -203,14 +234,20 @@ unchanged, in `_get_white_actions`).
 | **Long / multi-worker jobs** | Standing go carried in the active directive. **Never while he is playing.** |
 | **Gates** | **Never weaken a threshold to let a recipe through.** Per-side floor 0.40 on every leg, aggregate must beat 0.50 on model legs. Thresholds are constants with no CLI flag, asserted by test. |
 | **What counts as a win** | *"A win by time shouldn't be counted the same as win by capturing the king"* (2026-08-03). Only a king capture scores a win; a move-limit ending scores a **draw**, symmetrically. The ±0.5 *training label* is unchanged. **Every gate/match result before 2026-08-03 was computed under the old rule and is not comparable to results after it** — including v19's promotion and the whole v19 ladder. |
-| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds. E5 settled it at `v19_B`: B scored 0.575 against v19 on each of two disjoint 40-game reads under captures-only/native. `tools/gate.py` now targets B and confirms that leg; thresholds did not move. |
+| **The bar** | *"Every model should be better than the last, definitively."* The bar is the **strongest engine on record**, not whatever holds the version number, and must be cleared **twice** on independent opening seeds. Now `v21b`, with `v21` holding the number. "Definitively" has a measured meaning: two 40-game reads of one matchup came out 0.575 and 0.725, and on 2026-08-07 three candidates passed a 40-game bar leg and then scored 0.4800 / 0.4825 / 0.5019 over 800 games each. The bar leg is 200 games for that reason. **Evidence changed the sample size; no threshold moved.** |
 | **Versions** | A number needs automated evidence **plus** his playtest. |
 | **Metrics** | No proxy scorecards: *"my eval is not replaceable."* |
 | **His observations** | Confirmed by measurement **every single time** checked. Debug the code first; measure and report the number. |
 
-**Playtest operating point: 1500 sims.** He measured 2000 buys nothing over
-1200 (2026-08-02); the earlier "800 max" rule was v17-era and is superseded by
-that measurement.
+**Playtest operating point: 3200 sims** (owner, 2026-08-07: *"Let play.ipynb
+play on 3200 sims from now on"*; `src/play.ipynb` sets `SIMULATIONS = 3200`).
+Supersedes the 1500-sim point, which itself superseded the v17-era "800 max".
+
+**Monitors.** *"A monitor on everything, please"* — and a log tailer is not
+enough on its own. If a run is killed or hangs, the log simply stops and
+silence is indistinguishable from working. Every long run gets a log monitor
+**plus** a liveness watchdog polling `runs.py` state, which emits on any
+transition out of `RUNNING`.
 
 ## 5. Established laws
 
@@ -480,6 +517,21 @@ White king+pawns).
 - **`match.py` and `benchmark.py` emit different result schemas**
   (`a_score/a_as_white` vs `candidate_score/white_strength`) — confusing them
   fails gates on a parsing bug.
+- **A book position is FEN + `white_half_pending` + `turn_count`**, never FEN
+  alone. `board.turn` stays WHITE across White's pending half, so the FEN
+  cannot say which half is next; and rebuilding from a FEN restarts
+  `turn_count` at 0, which would hand a deep position the full 150 turns again
+  and lower its draw rate (`tests/test_opening_book.py`).
+- **Under a book, independence lives in the entry index, not the seed.** Two
+  legs at different seeds but the same offset replay identical openings and
+  agree by construction — which would have made the gate's confirmation leg a
+  tautology reporting `confirmed: true`. `gate.book_leg_offsets()` allocates
+  disjoint blocks, confirmation last; the full gate needs 220 entries.
+- **Policy targets are stored sparse** (`src/sparse_policy.py`, CSR in
+  `policies_sparse.npz`); `open_policies` reads either format and prefers
+  sparse, so a stale `policies.npy` cannot silently win. Parity with the dense
+  form is asserted at **zero tolerance** — a divergence here would not crash,
+  it would train on different targets (`tests/test_sparse_policy.py`).
 
 ## 9. Operational notes
 
@@ -509,7 +561,9 @@ heredocs** (mangles `\n` — use the Write tool); notebook round-trip is
 `README.md`) only. Evidence goes to `benchmarks/` before the next run starts;
 concluded work retires to git history; rejected candidates to
 `models/rejected/` and the number stays free. The owner authorized the
-2026-08-05 cleanup: `data/processed/` now retains only the active
-`combined_v19_B_r50h60` corpus; rejected derived corpora are recoverable from
-the Windows Recycle Bin until it is emptied and remain regenerable from raw
-sources plus recorded recipes.
+2026-08-05 cleanup: rejected derived corpora were removed, recoverable from the
+Windows Recycle Bin until it is emptied and regenerable from raw sources plus
+recorded recipes. `data/processed/` since then also carries the bootstrap
+generations (`bootstrap_new_main_gen_*`, `bootstrap_replay_main_gen_*`), which
+**accumulate** by the owner's choice. A composed corpus was 17.3 GB until
+policy targets went sparse; it is now ~3.7 GB for the same rows.
