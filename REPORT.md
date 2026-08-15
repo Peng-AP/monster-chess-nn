@@ -1241,46 +1241,39 @@ were taken.
 The anchor leg keeps sampled openings: it is the heuristic yardstick and its
 value is comparability with every anchor score on record.
 
-### 24.3 The book cannot be built, and that is the real finding
+### 24.3 Direct diversity measurement and corrected book (2026-08-15)
 
-Both book runs failed.
+The failed builds did not reveal a low-entropy arena. The builder was applying
+temperature 0.5 at **two** layers: it sharpened network logits before search
+and then sampled root visits at 0.5. The arena only does the latter. That
+unintentionally made builder walks far more deterministic than match walks.
+After matching the arena exactly, the mixed v21b/v21/gen7 book produced 800
+entries in 5.6 minutes; its three sources needed 323 / 377 / 335 completed
+walks to contribute 267 distinct states apiece.
 
-| build | plies | models | attempts | unique |
-|---|---:|---:|---:|---:|
-| rescore | 16 | v21b | 640 | **132** of 400 |
-| depth sweep | 8 | v21b, v21, gen7 | 54 each | **31** of 100 |
+The new match instrumentation measured the historical sampler directly on an
+800-game v21b-v21 re-anchor:
 
-The depth-8 breakdown is the diagnostic: v21b contributed 10, v21 contributed
-11, gen7 contributed 10 — and the union is 31, i.e. **the union equals the
-sum**. Three different models, essentially zero overlap, each saturating at
-about ten positions. That is not a shared entropy ceiling; that is each model
-walking a near-deterministic line with very few effective branch points.
+| measure | result |
+|---|---:|
+| distinct states | 650 / 800 (81.25%) |
+| distinct state + candidate-colour games | **684 / 800 (85.5%)** |
+| maximum state multiplicity | 34 |
+| sampled score | 0.5225 (W 0.6613 / B 0.3837) |
 
-At 16 plies the pool was *not* saturating — new positions arrived at a steady
-~25 per 128 attempts (39 → 60 → 88 → 105 → 132) — so 400 entries is probably
-reachable with ~2,000 attempts. The rate is low; the ceiling is not proven.
+The effective-size correction is `sqrt(800/684) = 1.08`, so historical
+standard errors from this sampler are about **8% too small**, not 2x too small.
+Some concentration is real—one state occurred 34 times—but the feared
+fourfold collapse in sample size did not occur.
 
-**The open question is larger than the fix.** The 16-ply temperature-0.5
-sampler that produced these numbers is the same mechanism that has diversified
-every NN-vs-NN match in this project's history, and play after the opening is
-at temperature 0 and therefore deterministic — two games sharing an opening are
-*identical*, not merely similar. If the distinct-opening rate in a real match
-is near the ~20% seen here, an 800-game match contained on the order of 200
-distinct games and every confidence interval computed from it is too narrow by
-roughly a factor of two, including the 800-game reads used to overturn earlier
-gate passes.
-
-That is an inference from the book builder, **not** a measurement of a match.
-Both engines contribute to a match opening and the pairing-specific
-distribution may be richer. It is directly testable by counting distinct
-openings actually visited in a match configuration, and it should be tested
-before it is believed. Leading hypothesis for the mechanism: `_walk` calls
-`random.seed(seed)`, but the native engine may sample from its own RNG that
-never sees that seed.
-
-**Nothing measured under a book has been produced yet.** Book scores and
-sampled scores are separate regimes and do not compare; the re-anchor that
-would map them (v21b vs v21, 800 games, both regimes) has not run.
+The paired-book replay agreed almost exactly: v21b scored **0.5238** (W 0.6212
+/ B 0.4263), with paired SE 0.0121 over 400 complete pairs. Every one of its
+800 state-plus-colour assignments was unique. The close 0.5225 / 0.5238
+agreement validates the new regime for ranking while preserving the important
+warning that book and sampled side scores are distribution-specific. Evidence:
+`match_v21b_vs_v21_sampled_reanchor_20260815.json`,
+`match_v21b_vs_v21_book_reanchor_20260815.json`, and
+`books/mixed_v21b_v21_gen7_p16_20260815.json`.
 
 ## 25. Policy targets were 99.84% zeros (2026-08-15)
 

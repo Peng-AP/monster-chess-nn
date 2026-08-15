@@ -35,6 +35,24 @@ class TestBookDistribution(unittest.TestCase):
         make_book._init_worker("model.pt", 700, "native")
         build.assert_called_once_with("model.pt", 700, None, engine="native")
 
+    @mock.patch("make_book._build_one")
+    def test_sequential_sources_are_deterministically_mixed(self, build_one):
+        def append(model, entries, _plies, _sims, _temp, _seed, _workers,
+                   _engine, _seen, book, oversample=1.6):
+            source = os.path.basename(model)
+            book.extend({"fen": f"{source}-{i}", "half": False,
+                         "turn_count": 1} for i in range(entries))
+            return {"model": source, "contributed": entries, "minutes": 0}
+        build_one.side_effect = append
+        args = (["a", "b", "c"], 12, 16, 700, 0.5, 123, 1, "native")
+        first, stats = make_book.build(*args)
+        second, _ = make_book.build(*args)
+        self.assertEqual(first, second)
+        self.assertEqual(stats["shuffle_seed"], 9299)
+        # Without the shuffle the first four rows would all be source a.
+        self.assertGreater(len({row["fen"].split("-")[0]
+                                for row in first[:4]}), 1)
+
 
 class TestPairedLayout(unittest.TestCase):
     def test_each_opening_is_played_once_as_white_and_once_as_black(self):

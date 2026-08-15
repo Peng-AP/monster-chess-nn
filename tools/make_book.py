@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from config import DEFAULT_GAME_WORKERS, POLICY_TEMPERATURE  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _engine = {}
 
 
@@ -106,13 +106,17 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
     start = len(book)
     completed = 0
     dropped_duplicate = 0
+    source_model = os.path.relpath(model, ROOT).replace("\\", "/")
 
     t0 = time.time()
     pool = mp.Pool(workers, initializer=_init_worker,
                    initargs=(model, sims, engine))
     dropped_terminal = 0
     try:
-        for i, res in enumerate(pool.imap_unordered(_walk, tasks), 1):
+        # Ordered imap makes the accepted prefix reproducible. With unordered
+        # completion, the exact set changed with worker timing even though all
+        # RNG seeds were fixed, which is unacceptable for a pinned test set.
+        for i, res in enumerate(pool.imap(_walk, tasks), 1):
             completed = i
             if res is None:
                 dropped_terminal += 1
@@ -120,6 +124,7 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
                 key = (res["fen"], res["half"], res["turn_count"])
                 if key not in seen:
                     seen.add(key)
+                    res["source_model"] = source_model
                     book.append(res)
                 else:
                     dropped_duplicate += 1
@@ -131,7 +136,7 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
     finally:
         pool.terminate()
         pool.join()
-    return {"model": os.path.relpath(model, ROOT).replace("\\", "/"),
+    return {"model": source_model,
             "contributed": len(book) - start,
             "attempts_requested": attempts,
             "attempts_completed": completed,
@@ -167,7 +172,14 @@ def build(models, entries, plies, sims, temperature, seed, workers, engine,
             seed + 1000000 * index, workers, engine, seen, book,
             oversample=oversample))
 
+    # _build_one appends one source at a time to keep peak VRAM bounded. A
+    # contiguous screen/gate block must still receive the whole provenance
+    # mixture, rather than "first block = first model". Pin the shuffle seed
+    # so the resulting book remains a reproducible artifact.
+    shuffle_seed = seed + 9176
+    random.Random(shuffle_seed).shuffle(book)
     stats = {"per_model": per_model, "unique": len(book),
+             "shuffle_seed": shuffle_seed,
              "build_minutes": round(sum(m["minutes"] for m in per_model), 2)}
     return book[:entries], stats
 
