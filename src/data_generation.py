@@ -527,6 +527,29 @@ def _simulation_stats(sim_values):
     }
 
 
+def _result_summary(results):
+    """Separate captured-king wins from move-limit training labels.
+
+    Self-play keeps the historical +/-0.5 label for a move-limit ending, but
+    evaluation correctly scores that outcome as a draw. Lumping every positive
+    label into ``white_wins`` made long generations look more decisive than
+    the games they actually produced.
+    """
+    white_wins = int(results.get(1, 0))
+    black_wins = int(results.get(-1, 0))
+    neutral = int(results.get(0, 0))
+    leaning_white = int(results.get(0.5, 0))
+    leaning_black = int(results.get(-0.5, 0))
+    return {
+        "white_wins": white_wins,
+        "black_wins": black_wins,
+        "draws": neutral + leaning_white + leaning_black,
+        "neutral_draws": neutral,
+        "time_leaning_white": leaning_white,
+        "time_leaning_black": leaning_black,
+    }
+
+
 def _worker(args):
     """Worker function for multiprocessing."""
     game_id, num_simulations, seed = args
@@ -837,10 +860,14 @@ def main():
                     game_result = records[-1]["game_result"]
                     results[game_result] = results.get(game_result, 0) + 1
 
-                    if game_result > 0:
+                    if game_result == 1:
                         winner = "White"
-                    elif game_result < 0:
+                    elif game_result == -1:
                         winner = "Black"
+                    elif game_result == 0.5:
+                        winner = "Draw (leans White)"
+                    elif game_result == -0.5:
+                        winner = "Draw (leans Black)"
                     else:
                         winner = "Draw"
                     tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
@@ -848,9 +875,7 @@ def main():
     finally:
         terminate_pool(executor)
 
-    white = sum(v for k, v in results.items() if k > 0)
-    black = sum(v for k, v in results.items() if k < 0)
-    draws = results.get(0, 0)
+    result_summary = _result_summary(results)
     print(f"\nDone! {total_positions} total positions across {saved_games} saved games (attempted {args.num_games}).")
     if skipped_empty > 0:
         print(f"Skipped empty games: {skipped_empty}")
@@ -858,7 +883,15 @@ def main():
         print(f"Failed games: {failed_games}")
     if timed_out_games > 0:
         print(f"Timed out games: {timed_out_games}")
-    print(f"Results - White: {white}, Black: {black}, Draw: {draws} (saved games only)")
+    print("Capture results - "
+          f"White: {result_summary['white_wins']}, "
+          f"Black: {result_summary['black_wins']}, "
+          f"Draw: {result_summary['draws']} (saved games only)")
+    if (result_summary["time_leaning_white"]
+            or result_summary["time_leaning_black"]):
+        print("Move-limit draw labels - "
+              f"lean White: {result_summary['time_leaning_white']}, "
+              f"lean Black: {result_summary['time_leaning_black']}")
     sim_stats = _simulation_stats(sampled_simulations)
     if sim_stats["min"] is not None:
         print(
@@ -877,11 +910,7 @@ def main():
             "failed_games": int(failed_games),
             "timed_out_games": int(timed_out_games),
             "total_positions": int(total_positions),
-            "results": {
-                "white_wins": int(white),
-                "black_wins": int(black),
-                "draws": int(draws),
-            },
+            "results": result_summary,
             "simulations": {
                 "configured_base": int(args.simulations),
                 "configured_min": int(sim_min),
