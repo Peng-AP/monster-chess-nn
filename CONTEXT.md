@@ -47,22 +47,21 @@ from-scratch run beat the model five generations of fine-tuning had produced.
 | `models/fresh_start_v21b` | **the bar.** Owner: *"it'll be the gate but I'm not impressed enough for it to be 22."* Playtest still outstanding. |
 | `models/fresh_start_v21` | holds the version number. The bar and the number are separate again, exactly as when v17 held the number and v18_ramp was the bar. |
 | `models/candidates/gen7_scratch/screen_nominee.pt` | passed the gate against v21b (pooled 0.5600 over 400 games, z=+2.40); the working bar inside the bootstrap loop. |
-| `models/candidates/gen8_scratch/screen_nominee.pt` | **failed** the gate on one item — Black 0.3950 against the 0.40 floor — while beating gen7 on both colours. No promotion. |
+| `models/candidates/gen8_scratch/screen_nominee.pt` | paired re-screen selected epoch 7; it passed the first Gen7 leg but failed fresh confirmation at Black 0.3500. No promotion. |
+| `models/candidates/gen9_scratch/screen_nominee.pt` | **passed the complete paired gate against Gen7.** It scored 0.5950 (W 0.7200/B 0.4700), then confirmed at 0.5575 (W 0.7050/B 0.4100). Leading v23 candidate; owner playtest and numbering remain outstanding. |
 
-**Three consecutive increments of comparable size; the third fails on a floor
-that moves.** Gen7's self-match Black is 0.3000, so a candidate must beat the
-bar by +0.10 on Black merely to reach an absolute 0.40. Two decisions are open
-and are the owner's alone: whether the per-side floor should be absolute or
-relative to the bar's self-match, and whether generation 9 generates from gen7
-or gen8. See `REPORT.md` §26.
+**The loop has now produced a clean successor.** Gen8 remained a useful data
+increment but did not survive a fresh paired confirmation. Gen9 generated from
+the unbeaten Gen7 bar, accumulated Gen7–Gen9 replay, trained fresh, selected
+epoch 6 by worst-colour calibrated play, and cleared every binding leg twice.
+The absolute 0.40 floor was not changed. See `REPORT.md` §§26–27.
 
-**A live caveat on all historical match numbers.** Opening diversity comes from
-16 plies of temperature-0.5 sampling, and play after it is deterministic — two
-games sharing an opening are *identical*. The book builder measured only ~20%
-unique positions from that mechanism, which would mean 800-game matches
-contained ~200 distinct games and their intervals are too narrow by ~2x. This
-is an inference from the builder, **not** a measurement of a match; it is
-directly testable and should be tested before it is believed (`REPORT.md`
+**Opening diversity was measured directly, not inferred.** The historical
+800-game sampled v21b–v21 re-anchor contained 650 unique states and 684 unique
+state+model-colour games (85.5% effective), so its standard error needs only a
+1.08× correction, not the feared ~2×. A paired-book re-anchor reproduced the
+same result (0.5238 versus 0.5225 sampled). Current screens and gates use pinned,
+mixed-provenance books with disjoint selection and test blocks (`REPORT.md`
 §24.3).
 
 ### The v20-era ledger (2026-08-05, retained)

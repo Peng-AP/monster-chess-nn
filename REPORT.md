@@ -1325,77 +1325,79 @@ because random batch reads from a 13 GB dense memmap are slower; newly composed
 corpora use CSR and the bounded path. Generation 9 is the first production
 timing and strength read.
 
-## 26. Generation 8: a third increment that fails the gate (2026-08-15)
+## 26. Generation 8: paired re-screen and confirmation failure (2026-08-15)
 
-Corpus 833,418 rows from 7 sources. Trained from scratch on v20's recipe,
-early-stopped at epoch 14 (50.1m). Screen 83.1m: 14 probes at 40 games, then 5
-finalists at 200.
+The original sampled-opening screen selected epoch 10. That ranking is retained
+as historical evidence, but a corrected mixed-provenance paired book changed
+the nominee to **epoch 7**. Every checkpoint received a 40-game paired probe;
+five finalists then received 200 games on the same position block. Against the
+Gen7 self-calibration (W 0.6900/B 0.3100), the full finalists were:
 
-The reference for every delta is the incumbent's **self-match**, not 0.50.
-gen7's nominee against itself over 200 games: **W 0.7150, B 0.3000, all
-0.5075.**
+| finalist | dBlack | dWhite | dAll |
+|---|---:|---:|---:|
+| epoch 08 | +0.070 | +0.010 | +0.040 |
+| **epoch 07** | **+0.095** | **+0.040** | **+0.068** |
+| epoch 05 | +0.080 | −0.025 | +0.027 |
+| epoch 14 | −0.010 | −0.045 | −0.028 |
+| epoch 04 *(offline pick)* | +0.100 | −0.035 | +0.032 |
 
-| finalist | dBlack | dWhite | dAll | both colours |
-|---|---:|---:|---:|---|
-| epoch 04 *(offline pick)* | +0.095 | +0.025 | +0.060 | yes |
-| epoch 07 | +0.080 | +0.020 | +0.050 | yes |
-| **epoch 10** *(selected)* | **+0.110** | **+0.025** | **+0.068** | yes |
-| epoch 12 | +0.080 | −0.005 | +0.038 | no |
-| epoch 13 | +0.115 | −0.025 | +0.045 | no |
-
-All five beat the incumbent; every one is positive on Black. Epochs 4 and 10
-tied exactly on worst-colour delta (+0.025) and the aggregate broke the tie.
-The offline metric picked epoch 4 for the third time running while play-based
-selection preferred a later epoch — the gap here is small (+0.060 vs +0.068),
-so this is not another 52-Elo miss.
-
-**Probe deltas carry ordering, not magnitude.** At 40 games *all fourteen*
-checkpoints looked negative on White; at 200 games White is flat to slightly
-positive. All 14 probes share one 40-game calibration (SE 0.112/side), so a
-noisy reference shifts every candidate equally. It cancels in the ranking and
-misleads in interpretation.
-
-### 26.1 The gate result
+Epoch 7 won on the binding ranking key: its weaker colour still improved by
+0.040. The paired gate used a disjoint opening block:
 
 ```
-vs_v21b   200  all 0.5675  W 0.740  B 0.395   ← FAIL, floor 0.40
-vs_ramp    40  all 0.8625  W 0.975  B 0.750
-anchor     20  all 1.0000  W 1.000  B 1.000
-failures: ['vs_v21b black leg 0.3950 < 0.40']
+Gen7 initial   200  all 0.5600  W 0.705  B 0.415
+v18 ramp        40  all 0.9000  W 1.000  B 0.800
+anchor          20  all 1.0000  W 1.000  B 1.000
+Gen7 confirm   200  all 0.5175  W 0.685  B 0.350  ← FAIL
 ```
 
-One failure, 0.005 under, half a game in 100. Pooled across legs: White
-103.5/130 = 0.7962, Black 64.5/130 = **0.4962**. No confirmation leg ran; the
-driver stopped the chain and gen8 produced no promoted artifact.
+It provisionally passed, then failed only the fresh-confirmation Black floor.
+Across all four legs it scored W 0.7348/B 0.4457 over 230 games per colour,
+but the protocol correctly treats independent agreement as binding. Gen8 is
+useful replay, not a numbered candidate. Artifact truth is
+`screen_gen8_book_20260815.json` and `gate_gen8_book_20260815.json`.
 
-**Gen8 is better than gen7 on both colours** — +0.025 White and +0.095 Black
-against gen7's own self-match — and its bar-leg aggregate of **0.5675 is
-identical** to gen7's own passing leg against v21b. Three consecutive
-increments of comparable size; the third fails.
+## 27. Generation 9: the bootstrap loop produces a clean successor (2026-08-15)
 
-### 26.2 The floor is a moving target
+Generation 9 generated from the unbeaten Gen7 bar. Its 500 games at 700 sims
+yielded 51,453 positions; 8,000 positions were reanalysed at 3,200 sims and
+4,000 kept. The accumulated from-scratch corpus contains **936,366 rows**.
+Sparse policy storage kept its policy artifact to 45.2 MB instead of a
+multi-gigabyte dense array, and batchwise densification reduced training to
+30.9 minutes. The unchanged 30-epoch/10-patience v20 recipe stopped at epoch
+14; offline validation selected epoch 4.
 
-Gen7 cleared this floor at Black 0.465. Gen8 gets 0.395 while improving. The
-difference is the bar, not the candidate: **gen7's self-match Black is
-0.3000**, so a candidate must beat the bar by +0.10 on Black merely to *reach*
-an absolute floor of 0.40. As the bar strengthens at White, that floor rises
-out of reach independently of candidate quality.
+Paired play did not select the offline checkpoint. After probes of all 14
+epochs, the four finalists scored against the Gen7 calibration
+(W 0.6350/B 0.3650):
 
-The knife-edge is worth seeing plainly: the screen measured epoch 10's Black at
-0.410 over 200 games, the gate measured 0.395 over 200 games — same model, same
-opponent, different seeds, 0.015 apart against SE 0.05. The floor fell between
-two draws of the same quantity.
+| finalist | dBlack | dWhite | dAll |
+|---|---:|---:|---:|
+| epoch 08 | +0.045 | +0.080 | +0.063 |
+| epoch 04 *(offline pick)* | +0.090 | −0.025 | +0.033 |
+| **epoch 06** | **+0.085** | **+0.050** | **+0.068** |
+| epoch 05 | +0.140 | +0.005 | +0.073 |
 
-**No threshold was touched and the failure is reported as the protocol defines
-it.** The open question is owner-only and deliberately not acted on: the floor
-exists to catch a per-side *collapse*, and against a 0.415 colour gap an
-absolute 0.40 applies far more harshly to Black than to White. Whether "no
-collapse" means an absolute score or *not worse than the bar on either colour*
-is a semantic question about the protocol, not a loosening of it — and it
-should be decided cold, not while looking at one failing candidate.
+Epoch 6 was selected because its weaker colour improved by 0.050. Epoch 5 had
+the highest aggregate but was almost entirely a Black trade; the ranking did
+what it was designed to do.
 
-Also open: whether generation 9 generates from gen7 (the unbeaten bar) or gen8
-(failed the gate, measurably outplays gen7).
+The binding gate then passed without changing any threshold:
 
-*Updated 2026-08-15. Suite 620 passing plus 3 subtests. Predecessor reports
-retire to git history per project convention.*
+```
+Gen7 initial   200  all 0.5950  W 0.720  B 0.470
+v18 ramp        40  all 0.8500  W 0.975  B 0.725
+anchor          20  all 1.0000  W 1.000  B 1.000
+Gen7 confirm   200  all 0.5575  W 0.705  B 0.410
+```
+
+The two independent Gen7 reads both clear aggregate and per-side floors. Pooled
+across every gate leg, Gen9 scored **W 0.7478/B 0.4891** over 230 games per
+colour. This is the first clean successor produced by the accumulated,
+from-scratch bootstrap process and is the leading **v23 candidate**. Numbering
+and the owner's playtest remain explicit promotion steps; no release directory
+has been created and no historical model has been overwritten.
+
+*Updated 2026-08-15. Generation 10 is running from Gen9 on an independently
+pinned mixed book. Predecessor reports retire to git history per project
+convention.*

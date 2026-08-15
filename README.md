@@ -141,15 +141,15 @@ buffer. Checkpoint selection can be bounded with
 `--max-policy-ce-regression` and `--max-side-top1-drop`.
 None of these flags changes the default recipe.
 
-Current promoted release and formal bar (2026-08-05):
-`models/fresh_start_v20/best_value_net.pt`. It is the preserved
-`lc0b_attention_ema_wide64` checkpoint: attention plus EMA on the exact v19_B
-recipe, with the attention query/key width increased from 32 to 64. It improved
-both colors over the approved 32-channel model in two calibrated reads, and the
-owner promoted it as v20. Historical checkpoints and its campaign copy remain
-intact. An 80-game equal-settings self-match at 400 sims measured a White score
-of 0.6938 and Black score of 0.3063 (47 White wins, 16 Black wins, 17 draws),
-so the current operating point remains materially White-skewed.
+Current numbered release: `models/fresh_start_v21/best_value_net.pt`. The
+stronger unnumbered owner-approved gate is
+`models/fresh_start_v21b/best_value_net.pt`; version names and gate bars are
+kept separate so a merely stronger checkpoint does not silently become a
+release. Inside the bootstrap campaign, Gen7 became the working bar and Gen9
+has now passed it twice on disjoint paired openings. Gen9 is the leading v23
+candidate, not a promoted release: the owner's playtest and explicit numbering
+are still required. See `CONTEXT.md` for the current ledger and `REPORT.md`
+§§24–27 for the paired evaluation evidence.
 
 Preview one complete bootstrap generation without writing anything:
 
