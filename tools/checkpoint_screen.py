@@ -148,11 +148,13 @@ def main() -> None:
                              "checkpoint then faces the identical openings, "
                              "which is what makes their scores directly "
                              "comparable instead of independent samples.")
+    parser.add_argument("--book-offset", type=int, default=0,
+                        help="first book entry reserved for this screen")
     args = parser.parse_args()
     if (args.games < 2 or args.games % 2 or args.sims <= 0
             or args.probe_games < 2 or args.probe_games % 2
             or args.probe_sims <= 0 or args.finalists <= 0
-            or args.workers <= 0):
+            or args.workers <= 0 or args.book_offset < 0):
         parser.error("game counts must be positive and even; sims, finalists, "
                      "and workers must be > 0")
 
@@ -172,7 +174,8 @@ def main() -> None:
     # with its own selection bias and reinstate exactly what the screen is for.
     # Both calibrations use their stage's block, since the deltas are measured
     # against them and must come from the same positions.
-    probe_offset, final_offset = 0, args.probe_games // 2
+    probe_offset = args.book_offset
+    final_offset = probe_offset + args.probe_games // 2
     if args.book:
         from match import load_book
         needed = final_offset + args.games // 2
@@ -264,6 +267,8 @@ def main() -> None:
         "games": args.games,
         "sims": args.sims,
         "seed": screen_seed,
+        "book": args.book,
+        "book_base_offset": args.book_offset if args.book else None,
         "probe": {
             "games": args.probe_games,
             "sims": args.probe_sims,

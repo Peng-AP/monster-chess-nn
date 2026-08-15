@@ -123,6 +123,16 @@ class TestDisjointBlocks(unittest.TestCase):
         self.assertEqual(offsets[gate.CONFIRM_LEG], 120)
         self.assertEqual(needed, 220)
 
+    def test_gate_can_follow_a_disjoint_screen_block(self):
+        import gate
+        spec = [(gate.BAR, "m.pt", 200), ("vs_ramp", "s.pt", 40),
+                ("anchor", None, 20)]
+        offsets, needed = gate.book_leg_offsets(spec, base_offset=120)
+        self.assertEqual(offsets[gate.BAR], 120)
+        self.assertEqual(offsets["vs_ramp"], 220)
+        self.assertEqual(offsets[gate.CONFIRM_LEG], 240)
+        self.assertEqual(needed, 340)
+
 
 class TestPairedStatistics(unittest.TestCase):
     def test_the_colour_gap_cancels_inside_a_pair(self):
@@ -179,6 +189,40 @@ class TestPairedStatistics(unittest.TestCase):
         # requires capturing the king, so these are draws here too.
         self.assertEqual(match.game_score(0.5), 0.5)
         self.assertEqual(match.game_score(-0.5), 0.5)
+
+
+class TestOpeningDiversity(unittest.TestCase):
+    @staticmethod
+    def _row(a_is_white, fen, half=False, turn=8, complete=True):
+        return (0, 30, a_is_white, None,
+                {"fen": fen, "half": half, "turn_count": turn,
+                 "complete": complete})
+
+    def test_duplicate_states_are_counted_by_model_colour(self):
+        rows = [self._row(True, "same"), self._row(True, "same"),
+                self._row(False, "same"), self._row(False, "other")]
+        out = match.opening_stats(rows)
+        self.assertEqual(out["games_observed"], 4)
+        self.assertEqual(out["unique_states"], 2)
+        self.assertEqual(out["unique_as_white"], 1)
+        self.assertEqual(out["unique_as_black"], 2)
+        self.assertEqual(out["effective_unique_games"], 3)
+        self.assertEqual(out["max_multiplicity"], 3)
+        self.assertEqual(out["multiplicity_histogram"], {"3": 1, "1": 1})
+
+    def test_full_monster_state_is_part_of_the_identity(self):
+        rows = [self._row(True, "fen", half=False, turn=8),
+                self._row(True, "fen", half=True, turn=8),
+                self._row(True, "fen", half=False, turn=9)]
+        self.assertEqual(match.opening_stats(rows)["unique_states"], 3)
+
+    def test_legacy_rows_have_no_claimed_diversity(self):
+        self.assertIsNone(match.opening_stats([(1, 20, True, None)]))
+
+    def test_incomplete_sampled_prefixes_stay_visible(self):
+        out = match.opening_stats([
+            self._row(True, "terminal", complete=False)])
+        self.assertEqual(out["incomplete_openings"], 1)
 
 
 class TestBookLoading(unittest.TestCase):

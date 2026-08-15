@@ -111,7 +111,7 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
             if res is None:
                 dropped_terminal += 1
             else:
-                key = (res["fen"], res["half"])
+                key = (res["fen"], res["half"], res["turn_count"])
                 if key not in seen:
                     seen.add(key)
                     book.append(res)
@@ -129,7 +129,8 @@ def _build_one(model, entries, plies, sims, temperature, seed, workers,
             "minutes": round((time.time() - t0) / 60, 2)}
 
 
-def build(models, entries, plies, sims, temperature, seed, workers, engine):
+def build(models, entries, plies, sims, temperature, seed, workers, engine,
+          oversample=1.6):
     """Return (book_entries, stats), drawing equal shares from each model.
 
     Several models are supported because a book inherits the opening TASTE of
@@ -152,7 +153,8 @@ def build(models, entries, plies, sims, temperature, seed, workers, engine):
         per_model.append(_build_one(
             model, share, plies, sims, temperature,
             # Stride the seeds so two models never walk the same RNG stream.
-            seed + 1000000 * index, workers, engine, seen, book))
+            seed + 1000000 * index, workers, engine, seen, book,
+            oversample=oversample))
 
     stats = {"per_model": per_model, "unique": len(book),
              "build_minutes": round(sum(m["minutes"] for m in per_model), 2)}
@@ -177,8 +179,14 @@ def main():
     ap.add_argument("--seed", type=int, default=90000000)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--engine", default="native")
+    ap.add_argument("--oversample", type=float, default=1.6,
+                    help="attempts per requested entry for each model. Increase "
+                         "this without changing depth/distribution when shallow "
+                         "walks collide (default: 1.6)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    if args.oversample < 1.0:
+        ap.error("--oversample must be >= 1.0")
 
     models = [m if os.path.isabs(m) else os.path.join(ROOT, m)
               for m in args.models]
@@ -192,7 +200,8 @@ def main():
           flush=True)
 
     book, stats = build(models, args.entries, args.plies, args.sims,
-                        args.temperature, args.seed, args.workers, args.engine)
+                        args.temperature, args.seed, args.workers, args.engine,
+                        oversample=args.oversample)
     if len(book) < args.entries:
         raise SystemExit(
             f"only {len(book)} of {args.entries} unique positions found; "
@@ -208,6 +217,7 @@ def main():
         "model_sha256": ", ".join(sha256(m) for m in models),
         "plies": args.plies, "sims": args.sims,
         "temperature": args.temperature, "seed": args.seed,
+        "oversample": args.oversample,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "stats": stats,
         "entries": book,

@@ -9,6 +9,7 @@ in minutes.
         --model-b models/fresh_start_v12/best_value_net.pt --games 20
 """
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -138,15 +139,25 @@ def _play(task):
     white = _engines["a"] if a_is_white else _engines["b"]
     black = _engines["b"] if a_is_white else _engines["a"]
     if start is None:
-        result, plies, _dec = play_one(white, black,
-                                       opening_temp_plies=temp_plies)
+        result, plies, _dec, opening = play_one(
+            white, black, opening_temp_plies=temp_plies,
+            return_opening=True)
     else:
-        result, plies, _dec = play_one(
+        result, plies, _dec, opening = play_one(
             white, black, start_fen=start["fen"],
             opening_temp_plies=temp_plies,
             start_half=start.get("half", False),
-            start_turn_count=start.get("turn_count", 0))
-    return (result if a_is_white else -result), plies, a_is_white, pair
+            start_turn_count=start.get("turn_count", 0),
+            return_opening=True)
+    return ((result if a_is_white else -result), plies, a_is_white, pair,
+            opening)
+
+
+def _parts(record):
+    """Read current five-field and legacy/test four-field result records."""
+    result, plies, a_is_white, pair = record[:4]
+    opening = record[4] if len(record) > 4 else None
+    return result, plies, a_is_white, pair, opening
 
 
 def game_score(result):
@@ -176,10 +187,11 @@ def paired_stats(results):
     Returns None unless every counted pair is complete: a half-finished pair
     carries the colour term it was supposed to cancel.
     """
-    if not results or any(pair is None for _r, _p, _aw, pair in results):
+    if not results or any(_parts(row)[3] is None for row in results):
         return None
     by_pair = {}
-    for result, _plies, a_is_white, pair in results:
+    for row in results:
+        result, _plies, a_is_white, pair, _opening = _parts(row)
         by_pair.setdefault(pair, {})[bool(a_is_white)] = game_score(result)
     scores = [0.5 * (sides[True] + sides[False])
               for sides in by_pair.values() if len(sides) == 2]
@@ -193,6 +205,66 @@ def paired_stats(results):
             "pairs_incomplete": len(by_pair) - n}
 
 
+def opening_stats(results):
+    """Describe the opening states actually reached by a match.
+
+    For sampled openings, distinct seeds are not evidence of distinct games.
+    Once temperature turns off, equal state + equal model colours replay the
+    same deterministic continuation.  ``effective_unique_games`` therefore
+    counts unique ``(A colour, complete Monster state)`` keys.  The raw state
+    count is also reported so book and sampler diagnostics can be compared.
+    """
+    observed = []
+    for row in results:
+        _result, _plies, a_is_white, _pair, opening = _parts(row)
+        if not opening:
+            continue
+        state = (opening.get("fen"), bool(opening.get("half", False)),
+                 int(opening.get("turn_count", 0)))
+        observed.append((bool(a_is_white), state, opening))
+    if not observed:
+        return None
+
+    state_counts = {}
+    colour_counts = {True: {}, False: {}}
+    incomplete = 0
+    for a_is_white, state, opening in observed:
+        state_counts[state] = state_counts.get(state, 0) + 1
+        bucket = colour_counts[a_is_white]
+        bucket[state] = bucket.get(state, 0) + 1
+        incomplete += not bool(opening.get("complete", False))
+
+    multiplicities = {}
+    for count in state_counts.values():
+        multiplicities[str(count)] = multiplicities.get(str(count), 0) + 1
+    canonical = "\n".join(
+        f"{count}\t{int(half)}\t{turn}\t{fen}"
+        for (fen, half, turn), count in sorted(state_counts.items()))
+    top = sorted(state_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+    return {
+        "games_observed": len(observed),
+        "unique_states": len(state_counts),
+        "unique_fraction": round(len(state_counts) / len(observed), 4),
+        "unique_as_white": len(colour_counts[True]),
+        "unique_as_black": len(colour_counts[False]),
+        "effective_unique_games": (len(colour_counts[True]) +
+                                   len(colour_counts[False])),
+        "effective_unique_fraction": round(
+            (len(colour_counts[True]) + len(colour_counts[False])) /
+            len(observed), 4),
+        "duplicate_games": len(observed) - len(state_counts),
+        "max_multiplicity": max(state_counts.values()),
+        "multiplicity_histogram": multiplicities,
+        "incomplete_openings": int(incomplete),
+        "states_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "top_duplicates": [
+            {"count": count, "fen": state[0], "half": state[1],
+             "turn_count": state[2]}
+            for state, count in top if count > 1
+        ],
+    }
+
+
 def _write_checkpoint(path, results, done, games, t0):
     """Best-effort partial artifact. Never let a checkpoint failure kill a run."""
     try:
@@ -202,6 +274,7 @@ def _write_checkpoint(path, results, done, games, t0):
             json.dump({"partial": True, "games_requested": games,
                        "games_played": done, "a_score": round(score, 4),
                        "a_as_white": w, "a_as_black": b,
+                       "opening_diversity": opening_stats(results),
                        "elapsed_sec": round(time.time() - t0, 1),
                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")},
                       fh, indent=2)
@@ -215,8 +288,10 @@ def _aggregate(results):
     artifact and for every partial checkpoint, so a resumed read of a killed
     run is the same shape as a completed one."""
     from benchmark import summarize_side
-    white_games = [(r, p) for r, p, aw, _pair in results if aw]
-    black_games = [(r, p) for r, p, aw, _pair in results if not aw]
+    white_games = [(r, p) for r, p, aw, _pair, _opening
+                   in map(_parts, results) if aw]
+    black_games = [(r, p) for r, p, aw, _pair, _opening
+                   in map(_parts, results) if not aw]
     w = summarize_side(white_games)
     b = summarize_side(black_games)
     played = len(results)
@@ -327,6 +402,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         # not comparable -- see tools/make_book.py.
         "book": book_meta,
         "paired": paired_stats(results),
+        "opening_diversity": opening_stats(results),
         "workers": workers,
         "a_score": round(score, 4),
         "a_as_white": w, "a_as_black": b,

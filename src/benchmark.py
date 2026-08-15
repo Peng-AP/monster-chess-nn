@@ -110,10 +110,32 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
     return search, label
 
 
+def _state_record(game, plies_reached, requested_plies):
+    """The complete Monster state at the end of opening sampling.
+
+    A FEN alone is not enough: ``white_half_pending`` changes the action set and
+    ``turn_count`` changes when the move-limit draw is reached.  Match artifacts
+    use this record to measure their *actual* distinct-opening count instead of
+    treating different RNG seeds as proof of independence.
+    """
+    return {
+        "fen": game.fen(),
+        "half": bool(game.white_half_pending),
+        "turn_count": int(game.turn_count),
+        "plies_reached": int(plies_reached),
+        "requested_plies": int(requested_plies),
+        "complete": bool(plies_reached >= requested_plies),
+    }
+
+
 def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
              opening_temp_plies=0, opening_temp=0.5, start_half=False,
-             start_turn_count=0):
-    """Play a single game. Returns (result, n_plies, n_decisions).
+             start_turn_count=0, return_opening=False):
+    """Play a single game. Returns ``(result, plies, decisions)``.
+
+    With ``return_opening=True`` a fourth item records the exact state reached
+    when opening sampling ended.  The default three-item ABI is unchanged for
+    every existing generator, benchmark and probe caller.
 
     opening_temp_plies > 0 samples the first N plies at opening_temp instead
     of temp 0. REQUIRED for NN-vs-NN matches (iterate arena, tools/match.py):
@@ -140,6 +162,8 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
         game.turn_count = int(start_turn_count)
     decisions = 0
     plies = 0
+    opening = (_state_record(game, 0, opening_temp_plies)
+               if opening_temp_plies <= 0 else None)
     while not game.is_terminal() and plies < max_plies:
         engine = white_engine if game.is_white_turn else black_engine
         temp = opening_temp if plies < opening_temp_plies else 0.0
@@ -149,7 +173,15 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
         _apply(game, action)
         decisions += 1
         plies += 1
-    return game.get_result(), plies, decisions
+        if opening is None and plies >= opening_temp_plies:
+            opening = _state_record(game, plies, opening_temp_plies)
+    if opening is None:
+        # A terminal inside the sampled prefix is still an observed opening
+        # trajectory.  Marking it incomplete keeps it visible rather than
+        # silently dropping precisely the short games most likely to collide.
+        opening = _state_record(game, plies, opening_temp_plies)
+    result = (game.get_result(), plies, decisions)
+    return result + (opening,) if return_opening else result
 
 
 def _mean(values):
