@@ -7,8 +7,8 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 579 passing
-plus 3 subtests, verified 2026-08-07 by full discovery.**
+active evidence set). Every bug below is pinned by a regression test. **Suite: 620 passing
+plus 3 subtests, verified 2026-08-15 by full discovery.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
 
@@ -1183,5 +1183,222 @@ independent looks), Black-policy weighting, and the capture-only target. Also
 closed: search depth (section 21 depth study, 8x buys nothing) and the
 colour gap as a target (0.316 -> 0.345 at 8x search).
 
-*Updated 2026-08-07. Predecessor reports retire to git history per project
-convention.*
+## 24. Paired opening books (2026-08-14/15)
+
+### 24.1 The measurement was candidate-dependent
+
+`match.py` diversified NN-vs-NN games by playing the first 16 plies at
+temperature 0.5, sampled from the engine's own visit counts. It exists because
+two temp-0 engines replay one identical game however the RNG is seeded. But the
+opening is drawn from **the candidate's own policy**, so two candidates
+measured against the same incumbent at the same seed start from different
+positions. Their scores are independent samples and their variances add. That
+is why ranking 14 checkpoints costs as many games as generation does.
+
+Stage costs for generation 7, which is what prompted the work:
+
+| stage | time | share |
+|---|---:|---:|
+| generate (500 games @700) | 44.7m | 31% |
+| screen (1,360 games @400) | 44.6m | 31% |
+| train (15 epochs) | 28.7m | 20% |
+| reanalyze (8k @3200) | 14.7m | 10% |
+| gate (460 games @400) | 9.7m | 7% |
+
+### 24.2 What landed
+
+`tools/make_book.py` freezes ply-16 positions from a model's own self-play;
+`match.py --book` plays each entry twice with colours reversed and reports a
+**paired standard error** over pairs rather than games. The pairing removes
+opening-draw variance and makes the per-colour comparison paired, which matters
+because White and Black games previously used deliberately disjoint seeds and
+so came from unmatched opening sets.
+
+A book entry is FEN **plus** `white_half_pending` (board.turn stays WHITE
+across White's pending half) **plus** `turn_count` (rebuilding from FEN
+restarts it at 0, which would hand a ten-turn-deep position the full 150 again
+and lower its draw rate). Both travel in the entry.
+
+Two traps were caught by tests before any run used them:
+
+- **The gate's confirmation leg would have been a tautology.** Under a book,
+  independence lives in the *entry index*, not the seed. The confirmation
+  replay uses a fresh seed, which does nothing when the openings are fixed; it
+  would have replayed the bar leg's openings and agreed by construction while
+  reporting `confirmed: true`. `gate.book_leg_offsets()` now allocates each leg
+  a disjoint block, confirmation last, and validates size before playing.
+  The full gate needs **220 entries**.
+- **The screen had the same trap** between probes and finals. Disjoint blocks
+  now keep the high-power confirmation independent of the selection that chose
+  the finalists.
+
+Deliberately not copied from TCEC: **balance curation**. Their books select
+positions where neither engine is winning. Monster Chess is not balanced, and
+selecting for Black-playable openings would make the gate measure a different
+game from the one the corpus is drawn from. Only the pairing and the freezing
+were taken.
+
+The anchor leg keeps sampled openings: it is the heuristic yardstick and its
+value is comparability with every anchor score on record.
+
+### 24.3 The book cannot be built, and that is the real finding
+
+Both book runs failed.
+
+| build | plies | models | attempts | unique |
+|---|---:|---:|---:|---:|
+| rescore | 16 | v21b | 640 | **132** of 400 |
+| depth sweep | 8 | v21b, v21, gen7 | 54 each | **31** of 100 |
+
+The depth-8 breakdown is the diagnostic: v21b contributed 10, v21 contributed
+11, gen7 contributed 10 — and the union is 31, i.e. **the union equals the
+sum**. Three different models, essentially zero overlap, each saturating at
+about ten positions. That is not a shared entropy ceiling; that is each model
+walking a near-deterministic line with very few effective branch points.
+
+At 16 plies the pool was *not* saturating — new positions arrived at a steady
+~25 per 128 attempts (39 → 60 → 88 → 105 → 132) — so 400 entries is probably
+reachable with ~2,000 attempts. The rate is low; the ceiling is not proven.
+
+**The open question is larger than the fix.** The 16-ply temperature-0.5
+sampler that produced these numbers is the same mechanism that has diversified
+every NN-vs-NN match in this project's history, and play after the opening is
+at temperature 0 and therefore deterministic — two games sharing an opening are
+*identical*, not merely similar. If the distinct-opening rate in a real match
+is near the ~20% seen here, an 800-game match contained on the order of 200
+distinct games and every confidence interval computed from it is too narrow by
+roughly a factor of two, including the 800-game reads used to overturn earlier
+gate passes.
+
+That is an inference from the book builder, **not** a measurement of a match.
+Both engines contribute to a match opening and the pairing-specific
+distribution may be richer. It is directly testable by counting distinct
+openings actually visited in a match configuration, and it should be tested
+before it is believed. Leading hypothesis for the mechanism: `_walk` calls
+`random.seed(seed)`, but the native engine may sample from its own RNG that
+never sees that seed.
+
+**Nothing measured under a book has been produced yet.** Book scores and
+sampled scores are separate regimes and do not compare; the re-anchor that
+would map them (v21b vs v21, 800 games, both regimes) has not run.
+
+## 25. Policy targets were 99.84% zeros (2026-08-15)
+
+Measured on the generation-8 corpus, 833,418 rows:
+
+| | dense | actual content |
+|---|---:|---:|
+| `policies.npy` | 13.65 GB | **0.040 GB** |
+
+Density **0.16%** — mean 6.6 non-zero entries per 4096-wide row, median 5, max
+35 over a 300-row sample. The dense array was 344x its own content.
+
+**The disk size was not the mechanism.** `epoch_train_idx = train_idx` and
+`policies[epoch_train_idx]` re-materialises the full train split **every
+epoch**, so each epoch pulled ~11.5 GB out of a memory-mapped 13.65 GB file in
+shuffled order. That is a page-cache cliff, not a linear cost:
+
+| generation | policy array | min/epoch |
+|---|---:|---:|
+| 7 | 11.9 GB | 1.91 |
+| 8 | 13.65 GB | **3.58** |
+
++14.5% rows, +87% time per epoch. Under an accumulating corpus it worsens every
+generation.
+
+`src/sparse_policy.py` stores CSR (uint16 indices, float32 values, int64
+offsets) in `policies_sparse.npz`. **The storage changed; the interface did
+not** — `SparsePolicyTargets` answers `len`, `.shape`, `.ndim`, `.dtype` and row
+indexing exactly as the dense array did and returns dense rows, so no consumer
+in `train.py` changed. `open_policies` reads either format and prefers sparse,
+so a stale `policies.npy` cannot silently win. Nothing already on disk was
+rewritten; `compose_processed.py` converts legacy dense sources once, on the
+way in.
+
+Parity is asserted with **zero tolerance**, because a silent divergence here
+would not crash — it would train on different targets and surface as an
+unexplained regression weeks later. Verified on real gen-8 data: 4,000 sampled
+rows round-trip bit-identical, and a shuffled batch-256 gather bit-identical.
+Corpus **17.3 GB → 3.68 GB**.
+
+**Not fixed:** `_make_loader` still builds a `TensorDataset`, so the ~11.5 GB
+dense epoch tensor is still allocated — now from a 40 MB in-RAM source rather
+than from disk. Densifying per batch would remove it, but that means
+restructuring the sampler, and the batch order is part of a recipe that
+produced two working generations. It needs a test proving the batch sequence
+stays bit-identical before it lands. Generation 9 is the clean read.
+
+## 26. Generation 8: a third increment that fails the gate (2026-08-15)
+
+Corpus 833,418 rows from 7 sources. Trained from scratch on v20's recipe,
+early-stopped at epoch 14 (50.1m). Screen 83.1m: 14 probes at 40 games, then 5
+finalists at 200.
+
+The reference for every delta is the incumbent's **self-match**, not 0.50.
+gen7's nominee against itself over 200 games: **W 0.7150, B 0.3000, all
+0.5075.**
+
+| finalist | dBlack | dWhite | dAll | both colours |
+|---|---:|---:|---:|---|
+| epoch 04 *(offline pick)* | +0.095 | +0.025 | +0.060 | yes |
+| epoch 07 | +0.080 | +0.020 | +0.050 | yes |
+| **epoch 10** *(selected)* | **+0.110** | **+0.025** | **+0.068** | yes |
+| epoch 12 | +0.080 | −0.005 | +0.038 | no |
+| epoch 13 | +0.115 | −0.025 | +0.045 | no |
+
+All five beat the incumbent; every one is positive on Black. Epochs 4 and 10
+tied exactly on worst-colour delta (+0.025) and the aggregate broke the tie.
+The offline metric picked epoch 4 for the third time running while play-based
+selection preferred a later epoch — the gap here is small (+0.060 vs +0.068),
+so this is not another 52-Elo miss.
+
+**Probe deltas carry ordering, not magnitude.** At 40 games *all fourteen*
+checkpoints looked negative on White; at 200 games White is flat to slightly
+positive. All 14 probes share one 40-game calibration (SE 0.112/side), so a
+noisy reference shifts every candidate equally. It cancels in the ranking and
+misleads in interpretation.
+
+### 26.1 The gate result
+
+```
+vs_v21b   200  all 0.5675  W 0.740  B 0.395   ← FAIL, floor 0.40
+vs_ramp    40  all 0.8625  W 0.975  B 0.750
+anchor     20  all 1.0000  W 1.000  B 1.000
+failures: ['vs_v21b black leg 0.3950 < 0.40']
+```
+
+One failure, 0.005 under, half a game in 100. Pooled across legs: White
+103.5/130 = 0.7962, Black 64.5/130 = **0.4962**. No confirmation leg ran; the
+driver stopped the chain and gen8 produced no promoted artifact.
+
+**Gen8 is better than gen7 on both colours** — +0.025 White and +0.095 Black
+against gen7's own self-match — and its bar-leg aggregate of **0.5675 is
+identical** to gen7's own passing leg against v21b. Three consecutive
+increments of comparable size; the third fails.
+
+### 26.2 The floor is a moving target
+
+Gen7 cleared this floor at Black 0.465. Gen8 gets 0.395 while improving. The
+difference is the bar, not the candidate: **gen7's self-match Black is
+0.3000**, so a candidate must beat the bar by +0.10 on Black merely to *reach*
+an absolute floor of 0.40. As the bar strengthens at White, that floor rises
+out of reach independently of candidate quality.
+
+The knife-edge is worth seeing plainly: the screen measured epoch 10's Black at
+0.410 over 200 games, the gate measured 0.395 over 200 games — same model, same
+opponent, different seeds, 0.015 apart against SE 0.05. The floor fell between
+two draws of the same quantity.
+
+**No threshold was touched and the failure is reported as the protocol defines
+it.** The open question is owner-only and deliberately not acted on: the floor
+exists to catch a per-side *collapse*, and against a 0.415 colour gap an
+absolute 0.40 applies far more harshly to Black than to White. Whether "no
+collapse" means an absolute score or *not worse than the bar on either colour*
+is a semantic question about the protocol, not a loosening of it — and it
+should be decided cold, not while looking at one failing candidate.
+
+Also open: whether generation 9 generates from gen7 (the unbeaten bar) or gen8
+(failed the gate, measurably outplays gen7).
+
+*Updated 2026-08-15. Suite 620 passing plus 3 subtests. Predecessor reports
+retire to git history per project convention.*
