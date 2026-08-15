@@ -37,6 +37,71 @@ def _apply(game, action):
 ENGINE_ENV = "MONSTER_ENGINE"
 SOLVER_ENV = "MONSTER_SOLVER"   # certainty propagation, off unless set
 REUSE_ENV = "MONSTER_REUSE"     # tree reuse across moves, off unless set
+FINISHER_ENV = "MONSTER_FINISHER"   # exact forced-capture search, off unless set
+
+# White's non-king material at or below which the finisher is worth trying.
+# The pathology lives at bare-or-nearly-bare king: in the 24 capped games
+# measured on 2026-08-15, White held zero non-king material in 21 of them.
+FINISHER_WHITE_MATERIAL_MAX = 1
+
+
+class _FinisherEngine:
+    """Exact forced-capture search ahead of the network, at Black-to-move nodes.
+
+    MEASURED 2026-08-15. Of 24 capped games at 1600 simulations, every one
+    ended with Black ahead on material (mean +26.4, White on a bare king in 21)
+    while cycling through about twelve distinct positions until the turn limit.
+    An exact AND/OR search found that **6 of those 24 games contained a
+    Black-to-move position with a forced king capture within four moves** that
+    the search walked past. Those are not fortresses; they are wins the engine
+    could not see. `MONSTER_SOLVER` (certainty propagation inside the tree) was
+    measured as a null against the same games -- a four-move forced line is far
+    beyond what 1600 simulations will prove through this branching factor.
+
+    Two things keep it affordable. It only runs when White is at or near a bare
+    king, which is where the pathology lives and where White's branching is
+    smallest; and it uses the shallow default depth, so a miss costs little.
+    On budget exhaustion `try_forced_capture_move` returns no move and play
+    falls through to the network -- an exhausted search is "no answer", never
+    "no win".
+
+    Off unless MONSTER_FINISHER is set, so no existing result changes.
+    """
+
+    def __init__(self, inner, max_black_moves=3, node_budget=200_000):
+        self._inner = inner
+        self._max_black_moves = max_black_moves
+        self._node_budget = node_budget
+        self.finisher_hits = 0
+        self.finisher_calls = 0
+
+    @staticmethod
+    def _white_material(state):
+        board = state.fen().split()[0]
+        return sum(1 for c in board if c.isupper() and c != "K")
+
+    def _worth_trying(self, state):
+        return (not state.is_white_turn
+                and not getattr(state, "white_half_pending", False)
+                and self._white_material(state) <= FINISHER_WHITE_MATERIAL_MAX)
+
+    def get_best_action(self, state, temperature=0.0):
+        if self._worth_trying(state):
+            from forced_capture import try_forced_capture_move
+            self.finisher_calls += 1
+            move, _depth, _exhausted = try_forced_capture_move(
+                state, max_black_moves=self._max_black_moves,
+                node_budget=self._node_budget)
+            if move is not None:
+                self.finisher_hits += 1
+                # Black actions are single Move objects in both the atomic and
+                # the search API, and both apply paths push identically, so a
+                # solver move is directly playable (monster_chess.py:115,269).
+                return move, None, None
+        return self._inner.get_best_action(state, temperature=temperature)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
 
 
 def _env_flag(name):
@@ -107,6 +172,9 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
     else:
         search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
                       allow_early_stop=True, **kwargs)
+    if _env_flag(FINISHER_ENV):
+        search = _FinisherEngine(search)
+        label += "+finisher"
     return search, label
 
 
