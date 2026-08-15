@@ -79,8 +79,15 @@ def load_book(path):
     if not entries:
         raise SystemExit(f"book {path} has no entries")
     meta = {k: doc[k] for k in
-            ("model", "model_sha256", "plies", "sims", "temperature", "seed")
+            ("schema_version", "model", "model_sha256", "plies", "sims",
+             "temperature", "search_policy_temperature", "seed",
+             "oversample", "created", "stats")
             if k in doc}
+    digest = hashlib.sha256()
+    with open(full, "rb") as fh:
+        for chunk in iter(lambda: fh.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    meta["book_sha256"] = digest.hexdigest()
     meta["path"] = path.replace("\\", "/")
     meta["entries"] = len(entries)
     return entries, meta

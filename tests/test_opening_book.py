@@ -254,6 +254,7 @@ class TestBookLoading(unittest.TestCase):
         self.assertEqual(meta["entries"], 2)
         self.assertEqual(meta["model_sha256"], "abc")
         self.assertEqual(meta["plies"], 16)
+        self.assertRegex(meta["book_sha256"], r"^[0-9a-f]{64}$")
 
     def test_an_empty_book_is_refused(self):
         with self.assertRaises(SystemExit):
