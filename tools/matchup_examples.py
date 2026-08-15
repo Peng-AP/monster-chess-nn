@@ -151,8 +151,22 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--engine", default="native")
     ap.add_argument("--seed", type=int, default=515000)
+    ap.add_argument("--only", default=None,
+                    help="comma-separated matchup keys; default is all. Use "
+                         "for expensive high-sim passes where recording all "
+                         "thirteen would cost hours.")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+
+    selected = MATCHUPS
+    if args.only:
+        wanted = [k.strip() for k in args.only.split(",") if k.strip()]
+        known = {m[0] for m in MATCHUPS}
+        missing = [k for k in wanted if k not in known]
+        if missing:
+            raise SystemExit(f"unknown matchup keys {missing}; "
+                             f"known: {sorted(known)}")
+        selected = [m for m in MATCHUPS if m[0] in wanted]
 
     book_path = ROOT / args.book if not Path(args.book).is_absolute() \
         else Path(args.book)
@@ -165,7 +179,7 @@ def main() -> None:
 
     started = time.time()
     out_matchups = []
-    for key, label, white, black, note in MATCHUPS:
+    for key, label, white, black, note in selected:
         print(f"\n=== {label} ({args.games} games @ {args.sims}) ===",
               flush=True)
         block = entries[args.book_offset:args.book_offset + args.games]
@@ -181,6 +195,15 @@ def main() -> None:
                 plies_total += game["plies"]
                 if len(kept[game["category"]]) < args.per_category:
                     kept[game["category"]].append(game)
+                # Stop as soon as every category is full. Playing the whole
+                # block and selecting afterwards throws away most of the games
+                # -- at 2 per category that was 26 of 32 discarded, and at high
+                # sims each discarded game costs real minutes. --games is now a
+                # ceiling rather than a quota, so a matchup whose categories
+                # fill early simply stops.
+                if all(len(kept[c]) >= args.per_category for c in CATEGORIES):
+                    pool.terminate()
+                    break
 
         played = sum(tally.values())
         decisive = tally["white_win"] + tally["black_win"]
