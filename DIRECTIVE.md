@@ -1,12 +1,19 @@
 # DIRECTIVE — the engine rewrite (2026-08-03)
 
-**Status (2026-08-05): complete through E5.** The native engine is the
-default, the captures-only re-baseline established v19_B as the historical
-bar, and the follow-on Black-first architecture campaign produced the
-attention+EMA successor. Its 64-channel Wide64 checkpoint improved both colors
-twice and has now been promoted by the owner as `fresh_start_v20`, the current
-formal bar. Current evidence and next actions are in `REPORT.md`; the remainder
-of this document preserves the rewrite contract and E6 scope.
+**Status (2026-08-15): complete. This document is now a scope record, not an
+active plan.** The native engine is the default and all three purchases below
+were delivered — high-sim operation is routine, and CUDA graphs later took real
+matches a further **2.85x** bit-identically, which is why 800-game
+confirmations became affordable rather than a once-a-day expense. The
+captures-only re-baseline established v19_B as the historical bar; the
+Black-first architecture campaign produced the attention+EMA successor,
+promoted as `fresh_start_v20`.
+
+**The bar has moved twice since and is now `fresh_start_v21b`**, with
+`fresh_start_v21` holding the version number. The live work is the bootstrap
+loop, not this rewrite: see `CONTEXT.md` §2 for standing and `REPORT.md`
+§24-26 for current evidence and the two open owner decisions. The remainder of
+this document preserves the rewrite contract and E6 scope.
 
 **Owner's call: the residual problem may be compute.** Search is Python-bound
 (CONTEXT law 18: NN forward 14% at batch 16 and 7.7% at batch 256,
