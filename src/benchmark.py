@@ -111,7 +111,8 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
 
 
 def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
-             opening_temp_plies=0, opening_temp=0.5):
+             opening_temp_plies=0, opening_temp=0.5, start_half=False,
+             start_turn_count=0):
     """Play a single game. Returns (result, n_plies, n_decisions).
 
     opening_temp_plies > 0 samples the first N plies at opening_temp instead
@@ -119,9 +120,24 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
     two deterministic engines at temp 0 replay the identical game no matter
     how the RNG is seeded, silently collapsing the sample size to 1.
     Heuristic-involved games diverge via seeded tie-breaks, so the anchor
-    benchmark keeps 0 (yardstick unchanged).
+    benchmark keeps 0 (yardstick unchanged). An opening book supplies the
+    diversity instead, and then this drops back to 0.
+
+    start_half / start_turn_count restore the two pieces of state a FEN cannot
+    carry. Both matter whenever start_fen came from a book:
+
+      * board.turn stays WHITE across White's pending half (see
+        MonsterChessGame.apply_search_action), so the FEN alone cannot say
+        which half of White's turn comes next.
+      * MonsterChessGame(fen) restarts turn_count at 0. Left there, a position
+        eight turns deep would get the full 150 turns *again* before the cap,
+        lengthening its games and lowering its draw rate relative to games
+        played from the true start.
     """
     game = MonsterChessGame(fen=start_fen) if start_fen else MonsterChessGame()
+    if start_fen:
+        game.white_half_pending = bool(start_half)
+        game.turn_count = int(start_turn_count)
     decisions = 0
     plies = 0
     while not game.is_terminal() and plies < max_plies:

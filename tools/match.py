@@ -63,15 +63,134 @@ def _init_worker(model_a, model_b, sims, sims_b=None,
         policy_temperature=policy_temperature_b)
 
 
+def load_book(path):
+    """Return (entries, metadata) for a book written by tools/make_book.py.
+
+    A book is a pinned artifact: scores measured under one are not comparable
+    to scores measured under another, or to the temperature-sampled openings
+    that preceded books entirely. The metadata rides into the match artifact so
+    a reader can tell which regime produced a number.
+    """
+    full = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    with open(full, "r", encoding="utf-8") as fh:
+        doc = json.load(fh)
+    entries = doc.get("entries") or []
+    if not entries:
+        raise SystemExit(f"book {path} has no entries")
+    meta = {k: doc[k] for k in
+            ("model", "model_sha256", "plies", "sims", "temperature", "seed")
+            if k in doc}
+    meta["path"] = path.replace("\\", "/")
+    meta["entries"] = len(entries)
+    return entries, meta
+
+
+def build_tasks(games, seed, opening_temp_plies, entries=None, book_name="",
+                offset=0):
+    """Return the per-game task list.
+
+    Extracted from run_match so the pairing layout is testable without a GPU
+    or a process pool -- the layout is the whole mechanism, and getting it
+    silently wrong would produce plausible numbers with no pairing in them.
+    """
+    if entries is None:
+        # SEED SEPARATION: per-game seeds are seed+i and seed+1000+i, so two
+        # runs whose seeds differ by less than ~1000+games/2 replay overlapping
+        # games. Seeds one apart share 19 of 20 -- a "fresh seed" re-run then
+        # reproduces the first result exactly and looks like reassuring
+        # agreement. Space independent samples by 100000 or more.
+        # tests/test_match_seed_separation.py
+        n_white = games // 2
+        seeds = match_game_seeds(games, seed)
+        return ([(True, s, opening_temp_plies, None, None)
+                 for s in seeds[:n_white]] +
+                [(False, s, opening_temp_plies, None, None)
+                 for s in seeds[n_white:]])
+    if games % 2:
+        raise SystemExit(
+            f"paired book play needs an even --games (got {games}); each "
+            f"opening is played twice with colours reversed")
+    if offset < 0 or offset + games // 2 > len(entries):
+        raise SystemExit(
+            f"book {book_name} has {len(entries)} entries but {games} games "
+            f"at offset {offset} need entries "
+            f"[{offset}, {offset + games // 2}). Play from a book is "
+            f"deterministic, so reusing an entry would replay an identical "
+            f"game rather than add a sample -- build a larger book instead.")
+    # Both halves of a pair share a seed: play is deterministic at temp 0, and
+    # a shared RNG stream keeps any residual tie-break randomness common to the
+    # pair so it cancels along with the colour term.
+    #
+    # `offset` is how a multi-leg protocol draws a DISJOINT sample. Under a
+    # book, independence lives in the entry index, not the seed: the gate's
+    # confirmation replay is meant to be a fresh sample, and two legs at
+    # different seeds but the same offset would replay identical openings and
+    # agree by construction.
+    return [(i % 2 == 0, seed + i // 2, 0, entries[offset + i // 2], i // 2)
+            for i in range(games)]
+
+
 def _play(task):
-    """task = (a_is_white, seed, temp_plies) -> (a_result, plies)."""
+    """task = (a_is_white, seed, temp_plies, start, pair) -> per-game record."""
     from benchmark import play_one
-    a_is_white, seed, temp_plies = task
+    a_is_white, seed, temp_plies, start, pair = task
     random.seed(seed)
     white = _engines["a"] if a_is_white else _engines["b"]
     black = _engines["b"] if a_is_white else _engines["a"]
-    result, plies, _dec = play_one(white, black, opening_temp_plies=temp_plies)
-    return (result if a_is_white else -result), plies, a_is_white
+    if start is None:
+        result, plies, _dec = play_one(white, black,
+                                       opening_temp_plies=temp_plies)
+    else:
+        result, plies, _dec = play_one(
+            white, black, start_fen=start["fen"],
+            opening_temp_plies=temp_plies,
+            start_half=start.get("half", False),
+            start_turn_count=start.get("turn_count", 0))
+    return (result if a_is_white else -result), plies, a_is_white, pair
+
+
+def game_score(result):
+    """A's score in [0, 1] for one game, under the gate's win rule.
+
+    Must agree with benchmark.summarize_side: only a king capture is a win, so
+    the +-0.5 move-limit relabel scores as a draw. tests/test_opening_book.py
+    pins the two together -- a silent divergence would make the paired standard
+    error describe a different scoring rule from the headline score.
+    """
+    if result >= 1:
+        return 1.0
+    if result <= -1:
+        return 0.0
+    return 0.5
+
+
+def paired_stats(results):
+    """Standard error from colour-reversed pairs rather than from single games.
+
+    Each book entry is played twice, once with A as White and once as Black.
+    Summing the pair cancels both the position's own bias and the colour gap
+    -- which at 0.31 is the single largest per-game variance term in this game
+    -- so the SE of the mean pair score is well below the SE computed as if
+    the games were independent. This is the whole reason the book exists.
+
+    Returns None unless every counted pair is complete: a half-finished pair
+    carries the colour term it was supposed to cancel.
+    """
+    if not results or any(pair is None for _r, _p, _aw, pair in results):
+        return None
+    by_pair = {}
+    for result, _plies, a_is_white, pair in results:
+        by_pair.setdefault(pair, {})[bool(a_is_white)] = game_score(result)
+    scores = [0.5 * (sides[True] + sides[False])
+              for sides in by_pair.values() if len(sides) == 2]
+    n = len(scores)
+    if n < 2:
+        return None
+    mean = sum(scores) / n
+    var = sum((s - mean) ** 2 for s in scores) / (n - 1)
+    return {"pairs": n, "pair_mean": round(mean, 4),
+            "se_paired": round((var / n) ** 0.5, 4),
+            "pairs_incomplete": len(by_pair) - n}
 
 
 def _write_checkpoint(path, results, done, games, t0):
@@ -96,8 +215,8 @@ def _aggregate(results):
     artifact and for every partial checkpoint, so a resumed read of a killed
     run is the same shape as a completed one."""
     from benchmark import summarize_side
-    white_games = [(r, p) for r, p, aw in results if aw]
-    black_games = [(r, p) for r, p, aw in results if not aw]
+    white_games = [(r, p) for r, p, aw, _pair in results if aw]
+    black_games = [(r, p) for r, p, aw, _pair in results if not aw]
     w = summarize_side(white_games)
     b = summarize_side(black_games)
     played = len(results)
@@ -113,7 +232,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               fpu_reduction_b=FPU_REDUCTION,
               policy_temperature_a=POLICY_TEMPERATURE,
               policy_temperature_b=POLICY_TEMPERATURE,
-              stall_timeout=600.0, checkpoint_path=None):
+              stall_timeout=600.0, checkpoint_path=None, book=None,
+              book_offset=0):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -124,16 +244,20 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     """
     opening_temp_plies = resolve_opening_temp_plies(model_b, opening_temp_plies)
     workers = workers or DEFAULT_GAME_WORKERS
+    book_meta = None
 
-    # SEED SEPARATION: per-game seeds are seed+i and seed+1000+i, so two runs
-    # whose seeds differ by less than ~1000+games/2 replay overlapping games.
-    # Seeds one apart share 19 of 20 -- a "fresh seed" re-run then reproduces
-    # the first result exactly and looks like reassuring agreement. Space
-    # independent samples by 100000 or more. tests/test_match_seed_separation.py
-    n_white = games // 2
-    seeds = match_game_seeds(games, seed)
-    tasks = [(True, s, opening_temp_plies) for s in seeds[:n_white]]
-    tasks += [(False, s, opening_temp_plies) for s in seeds[n_white:]]
+    if book:
+        entries, book_meta = load_book(book)
+        # The book IS the diversity, so opening sampling goes off. Leaving it
+        # on would draw the opening from the candidate's own policy again and
+        # put back exactly the candidate-dependence the book removes.
+        opening_temp_plies = 0
+        tasks = build_tasks(games, seed, 0, entries, book_name=book,
+                            offset=book_offset)
+        book_meta = dict(book_meta, offset=book_offset,
+                         entries_used=[book_offset, book_offset + games // 2])
+    else:
+        tasks = build_tasks(games, seed, opening_temp_plies)
 
     t0 = time.time()
     pool = mp.Pool(
@@ -198,6 +322,11 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
             "policy_temperature": policy_temperature_b,
         },
         "opening_temp_plies": opening_temp_plies,
+        # Present only for book matches. Its absence marks a score measured
+        # under temperature-sampled openings, which is a different regime and
+        # not comparable -- see tools/make_book.py.
+        "book": book_meta,
+        "paired": paired_stats(results),
         "workers": workers,
         "a_score": round(score, 4),
         "a_as_white": w, "a_as_black": b,
@@ -252,6 +381,11 @@ def main():
     # NN-vs-NN matches need sampled model openings.
     ap.add_argument("--opening-temp-plies", type=int, default=None,
                     help="default: 16 for NN-vs-NN, 0 vs the heuristic anchor")
+    ap.add_argument("--book", default=None,
+                    help="opening book from tools/make_book.py. Plays each "
+                         "entry twice with colours reversed and turns opening "
+                         "sampling off. Scores are NOT comparable to non-book "
+                         "scores.")
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--stall-timeout", type=float, default=600.0,
                     help="fail if no game completes for this many seconds")
@@ -272,7 +406,7 @@ def main():
                     policy_temperature_a=args.policy_temperature_a,
                     policy_temperature_b=args.policy_temperature_b,
                     stall_timeout=args.stall_timeout,
-                    checkpoint_path=_artifact_path(args))
+                    checkpoint_path=_artifact_path(args), book=args.book)
     path = out["_artifact_path"]
     out.pop("_artifact_path", None)
     with open(path, "w") as f:

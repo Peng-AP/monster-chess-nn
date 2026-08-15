@@ -155,9 +155,36 @@ def evaluate_legs(legs):
     return verdict, failures, totals
 
 
+def book_leg_offsets(spec):
+    """Allocate every NN leg a disjoint block of book entries.
+
+    Returns ({leg_name: first_entry}, entries_required).
+
+    Under a book, independence between legs lives in the ENTRY INDEX, not in
+    the seed. Two legs at different seeds but the same offset replay identical
+    openings and agree by construction, which would silently turn the
+    confirmation replay -- the whole point of which is a fresh sample -- into a
+    re-print of the bar leg. The confirmation is allocated last so it can never
+    overlap a leg that ran before it.
+
+    The anchor leg is deliberately absent: it keeps sampled openings because it
+    is the heuristic yardstick, and its value is comparability with every
+    anchor score on record. Heuristic tie-breaks already diversify it (see
+    match.resolve_opening_temp_plies).
+    """
+    offsets, cursor = {}, 0
+    for name, opponent, games in spec:
+        if opponent:
+            offsets[name] = cursor
+            cursor += games // 2
+    offsets[CONFIRM_LEG] = cursor
+    cursor += {name: games for name, _o, games in spec}[BAR] // 2
+    return offsets, cursor
+
+
 def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
              engine=None, bar_model=None, sparring_model=None,
-             stall_timeout=600.0):
+             stall_timeout=600.0, book=None):
     base_spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
     bar_model = bar_model or BAR_MODEL
     sparring_model = sparring_model or SPARRING
@@ -170,9 +197,18 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
         elif name == "vs_ramp":
             opponent = sparring_model
         spec.append((name, opponent, games))
-    from match import run_match
+    from match import load_book, run_match
 
     legs = {}
+
+    book_offsets = {}
+    if book:
+        book_offsets, needed = book_leg_offsets(spec)
+        n_entries = len(load_book(book)[0])
+        if needed > n_entries:
+            raise SystemExit(
+                f"gate needs {needed} book entries but {book} has "
+                f"{n_entries}; rebuild it with --entries {needed} or more")
 
     def play(name, opponent, games, leg_seed):
         print(f"[gate] leg {name}: {games} games vs "
@@ -181,7 +217,9 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
         t0 = time.time()
         legs[name] = run_match(model, opponent, games, sims, leg_seed,
                                workers=workers, engine=engine,
-                               stall_timeout=stall_timeout)
+                               stall_timeout=stall_timeout,
+                               book=book if name in book_offsets else None,
+                               book_offset=book_offsets.get(name, 0))
         print(f"[gate]   {name}: a_score={legs[name]['a_score']} "
               f"W={legs[name]['a_as_white']['score']} "
               f"B={legs[name]['a_as_black']['score']} "
@@ -226,6 +264,10 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
         "bar_model": os.path.relpath(bar_model, ROOT),
         "sparring_model": os.path.relpath(sparring_model, ROOT),
         "confirmed": CONFIRM_LEG in legs,
+        # None marks a verdict measured under temperature-sampled openings.
+        # Book and non-book scores are different regimes and do not compare.
+        "book": book,
+        "book_offsets": book_offsets or None,
         "thresholds": {
             "per_side_floor": PER_SIDE_FLOOR,
             "aggregate_min_exclusive": AGGREGATE_MIN,
@@ -261,6 +303,10 @@ def main():
                     help="distinct-style floor-bearing opponent")
     ap.add_argument("--report-path", default=None,
                     help="write the report to this exact path")
+    ap.add_argument("--book", default=None,
+                    help="paired opening book (tools/make_book.py) for the "
+                         "NN legs. The anchor leg keeps sampled openings. "
+                         "Scores do NOT compare to non-book gate results.")
     args = ap.parse_args()
 
     if not os.path.exists(args.model):
@@ -277,7 +323,7 @@ def main():
                    sims=args.sims, engine=args.engine,
                    bar_model=args.bar_model,
                    sparring_model=args.sparring_model,
-                   stall_timeout=args.stall_timeout)
+                   stall_timeout=args.stall_timeout, book=args.book)
 
     if args.report_path:
         path = os.path.abspath(args.report_path)

@@ -143,6 +143,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--engine", choices=("python", "native"), default="native")
     parser.add_argument("--stall-timeout", type=float, default=600.0)
+    parser.add_argument("--book", default=None,
+                        help="paired opening book (tools/make_book.py). Every "
+                             "checkpoint then faces the identical openings, "
+                             "which is what makes their scores directly "
+                             "comparable instead of independent samples.")
     args = parser.parse_args()
     if (args.games < 2 or args.games % 2 or args.sims <= 0
             or args.probe_games < 2 or args.probe_games % 2
@@ -161,13 +166,31 @@ def main() -> None:
     if not incumbent.is_file():
         raise FileNotFoundError(incumbent)
 
+    # Probes and finals draw DISJOINT blocks. The two stages exist so that the
+    # high-power confirmation is independent of the selection that produced the
+    # finalists; replaying the probe openings would correlate the confirmation
+    # with its own selection bias and reinstate exactly what the screen is for.
+    # Both calibrations use their stage's block, since the deltas are measured
+    # against them and must come from the same positions.
+    probe_offset, final_offset = 0, args.probe_games // 2
+    if args.book:
+        from match import load_book
+        needed = final_offset + args.games // 2
+        available = len(load_book(args.book)[0])
+        if needed > available:
+            raise SystemExit(
+                f"screen needs {needed} book entries "
+                f"({args.probe_games // 2} probe + {args.games // 2} final) "
+                f"but {args.book} has {available}")
+
     print(f"[checkpoint-screen] probe calibration: {args.probe_games} games "
           f"@ {args.probe_sims}", flush=True)
     probe_calibration = run_match(
         str(incumbent), str(incumbent), args.probe_games, args.probe_sims,
         args.seed,
         workers=args.workers, engine=args.engine,
-        stall_timeout=args.stall_timeout)
+        stall_timeout=args.stall_timeout,
+        book=args.book, book_offset=probe_offset)
     probe_results = []
     for checkpoint in checkpoints:
         print(f"[checkpoint-screen] probe {checkpoint['name']}", flush=True)
@@ -175,7 +198,8 @@ def main() -> None:
             str(checkpoint["path"]), str(incumbent), args.probe_games,
             args.probe_sims,
             args.seed, workers=args.workers, engine=args.engine,
-            stall_timeout=args.stall_timeout)
+            stall_timeout=args.stall_timeout,
+            book=args.book, book_offset=probe_offset)
         result = calibrated_result(match, probe_calibration)
         result.update({
             "name": checkpoint["name"],
@@ -201,7 +225,8 @@ def main() -> None:
     calibration = run_match(
         str(incumbent), str(incumbent), args.games, args.sims, screen_seed,
         workers=args.workers, engine=args.engine,
-        stall_timeout=args.stall_timeout)
+        stall_timeout=args.stall_timeout,
+        book=args.book, book_offset=final_offset)
     results = []
     checkpoint_by_name = {checkpoint["name"]: checkpoint
                           for checkpoint in checkpoints}
@@ -211,7 +236,8 @@ def main() -> None:
         match = run_match(
             str(checkpoint["path"]), str(incumbent), args.games, args.sims,
             screen_seed, workers=args.workers, engine=args.engine,
-            stall_timeout=args.stall_timeout)
+            stall_timeout=args.stall_timeout,
+            book=args.book, book_offset=final_offset)
         result = calibrated_result(match, calibration)
         result.update({
             "name": checkpoint["name"],
