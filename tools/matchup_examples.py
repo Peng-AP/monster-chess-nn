@@ -99,12 +99,23 @@ def _init_worker(white_model, black_model, sims, engine):
 
 
 def _play_recorded(task):
-    """Play one game from a book position, keeping every frame."""
-    seed, entry = task
+    """Play one game, keeping every frame.
+
+    With no book entry the game starts from the true opening position and the
+    record is a complete game -- which is what a showcase wants. Diversity then
+    has to come from somewhere, because two deterministic engines replay one
+    identical game however the RNG is seeded, so the first `temp_plies` are
+    sampled from the search distribution at `temp`. Every move is still played
+    and recorded; only the opening moves are sampled rather than argmax.
+    """
+    seed, entry, temp_plies, temp = task
     random.seed(seed)
-    game = MonsterChessGame(entry["fen"])
-    game.white_half_pending = bool(entry.get("half", False))
-    game.turn_count = int(entry.get("turn_count", 0))
+    if entry is None:
+        game = MonsterChessGame()
+    else:
+        game = MonsterChessGame(entry["fen"])
+        game.white_half_pending = bool(entry.get("half", False))
+        game.turn_count = int(entry.get("turn_count", 0))
 
     frames = [{"fen": game.fen(), "move": None, "actor": None, "half": None}]
     plies = 0
@@ -113,7 +124,7 @@ def _play_recorded(task):
         pending = bool(getattr(game, "white_half_pending", False))
         engine = _ENGINES["white" if is_white else "black"]
         action, _probabilities, _value = engine.get_best_action(
-            game, temperature=0.0)
+            game, temperature=(temp if plies < temp_plies else 0.0))
         if action is None:
             break
         uci = action.uci()
@@ -129,7 +140,7 @@ def _play_recorded(task):
     result = float(game.get_result())
     return {
         "seed": seed,
-        "start_fen": entry["fen"],
+        "start_fen": frames[0]["fen"],
         "result": result,
         "category": classify(result),
         "plies": plies,
@@ -139,11 +150,21 @@ def _play_recorded(task):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--book",
-                    default="books/gate_mixed_v21b_gen7_gen9_p16_20260815.json")
-    ap.add_argument("--book-offset", type=int, default=400,
-                    help="reserved exhibition block; keep clear of the gate "
-                         "blocks (0-219) and the tuner reservation (680-747)")
+    ap.add_argument("--book", default=None,
+                    help="optional. Omitted, every game is played FROM THE "
+                         "TRUE OPENING POSITION and the record is a complete "
+                         "game -- which is what a showcase wants. A book only "
+                         "makes sense here if it is large enough to give every "
+                         "game its own distinct opening; a handful of entries "
+                         "reused across matchups makes every game a variation "
+                         "on the same few starts.")
+    ap.add_argument("--book-offset", type=int, default=0)
+    ap.add_argument("--opening-temp-plies", type=int, default=8,
+                    help="plies sampled from the search distribution before "
+                         "play goes deterministic. Two temp-0 engines replay "
+                         "one identical game, so some sampling is required; "
+                         "every move is still played and recorded.")
+    ap.add_argument("--opening-temp", type=float, default=1.0)
     ap.add_argument("--games", type=int, default=48,
                     help="games per matchup")
     ap.add_argument("--per-category", type=int, default=3)
@@ -168,29 +189,55 @@ def main() -> None:
                              f"known: {sorted(known)}")
         selected = [m for m in MATCHUPS if m[0] in wanted]
 
-    book_path = ROOT / args.book if not Path(args.book).is_absolute() \
-        else Path(args.book)
-    entries = json.loads(book_path.read_text(encoding="utf-8"))["entries"]
-    need = args.book_offset + args.games
-    if need > len(entries):
-        raise SystemExit(
-            f"book has {len(entries)} entries; offset {args.book_offset} plus "
-            f"{args.games} games needs {need}")
+    entries = None
+    if args.book:
+        book_path = ROOT / args.book if not Path(args.book).is_absolute() \
+            else Path(args.book)
+        entries = json.loads(book_path.read_text(encoding="utf-8"))["entries"]
+        need = args.book_offset + args.games
+        if need > len(entries):
+            raise SystemExit(
+                f"book has {len(entries)} entries; offset {args.book_offset} "
+                f"plus {args.games} games needs {need}. A showcase book needs "
+                f"one distinct opening per game, not a block reused across "
+                f"matchups.")
 
     started = time.time()
     out_matchups = []
+    seen_games: set = set()   # global: a duplicate is a duplicate anywhere
     for key, label, white, black, note in selected:
         print(f"\n=== {label} ({args.games} games @ {args.sims}) ===",
               flush=True)
-        block = entries[args.book_offset:args.book_offset + args.games]
-        tasks = [(args.seed + i, entry) for i, entry in enumerate(block)]
+        if entries is None:
+            block = [None] * args.games
+        else:
+            block = entries[args.book_offset:args.book_offset + args.games]
+        tasks = [(args.seed + i, entry, args.opening_temp_plies,
+                  args.opening_temp) for i, entry in enumerate(block)]
         kept: dict[str, list] = {c: [] for c in CATEGORIES}
         tally = {c: 0 for c in CATEGORIES}
         plies_total = 0
+        duplicates = 0
 
         with mp.Pool(args.workers, initializer=_init_worker,
                      initargs=(white, black, args.sims, args.engine)) as pool:
             for game in pool.imap_unordered(_play_recorded, tasks):
+                # A repeated opening between deterministic engines replays the
+                # SAME GAME, and showing it twice is padding. The key is the
+                # sequence of SETTLED positions -- those not mid-White-turn --
+                # because White moves twice and playing its two half-moves in
+                # either order transposes to the same position, which a
+                # move-list key would miss. `seen_games` is shared across
+                # matchups: different White models converge on identical lines
+                # against the same opponent more often than one would guess
+                # (four did, in the first full-game run), and a duplicate is a
+                # duplicate wherever it shows up.
+                signature = tuple(f["fen"] for f in game["frames"]
+                                  if f.get("half") != 1)
+                if signature in seen_games:
+                    duplicates += 1
+                    continue
+                seen_games.add(signature)
                 tally[game["category"]] += 1
                 plies_total += game["plies"]
                 if len(kept[game["category"]]) < args.per_category:
@@ -219,6 +266,7 @@ def main() -> None:
             "white": white or "heuristic anchor",
             "black": black or "heuristic anchor",
             "games_played": played,
+            "duplicates_rejected": duplicates,
             "tally": {LABEL[c]: tally[c] for c in CATEGORIES},
             "white_share_of_decisive": (round(tally["white_win"] / decisive, 4)
                                         if decisive else None),
@@ -226,13 +274,13 @@ def main() -> None:
             "games": selected,
         })
         print(f"  White {tally['white_win']}  Black {tally['black_win']}  "
-              f"draw {tally['draw']}  | kept {len(selected)} | "
+              f"draw {tally['draw']}  | dup {duplicates} | kept {len(selected)} | "
               f"{(time.time() - started) / 60:.1f}m elapsed", flush=True)
 
     payload = {
         "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "sims": args.sims,
-        "book": args.book,
+        "book": args.book or "none (full games from the start)",
         "book_offset": args.book_offset,
         "games_per_matchup": args.games,
         "matchups": out_matchups,
