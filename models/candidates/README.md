@@ -14,6 +14,9 @@ both colours in the initial leg and clearing the absolute Black floor again on
 fresh openings. `screen_nominee.pt` is byte-identical to
 `selected_epoch_006.pt` (SHA-256 starts `6a59b1f7`). It still needs the owner's
 playtest and explicit release naming; no numbered directory has been created.
+It subsequently scored 0.5763 against v21b over 400 paired games
+(W 0.6975/B 0.4550). Gen10 and its controlled seed-43 replicate both failed
+the Gen9 gate, so neither supersedes this checkpoint.
 
 **Do not load `best_value_net.pt` from inside a candidate directory.** That is
 the offline-selected checkpoint and can differ from the model the arena and

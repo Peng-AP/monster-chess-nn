@@ -49,6 +49,7 @@ from-scratch run beat the model five generations of fine-tuning had produced.
 | `models/candidates/gen7_scratch/screen_nominee.pt` | passed the gate against v21b (pooled 0.5600 over 400 games, z=+2.40); the working bar inside the bootstrap loop. |
 | `models/candidates/gen8_scratch/screen_nominee.pt` | paired re-screen selected epoch 7; it passed the first Gen7 leg but failed fresh confirmation at Black 0.3500. No promotion. |
 | `models/candidates/gen9_scratch/screen_nominee.pt` | **passed the complete paired gate against Gen7.** It scored 0.5950 (W 0.7200/B 0.4700), then confirmed at 0.5575 (W 0.7050/B 0.4100). Leading v23 candidate; owner playtest and numbering remain outstanding. |
+| `models/candidates/gen10_scratch/screen_nominee.pt` | rejected. It scored 0.5225 against Gen9 but Black 0.3850 failed the unchanged 0.40 floor; seed-43 also failed at 0.4925/W 0.6300/B 0.3550. No confirmation was earned. |
 
 **The loop has now produced a clean successor.** Gen8 remained a useful data
 increment but did not survive a fresh paired confirmation. Gen9 generated from
@@ -62,7 +63,14 @@ state+model-colour games (85.5% effective), so its standard error needs only a
 1.08× correction, not the feared ~2×. A paired-book re-anchor reproduced the
 same result (0.5238 versus 0.5225 sampled). Current screens and gates use pinned,
 mixed-provenance books with disjoint selection and test blocks (`REPORT.md`
-§24.3).
+§24.3). Gen10 then demonstrated that replay accumulation is not monotonically
+improving: its best balanced checkpoint traded White strength for a small Black
+gain and failed the Gen9 gate (`REPORT.md` §28).
+
+**Gen9 post-gate diagnostics.** Its paired self-skew is W 0.6675/B 0.3325 over
+400 games. Directly against v21b it scores 0.5763 overall, W 0.6975/B 0.4550
+(400 games, paired SE 0.0157). Gen9 remains the clear successor candidate after
+both Gen10 seed paths failed.
 
 ### The v20-era ledger (2026-08-05, retained)
 

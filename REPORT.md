@@ -1,4 +1,4 @@
-# MASTER REPORT — 2026-08-04: the engine rewrite lands, and what it measured
+# MASTER REPORT — through 2026-08-15: native engine to bootstrap successor
 
 Replaces the 2026-08-03 run report (git history holds it). Covers the owner's
 rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
@@ -7,8 +7,8 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 620 passing
-plus 3 subtests, verified 2026-08-15 by full discovery.**
+active evidence set). Every bug below is pinned by a regression test. **Suite: 632 passing
+plus 3 subtests, verified 2026-08-15 by full discovery; native Rust: 5 passing.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
 
@@ -1398,6 +1398,64 @@ from-scratch bootstrap process and is the leading **v23 candidate**. Numbering
 and the owner's playtest remain explicit promotion steps; no release directory
 has been created and no historical model has been overwritten.
 
-*Updated 2026-08-15. Generation 10 is running from Gen9 on an independently
-pinned mixed book. Predecessor reports retire to git history per project
+Two post-gate diagnostics make that result easier to interpret. A 400-game
+paired self-match measured the underlying game skew at **W 0.6675/B 0.3325**,
+slightly less extreme than v20's old 0.6938/0.3063 sampled baseline. A direct
+400-game paired match against v21b scored **0.5763 overall, W 0.6975/B 0.4550**
+with paired SE 0.0157. Gen9 is therefore not merely transitive through Gen7;
+it directly and significantly outplays the historical gate on both practical
+colour assignments.
+
+## 28. Generation 10: accumulation is not monotonic (2026-08-15)
+
+Generation 10 generated from Gen9 and added 55,549 positions from 500 games,
+plus the same 8,000/4,000 Black-heavy deep-teacher pass. Its increment contains
+111,098 processed rows; the accumulated corpus reached **1,047,422 rows**.
+Training retained the exact Gen9 recipe, took 37.1 minutes, and stopped at
+epoch 15. Offline validation and the paired arena both selected epoch 5.
+
+None of the four 200-game finalists improved both colours over Gen9:
+
+| finalist | dBlack | dWhite | dAll |
+|---|---:|---:|---:|
+| epoch 04 | +0.025 | −0.055 | −0.015 |
+| epoch 12 | +0.000 | −0.060 | −0.030 |
+| epoch 08 | +0.025 | −0.025 | +0.000 |
+| **epoch 05** | **+0.005** | **−0.020** | **−0.008** |
+
+The gate agreed with the screen rather than rescuing it:
+
+```
+Gen9          200  all 0.5225  W 0.660  B 0.385  ← FAIL, floor 0.40
+v18 ramp       40  all 0.8250  W 0.975  B 0.675
+anchor         20  all 0.9750  W 1.000  B 0.950
+```
+
+Across these legs it scored W 0.7346/B 0.4731, but the binding Gen9 Black leg
+failed and no confirmation was earned. This is not evidence that Gen10 data is
+bad; it is evidence that blindly appending one more equal-recipe generation is
+not guaranteed to improve the model. Gen10 remains useful replay and a clean
+negative result. Gen9 remains the successor candidate.
+
+### 28.1 Controlled training-seed replicate
+
+To distinguish a data/recipe ceiling from one unlucky optimization path, the
+same Gen10 corpus and recipe were trained again with seed 43. Offline validation
+selected epoch 6; paired play selected epoch 11. Two full finalists improved
+both colours on the screen block:
+
+```
+epoch 11  dBlack +0.035  dWhite +0.015  dAll +0.025
+epoch 07  dBlack +0.025  dWhite +0.015  dAll +0.020
+```
+
+That promising read did not survive the untouched binding block. Epoch 11
+scored **0.4925 overall, W 0.630/B 0.355** against Gen9, failing both aggregate
+and Black thresholds. The replicate proves that seed variance is large enough
+to change checkpoint rankings, but does not rescue Gen10. A future training
+study should treat seed as a nuisance variable and require cross-seed or
+independent-book robustness; repeatedly drawing seeds until one passes would
+just overfit the gate.
+
+*Updated 2026-08-15. Predecessor reports retire to git history per project
 convention.*

@@ -5,9 +5,11 @@ per-generation increments:
 
 - `combined_v19_B_r50h60_capture` — current immutable v19_B/V20 anchor.
 - `bootstrap_new_main_gen_0002` through `...0005_teacher3200`, plus
-  `...0007`, `...0008`, and `...0009` — accepted/informative replay increments.
-- `bootstrap_replay_main_gen_0009` — latest complete accumulated corpus:
-  936,366 rows. Generation 10 is composed beside it while its run is active.
+  `...0007`, `...0008`, `...0009`, and `...0010` — accepted/informative
+  replay increments.
+- `bootstrap_replay_main_gen_0010` — latest complete accumulated corpus:
+  1,047,422 rows. Gen10 failed its playing-strength gate, so this snapshot is
+  informative replay rather than proof of a stronger model.
 
 The `bootstrap_new_*` directories are the compact reusable increments;
 `bootstrap_replay_*` directories are reproducible accumulated snapshots. The
