@@ -93,19 +93,19 @@ def sha256(path):
     return h.hexdigest()
 
 
-def build(model, entries, plies, sims, temperature, seed, workers, engine,
-          oversample=1.6):
-    """Return (book_entries, stats). Walks are independent, so they parallelize."""
-    workers = workers or DEFAULT_GAME_WORKERS
+def _build_one(model, entries, plies, sims, temperature, seed, workers,
+               engine, seen, book, oversample=1.6):
+    """Walk one model until it has contributed `entries` fresh positions."""
     # Terminal walks and duplicates both cost entries, so ask for more than
     # needed rather than discovering the shortfall after the pool closes.
     attempts = max(entries, int(entries * oversample))
     tasks = [(seed + i, plies, temperature) for i in range(attempts)]
+    start = len(book)
 
     t0 = time.time()
     pool = mp.Pool(workers, initializer=_init_worker,
                    initargs=(model, sims, engine, temperature))
-    seen, book, dropped_terminal = set(), [], 0
+    dropped_terminal = 0
     try:
         for i, res in enumerate(pool.imap_unordered(_walk, tasks), 1):
             if res is None:
@@ -115,28 +115,58 @@ def build(model, entries, plies, sims, temperature, seed, workers, engine,
                 if key not in seen:
                     seen.add(key)
                     book.append(res)
-            if i % max(1, attempts // 10) == 0:
-                print(f"  [{i}/{attempts}] {len(book)} unique, "
-                      f"{(time.time() - t0) / 60:.1f}m", flush=True)
-            if len(book) >= entries:
+            if i % max(1, attempts // 5) == 0:
+                print(f"  [{i}/{attempts}] {len(book) - start} from this "
+                      f"model, {(time.time() - t0) / 60:.1f}m", flush=True)
+            if len(book) - start >= entries:
                 break
     finally:
         pool.terminate()
         pool.join()
+    return {"model": os.path.relpath(model, ROOT).replace("\\", "/"),
+            "contributed": len(book) - start,
+            "dropped_terminal": dropped_terminal,
+            "minutes": round((time.time() - t0) / 60, 2)}
 
-    stats = {"attempts_made": min(len(tasks), attempts),
-             "dropped_terminal": dropped_terminal,
-             "duplicates": max(0, len(seen) - len(book)),
-             "build_minutes": round((time.time() - t0) / 60, 2)}
+
+def build(models, entries, plies, sims, temperature, seed, workers, engine):
+    """Return (book_entries, stats), drawing equal shares from each model.
+
+    Several models are supported because a book inherits the opening TASTE of
+    whatever produced it. Drawn from the bar alone, it quietly favours that
+    lineage: models that like the same openings are measured on ground they
+    already understand, and the tilt grows as the bar ages. Equal shares from
+    several models spread that out.
+
+    They are walked in sequence rather than together: each pass loads one model
+    into the workers, so peak VRAM stays at one model's worth however many are
+    mixed.
+    """
+    workers = workers or DEFAULT_GAME_WORKERS
+    seen, book, per_model = set(), [], []
+    share = -(-entries // len(models))          # ceil, so the total is covered
+    for index, model in enumerate(models):
+        print(f"\n[{index + 1}/{len(models)}] "
+              f"{os.path.basename(os.path.dirname(model))}: "
+              f"up to {share} entries", flush=True)
+        per_model.append(_build_one(
+            model, share, plies, sims, temperature,
+            # Stride the seeds so two models never walk the same RNG stream.
+            seed + 1000000 * index, workers, engine, seen, book))
+
+    stats = {"per_model": per_model, "unique": len(book),
+             "build_minutes": round(sum(m["minutes"] for m in per_model), 2)}
     return book[:entries], stats
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", required=True,
-                    help="model whose self-play the openings are drawn from "
-                         "(use the bar, so the book is neutral to candidates)")
+    ap.add_argument("--model", required=True, action="append", dest="models",
+                    help="model whose self-play the openings are drawn from. "
+                         "Repeat it to mix provenance in equal shares, which "
+                         "keeps the book from inheriting one lineage's "
+                         "opening taste.")
     ap.add_argument("--entries", type=int, default=400,
                     help="unique positions; a match plays 2 games per entry, "
                          "so 400 supports an 800-game match")
@@ -150,25 +180,32 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    model = args.model if os.path.isabs(args.model) else os.path.join(ROOT, args.model)
+    models = [m if os.path.isabs(m) else os.path.join(ROOT, m)
+              for m in args.models]
+    for m in models:
+        if not os.path.isfile(m):
+            raise SystemExit(f"no such model: {m}")
     print(f"building {args.entries} entries at {args.plies} plies, "
           f"temp {args.temperature}, {args.sims} sims from "
-          f"{os.path.basename(os.path.dirname(model))}", flush=True)
+          f"{len(models)} model(s): "
+          f"{', '.join(os.path.basename(os.path.dirname(m)) for m in models)}",
+          flush=True)
 
-    book, stats = build(model, args.entries, args.plies, args.sims,
+    book, stats = build(models, args.entries, args.plies, args.sims,
                         args.temperature, args.seed, args.workers, args.engine)
     if len(book) < args.entries:
         raise SystemExit(
             f"only {len(book)} of {args.entries} unique positions found; "
-            f"raise --entries oversampling or --plies (deeper walks collide "
-            f"less often). Stats: {stats}")
+            f"deepen --plies (shallow walks collide often) or mix in another "
+            f"--model. Stats: {stats}")
 
     out = args.out if os.path.isabs(args.out) else os.path.join(ROOT, args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     doc = {
         "schema_version": SCHEMA_VERSION,
-        "model": os.path.relpath(model, ROOT).replace("\\", "/"),
-        "model_sha256": sha256(model),
+        "model": ", ".join(os.path.relpath(m, ROOT).replace("\\", "/")
+                           for m in models),
+        "model_sha256": ", ".join(sha256(m) for m in models),
         "plies": args.plies, "sims": args.sims,
         "temperature": args.temperature, "seed": args.seed,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
