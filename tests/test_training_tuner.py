@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -70,6 +71,26 @@ class TrainingTunerContracts(unittest.TestCase):
         self.assertNotIn("--black-weight", command)
         self.assertNotIn("--moves-left-head", command)
         self.assertNotIn("--legal-policy-mask", command)
+
+    def test_training_command_can_match_current_bootstrap_architecture(self):
+        params = tuner.suggest_parameters(FixedTrial())
+        args = SimpleNamespace(
+            data="data/processed/bootstrap_replay_main_gen_0010",
+            stem_channels=64,
+            policy_head="attention",
+            policy_attention_channels=64,
+            ema_decay=0.999,
+            memory_map_data=True,
+        )
+        command = tuner.training_command(
+            params, tuner.STAGES[0], tuner.ROOT / "models" / "tuning" / "fixture",
+            args)
+        joined = " ".join(command)
+        self.assertIn(args.data, joined)
+        self.assertIn("--policy-head attention", joined)
+        self.assertIn("--policy-attention-channels 64", joined)
+        self.assertIn("--ema-decay 0.999", joined)
+        self.assertIn("--memory-map-data", command)
 
 
 if __name__ == "__main__":

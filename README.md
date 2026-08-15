@@ -212,22 +212,45 @@ Pipeline training evaluates the incumbent on the same validation rows before
 epoch one. Validation preserves checkpoints using worst-color policy and
 value-sign gains over that fixed baseline; the checkpoint arena then tests
 every preserved model and ranks by its calibrated worst color. Regression
-guards remain fixed to the incumbent rather than walking between epochs. If no epoch is safe, training
-emits `selection_rejected.json` and the generation becomes
-`rejected_training`. The
-moves-left head exists as an opt-in experiment but is off in the first pipeline
-generation so infrastructure and architecture changes are not conflated.
+guards remain fixed to the incumbent rather than walking between epochs. If no
+epoch is safe, training emits `selection_rejected.json` and the generation
+becomes `rejected_training`. The moves-left head exists as an opt-in experiment
+but is off in the first pipeline generation so infrastructure and architecture
+changes are not conflated.
 
-The first fixed-architecture bootstrap successor to clear all automated gates
-is
-`models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt`.
+Training hyperparameters can be searched with multi-fidelity Optuna trials
+whose objective is calibrated arena play rather than validation loss. The
+tuner accepts the current corpus, bar, architecture, EMA setting, and a paired
+book; every trial at a fidelity rung sees the same openings, while any winner
+must still use an untouched block for the normal binding gate. Example for the
+post-Gen10 state:
+
+```bash
+python tools/tune_training.py --trials 8 --timeout-hours 10 \
+  --study-name gen10_training_hpo \
+  --storage logs/hpo/gen10_training_hpo.sqlite3 \
+  --model-root models/tuning/gen10_training_hpo \
+  --log-root logs/hpo/gen10_training_hpo \
+  --report-prefix hpo_gen10_training \
+  --data data/processed/bootstrap_replay_main_gen_0010 \
+  --bar models/candidates/gen9_scratch/screen_nominee.pt \
+  --policy-head attention --policy-attention-channels 64 \
+  --ema-decay 0.999 --memory-map-data \
+  --book books/gate_mixed_v21b_gen7_gen9_p16_20260815.json \
+  --book-offset 680
+```
+
+Historical bootstrap milestone: the first fixed-architecture successor to
+clear all automated gates was
+`models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt`;
+that lineage became V21.
 It uses the full replay with 4x policy-only teachers searched at 3200
 simulations. The calibrated 80x800 confirmation measured +0.0125 Black,
 +0.1375 White, and +0.075 overall versus V20. A separate full binding gate
 passed both V20 seeds (initial 0.650 overall / 0.825 White / 0.475 Black;
 confirmation 0.550 / 0.675 / 0.425), plus ramp and heuristic retention. Its
 80-game self-match reduced pooled White skew from V20's 0.6938 to 0.5875.
-This is a candidate for the owner's release playtest, not a numbered V21.
+Those figures explain the V21 promotion; they are not the current candidate.
 The isolated moves-left auxiliary follow-up did not supersede it: epoch six
 passed a direct 80x800 A/B but failed the fresh V20 Black floor at 0.375, and
 the earlier epoch three lost 0.050 Black in its independent A/B confirmation.
@@ -251,7 +274,7 @@ times):
 
 ```bash
 python tools/match.py --model-a models/my_model/best_value_net.pt \
-    --model-b models/fresh_start_v20/best_value_net.pt --games 20
+    --model-b models/candidates/gen9_scratch/screen_nominee.pt --games 20
 ```
 
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent

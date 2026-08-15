@@ -7,7 +7,7 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 632 passing
+active evidence set). Every bug below is pinned by a regression test. **Suite: 633 passing
 plus 3 subtests, verified 2026-08-15 by full discovery; native Rust: 5 passing.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
@@ -1456,6 +1456,17 @@ to change checkpoint rankings, but does not rescue Gen10. A future training
 study should treat seed as a nuisance variable and require cross-seed or
 independent-book robustness; repeatedly drawing seeds until one passes would
 just overfit the gate.
+
+### 28.2 Hyperparameter tuner brought forward
+
+`tools/tune_training.py` is no longer hard-wired to the old v19_B corpus,
+v20 bar, and convolutional policy head. It now accepts corpus/bar paths, the
+current attention architecture, EMA and memory-map settings, plus a paired book
+and reserved offset. Fidelity rungs use disjoint book slices while every trial
+within a rung sees identical positions. The objective remains Black-first with
+a White-collapse penalty, and the normal untouched binding gate remains
+decisive. This makes the next recipe search reproducible without pretending
+offline loss is playing strength or manually trying isolated settings.
 
 *Updated 2026-08-15. Predecessor reports retire to git history per project
 convention.*

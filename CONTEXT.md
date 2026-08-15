@@ -72,6 +72,11 @@ gain and failed the Gen9 gate (`REPORT.md` §28).
 (400 games, paired SE 0.0157). Gen9 remains the clear successor candidate after
 both Gen10 seed paths failed.
 
+**Next strength experiment:** use the currentized multi-fidelity tuner on the
+Gen10 corpus against Gen9, with paired book entries 680–747 reserved for trial
+ranking. Treat training seed as a nuisance variable and send only a tuner
+winner to a fresh binding book; do not mine more seeds against the same gate.
+
 ### The v20-era ledger (2026-08-05, retained)
 
 - **Incumbent and formal gate bar: `models/fresh_start_v20`.** The owner

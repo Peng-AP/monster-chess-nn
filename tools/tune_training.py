@@ -1,4 +1,4 @@
-"""Black-first multi-fidelity hyperparameter tuning on the exact v19_B data.
+"""Black-first multi-fidelity hyperparameter tuning with arena play.
 
 The objective is calibrated arena play, not validation loss. Each fidelity
 rung trains from the same seed and from scratch to its epoch budget; this costs
@@ -8,6 +8,12 @@ Weak trials are pruned by successive halving after the 6- and 12-epoch rungs.
 Examples:
     py -3 -u tools/tune_training.py --smoke --trials 1
     py -3 -u tools/tune_training.py --trials 20
+    py -3 -u tools/tune_training.py --trials 8 \
+        --data data/processed/bootstrap_replay_main_gen_0010 \
+        --bar models/candidates/gen9_scratch/screen_nominee.pt \
+        --policy-head attention --policy-attention-channels 64 \
+        --ema-decay 0.999 --memory-map-data \
+        --book books/gate_mixed_v21b_gen7_gen9_p16_20260815.json
 """
 from __future__ import annotations
 
@@ -28,7 +34,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from config import DEFAULT_GAME_WORKERS  # noqa: E402
-from match import run_match  # noqa: E402
+from match import load_book, run_match  # noqa: E402
 
 DATA = "data/processed/combined_v19_B_r50h60"
 BAR = "models/fresh_start_v20/best_value_net.pt"
@@ -122,11 +128,14 @@ def arena_objective(candidate: dict, calibration: dict) -> dict:
     }
 
 
-def training_command(params: dict, stage: Stage, model_dir: Path) -> list[str]:
+def training_command(params: dict, stage: Stage, model_dir: Path,
+                     args=None) -> list[str]:
+    data = getattr(args, "data", DATA)
+    stem_channels = getattr(args, "stem_channels", 64)
     patience = 10 if stage.epochs >= 30 else stage.epochs + 1
-    return [
+    command = [
         sys.executable, "-u", "src/train.py",
-        "--data-dir", DATA,
+        "--data-dir", data,
         "--model-dir", str(model_dir.relative_to(ROOT)),
         "--epochs", str(stage.epochs),
         "--patience", str(patience),
@@ -142,19 +151,47 @@ def training_command(params: dict, stage: Stage, model_dir: Path) -> list[str]:
         "--target", "game_result",
         "--value-head", "scalar",
         "--select-metric", "decisive",
-        "--stem-channels", "64",
+        "--stem-channels", str(stem_channels),
     ]
+    policy_head = getattr(args, "policy_head", "conv")
+    if policy_head != "conv":
+        command += ["--policy-head", policy_head]
+        if policy_head == "attention":
+            command += ["--policy-attention-channels", str(
+                getattr(args, "policy_attention_channels", 64))]
+    ema_decay = getattr(args, "ema_decay", None)
+    if ema_decay is not None:
+        command += ["--ema-decay", str(ema_decay)]
+    if getattr(args, "memory_map_data", False):
+        command.append("--memory-map-data")
+    return command
 
 
 class TrainingTuner:
     def __init__(self, args, stages):
         self.args = args
         self.stages = stages
-        self.bar = absolute(BAR)
+        self.data = absolute(args.data)
+        self.bar = absolute(args.bar)
         self.model_root = absolute(args.model_root)
         self.log_root = absolute(args.log_root)
         self.calibration_root = self.log_root / "calibration"
         self.bar_hash = sha256(self.bar)
+        self.book_hash = sha256(absolute(args.book)) if args.book else None
+        self._book_offsets = {}
+        cursor = int(args.book_offset)
+        for stage in stages:
+            self._book_offsets[stage.index] = cursor
+            cursor += stage.games // 2
+        if args.book:
+            entries = len(load_book(str(absolute(args.book)))[0])
+            if cursor > entries:
+                raise ValueError(
+                    f"tuning stages need {cursor} book entries but "
+                    f"{args.book} has {entries}")
+
+    def book_offset(self, stage: Stage) -> int:
+        return self._book_offsets[stage.index]
 
     def calibration(self, stage: Stage) -> dict:
         path = self.calibration_root / f"stage_{stage.index:02d}.json"
@@ -165,6 +202,8 @@ class TrainingTuner:
                 "games": stage.games,
                 "sims": stage.sims,
                 "seed": stage.seed,
+                "book_sha256": self.book_hash,
+                "book_offset": self.book_offset(stage) if self.args.book else None,
             }
             if all(payload.get(key) == value for key, value in expected.items()):
                 print(f"[hpo] reuse stage-{stage.index} self-calibration", flush=True)
@@ -175,13 +214,18 @@ class TrainingTuner:
               f"{stage.games} games @ {stage.sims} sims", flush=True)
         match = run_match(
             str(self.bar), str(self.bar), stage.games, stage.sims, stage.seed,
-            workers=self.args.workers, engine="native")
+            workers=self.args.workers, engine="native",
+            book=str(absolute(self.args.book)) if self.args.book else None,
+            book_offset=self.book_offset(stage))
         save_json(path, {
-            "bar": BAR,
+            "bar": self.args.bar,
             "bar_sha256": self.bar_hash,
             "games": stage.games,
             "sims": stage.sims,
             "seed": stage.seed,
+            "book": self.args.book,
+            "book_sha256": self.book_hash,
+            "book_offset": self.book_offset(stage) if self.args.book else None,
             "match": match,
         })
         return match
@@ -190,8 +234,20 @@ class TrainingTuner:
         trial_dir = self.model_root / f"trial_{trial.number:05d}"
         stage_dir = trial_dir / f"stage_{stage.index:02d}_e{stage.epochs:02d}"
         config_path = trial_dir / "config.json"
-        config = {"trial": trial.number, "params": params, "data": DATA,
-                  "seed": 42}
+        config = {
+            "trial": trial.number,
+            "params": params,
+            "data": self.args.data,
+            "bar": self.args.bar,
+            "architecture": {
+                "stem_channels": self.args.stem_channels,
+                "policy_head": self.args.policy_head,
+                "policy_attention_channels": self.args.policy_attention_channels,
+                "ema_decay": self.args.ema_decay,
+            },
+            "memory_map_data": self.args.memory_map_data,
+            "seed": 42,
+        }
         if config_path.exists():
             recorded = json.loads(config_path.read_text(encoding="utf-8"))
             if recorded != config:
@@ -211,7 +267,7 @@ class TrainingTuner:
 
         stage_dir.mkdir(parents=True)
         log_path = self.log_root / f"trial_{trial.number:05d}_stage_{stage.index:02d}.log"
-        command = training_command(params, stage, stage_dir)
+        command = training_command(params, stage, stage_dir, self.args)
         print(f"[hpo] trial {trial.number} stage {stage.index}: "
               f"train {stage.epochs} epochs", flush=True)
         with log_path.open("w", encoding="utf-8") as log:
@@ -245,7 +301,9 @@ class TrainingTuner:
                   f"screen {stage.games} games @ {stage.sims} sims", flush=True)
             match = run_match(
                 str(checkpoint), str(self.bar), stage.games, stage.sims,
-                stage.seed, workers=self.args.workers, engine="native")
+                stage.seed, workers=self.args.workers, engine="native",
+                book=str(absolute(self.args.book)) if self.args.book else None,
+                book_offset=self.book_offset(stage))
         objective = arena_objective(match, calibration)
         payload = {
             "trial": trial.number,
@@ -299,8 +357,17 @@ def save_summary(study, args, stages) -> Path:
     payload = {
         "study": study.study_name,
         "storage": str(absolute(args.storage).relative_to(ROOT)),
-        "data": DATA,
-        "bar": BAR,
+        "data": args.data,
+        "bar": args.bar,
+        "book": args.book,
+        "book_offset": args.book_offset if args.book else None,
+        "architecture": {
+            "stem_channels": args.stem_channels,
+            "policy_head": args.policy_head,
+            "policy_attention_channels": args.policy_attention_channels,
+            "ema_decay": args.ema_decay,
+            "memory_map_data": args.memory_map_data,
+        },
         "objective": {
             "formula": "black_delta + 0.25*aggregate_delta - 2*white_shortfall",
             "white_delta_floor": WHITE_DELTA_FLOOR,
@@ -318,7 +385,7 @@ def save_summary(study, args, stages) -> Path:
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     suffix = "smoke" if args.smoke else time.strftime("%Y%m%d_%H%M%S")
-    path = ROOT / "benchmarks" / f"hpo_v19b_training_{suffix}.json"
+    path = ROOT / "benchmarks" / f"{args.report_prefix}_{suffix}.json"
     save_json(path, payload)
     return path
 
@@ -331,17 +398,37 @@ def main():
     parser.add_argument("--storage", default=DEFAULT_STORAGE)
     parser.add_argument("--model-root", default=DEFAULT_MODEL_ROOT)
     parser.add_argument("--log-root", default=DEFAULT_LOG_ROOT)
+    parser.add_argument("--report-prefix", default="hpo_v19b_training")
+    parser.add_argument("--data", default=DATA)
+    parser.add_argument("--bar", default=BAR)
+    parser.add_argument("--stem-channels", type=int, default=64)
+    parser.add_argument("--policy-head", choices=("conv", "attention"),
+                        default="conv")
+    parser.add_argument("--policy-attention-channels", type=int, default=64)
+    parser.add_argument("--ema-decay", type=float, default=None)
+    parser.add_argument("--memory-map-data", action="store_true")
+    parser.add_argument("--book", default=None,
+                        help="optional paired opening book shared by every trial")
+    parser.add_argument("--book-offset", type=int, default=0,
+                        help="first book entry reserved for the fidelity ladder")
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--timeout-hours", type=float, default=None)
     parser.add_argument("--smoke", action="store_true",
                         help="one-epoch, two-game wiring check")
     args = parser.parse_args()
-    if args.trials <= 0 or args.workers <= 0:
-        parser.error("trials and workers must be > 0")
-    if not absolute(DATA).is_dir():
-        raise FileNotFoundError(f"missing exact B corpus: {DATA}")
-    if not absolute(BAR).is_file():
-        raise FileNotFoundError(f"missing v19_B checkpoint: {BAR}")
+    if (args.trials <= 0 or args.workers <= 0 or args.stem_channels <= 0
+            or args.policy_attention_channels <= 0):
+        parser.error("trials, workers, and channel counts must be > 0")
+    if args.book_offset < 0:
+        parser.error("--book-offset must be non-negative")
+    if args.ema_decay is not None and not 0.0 < args.ema_decay < 1.0:
+        parser.error("--ema-decay must be between zero and one")
+    if not absolute(args.data).is_dir():
+        raise FileNotFoundError(f"missing training corpus: {args.data}")
+    if not absolute(args.bar).is_file():
+        raise FileNotFoundError(f"missing bar checkpoint: {args.bar}")
+    if args.book and not absolute(args.book).is_file():
+        raise FileNotFoundError(f"missing opening book: {args.book}")
 
     stages = SMOKE_STAGES if args.smoke else STAGES
     if args.smoke:
