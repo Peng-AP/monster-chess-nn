@@ -135,7 +135,7 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 # to) models/best_value_net.pt, which has never existed — so play.py silently
 # fell back to the heuristic and a fresh iterate.py run would believe there was
 # no incumbent at all. Both now resolve the real one through this constant.
-INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v20", "best_value_net.pt")
+INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v22", "best_value_net.pt")
 
 # Data retention (data_processor.py)
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)

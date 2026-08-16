@@ -1,13 +1,14 @@
 # Which model to load
 
-Current playtest ledger (2026-08-15):
+Current playtest ledger (2026-08-16):
 
 | role | path |
 |---|---|
-| numbered release (V21) | `models/fresh_start_v21/best_value_net.pt` |
-| stronger unnumbered gate (V21b) | `models/fresh_start_v21b/best_value_net.pt` |
-| V22 candidate / prior bootstrap bar | `models/candidates/gen7_scratch/screen_nominee.pt` |
-| **leading V23 candidate** | `models/candidates/gen9_scratch/screen_nominee.pt` |
+| **numbered release and gate (V22)** | `models/fresh_start_v22/best_value_net.pt` |
+| prior numbered release (V21) | `models/fresh_start_v21/best_value_net.pt` |
+| prior stronger gate (V21b) | `models/fresh_start_v21b/best_value_net.pt` |
+| prior bootstrap bar | `models/candidates/gen7_scratch/screen_nominee.pt` |
+| V22 source checkpoint | `models/candidates/gen9_scratch/screen_nominee.pt` |
 | exact Gen9 moves-left experiment | `models/candidates/gen9_mlh_lift/best_value_net.pt` |
 
 Gen9 epoch 6 passed the complete paired gate against Gen7 twice, improving
@@ -16,8 +17,9 @@ fresh openings. `screen_nominee.pt` is byte-identical to
 `selected_epoch_006.pt` (SHA-256 starts `6a59b1f7`). It still needs the owner's
 playtest and explicit release naming; no numbered directory has been created.
 It subsequently scored 0.5763 against v21b over 400 paired games
-(W 0.6975/B 0.4550). Gen10 and its controlled seed-43 replicate both failed
-the Gen9 gate, so neither supersedes this checkpoint.
+(W 0.6975/B 0.4550). The owner promoted it as V22 on 2026-08-16; the release
+copy is byte-identical (SHA-256 starts `6a59b1f7`). Gen10 and its controlled
+seed-43 replicate both failed the Gen9 gate, so neither supersedes it.
 
 `gen9_mlh_lift` is not a stronger nominee. It adds only the four moves-left
 head tensors; every inherited Gen9 tensor is bit-identical. The head learned a

@@ -37,7 +37,7 @@ from config import DEFAULT_GAME_WORKERS  # noqa: E402
 from match import load_book, run_match  # noqa: E402
 
 DATA = "data/processed/combined_v19_B_r50h60"
-BAR = "models/fresh_start_v20/best_value_net.pt"
+BAR = "models/fresh_start_v22/best_value_net.pt"
 DEFAULT_STUDY = "v19b_training_hpo"
 DEFAULT_MODEL_ROOT = "models/tuning/v19b_training_hpo"
 DEFAULT_LOG_ROOT = "logs/hpo/v19b_training_hpo"

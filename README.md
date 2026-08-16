@@ -149,14 +149,12 @@ slope flags. The first exact Gen9 lift learned a real length signal but was a
 clean playing null (0.5062 over 80 paired games; 0/16 conversion moves changed),
 so it remains infrastructure rather than a successor. See `REPORT.md` §32.
 
-Current numbered release: `models/fresh_start_v21/best_value_net.pt`. The
-stronger unnumbered owner-approved gate is
-`models/fresh_start_v21b/best_value_net.pt`; version names and gate bars are
-kept separate so a merely stronger checkpoint does not silently become a
-release. Inside the bootstrap campaign, Gen7 became the working bar and Gen9
-has now passed it twice on disjoint paired openings. Gen9 is the leading v23
-candidate, not a promoted release: the owner's playtest and explicit numbering
-are still required. See `CONTEXT.md` for the current ledger and `REPORT.md`
+Current numbered release and formal strength bar:
+`models/fresh_start_v22/best_value_net.pt`. This is the former Gen9 epoch-6
+arena checkpoint, explicitly promoted by the owner on 2026-08-16 after it
+passed Gen7 twice on disjoint paired openings and beat the prior v21b bar
+directly over 400 games. The source candidate and all earlier numbered models
+remain immutable. See `CONTEXT.md` for the current ledger and `REPORT.md`
 §§24–27 for the paired evaluation evidence.
 
 Preview one complete bootstrap generation without writing anything:
@@ -190,7 +188,14 @@ can stop safely after any phase.
 Self-play is augmented by ordinary-position deep search, not tactical rules:
 `tools/reanalyze.py` selects positions where deeper champion search most
 changes the policy/value and writes policy-only teachers, with 60% of the
-pipeline's teacher budget reserved for Black. `tools/compose_processed.py`
+pipeline's teacher budget reserved for Black. Production defaults reproduce
+the successful Gen9 workload: 500 games at 700 simulations, then sample 8,000
+positions and retain 4,000 teachers searched at 3,200 simulations. Training is
+fresh with the Gen9/V20 scratch optimizer recipe; it does not resume incumbent
+weights. Every processed generation must pass an exact teacher census before
+it can be registered or composed: one-row retention, mirrored row count,
+60/40 side split, policy-only value mask, and source-linked split membership.
+`tools/compose_processed.py`
 combines the exact immutable v19_B/V20 anchor, recent accepted replay, and the
 current generation while preserving validation/test membership. Processed
 self-play is registered in `accepted_data.json` before candidate training, so
@@ -209,6 +214,12 @@ directories atomically, accepted replay hashes every required artifact, and a
 run-root lock prevents concurrent bootstrap loops. Large replay position and
 policy arrays are memory-mapped during pipeline training to keep later
 generations inside host-memory limits.
+
+Pass `--book books/<pinned-book>.json` to reserve disjoint paired blocks for
+checkpoint screening, the binding gate, high-fidelity confirmation, and
+self-skew automatically. The current early-play book has 1,200 unique p8
+positions drawn equally from v20, v21, v21b, Gen7, and Gen9; its immutable
+block allocation is recorded beside it in a `.partitions.json` manifest.
 
 Game-playing phases use the measured eight-worker default on the 5060 Ti. That
 setting delivered 7.11 decisions/s versus 5.39 at four workers; twelve workers
@@ -241,7 +252,7 @@ python tools/tune_training.py --trials 8 --timeout-hours 10 \
   --log-root logs/hpo/gen10_training_hpo \
   --report-prefix hpo_gen10_training \
   --data data/processed/bootstrap_replay_main_gen_0010 \
-  --bar models/candidates/gen9_scratch/screen_nominee.pt \
+  --bar models/fresh_start_v22/best_value_net.pt \
   --policy-head attention --policy-attention-channels 64 \
   --ema-decay 0.999 --memory-map-data \
   --book books/gate_mixed_v21b_gen7_gen9_p16_20260815.json \
@@ -282,7 +293,7 @@ times):
 
 ```bash
 python tools/match.py --model-a models/my_model/best_value_net.pt \
-    --model-b models/candidates/gen9_scratch/screen_nominee.pt --games 20
+    --model-b models/fresh_start_v22/best_value_net.pt --games 20
 ```
 
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent

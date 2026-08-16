@@ -53,15 +53,11 @@ class TestThresholds(unittest.TestCase):
         # on 2026-08-06 playtested the gen-5 teacher-3200 epoch-2 candidate
         # ("very strong player") and promoted it as v21. This assertion exists
         # to make the bar move only by deliberate edit, never by drift.
-        self.assertEqual(gate.BAR, "vs_v21b")
+        self.assertEqual(gate.BAR, "vs_v22")
         self.assertIn(gate.BAR, gate.AGGREGATE_LEGS)
-        self.assertIn("fresh_start_v21b", gate.BAR_MODEL)
-        # The bar and the version number are allowed to separate, and now do:
-        # the owner promoted the from-scratch model as v21b -- "it'll be the
-        # gate but I'm not impressed enough for it to be 22" -- exactly as v17
-        # held the number while v18_ramp was the bar.
-        self.assertNotEqual(gate.BAR_MODEL, gate.NUMBERED_INCUMBENT)
-        self.assertIn("fresh_start_v21", gate.NUMBERED_INCUMBENT)
+        self.assertIn("fresh_start_v22", gate.BAR_MODEL)
+        self.assertEqual(gate.BAR_MODEL, gate.NUMBERED_INCUMBENT)
+        self.assertIn("fresh_start_v22", gate.NUMBERED_INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):

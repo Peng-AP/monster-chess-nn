@@ -12,11 +12,9 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
-* **The bar is the strongest promoted engine on record, `v20`.** The owner
-  approved the Wide64 LC0 successor after it improved both colors twice over
-  the prior approved model. A candidate must beat v20 on aggregate, clear the
-  per-side floor on every leg, and then beat v20 *again* on a fresh opening
-  seed.
+* **The bar is the strongest promoted engine on record, `v22`.** A candidate
+  must beat v22 on aggregate, clear the per-side floor on every leg, and then
+  beat v22 *again* on a fresh opening seed.
   `fresh_start_v18_ramp` remains a floor-bearing leg -- a distinct style.
 * Per-side scores are the verdict; aggregates are reported but never decide a
   leg. Aggregates masking a per-side collapse has burned this project four
@@ -63,13 +61,16 @@ SIMS = 400
 # number and v18_ramp was the bar. v21b cleared the first 200-game bar leg
 # (pooled 0.5713 over 400 games, z=+2.85) and beat v21 over 800 games. No
 # threshold moved.
-BAR = "vs_v21b"
-AGGREGATE_LEGS = ("vs_v21b", "vs_ramp")
+# 2026-08-16: the owner explicitly promoted the fully gated Gen9 checkpoint as
+# v22. It also beat the prior v21b bar directly over 400 paired games. The
+# release and strength bar are aligned again; thresholds remain unchanged.
+BAR = "vs_v22"
+AGGREGATE_LEGS = ("vs_v22", "vs_ramp")
 
 NUMBERED_INCUMBENT = os.path.join(
-    ROOT, "models", "fresh_start_v21", "best_value_net.pt")
+    ROOT, "models", "fresh_start_v22", "best_value_net.pt")
 BAR_MODEL = os.path.join(
-    ROOT, "models", "fresh_start_v21b", "best_value_net.pt")
+    ROOT, "models", "fresh_start_v22", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -78,7 +79,7 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v21b_confirm"
+CONFIRM_LEG = "vs_v22_confirm"
 CONFIRM_SEED_OFFSET = 424242
 SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
@@ -93,12 +94,12 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # legs stay small: they are floor checks that have never been the deciding
 # leg, and enlarging them would triple gate cost for nothing.
 FULL_LEGS = [
-    ("vs_v21b", BAR_MODEL, 200),
+    ("vs_v22", BAR_MODEL, 200),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v21b", BAR_MODEL, 4),
+    ("vs_v22", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]
