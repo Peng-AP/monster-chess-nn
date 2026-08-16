@@ -54,6 +54,18 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**The exact finisher now reaches data generation, and is a null at 700 sims.**
+Opt-in via `MONSTER_FINISHER`, running only where the scripted oracle abstains.
+A paired 24-game pilot converted **zero** cap draws: it fired 9 times across 3
+games that were already Black wins, cost **10.5x** runtime (4m13s -> 44m30s),
+and lost one game to its per-game deadline. The cause is not the mechanism and
+not the budget — all 8 capped games end with White on a bare king with 46–55
+gated Black moves each, and re-running §30.1's protocol at both 2M and 6M nodes
+proved **0 forced wins with 0 exhaustion**. §30's 6-of-24 convertible games were
+measured at **1600** sims; at the 700-sim generation setting Black never reaches
+positions where a depth-4 capture exists. **Do not enable it for generation at
+700 sims** (`REPORT.md` §34).
+
 **Moves-left is now implemented in search, but the isolated result is null.** A
 frozen Gen9 lift kept all 117 inherited tensors bit-identical and trained only
 the 8,321-parameter head. It learned a measurable length signal (test MAE 26.54

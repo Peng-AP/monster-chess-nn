@@ -275,6 +275,86 @@ def _init_worker(engine_choice, model_path, opponent_model_path, curriculum,
 from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa: E402
 
 
+# --- Exact forced-capture finisher, for generation ---------------------------
+#
+# Law 1a: the model plays won positions as lost because the CORPUS says they
+# are. Black converts 88% with White on a bare king but only 36% from
+# king+3-pawns, and REPORT.md section 30 showed why -- capped games are
+# unconverted wins, not fortresses, with a forced king capture inside four
+# Black moves in 6 of 24 sampled games that search walked past.
+#
+# The scripted oracle already rescues its own class and must not grow past it
+# (owner, 2026-08-03: "the complexity will skyrocket"). This is the sanctioned
+# alternative: an exact search, not a heuristic, run only where the oracle
+# abstains. A hit ends the game with a REAL king capture, so the label becomes
+# a true Black win instead of a -0.5 move-limit relabel.
+#
+# Off unless MONSTER_FINISHER is set, so no historical generation changes.
+# Depth 4 is REPORT.md section 30.1's measured operating point: it completed
+# every one of 72 probe positions with zero budget exhaustion, where depth 5
+# cost roughly two orders of magnitude more for two extra wins.
+FINISHER_DEPTH_ENV = "MONSTER_FINISHER_DEPTH"
+FINISHER_NODES_ENV = "MONSTER_FINISHER_NODES"
+FINISHER_DEFAULT_DEPTH = 4
+FINISHER_DEFAULT_NODES = 2_000_000
+
+
+def _finisher_settings():
+    """(enabled, depth, node_budget) for this worker, read from the env.
+
+    The environment is the transport because these have to reach Pool workers,
+    which are separate processes -- the same reason MONSTER_ENGINE travels this
+    way. Imported lazily from benchmark so there is one definition of the flag
+    and of the material ceiling.
+    """
+    from benchmark import (FINISHER_ENV, FINISHER_WHITE_MATERIAL_MAX,
+                           _env_flag)
+    if not _env_flag(FINISHER_ENV):
+        return False, 0, 0, FINISHER_WHITE_MATERIAL_MAX
+    try:
+        depth = int(os.environ.get(FINISHER_DEPTH_ENV, FINISHER_DEFAULT_DEPTH))
+    except ValueError:
+        depth = FINISHER_DEFAULT_DEPTH
+    try:
+        nodes = int(os.environ.get(FINISHER_NODES_ENV, FINISHER_DEFAULT_NODES))
+    except ValueError:
+        nodes = FINISHER_DEFAULT_NODES
+    return True, max(1, depth), max(1, nodes), FINISHER_WHITE_MATERIAL_MAX
+
+
+def _finisher_applicable(game, material_max):
+    """Black to move, with White at or near a bare king.
+
+    That is where the pathology lives and where White's branching is smallest,
+    so the exact search stays affordable.
+    """
+    if game.is_white_turn or getattr(game, "white_half_pending", False):
+        return False
+    board = game.board
+    white_pieces = chess.popcount(board.occupied_co[chess.WHITE])
+    return (white_pieces - 1) <= material_max
+
+
+def _finisher_probe(game, depth, node_budget):
+    """(move, exhausted) -- a proven forced king capture, or why there is none.
+
+    Play treats both misses identically and falls through to the network, since
+    an exhausted search is "no answer", never "no win". But the two must stay
+    DISTINGUISHABLE for measurement: collapsing them makes a starved budget
+    look exactly like a proven absence, and the whole question of whether a
+    capped game was convertible turns on telling those apart.
+    """
+    from forced_capture import try_forced_capture_move
+    move, _depth, exhausted = try_forced_capture_move(
+        game, max_black_moves=depth, node_budget=node_budget)
+    return move, bool(exhausted)
+
+
+def _finisher_move(game, depth, node_budget):
+    """Just the move, for callers that do not record diagnostics."""
+    return _finisher_probe(game, depth, node_budget)[0]
+
+
 _SEARCH_ENGINE = None  # set per worker; None means "follow the environment"
 
 
@@ -395,6 +475,8 @@ def play_game(num_simulations, game_deadline=None):
     move_number = 0
     aborted = False
     mate_bot = None  # ScriptedMate takes over Black once the position qualifies
+    (finisher_on, finisher_depth, finisher_nodes,
+     finisher_material_max) = _finisher_settings()
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
@@ -417,6 +499,15 @@ def play_game(num_simulations, game_deadline=None):
             board_is_check=game.board.is_check(),
             rng=rng,
         )
+
+        # Try the exact finisher only where the oracle abstains, so its
+        # verified behaviour on the bare-king class is untouched. A miss costs
+        # a bounded search and falls through to the network below.
+        finisher_move = None
+        if (finisher_on and not is_white and mate_bot is None
+                and not _mate_algo_applicable(game)
+                and _finisher_applicable(game, finisher_material_max)):
+            finisher_move = _finisher_move(game, finisher_depth, finisher_nodes)
 
         if not is_white and (mate_bot is not None or _mate_algo_applicable(game)):
             # Provably-won ending reached (bare White king vs 3+ Black
@@ -441,6 +532,25 @@ def play_game(num_simulations, game_deadline=None):
                     "start_source": _start_fen_source,
                 })
             game.apply_search_action(action)
+        elif finisher_move is not None:
+            # A proven forced king capture. Recorded exactly like the oracle's
+            # move -- policy 1.0 on a move the search proved, not an asserted
+            # value label. The game now ends in a real capture, which is the
+            # whole point: it turns a -0.5 move-limit relabel into a true
+            # Black win in the corpus.
+            if not skip_record:
+                from evaluation import evaluate
+                root_value = evaluate(game)
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(-root_value, 4),
+                    "policy": {finisher_move.uci(): 1.0},
+                    "current_player": "black",
+                    "half": 0,
+                    "start_source": _start_fen_source,
+                    "finisher": True,
+                })
+            game.apply_search_action(finisher_move)
         else:
             # Pick the engine for the current side
             engine = white_engine if is_white else black_engine

@@ -1,0 +1,56 @@
+{
+ "experiment": "generation_finisher_pilot",
+ "date": "2026-08-16",
+ "model": "models/fresh_start_v22/best_value_net.pt",
+ "games": 24,
+ "simulations": 700,
+ "seed": 4242,
+ "engine": "native",
+ "workers": 8,
+ "finisher": {
+  "depth": 4,
+  "node_budget": 2000000,
+  "gate": "black to move, white non-king material <= 1, oracle abstains"
+ },
+ "arms": {
+  "off": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 8,
+   "white_win": 11,
+   "finisher_moves": 0,
+   "finisher_games": 0
+  },
+  "on": {
+   "games": 23,
+   "black_win": 5,
+   "cap_draw": 7,
+   "white_win": 11,
+   "finisher_moves": 9,
+   "finisher_games": 3
+  }
+ },
+ "wall_clock": {
+  "off": "4m13s",
+  "on": "44m30s",
+  "ratio": 10.5
+ },
+ "solver_probe": {
+  "protocol": "REPORT 30.1: last 3 black-to-move positions of each capped baseline game",
+  "positions": 24,
+  "depth": 4,
+  "budget_2000000": {
+   "forced_wins": 0,
+   "proven_not_won": 24,
+   "exhausted": 0,
+   "sec_per_pos": 33.29
+  },
+  "budget_6000000": {
+   "forced_wins": 0,
+   "proven_not_won": 24,
+   "exhausted": 0,
+   "sec_per_pos": 32.39
+  }
+ },
+ "verdict": "NULL at 700 sims; zero conversions, zero exhaustion, 10.5x cost. REPORT.md 34."
+}

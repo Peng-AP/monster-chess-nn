@@ -1798,5 +1798,85 @@ distinguish a 0.05 colour effect from block noise. Evidence:
 `gate_gen9_v22balanced_teacher4x_seed42_p8_20260816.json`, and the four
 `match_v22_self_p8_offset*_20260816.json` calibrations.
 
-*Updated 2026-08-16. Suite 659 passing. Predecessor reports
+## 34. The finisher reaches generation, and converts nothing at 700 sims (2026-08-16)
+
+Law 1a says the model plays won positions as lost because the **corpus** says
+they are. The obvious attack is to run the exact forced-capture search during
+self-play, so a won-but-shuffled ending finishes with a real king capture and
+enters the corpus as a true Black win instead of a -0.5 move-limit relabel.
+That is now implemented, opt-in via `MONSTER_FINISHER`, running only where the
+scripted oracle abstains so its verified class is untouched.
+
+**It does not work at the production generation operating point, and the reason
+is not the mechanism.**
+
+### 34.1 The paired pilot
+
+24 games, V22, 700 simulations, seed 4242, no early stop (section 30.3's
+sampling lesson), finisher at depth 4 / 2M nodes.
+
+| | true Black win | cap draw | White win | mean records | wall |
+|---|---:|---:|---:|---:|---:|
+| finisher off | 5 | 8 | 11 | 93.3 | **4m13s** |
+| finisher on | 5 | 7 | 11 | 84.3 | **44m30s** |
+
+Zero finisher moves fired with the flag unset, which verifies the opt-in
+guarantee in a real run rather than only in unit tests.
+
+The finisher fired **9 times across 3 games** — and all three (games 4, 7, 14)
+were **already** Black wins in the baseline. It ended them sooner; it converted
+nothing. The `on` arm saved 23 games, not 24: one capped game exceeded its
+per-game wall-clock budget and was correctly discarded as aborted. **The
+mechanism cost 10.5x runtime and one game of data, for zero conversions.**
+
+### 34.2 Why: there was nothing to convert, and that is proven
+
+The natural suspicion is the gate — that White still held pawns, so the search
+never ran. Measured, and it is false. All 8 capped baseline games end with
+White on a **bare king**, and each contains **46-55 Black-to-move positions
+inside the finisher's gate**. The search was consulted hundreds of times per
+game and returned nothing.
+
+The second suspicion is a starved budget. Also false. Reproducing section
+30.1's protocol — the last 3 Black-to-move positions of each capped game, 24
+positions — at both the pilot's budget and section 30.1's:
+
+| budget | forced wins | proven NOT won | exhausted | cost |
+|---|---:|---:|---:|---:|
+| 2,000,000 | 0 | 24 | **0** | 33.3 s/pos |
+| 6,000,000 | 0 | 24 | **0** | 32.4 s/pos |
+
+**Zero exhaustion at both budgets.** Every search ran to completion, so these
+are proofs that no forced capture exists within four Black moves — not
+truncations. The pilot's null is real.
+
+### 34.3 The conversion opportunity depends on search depth
+
+This refines section 30 rather than contradicting it. That measurement found
+forced wins within four Black moves in 6 of 24 capped games — but those games
+were played at **1600** simulations. This pilot ran at **700**, the production
+generation setting. At 700 sims Black reaches capped positions that are further
+from won, and the depth-4 horizon no longer reaches a capture.
+
+So the two results together say something sharper than either alone: the
+unconverted wins section 30 found are a property of *deeply searched* play, and
+generation does not produce them. A finisher cannot rescue a position that the
+generator never reaches.
+
+**Do not enable `MONSTER_FINISHER` for generation at 700 sims.** It is a 10.5x
+tax with a measured zero return and a demonstrated data-loss path. The
+mechanism is retained, off by default, because the section 30 evidence says the
+opportunity exists at higher search depth; the open question is whether
+generating at 1600 sims yields enough convertible endings to pay for itself,
+which is a much more expensive experiment than this one.
+
+Two loose ends, recorded rather than resolved. The exact search cost **33
+s/position** here against section 30.1's reported 7.5 s/position at the same
+depth and budget, a 4.4x discrepancy that is unexplained and may simply be
+harder positions. And `_finisher_probe` now returns the exhaustion flag
+separately: the first implementation collapsed "budget exhausted" and "proven
+not won" into a bare `None`, which is right for *play* (both fall through to
+the network) but destroys the very distinction 34.2 turns on.
+
+*Updated 2026-08-16. Suite 680 passing. Predecessor reports
 retire to git history per project convention.*
