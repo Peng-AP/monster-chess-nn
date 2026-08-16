@@ -211,6 +211,89 @@ impl Solver {
         Answer::Value(result)
     }
 
+    /// `best_forced_move` across several threads.
+    ///
+    /// Root Black moves at a given depth are independent, so they shard
+    /// cleanly. Each worker keeps its OWN memo -- sharing one would need a
+    /// lock on the hottest path -- so this trades memo reuse for parallelism
+    /// and is worth it only at depths where a single position costs seconds.
+    ///
+    /// Two things preserve the single-threaded answer exactly: depths are
+    /// still tried in order, and within a depth the winning move with the
+    /// LOWEST root index wins, matching the sequential scan. Each worker gets
+    /// the full budget, so `threads > 1` permits more total nodes; that can
+    /// only turn an "exhausted" into a real answer, never change a proof.
+    pub fn best_forced_move_threaded(
+        board: &Board,
+        max_black_moves: u8,
+        budget: u64,
+        threads: usize,
+    ) -> Result<Option<(String, u8)>, ()> {
+        let actions: Vec<Move> = black_actions(board, true);
+        let n = actions.len();
+        if threads <= 1 || n <= 1 {
+            let mut s = Solver::new(budget);
+            return s.best_forced_move(board, max_black_moves);
+        }
+        for d in 1..=max_black_moves {
+            let found: std::sync::Mutex<Option<(usize, String, u8)>> =
+                std::sync::Mutex::new(None);
+            let exhausted = std::sync::atomic::AtomicBool::new(false);
+            std::thread::scope(|scope| {
+                for t in 0..threads {
+                    let actions = &actions;
+                    let found = &found;
+                    let exhausted = &exhausted;
+                    scope.spawn(move || {
+                        let mut s = Solver::new(budget);
+                        let mut i = t;
+                        while i < n {
+                            let mv = &actions[i];
+                            let mut child = board.clone();
+                            child.push(mv);
+                            if child.king_square(WHITE).is_none() {
+                                let mut g = found.lock().unwrap();
+                                if g.is_none() || g.as_ref().unwrap().0 > i {
+                                    *g = Some((i, mv.uci(), 1));
+                                }
+                                return;
+                            }
+                            if d > 1 {
+                                match s.white_all_lose(&child, d - 1) {
+                                    Answer::Exhausted => {
+                                        exhausted.store(
+                                            true,
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                        return;
+                                    }
+                                    Answer::Value(true) => {
+                                        let mut g = found.lock().unwrap();
+                                        if g.is_none()
+                                            || g.as_ref().unwrap().0 > i
+                                        {
+                                            *g = Some((i, mv.uci(), d));
+                                        }
+                                        return;
+                                    }
+                                    Answer::Value(false) => {}
+                                }
+                            }
+                            i += threads;
+                        }
+                    });
+                }
+            });
+            if let Some((_i, uci, depth)) = found.into_inner().unwrap() {
+                return Ok(Some((uci, depth)));
+            }
+            if exhausted.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(());
+            }
+        }
+        Ok(None)
+    }
+
     /// The move forcing the fastest capture: (uci, depth) or None.
     ///
     /// Iterative deepening sits OUTSIDE the move loop so the move returned
@@ -250,11 +333,12 @@ impl Solver {
 /// result. `exhausted` true means the budget stopped the search; a caller must
 /// treat that as "no answer", never as "no win".
 #[pyfunction]
-#[pyo3(signature = (fen, max_black_moves=3, node_budget=200_000))]
+#[pyo3(signature = (fen, max_black_moves=3, node_budget=200_000, threads=1))]
 fn forced_capture_move(
     fen: &str,
     max_black_moves: u8,
     node_budget: u64,
+    threads: usize,
 ) -> PyResult<(Option<String>, Option<u8>, bool)> {
     let board = parse_fen(fen)
         .map_err(pyo3::exceptions::PyValueError::new_err)?;
@@ -263,8 +347,8 @@ fn forced_capture_move(
             "expects a Black-to-move position",
         ));
     }
-    let mut s = Solver::new(node_budget);
-    match s.best_forced_move(&board, max_black_moves) {
+    match Solver::best_forced_move_threaded(
+        &board, max_black_moves, node_budget, threads) {
         Err(()) => Ok((None, None, true)),
         Ok(None) => Ok((None, None, false)),
         Ok(Some((uci, d))) => Ok((Some(uci), Some(d), false)),

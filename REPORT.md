@@ -1878,5 +1878,83 @@ separately: the first implementation collapsed "budget exhausted" and "proven
 not won" into a bare `None`, which is right for *play* (both fall through to
 the network) but destroys the very distinction 34.2 turns on.
 
-*Updated 2026-08-16. Suite 680 passing. Predecessor reports
+## 35. The exact solver moves to Rust: 145x, and the finisher becomes free (2026-08-16)
+
+Section 34 rejected the generation finisher for a **10.5x** cost with a
+demonstrated data-loss path, and section 30.1 priced depth 5 at roughly 23
+CPU-minutes per position. Both numbers were measuring one thing: an exhaustive
+AND/OR search written in Python.
+
+### 35.1 Where the time actually went
+
+Profiling the solver on a real capped-game position: **92% of cumulative time
+in `_get_white_actions`**, generating White's half-move pairs through
+python-chess, with 9,925 `push` calls for a 296-node search.
+
+That explains a null. Adding memoisation, resulting-position dedup at AND
+nodes, and stackless clones to the Python solver gave **1.0x at depth 3 and
+1.8x at depth 4** — exact (zero disagreements over 56 positions), but unable to
+touch a bottleneck that sits below it. The dedup in particular almost never
+fired (0.001 skips/node): AND nodes short-circuit on the first refutation and
+never enumerate far enough to meet a duplicate.
+
+### 35.2 The port
+
+`native/src/solver.rs` reimplements the search on the bitboard engine, keeping
+the semantics that make it a *proof*: king capture is unconditional and
+pseudo-legal, the turn cap is neutralised, no-pseudo-legal-White-move is not a
+forced capture, and budget exhaustion is reported rather than swallowed.
+
+Because it builds White's successor set before recursing, the transposition
+dedup measured at 2.74x now actually fires: **7.7M skips against 2.25M nodes**.
+
+Measured over the 24 last-Black-move positions of the capped games, depth 4,
+6M-node budget:
+
+| | time | per position |
+|---|---:|---:|
+| Python (already optimised) | 501.2s | 20.88s |
+| Rust | **3.5s** | **0.144s** |
+| | | **145x** |
+
+**Zero disagreements.** The decision, the depth-to-win, and the exhausted flag
+match on every position.
+
+### 35.3 The new depth ceiling
+
+| depth | forced wins | proven NOT won | exhausted | cost/position |
+|---|---:|---:|---:|---:|
+| 3 | 0 | 24 | 0 | 0.01s |
+| 4 | 0 | 24 | 0 | 0.14s |
+| 5 | 0 | 24 | 0 | **1.78s** |
+| 6 | 0 | 21 | 3 | 15.8s |
+
+Depth 5 cost ~23 CPU-minutes per position in section 30.1 and now costs 1.78s —
+about **775x** — and depth 6 is reachable for the first time. This also
+independently strengthens section 34: those capped positions are proven not won
+within **six** Black moves, not merely four.
+
+### 35.4 The finisher is now free
+
+Re-running section 34's exact pilot (24 games, V22, 700 sims, seed 4242) with
+the native solver behind the same `MONSTER_FINISHER` flag:
+
+| run | games | Black wins | cap draws | finisher moves | wall |
+|---|---:|---:|---:|---:|---:|
+| no finisher | 24 | 5 | 8 | 0 | 4m13s |
+| finisher, Python solver | **23** | 5 | 7 | 9 / 3 games | **44m30s** |
+| finisher, Rust solver | **24** | 5 | 8 | 9 / 3 games | **2m22s** |
+
+**18.8x end to end.** It makes the identical nine decisions in the same three
+games, and the game that section 34 lost to its per-game deadline comes back.
+The cost objection is retired; the *conversion* result is unchanged, because
+at 700 simulations there is still nothing to convert.
+
+`try_forced_capture_move` now uses the native path automatically, so the
+finisher and any other caller inherit it. `MONSTER_SOLVER_PYTHON=1` forces the
+reference implementation, and a test asserts the two agree — this component
+returns proofs, so a fast path that quietly disagreed would corrupt every
+conclusion drawn from it.
+
+*Updated 2026-08-16. Suite 690 passing. Predecessor reports
 retire to git history per project convention.*

@@ -54,6 +54,20 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**The exact solver is now native, 145x faster, and the finisher is free.**
+`native/src/solver.rs` reimplements the AND/OR forced-capture search on the
+bitboard engine with a transposition memo and resulting-position dedup. Against
+the Python solver on 24 real capped-game positions it is **145x** at depth 4
+with **zero disagreements**. Depth 5 fell from ~23 CPU-min/position (§30.1) to
+**1.78s** (~775x) and depth 6 is reachable. Re-running §34's pilot, the
+generation finisher went **44m30s -> 2m22s (18.8x)**, made the identical nine
+decisions, and recovered the game §34 lost to its per-game deadline — so the
+10.5x cost objection is retired even though the conversion result at 700 sims
+is unchanged. `try_forced_capture_move` picks the native path automatically;
+`MONSTER_SOLVER_PYTHON=1` forces the reference and a test pins that they agree.
+Profiling drove this: 92% of the Python solver's time was `_get_white_actions`,
+which is why Python-level memoisation bought only 1.8x (`REPORT.md` §35).
+
 **The exact finisher now reaches data generation, and is a null at 700 sims.**
 Opt-in via `MONSTER_FINISHER`, running only where the scripted oracle abstains.
 A paired 24-game pilot converted **zero** cap draws: it fired 9 times across 3

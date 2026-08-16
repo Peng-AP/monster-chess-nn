@@ -222,6 +222,37 @@ def forced_capture_depth(state, max_black_moves=2, node_budget=400_000):
     return None
 
 
+_NATIVE_OFF_ENV = "MONSTER_SOLVER_PYTHON"   # force the reference path
+_native = None
+
+
+def _native_solver():
+    """The Rust solver, or None.
+
+    Measured 2026-08-16 at **145x** the Python path on 24 real capped-game
+    positions with zero disagreements, which is what makes a depth-4 finisher
+    affordable in play at all: section 34 rejected the finisher for a 10.5x
+    generation cost that was almost entirely this search.
+
+    Set MONSTER_SOLVER_PYTHON=1 to force the Python reference -- the two must
+    agree, and the flag exists so that can be checked rather than assumed.
+    """
+    global _native
+    if os.environ.get(_NATIVE_OFF_ENV, "").strip().lower() in ("1", "true", "yes"):
+        return None
+    if _native is None:
+        try:
+            sys.path.insert(0, os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "native"))
+            import monster_native
+            _native = monster_native if hasattr(
+                monster_native, "forced_capture_move") else False
+        except Exception:
+            _native = False
+    return _native or None
+
+
 def try_forced_capture_move(state, max_black_moves=3, node_budget=200_000):
     """The move that forces the fastest king capture: (move, depth, exhausted).
 
@@ -236,6 +267,18 @@ def try_forced_capture_move(state, max_black_moves=3, node_budget=200_000):
     root = _fresh(state)
     if root.is_white_turn:
         raise ValueError("try_forced_capture_move expects a Black-to-move position")
+
+    native = _native_solver()
+    if native is not None:
+        # Black to move never has a pending White half, so the FEN is the whole
+        # state the solver needs -- the turn cap is neutralised either way.
+        uci, depth, exhausted = native.forced_capture_move(
+            root.board.fen(), int(max_black_moves),
+            int(node_budget) if node_budget else 0)
+        if uci is None:
+            return None, None, bool(exhausted)
+        return chess.Move.from_uci(uci), depth, False
+
     search = _Search(node_budget)
     actions = root.get_legal_actions()
     try:

@@ -1,0 +1,77 @@
+{
+ "experiment": "native_solver_speedup",
+ "date": "2026-08-16",
+ "solver": {
+  "depth4_python_sec_per_pos": 20.884,
+  "depth4_rust_sec_per_pos": 0.144,
+  "speedup": 145.2,
+  "positions": 24,
+  "mismatches": 0,
+  "budget": 6000000,
+  "depth_ladder_rust": {
+   "3": {
+    "wins": 0,
+    "not_won": 24,
+    "exhausted": 0,
+    "sec_per_pos": 0.01
+   },
+   "4": {
+    "wins": 0,
+    "not_won": 24,
+    "exhausted": 0,
+    "sec_per_pos": 0.14
+   },
+   "5": {
+    "wins": 0,
+    "not_won": 24,
+    "exhausted": 0,
+    "sec_per_pos": 1.78
+   },
+   "6": {
+    "wins": 0,
+    "not_won": 21,
+    "exhausted": 3,
+    "sec_per_pos": 15.8
+   }
+  }
+ },
+ "python_solver_memo": {
+  "depth3_speedup": 1.0,
+  "depth4_speedup": 1.8,
+  "mismatches": 0,
+  "profile": "92% of time in _get_white_actions"
+ },
+ "finisher_pilot": {
+  "baseline_wall": "4m13s",
+  "python_solver_wall": "44m30s",
+  "rust_solver_wall": "2m22s",
+  "end_to_end_speedup": 18.8,
+  "arms": {
+   "off": {
+    "games": 24,
+    "black_win": 5,
+    "cap_draw": 8,
+    "white_win": 11,
+    "fin_moves": 0,
+    "fin_games": 0
+   },
+   "python": {
+    "games": 23,
+    "black_win": 5,
+    "cap_draw": 7,
+    "white_win": 11,
+    "fin_moves": 9,
+    "fin_games": 3
+   },
+   "rust": {
+    "games": 24,
+    "black_win": 5,
+    "cap_draw": 8,
+    "white_win": 11,
+    "fin_moves": 9,
+    "fin_games": 3
+   }
+  }
+ },
+ "verdict": "145x exact solver speedup; finisher cost objection from REPORT 34 retired. Conversion at 700 sims unchanged (nothing to convert, proven to depth 6)."
+}

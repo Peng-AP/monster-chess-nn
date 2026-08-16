@@ -98,6 +98,47 @@ class TestNativeSolverContracts(unittest.TestCase):
                            "transposing White pairs should be collapsed")
 
 
+@unittest.skipIf(mn is None, "native module not built")
+class TestTheDefaultPathIsNative(unittest.TestCase):
+    """`try_forced_capture_move` should use Rust, and both paths must agree.
+
+    The escape hatch exists so the equivalence can be CHECKED rather than
+    assumed -- this search produces proofs, and a fast path that quietly
+    disagrees would corrupt every conclusion drawn from it.
+    """
+
+    def test_native_is_selected_by_default(self):
+        import os
+        os.environ.pop("MONSTER_SOLVER_PYTHON", None)
+        fc._native = None
+        self.assertIsNotNone(fc._native_solver())
+
+    def test_env_flag_forces_the_python_reference(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"MONSTER_SOLVER_PYTHON": "1"}):
+            fc._native = None
+            self.assertIsNone(fc._native_solver())
+        fc._native = None
+
+    def test_both_paths_agree_on_every_fixture(self):
+        import os
+        from unittest import mock
+        for fen in (IMMEDIATE, TWO_ROOKS, LONE_KING):
+            game = MonsterChessGame(fen=fen)
+            fc._native = None
+            native = fc.try_forced_capture_move(
+                game, max_black_moves=3, node_budget=6_000_000)
+            with mock.patch.dict(os.environ, {"MONSTER_SOLVER_PYTHON": "1"}):
+                fc._native = None
+                python = fc.try_forced_capture_move(
+                    game, max_black_moves=3, node_budget=6_000_000)
+            fc._native = None
+            self.assertEqual(native[0] is None, python[0] is None, fen)
+            self.assertEqual(native[1], python[1], fen)
+            self.assertEqual(native[2], python[2], fen)
+
+
 class TestPythonSolverOptimisationsAreExact(unittest.TestCase):
     """Memoisation must not change an answer, and must not cache a cut search."""
 
