@@ -2230,5 +2230,29 @@ carries SE around 0.064 and single-block screen deltas remain unreliable.
 construction. It is a conversion result, not a strength gain against an
 opponent.
 
+### 39.3 Against a real opponent: conversion is real, strength is unchanged
+
+V22 versus v21b, 400 games, same book block and seed as the 2026-08-15 read:
+
+| rules | overall | White | Black | Black W/L/D |
+|---|---:|---:|---:|---|
+| old | 0.5763 | 0.6975 | 0.4550 | 58 / **76** / 66 |
+| new | **0.5837** | 0.6725 | **0.4950** | **74** / **76** / 50 |
+
+Black's **losses are identical at 76** and sixteen draws became wins -- the
+self-match signature, reproduced against a different opponent, so the
+conversion gain is not a self-play artifact. The colour gap narrows
+0.2425 -> 0.1775 (-27%), matching the -31% seen in self-play.
+
+**But the head-to-head barely moves: 0.5763 -> 0.5837, about 0.5 SE at n=400.**
+V22's White score *falls* (0.6975 -> 0.6725) because these are **engine-level**
+changes and v21b-as-Black gets the finisher too. Both sides convert better, so
+relative strength is unchanged.
+
+That is the right way to read the whole 2026-08-16 change set: it fixes
+conversion for whoever plays Black, it does not make any model stronger than
+any other, and it is not a substitute for a better model. What it does buy is a
+cheaper, faster loop and a Black floor the incumbent can actually clear.
+
 *Updated 2026-08-16. Suite 714 passing. Predecessor reports
 retire to git history per project convention.*
