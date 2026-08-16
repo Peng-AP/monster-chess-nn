@@ -494,6 +494,10 @@ def play_game(num_simulations, game_deadline=None):
     (finisher_on, finisher_depth, finisher_nodes,
      finisher_material_max) = _finisher_settings()
     scripted_mate_on = _scripted_mate_enabled()
+    from repetition import RepetitionTracker
+    repetition = RepetitionTracker()
+    repeated = False
+    repetition.record(game, 0)
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
@@ -591,6 +595,9 @@ def play_game(num_simulations, game_deadline=None):
             game.apply_search_action(action)
 
         move_number += 1
+        if repetition.record(game, move_number):
+            repeated = True
+            break
 
     if aborted:
         # Discard aborted games entirely: no reliable label exists.
@@ -606,6 +613,11 @@ def play_game(num_simulations, game_deadline=None):
             result = CURRICULUM_TIER_VALUES[tier - 1]
         else:
             result = game.get_result()
+    elif repeated:
+        # Drawn by rule, so it carries no lean -- unlike the cap's +-0.5 proxy
+        # for an unfinished game. A forced result or a forced curriculum tier
+        # value still wins, since those are asserted by the caller.
+        result = repetition.draw_result
     else:
         result = game.get_result()
     for i, rec in enumerate(records):

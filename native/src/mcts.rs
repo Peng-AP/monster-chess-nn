@@ -971,6 +971,10 @@ fn is_reversal(action: &str, prev: &[(u8, u8)]) -> bool {
 #[pyclass(name = "Tree")]
 pub struct PyTree {
     arena: Arena,
+    /// Exact-probe counters from the last `run_batched_puct`, so the probe can
+    /// be measured rather than assumed. Reset at the start of each run.
+    probes_used: usize,
+    probe_hits: usize,
 }
 
 #[pymethods]
@@ -994,7 +998,7 @@ impl PyTree {
             &history.unwrap_or_default(),
         )
         .map_err(PyValueError::new_err)?;
-        Ok(PyTree { arena: Arena::new(root) })
+        Ok(PyTree { arena: Arena::new(root), probes_used: 0, probe_hits: 0 })
     }
 
     /// Add a child by applying one half-move action to the parent's state.
@@ -1115,7 +1119,8 @@ impl PyTree {
                         allow_early_stop=true, root_noise=false, seed=20260803,
                         heuristic_values=false, solver=false,
                         moves_left_max_effect=0.0, moves_left_threshold=0.80,
-                        moves_left_slope=0.10))]
+                        moves_left_slope=0.10, solver_probe_depth=0,
+                        solver_probe_nodes=200_000, solver_probe_limit=0))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -1142,6 +1147,17 @@ impl PyTree {
         moves_left_max_effect: f64,
         moves_left_threshold: f64,
         moves_left_slope: f64,
+        // Exact forced-capture probe at leaves. Distinct from `solver` above:
+        // that propagates certainty the TREE derived, this injects a result an
+        // exhaustive AND/OR search PROVED, reaching far past the tree's own
+        // horizon. Measured 2026-08-16: the endgame PV is pinned at 4 plies at
+        // any budget, while the solver proves 6 Black moves in seconds.
+        // Depth 0 disables it, so the default path is unchanged.
+        solver_probe_depth: u8,
+        solver_probe_nodes: u64,
+        // Hard cap on probes per search, because a probe is orders of
+        // magnitude dearer than a network evaluation.
+        solver_probe_limit: usize,
     ) -> PyResult<()> {
         if !moves_left_max_effect.is_finite() || !(0.0..=1.0).contains(&moves_left_max_effect) {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -1231,6 +1247,10 @@ impl PyTree {
                 .add_root_noise(DIRICHLET_ALPHA, DIRICHLET_EPSILON, &mut rng);
         }
         let mut sims_done = 1usize;
+        let mut probes_used = 0usize;
+        let mut probe_hits = 0usize;
+        self.probes_used = 0;
+        self.probe_hits = 0;
 
         while sims_done < simulations {
             if allow_early_stop && self.arena.should_stop_early(0, sims_done, simulations) {
@@ -1249,6 +1269,33 @@ impl PyTree {
                 }
                 pending.push(node);
                 self.arena.apply_virtual_loss(node);
+                // Exact probe before the network sees the node. Only Black
+                // wins are provable here (a forced king capture), and only
+                // where White is at or near a bare king -- the phase the
+                // pathology lives in and where the search is cheapest.
+                if solver_probe_depth > 0 && probes_used < solver_probe_limit {
+                    let st = &self.arena.nodes[node].state;
+                    let white_material = (st.board_ref()
+                        .occupied_co[crate::bitboard::WHITE]
+                        .count_ones() as i32) - 1;
+                    if !st.is_white_turn
+                        && !st.white_half_pending
+                        && white_material <= 1
+                        && self.arena.nodes[node].proof.is_none()
+                    {
+                        probes_used += 1;
+                        let board = st.board_ref().clone();
+                        let mut probe = crate::solver::Solver::new(solver_probe_nodes);
+                        if let Ok(Some(_)) =
+                            probe.best_forced_move(&board, solver_probe_depth)
+                        {
+                            // Proofs are held in White's perspective, so a
+                            // forced Black capture is -1.0.
+                            self.arena.nodes[node].proof = Some(-1.0);
+                            probe_hits += 1;
+                        }
+                    }
+                }
                 let state = &self.arena.nodes[node].state;
                 match state.result_rust() {
                     // Terminal: backprop only, never expanded.
@@ -1372,6 +1419,8 @@ impl PyTree {
             }
             sims_done += leaves.len();
         }
+        self.probes_used = probes_used;
+        self.probe_hits = probe_hits;
         Ok(())
     }
 
@@ -1554,6 +1603,11 @@ impl PyTree {
     }
 
     /// Proof state of the root's children, in White's perspective.
+    /// (probes run, proofs found) from the last search.
+    fn probe_stats(&self) -> (usize, usize) {
+        (self.probes_used, self.probe_hits)
+    }
+
     fn root_proofs(&self) -> Vec<(String, Option<f64>)> {
         self.arena.nodes[0]
             .children

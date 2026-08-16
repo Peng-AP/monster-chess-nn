@@ -241,6 +241,10 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
         game.turn_count = int(start_turn_count)
     decisions = 0
     plies = 0
+    from repetition import RepetitionTracker
+    repetition = RepetitionTracker()
+    repeated = False
+    repetition.record(game, 0)
     opening = (_state_record(game, 0, opening_temp_plies)
                if opening_temp_plies <= 0 else None)
     while not game.is_terminal() and plies < max_plies:
@@ -252,6 +256,9 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
         _apply(game, action)
         decisions += 1
         plies += 1
+        if repetition.record(game, plies):
+            repeated = True
+            break
         if opening is None and plies >= opening_temp_plies:
             opening = _state_record(game, plies, opening_temp_plies)
     if opening is None:
@@ -259,7 +266,9 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
         # trajectory.  Marking it incomplete keeps it visible rather than
         # silently dropping precisely the short games most likely to collide.
         opening = _state_record(game, plies, opening_temp_plies)
-    result = (game.get_result(), plies, decisions)
+    # A repetition is drawn by rule, so it overrides the cap's +-0.5 lean.
+    outcome = repetition.draw_result if repeated else game.get_result()
+    result = (outcome, plies, decisions)
     return result + (opening,) if return_opening else result
 
 
