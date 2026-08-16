@@ -2000,5 +2000,54 @@ threaded run — carrying one budget per worker — completed. **Zero proof
 disagreements.** A completed proof is never contradicted; only "no answer"
 becomes an answer.
 
-*Updated 2026-08-16. Suite 690 passing. Predecessor reports
+## 36. A repetition draw, and why fourfold beats threefold (2026-08-16)
+
+`is_terminal` fires only on king absence or the 150-turn cap, so shuffling
+endings run the full clock. `src/repetition.py` adds an opt-in repetition draw
+at the **driver** level — not in `is_terminal`, because repetition is
+path-dependent and putting it in the tree reintroduces the graph-history
+problem and fights any transposition table.
+
+### 36.1 The threshold sweep
+
+24 games, V22, 700 sims, seed 4242. Arms run **sequentially**: launching three
+concurrently put 24 CUDA workers on 16 cores and froze the machine.
+
+| threshold | Black wins | cap draws | rep draws | White wins | score | mean records | wall | **wins destroyed** |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| off (baseline) | 5 | 8 | 0 | 11 | 0.3750 | 93.3 | 4m13s | — |
+| 3 (chess default) | 4 | 3 | 6 | 11 | 0.3542 | 77.0 | **2m17s** | **1** |
+| **4** | 5 | 5 | 3 | 11 | **0.3750** | 84.2 | **2m59s** | **0** |
+| 5 | 5 | 5 | 3 | 11 | 0.3750 | 84.8 | — | 0 |
+| 6 | 5 | 5 | 3 | 11 | 0.3750 | 86.6 | — | 0 |
+
+**Threefold truncates real conversions.** `game_00004` was a king capture at
+ply 130 and became a draw at ply 84. The mechanism is specific to this game:
+Black converts by *maneuvering*, repeating a position while improving, and
+**White can pass** — `Ke1e2` then `Ke2e1` returns the identical position, a
+free tempo Black does not have. Chess's threefold convention assumes neither
+side has a null move. Here White does, so the third occurrence is not yet
+evidence of shuffling; the fourth is.
+
+Four, five and six are identical on outcomes and differ only in records
+retained, so the entire risk sits in the single step from 4 to 3. The default
+is therefore **4**, giving **1.41×** for a score identical to baseline, against
+threefold's 1.85× that costs a conversion.
+
+### 36.2 What it does and does not change
+
+An earlier reading of this was wrong and is corrected here. Repetition does
+**not** collapse Black's match score: a capped ending already scored as a draw
+under the owner's captures-only rule, so match scoring moves only by the games
+whose *decisive* outcome changes — 0.3750 → 0.3542 at threefold, and
+0.3750 → 0.3750 at fourfold. The ±0.5 is a **training label**, not a match
+score. What the rule genuinely changes is that label: capped games move from
+−0.5 ("leaning Black") to 0.0, removing partial value credit the current proxy
+gives Black.
+
+It is off by default (`MONSTER_REPETITION`), because it remains a rules change
+and would make earlier numbers incomparable the way the 2026-08-03
+captures-only correction did.
+
+*Updated 2026-08-16. Suite 708 passing. Predecessor reports
 retire to git history per project convention.*

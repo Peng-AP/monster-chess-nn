@@ -1,4 +1,4 @@
-"""Threefold repetition as a driver-level rule.
+"""Repetition draw as a driver-level rule (FOURfold by default).
 
 Why it is not in `is_terminal`: repetition is path-dependent, so putting it in
 the search reintroduces the graph-history problem and fights a transposition
@@ -9,8 +9,12 @@ this rule.
 
 Measured 2026-08-16: in the capped games the network drives, the last 100
 records hold as few as 29 distinct positions. In the ones ScriptedMate drives
-they hold 94-98, because the oracle has explicit anti-repetition drift -- so
-this rule barely touches oracle games.
+they hold 94-98, because the oracle has explicit anti-repetition drift -- though
+the rule still fires there, just later.
+
+The threshold is FOUR, not chess's three: threefold truncated a real Black
+conversion, because Black repeats while maneuvering against a king that can
+pass its turn. See `repetition.DEFAULT_THRESHOLD` for the sweep.
 """
 import os
 import sys
@@ -45,15 +49,33 @@ class TestOptIn(unittest.TestCase):
 
 
 class TestThreefold(unittest.TestCase):
-    def test_fires_on_the_third_occurrence_not_the_second(self):
-        tracker = RepetitionTracker(enabled=True)
+    def test_default_threshold_is_four_not_the_chess_convention(self):
+        """Threefold truncated a real Black conversion; fourfold did not.
+
+        Swept over 24 games: at 3 a king capture at ply 130 was cut to a draw
+        at ply 84 and the score moved 0.3750 -> 0.3542; at 4, 5 and 6 no win
+        was destroyed and the score was unchanged. Black repeats while
+        maneuvering because White can pass its turn, so the third occurrence
+        is not yet evidence of shuffling.
+        """
+        from repetition import DEFAULT_THRESHOLD
+        self.assertEqual(DEFAULT_THRESHOLD, 4)
+        self.assertEqual(RepetitionTracker(enabled=True).threshold, 4)
+
+    def test_fires_on_the_configured_occurrence_not_before(self):
+        tracker = RepetitionTracker(threshold=3, enabled=True)
         game = MonsterChessGame(fen=ENDGAME)
         self.assertFalse(tracker.record(game))   # 1st
         self.assertFalse(tracker.record(game))   # 2nd
         self.assertTrue(tracker.record(game))    # 3rd
 
+    def test_threshold_is_tunable_by_env(self):
+        env = {"MONSTER_REPETITION": "1", "MONSTER_REPETITION_N": "6"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(RepetitionTracker().threshold, 6)
+
     def test_distinct_positions_do_not_accumulate_together(self):
-        tracker = RepetitionTracker(enabled=True)
+        tracker = RepetitionTracker(threshold=3, enabled=True)
         a = MonsterChessGame(fen=ENDGAME)
         b = MonsterChessGame(fen="6k1/8/8/8/8/8/8/r4K2 b - - 0 1")
         for _ in range(2):
@@ -64,18 +86,18 @@ class TestThreefold(unittest.TestCase):
     def test_a_repetition_draw_carries_no_lean(self):
         """The +-0.5 cap relabel is a proxy for an UNFINISHED game.
 
-        A position repeated three times is drawn by rule, so it must not
+        A position repeated to the threshold is drawn by rule, so it must not
         inherit the lean that flatters whoever was ahead when the clock ran out.
         """
         self.assertEqual(RepetitionTracker(enabled=True).draw_result, 0.0)
 
     def test_records_the_ply_it_fired_on(self):
-        tracker = RepetitionTracker(enabled=True)
+        tracker = RepetitionTracker(enabled=True)   # default threshold 4
         game = MonsterChessGame(fen=ENDGAME)
-        tracker.record(game, 10)
-        tracker.record(game, 20)
-        tracker.record(game, 30)
-        self.assertEqual(tracker.fired_at, 30)
+        for ply in (10, 20, 30):
+            self.assertFalse(tracker.record(game, ply))
+        self.assertTrue(tracker.record(game, 40))
+        self.assertEqual(tracker.fired_at, 40)
 
 
 class TestPositionIdentity(unittest.TestCase):

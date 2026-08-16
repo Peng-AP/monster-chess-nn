@@ -27,7 +27,22 @@ from collections import Counter
 
 REPETITION_ENV = "MONSTER_REPETITION"
 REPETITION_N_ENV = "MONSTER_REPETITION_N"
-DEFAULT_THRESHOLD = 3
+
+# FOURfold, not the chess convention of three. Swept 2026-08-16 over 24 games:
+#
+#   threshold | Black wins | score  | mean records | wins destroyed
+#      3      |     4      | 0.3542 |     77.0     |      1
+#      4      |     5      | 0.3750 |     84.2     |      0
+#      5      |     5      | 0.3750 |     84.8     |      0
+#      6      |     5      | 0.3750 |     86.6     |      0
+#
+# Threefold truncated a real conversion -- game_00004, a king capture at ply
+# 130 cut to a draw at ply 84 -- because Black repeats a position while
+# maneuvering, which is ordinary technique against a king that can pass its
+# turn. The fourth occurrence is the first that actually indicates shuffling.
+# Five and six only add records back, so the entire risk sits in the step from
+# 4 to 3. At 4 the speedup is 1.41x (2m59s vs 4m13s) for an identical score.
+DEFAULT_THRESHOLD = 4
 
 
 def repetition_enabled():
