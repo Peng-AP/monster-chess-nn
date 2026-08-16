@@ -2087,5 +2087,42 @@ where the finisher already calls it, at 0.14s for depth 4. The mechanism is
 retained at a depth-0 default so the negative stays reproducible, exactly as
 the moves-left head was.
 
+## 38. The inference server loses, and the free speedup was already built (2026-08-16)
+
+`src/inference_server.py` (D3 stage 2) has been implemented, benchmarked and
+smoke-tested for some time, wired into nothing, with **no recorded result**. Its
+premise is sound on its face: per-position forward cost is 0.294 ms at batch 16
+against 0.037 ms at 256, so eight workers submitting 16 leaves each ought to
+become one 128-leaf forward. Its own bench states the decision rule — *"a
+stage-2 number that is not clearly better at N=8 means the server is not worth
+its complexity and should not be wired into generation."*
+
+Run at N=8, V22, 700 sims:
+
+| scale | stage 1 (8 models) | stage 2 (one server) | search ratio |
+|---|---|---|---|
+| 4 games | 2.22s search / 6.5s wall | 3.02s / **3.5s** | 1.36x worse |
+| 24 games | 13.34s search / **17.2s wall** | 17.40s / 17.9s | 1.30x worse |
+
+**The server loses.** Its apparent win at 4 games is entirely model-load
+amortisation — one load instead of eight — and by 24 games it is already behind
+on wall clock. Extrapolated to a 500-game generation the 1.30x search penalty
+costs about 85 seconds outright. Eight concurrent workers already keep the GPU
+busy enough that the IPC round trip plus the 2 ms linger costs more than
+cross-worker batching returns.
+
+Its one real benefit is holding one model in VRAM instead of eight, which binds
+only if more workers than memory allows were wanted; 8 is already the measured
+throughput optimum. **Do not wire it into generation.** The negative is
+recorded here so the question stops being open.
+
+### 38.1 The genuinely free speedup is tree reuse, and it is switched off
+
+Measured 2026-08-04 and never enabled: **strength at equal sims 0.5000 over 200
+games — a clean null — for −23% wall clock.** That is the definition of a
+quality-neutral speedup, it is already implemented in the native engine with
+derived Q-rebasing, and it has sat behind `MONSTER_REUSE=1` ever since. Nothing
+needs building.
+
 *Updated 2026-08-16. Suite 711 passing. Predecessor reports
 retire to git history per project convention.*
