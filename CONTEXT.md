@@ -42,6 +42,24 @@ instead of training fresh (~31 Elo, 800 games, CI [0.5104, 0.5796]) and offline
 checkpoint selection instead of play-based (~52 Elo, z=+4.17). A single 35-minute
 from-scratch run beat the model five generations of fine-tuning had produced.
 
+**The current bottleneck is CONVERSION, not strength and not the colour gap.**
+Measured 2026-08-15 on full games from the true opening at 1600 sims: **every
+draw is a cap draw** — all exactly 225 plies, while decisive games top out at
+147, with nothing in between. In all 24 sampled capped games Black finished
+ahead on material (mean **+26.4**, White on a **bare king in 21**) while both
+sides shuffled: a mean of 12.6 distinct positions in the last 100 plies. The
+exact solver proved **6 of those 24 games contained a forced king capture within
+four Black moves** that search walked past — with **zero budget exhaustion**, so
+the negatives are proven too. These are unconverted wins, not fortresses. See
+`REPORT.md` §30.
+
+**The colour gap is largely a search artifact.** On identical positions with
+sims as the only variable, Gen9's self-play gap closes **0.250 -> 0.067** from
+400 to 1600 sims and v21b's closes **0.133 -> 0.033** — both by about 74%. The
+two models get there by opposite means: Gen9 converts White's lost wins into
+Black **wins**, v21b into **draws** (§29.2). Deeper search benefits whichever
+side plays Black; that is a fact about the game, not about a model.
+
 | model | role |
 |---|---|
 | `models/fresh_start_v21b` | **the bar.** Owner: *"it'll be the gate but I'm not impressed enough for it to be 22."* Playtest still outstanding. |
@@ -71,6 +89,15 @@ gain and failed the Gen9 gate (`REPORT.md` §28).
 400 games. Directly against v21b it scores 0.5763 overall, W 0.6975/B 0.4550
 (400 games, paired SE 0.0157). Gen9 remains the clear successor candidate after
 both Gen10 seed paths failed.
+
+**Opening books start games already decided.** The p16 book used by screens
+and gates has White down **1.3 of its 4 pawns** on average, with both armies
+intact in only **3%** of its 800 entries. An 8-ply book has 78% intact. Pairing
+controls for it, but the measurement begins from lopsided middlegames rather
+than the opening. A shallow book needs **temperature 1.0**, not 0.5 — the
+earlier 8-ply build failure (31 of 100 unique) was sampling temperature, not a
+reachability ceiling; at 1.0 it produced 60 unique entries in 34 seconds with
+zero duplicates (`REPORT.md` §31).
 
 **Next strength experiment:** use the currentized multi-fidelity tuner on the
 Gen10 corpus against Gen9, with paired book entries 680–747 reserved for trial
@@ -526,6 +553,15 @@ White king+pawns).
   4.64× on long games (`tests/test_clone_history_depth.py`).
 - **Gate thresholds are constants with no CLI flag**, asserted by test;
   `tools/gate.py` cannot report PASS from a rehearsal.
+- **A book position is FEN + `white_half_pending` + `turn_count`**, and a
+  duplicate-game key must be the sequence of SETTLED positions, not the move
+  list: White moves twice, so its two half-moves in either order transpose to
+  the same position (`tests/test_opening_book.py`,
+  `tests/test_finisher_engine.py`).
+- **The finisher is opt-in** (`MONSTER_FINISHER`) and budget exhaustion falls
+  through to the network — "no answer" is never "no win"
+  (`tests/test_finisher_engine.py`). `MONSTER_SOLVER` (in-tree certainty
+  propagation) was measured a **null** on the same games.
 - **`match.py` and `benchmark.py` emit different result schemas**
   (`a_score/a_as_white` vs `candidate_score/white_strength`) — confusing them
   fails gates on a parsing bug.

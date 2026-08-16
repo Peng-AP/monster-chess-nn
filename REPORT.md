@@ -7,7 +7,7 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 633 passing
+active evidence set). Every bug below is pinned by a regression test. **Suite: 643 passing
 plus 3 subtests, verified 2026-08-15 by full discovery; native Rust: 5 passing.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
