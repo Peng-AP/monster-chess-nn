@@ -1,0 +1,294 @@
+{
+ "timestamp": "2026-08-06T09:52:12",
+ "tool": "tools/compose_processed.py",
+ "rows": 625456,
+ "arrays": [
+  "positions.npy",
+  "mcts_values.npy",
+  "game_results.npy",
+  "policies.npy",
+  "policy_weights.npy",
+  "value_weights.npy",
+  "moves_left.npy",
+  "moves_left_weights.npy",
+  "legal_masks_packed.npy",
+  "capture_results.npy"
+ ],
+ "sources": [
+  {
+   "name": "anchor",
+   "path": "data/processed/combined_v19_B_r50h60_capture",
+   "rows": 243542,
+   "position_shape": [
+    8,
+    8,
+    15
+   ],
+   "policy_shape": [
+    4096
+   ],
+   "arrays": [
+    "positions.npy",
+    "mcts_values.npy",
+    "game_results.npy",
+    "policies.npy",
+    "policy_weights.npy",
+    "value_weights.npy",
+    "moves_left.npy",
+    "moves_left_weights.npy",
+    "legal_masks_packed.npy",
+    "capture_results.npy"
+   ]
+  },
+  {
+   "name": "gen_0002",
+   "path": "data/processed/bootstrap_new_main_gen_0002",
+   "rows": 93432,
+   "position_shape": [
+    8,
+    8,
+    15
+   ],
+   "policy_shape": [
+    4096
+   ],
+   "arrays": [
+    "positions.npy",
+    "mcts_values.npy",
+    "game_results.npy",
+    "policies.npy",
+    "policy_weights.npy",
+    "value_weights.npy",
+    "moves_left.npy",
+    "moves_left_weights.npy",
+    "legal_masks_packed.npy",
+    "capture_results.npy"
+   ]
+  },
+  {
+   "name": "gen_0003",
+   "path": "data/processed/bootstrap_new_main_gen_0003",
+   "rows": 93228,
+   "position_shape": [
+    8,
+    8,
+    15
+   ],
+   "policy_shape": [
+    4096
+   ],
+   "arrays": [
+    "positions.npy",
+    "mcts_values.npy",
+    "game_results.npy",
+    "policies.npy",
+    "policy_weights.npy",
+    "value_weights.npy",
+    "moves_left.npy",
+    "moves_left_weights.npy",
+    "legal_masks_packed.npy",
+    "capture_results.npy"
+   ]
+  },
+  {
+   "name": "gen_0004",
+   "path": "data/processed/bootstrap_new_main_gen_0004",
+   "rows": 94156,
+   "position_shape": [
+    8,
+    8,
+    15
+   ],
+   "policy_shape": [
+    4096
+   ],
+   "arrays": [
+    "positions.npy",
+    "mcts_values.npy",
+    "game_results.npy",
+    "policies.npy",
+    "policy_weights.npy",
+    "value_weights.npy",
+    "moves_left.npy",
+    "moves_left_weights.npy",
+    "legal_masks_packed.npy",
+    "capture_results.npy"
+   ]
+  },
+  {
+   "name": "gen_0005_boost",
+   "path": "data/processed/bootstrap_new_main_gen_0005_boost",
+   "rows": 101098,
+   "position_shape": [
+    8,
+    8,
+    15
+   ],
+   "policy_shape": [
+    4096
+   ],
+   "arrays": [
+    "positions.npy",
+    "mcts_values.npy",
+    "game_results.npy",
+    "policies.npy",
+    "policy_weights.npy",
+    "value_weights.npy",
+    "moves_left.npy",
+    "moves_left_weights.npy",
+    "legal_masks_packed.npy",
+    "capture_results.npy"
+   ]
+  }
+ ],
+ "split_rows": {
+  "train": 500658,
+  "val": 60794,
+  "test": 64004
+ },
+ "training_balance": {
+  "enabled": true,
+  "alpha": 0.5,
+  "seed": 706096,
+  "result_source": "capture_results.npy",
+  "material_quantiles": [
+   11.0,
+   15.0
+  ],
+  "source_rows": 500658,
+  "sampled_rows": 500658,
+  "strata": [
+   {
+    "side": "black",
+    "outcome": "loss",
+    "phase": "late",
+    "source_rows": 15274,
+    "sampled_rows": 21311
+   },
+   {
+    "side": "black",
+    "outcome": "loss",
+    "phase": "middle",
+    "source_rows": 13182,
+    "sampled_rows": 19798
+   },
+   {
+    "side": "black",
+    "outcome": "loss",
+    "phase": "early",
+    "source_rows": 25548,
+    "sampled_rows": 27561
+   },
+   {
+    "side": "black",
+    "outcome": "draw",
+    "phase": "late",
+    "source_rows": 24184,
+    "sampled_rows": 26816
+   },
+   {
+    "side": "black",
+    "outcome": "draw",
+    "phase": "middle",
+    "source_rows": 14296,
+    "sampled_rows": 20617
+   },
+   {
+    "side": "black",
+    "outcome": "draw",
+    "phase": "early",
+    "source_rows": 5082,
+    "sampled_rows": 12292
+   },
+   {
+    "side": "black",
+    "outcome": "win",
+    "phase": "late",
+    "source_rows": 24526,
+    "sampled_rows": 27005
+   },
+   {
+    "side": "black",
+    "outcome": "win",
+    "phase": "middle",
+    "source_rows": 27154,
+    "sampled_rows": 28414
+   },
+   {
+    "side": "black",
+    "outcome": "win",
+    "phase": "early",
+    "source_rows": 23416,
+    "sampled_rows": 26386
+   },
+   {
+    "side": "white",
+    "outcome": "loss",
+    "phase": "late",
+    "source_rows": 46446,
+    "sampled_rows": 37162
+   },
+   {
+    "side": "white",
+    "outcome": "loss",
+    "phase": "middle",
+    "source_rows": 47958,
+    "sampled_rows": 37762
+   },
+   {
+    "side": "white",
+    "outcome": "loss",
+    "phase": "early",
+    "source_rows": 39886,
+    "sampled_rows": 34438
+   },
+   {
+    "side": "white",
+    "outcome": "draw",
+    "phase": "late",
+    "source_rows": 44000,
+    "sampled_rows": 36170
+   },
+   {
+    "side": "white",
+    "outcome": "draw",
+    "phase": "middle",
+    "source_rows": 26950,
+    "sampled_rows": 28308
+   },
+   {
+    "side": "white",
+    "outcome": "draw",
+    "phase": "early",
+    "source_rows": 10638,
+    "sampled_rows": 17785
+   },
+   {
+    "side": "white",
+    "outcome": "win",
+    "phase": "late",
+    "source_rows": 31170,
+    "sampled_rows": 30443
+   },
+   {
+    "side": "white",
+    "outcome": "win",
+    "phase": "middle",
+    "source_rows": 27030,
+    "sampled_rows": 28350
+   },
+   {
+    "side": "white",
+    "outcome": "win",
+    "phase": "early",
+    "source_rows": 53918,
+    "sampled_rows": 40040
+   }
+  ]
+ },
+ "_retired": {
+  "directory": "bootstrap_replay_main_gen_0005_boost",
+  "bytes_freed": 12992547951,
+  "note": "Corpus deleted 2026-08-16; recompose with tools/compose_processed.py using sources below."
+ }
+}
