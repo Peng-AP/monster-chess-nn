@@ -1,4 +1,8 @@
-"""Run one accumulated, from-scratch bootstrap generation.
+"""Run one legacy accumulated, from-scratch bootstrap generation.
+
+New unattended generations should use ``src/iterate.py``. This driver remains
+for exact Gen7--Gen10 campaign reproduction; its outputs are now audited so a
+reproduction cannot repeat the historical one-row teacher loss.
 
 The loop's original fine-tuning step and offline-only checkpoint choice both
 discarded measured playing strength.  This driver keeps the recipe that fixed
@@ -123,8 +127,16 @@ def main():
         "src/data_processor.py", "--raw-dir", RAW,
         "--output-dir", PROCESSED, "--value-floor", "0.5",
         "--value-horizon", "60", "--value-discount-mode", "near_mate",
+        "--min-nonhuman-plies", "0", "--max-generation-age", "0",
         "--channels", "15",
     ], marker=f"{PROCESSED}/positions.npy")
+
+    stage("audit", [
+        "tools/audit_generation_data.py", "--raw-dir", RAW,
+        "--reanalysis-dir", REANALYSIS, "--processed-dir", PROCESSED,
+        "--expected-teachers", "4000", "--expected-black-fraction", "0.6",
+        "--value-floor", "0.5", "--value-horizon", "60",
+    ], marker=f"{PROCESSED}/generation_audit.json")
 
     compose = ["tools/compose_processed.py"]
     for s in SOURCES:

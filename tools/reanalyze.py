@@ -179,8 +179,11 @@ def _reanalyze_one(item):
     game.is_white_turn = is_white
     game.board.turn = is_white
     game.white_half_pending = bool(record.get("half"))
+    # The returned visit distribution is the teacher target.  Select its
+    # associated child deterministically so the value-disagreement component
+    # does not change merely because temperature sampling chose another child.
     _action, deep_policy, deep_value = _worker_engine.get_best_action(
-        game, temperature=1.0)
+        game, temperature=0.0)
     if not deep_policy:
         raise ValueError(f"deep search returned no policy for {record['fen']}")
     metrics = disagreement_score(
