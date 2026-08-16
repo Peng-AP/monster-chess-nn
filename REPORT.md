@@ -1556,9 +1556,20 @@ Black-to-move positions of each capped game (72 positions):
 **Zero exhaustion at either depth** — every search ran to completion, so the
 negatives are proven facts rather than search failures. Grouped by game, **6 of
 24 capped games contained a forced king capture within four Black moves that
-the engine walked past at 1600 sims.** Depth 5 on the 57 remaining is running at
-the time of writing; exhaustion there must be read as "no answer", never "no
-win".
+the engine walked past at 1600 sims.**
+
+Depth 5 on the 57 remaining ended without completing and without an error, at
+15 of 57: **2 more forced wins, 13 more proven not won, still zero
+exhaustion**. Those 15 are the fastest to finish, so they favour positions with
+small search trees, and the cause of the termination is unattributed. The
+ladder therefore reads 9 forced wins at depth <=3, 15 at <=4, at least 17 at
+<=5.
+
+**Depth 4 is the operating point for a finisher.** It completed all 72
+positions in 9 minutes inside a 6M-node budget; depth 5 cost roughly 23
+CPU-minutes per position and would have needed about 2.8 hours for the 57.
+The marginal wins do not justify two orders of magnitude more search inside
+real play.
 
 ### 30.2 Certainty propagation is a null
 
