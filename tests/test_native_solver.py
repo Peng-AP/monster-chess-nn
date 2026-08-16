@@ -50,6 +50,13 @@ def stub(buf, n, channels):
             np.zeros(n * 4096, dtype=np.float32).tobytes())
 
 
+def stub_with_moves_left(buf, n, channels):
+    """The optional third buffer is one remaining-decisions value per leaf."""
+    return (np.zeros(n, dtype=np.float32).tobytes(),
+            np.zeros(n * 4096, dtype=np.float32).tobytes(),
+            np.full(n, 12.0, dtype=np.float32).tobytes())
+
+
 def search(fen, sims, solver, batch=16):
     tree = mn.Tree(fen)
     tree.run_batched_puct(sims, stub, batch_size=batch, channels=17,
@@ -118,6 +125,17 @@ class TestItIsOffByDefault(unittest.TestCase):
         off = search(START_FEN, 200, solver=False).best_action(temperature=0.0)
         on = search(START_FEN, 200, solver=True).best_action(temperature=0.0)
         self.assertEqual(off[0], on[0])
+
+    def test_optional_moves_left_callback_keeps_legacy_callback_compatible(self):
+        legacy = mn.Tree(START_FEN)
+        legacy.run_batched_puct(
+            32, stub, batch_size=8, channels=17, allow_early_stop=False)
+        with_mlh = mn.Tree(START_FEN)
+        with_mlh.run_batched_puct(
+            32, stub_with_moves_left, batch_size=8, channels=17,
+            allow_early_stop=False, moves_left_max_effect=0.03)
+        self.assertIsNotNone(legacy.best_action(temperature=0.0)[0])
+        self.assertIsNotNone(with_mlh.best_action(temperature=0.0)[0])
 
 
 if __name__ == "__main__":

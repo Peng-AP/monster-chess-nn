@@ -21,7 +21,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from config import (DEFAULT_GAME_WORKERS, C_PUCT, FPU_REDUCTION,
-                    POLICY_TEMPERATURE)  # noqa: E402  (needs sys.path above)
+                    POLICY_TEMPERATURE, MOVES_LEFT_MAX_EFFECT,
+                    MOVES_LEFT_THRESHOLD,
+                    MOVES_LEFT_SLOPE)  # noqa: E402  (needs sys.path above)
 
 _engines = {}
 
@@ -50,18 +52,33 @@ def _init_worker(model_a, model_b, sims, sims_b=None,
                  fpu_reduction_a=FPU_REDUCTION,
                  fpu_reduction_b=FPU_REDUCTION,
                  policy_temperature_a=POLICY_TEMPERATURE,
-                 policy_temperature_b=POLICY_TEMPERATURE):
+                 policy_temperature_b=POLICY_TEMPERATURE,
+                 moves_left_utility_a=False, moves_left_utility_b=False,
+                 moves_left_max_effect_a=MOVES_LEFT_MAX_EFFECT,
+                 moves_left_max_effect_b=MOVES_LEFT_MAX_EFFECT,
+                 moves_left_threshold_a=MOVES_LEFT_THRESHOLD,
+                 moves_left_threshold_b=MOVES_LEFT_THRESHOLD,
+                 moves_left_slope_a=MOVES_LEFT_SLOPE,
+                 moves_left_slope_b=MOVES_LEFT_SLOPE):
     # Workers are separate processes: the choice must be passed in, not read
     # from a parent-side global.
     from benchmark import _build_engine
     _engines["a"], _ = _build_engine(
         model_a, sims, batch_a, engine=engine, c_puct=c_puct_a,
         fpu_reduction=fpu_reduction_a,
-        policy_temperature=policy_temperature_a)
+        policy_temperature=policy_temperature_a,
+        moves_left_utility=moves_left_utility_a,
+        moves_left_max_effect=moves_left_max_effect_a,
+        moves_left_threshold=moves_left_threshold_a,
+        moves_left_slope=moves_left_slope_a)
     _engines["b"], _ = _build_engine(
         model_b, sims_b or sims, batch_b, engine=engine, c_puct=c_puct_b,
         fpu_reduction=fpu_reduction_b,
-        policy_temperature=policy_temperature_b)
+        policy_temperature=policy_temperature_b,
+        moves_left_utility=moves_left_utility_b,
+        moves_left_max_effect=moves_left_max_effect_b,
+        moves_left_threshold=moves_left_threshold_b,
+        moves_left_slope=moves_left_slope_b)
 
 
 def load_book(path):
@@ -314,6 +331,13 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               fpu_reduction_b=FPU_REDUCTION,
               policy_temperature_a=POLICY_TEMPERATURE,
               policy_temperature_b=POLICY_TEMPERATURE,
+              moves_left_utility_a=False, moves_left_utility_b=False,
+              moves_left_max_effect_a=MOVES_LEFT_MAX_EFFECT,
+              moves_left_max_effect_b=MOVES_LEFT_MAX_EFFECT,
+              moves_left_threshold_a=MOVES_LEFT_THRESHOLD,
+              moves_left_threshold_b=MOVES_LEFT_THRESHOLD,
+              moves_left_slope_a=MOVES_LEFT_SLOPE,
+              moves_left_slope_b=MOVES_LEFT_SLOPE,
               stall_timeout=600.0, checkpoint_path=None, book=None,
               book_offset=0):
     """Play a match and return the result dict. The only producer of this schema.
@@ -347,7 +371,11 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         initargs=(model_a, model_b, sims, sims_b, batch_a, batch_b,
                   engine, c_puct_a, c_puct_b, fpu_reduction_a,
                   fpu_reduction_b, policy_temperature_a,
-                  policy_temperature_b))
+                  policy_temperature_b, moves_left_utility_a,
+                  moves_left_utility_b, moves_left_max_effect_a,
+                  moves_left_max_effect_b, moves_left_threshold_a,
+                  moves_left_threshold_b, moves_left_slope_a,
+                  moves_left_slope_b))
     try:
         iterator = pool.imap_unordered(_play, tasks)
         results = []
@@ -397,11 +425,19 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
             "c_puct": c_puct_a,
             "fpu_reduction": fpu_reduction_a,
             "policy_temperature": policy_temperature_a,
+            "moves_left_utility": moves_left_utility_a,
+            "moves_left_max_effect": moves_left_max_effect_a,
+            "moves_left_threshold": moves_left_threshold_a,
+            "moves_left_slope": moves_left_slope_a,
         },
         "search_b": {
             "c_puct": c_puct_b,
             "fpu_reduction": fpu_reduction_b,
             "policy_temperature": policy_temperature_b,
+            "moves_left_utility": moves_left_utility_b,
+            "moves_left_max_effect": moves_left_max_effect_b,
+            "moves_left_threshold": moves_left_threshold_b,
+            "moves_left_slope": moves_left_slope_b,
         },
         "opening_temp_plies": opening_temp_plies,
         # Present only for book matches. Its absence marks a score measured
@@ -458,6 +494,22 @@ def main():
                     default=POLICY_TEMPERATURE)
     ap.add_argument("--policy-temperature-b", type=float,
                     default=POLICY_TEMPERATURE)
+    ap.add_argument("--moves-left-a", action="store_true",
+                    help="enable bounded moves-left search utility for model A")
+    ap.add_argument("--moves-left-b", action="store_true",
+                    help="enable bounded moves-left search utility for model B")
+    ap.add_argument("--moves-left-max-effect-a", type=float,
+                    default=MOVES_LEFT_MAX_EFFECT)
+    ap.add_argument("--moves-left-max-effect-b", type=float,
+                    default=MOVES_LEFT_MAX_EFFECT)
+    ap.add_argument("--moves-left-threshold-a", type=float,
+                    default=MOVES_LEFT_THRESHOLD)
+    ap.add_argument("--moves-left-threshold-b", type=float,
+                    default=MOVES_LEFT_THRESHOLD)
+    ap.add_argument("--moves-left-slope-a", type=float,
+                    default=MOVES_LEFT_SLOPE)
+    ap.add_argument("--moves-left-slope-b", type=float,
+                    default=MOVES_LEFT_SLOPE)
     ap.add_argument("--seed", type=int, default=20260704)
     # Left as None so resolve_opening_temp_plies() can pick the default from the
     # opponent: heuristic tie-breaks already diversify anchor games, so only
@@ -492,6 +544,14 @@ def main():
                     fpu_reduction_b=args.fpu_reduction_b,
                     policy_temperature_a=args.policy_temperature_a,
                     policy_temperature_b=args.policy_temperature_b,
+                    moves_left_utility_a=args.moves_left_a,
+                    moves_left_utility_b=args.moves_left_b,
+                    moves_left_max_effect_a=args.moves_left_max_effect_a,
+                    moves_left_max_effect_b=args.moves_left_max_effect_b,
+                    moves_left_threshold_a=args.moves_left_threshold_a,
+                    moves_left_threshold_b=args.moves_left_threshold_b,
+                    moves_left_slope_a=args.moves_left_slope_a,
+                    moves_left_slope_b=args.moves_left_slope_b,
                     stall_timeout=args.stall_timeout,
                     checkpoint_path=_artifact_path(args), book=args.book,
                     book_offset=args.book_offset)

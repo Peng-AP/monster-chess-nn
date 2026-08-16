@@ -16,7 +16,8 @@ import os
 import time
 
 from config import (MODEL_DIR, PROJECT_ROOT, C_PUCT, FPU_REDUCTION,
-                    POLICY_TEMPERATURE)
+                    POLICY_TEMPERATURE, MOVES_LEFT_MAX_EFFECT,
+                    MOVES_LEFT_THRESHOLD, MOVES_LEFT_SLOPE)
 from monster_chess import MonsterChessGame
 from mcts import MCTS
 from evaluation import evaluate
@@ -132,7 +133,11 @@ def _engine_choice(engine=None):
 
 def _build_engine(model_path, sims, batch_size=None, engine=None,
                   c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
-                  policy_temperature=POLICY_TEMPERATURE):
+                  policy_temperature=POLICY_TEMPERATURE,
+                  moves_left_utility=False,
+                  moves_left_max_effect=MOVES_LEFT_MAX_EFFECT,
+                  moves_left_threshold=MOVES_LEFT_THRESHOLD,
+                  moves_left_slope=MOVES_LEFT_SLOPE):
     """Return (engine, label). NN engine if a model is given, else heuristic.
 
     batch_size is the MCTS leaf-parallel width. The default (16) was chosen for
@@ -153,6 +158,10 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
         "c_puct": c_puct,
         "fpu_reduction": fpu_reduction,
         "policy_temperature": policy_temperature,
+        "moves_left_utility": moves_left_utility,
+        "moves_left_max_effect": moves_left_max_effect,
+        "moves_left_threshold": moves_left_threshold,
+        "moves_left_slope": moves_left_slope,
     }
     if batch_size is not None:
         kwargs["batch_size"] = int(batch_size)
@@ -169,6 +178,8 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
             label += "+solver"
         if reuse:
             label += "+reuse"
+        if moves_left_utility:
+            label += "+mlh"
     else:
         search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
                       allow_early_stop=True, **kwargs)

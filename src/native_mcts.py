@@ -37,7 +37,9 @@ if os.path.join(ROOT, "native") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "native"))
 
 import monster_native as mn  # noqa: E402
-from config import C_PUCT, FPU_REDUCTION, POLICY_TEMPERATURE  # noqa: E402
+from config import (C_PUCT, FPU_REDUCTION, POLICY_TEMPERATURE,
+                    MOVES_LEFT_MAX_EFFECT, MOVES_LEFT_THRESHOLD,
+                    MOVES_LEFT_SLOPE)  # noqa: E402
 
 HISTORY_PLIES = 8
 
@@ -94,9 +96,11 @@ class _GraphedForward:
     that is at most 16 of them, a few MB of static buffers.
     """
 
-    def __init__(self, torch, model, device, width, channels, half):
+    def __init__(self, torch, model, device, width, channels, half,
+                 include_moves_left=False):
         self.torch, self.model, self.device = torch, model, device
         self.width, self.channels, self.half = width, channels, half
+        self.include_moves_left = bool(include_moves_left)
         self._graphs = {}
 
     def _capture(self, n):
@@ -108,26 +112,33 @@ class _GraphedForward:
         stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(stream), torch.no_grad():
             for _ in range(3):          # warm-up is required before capture
-                self.model(static_in)
+                if self.include_moves_left:
+                    self.model.forward_with_aux(static_in)
+                else:
+                    self.model(static_in)
         torch.cuda.current_stream().wait_stream(stream)
         graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(graph), torch.no_grad():
-            out_v, out_p = self.model(static_in)
-        return static_in, graph, out_v, out_p
+            if self.include_moves_left:
+                out_v, out_p, _out_wdl, out_ml = self.model.forward_with_aux(static_in)
+            else:
+                out_v, out_p = self.model(static_in)
+                out_ml = None
+        return static_in, graph, out_v, out_p, out_ml
 
     def __call__(self, tensor, n):
         entry = self._graphs.get(n)
         if entry is None:
             entry = self._capture(n)
             self._graphs[n] = entry
-        static_in, graph, out_v, out_p = entry
+        static_in, graph, out_v, out_p, out_ml = entry
         static_in.copy_(tensor)
         graph.replay()
-        return out_v, out_p
+        return out_v, out_p, out_ml
 
 
 def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
-                graph_width=None):
+                graph_width=None, include_moves_left=False):
     """(eval_fn, input_channels) for `Tree.run_batched_puct`.
 
     Values come back in the SIDE-TO-MOVE perspective, exactly as the model
@@ -140,12 +151,16 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
     channels = nn_evaluator.input_channels
     half = bool(getattr(nn_evaluator, "_half", False))
     device = nn_evaluator.device
+    include_moves_left = (bool(include_moves_left)
+                          and bool(getattr(nn_evaluator.model,
+                                           "use_moves_left_head", False)))
 
     graphed = None
     if graph_width and device.type == "cuda" and _graph_enabled():
         try:
             graphed = _GraphedForward(torch, nn_evaluator.model, device,
-                                      int(graph_width), channels, half)
+                                      int(graph_width), channels, half,
+                                      include_moves_left=include_moves_left)
         except Exception as exc:
             # Capture can fail on driver/allocator quirks. Falling back to the
             # eager path is a slowdown, never a wrong answer.
@@ -159,13 +174,25 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
         if half:
             tensor = tensor.half()
         if graphed is not None and n <= graphed.width:
-            value, policy = graphed(tensor, n)
+            value, policy, moves_left = graphed(tensor, n)
         else:
             with torch.no_grad():
-                value, policy = nn_evaluator.model(tensor)
+                if include_moves_left:
+                    value, policy, _wdl, moves_left = (
+                        nn_evaluator.model.forward_with_aux(tensor))
+                else:
+                    value, policy = nn_evaluator.model(tensor)
+                    moves_left = None
         policy = policy.reshape(n, -1).float() / policy_temperature
-        return (value.reshape(-1).float().cpu().numpy().astype(np.float32).tobytes(),
-                policy.cpu().numpy().astype(np.float32).tobytes())
+        result = (
+            value.reshape(-1).float().cpu().numpy().astype(np.float32).tobytes(),
+            policy.cpu().numpy().astype(np.float32).tobytes(),
+        )
+        if moves_left is not None:
+            ml_bytes = (moves_left.reshape(-1).float().cpu().numpy()
+                        .astype(np.float32).tobytes())
+            return result + (ml_bytes,)
+        return result
 
     return eval_fn, channels
 
@@ -177,7 +204,11 @@ class NativeMCTS:
                  root_noise=False, allow_early_stop=True, seed=None,
                  reuse_across_moves=False, solver=False, c_puct=C_PUCT,
                  fpu_reduction=FPU_REDUCTION,
-                 policy_temperature=POLICY_TEMPERATURE):
+                 policy_temperature=POLICY_TEMPERATURE,
+                 moves_left_utility=False,
+                 moves_left_max_effect=MOVES_LEFT_MAX_EFFECT,
+                 moves_left_threshold=MOVES_LEFT_THRESHOLD,
+                 moves_left_slope=MOVES_LEFT_SLOPE):
         if not math.isfinite(float(c_puct)) or float(c_puct) < 0:
             raise ValueError("c_puct must be finite and >= 0")
         if not math.isfinite(float(fpu_reduction)) or float(fpu_reduction) < 0:
@@ -185,6 +216,15 @@ class NativeMCTS:
         if (not math.isfinite(float(policy_temperature))
                 or float(policy_temperature) <= 0):
             raise ValueError("policy_temperature must be finite and > 0")
+        if (not math.isfinite(float(moves_left_max_effect))
+                or not 0.0 <= float(moves_left_max_effect) <= 1.0):
+            raise ValueError("moves_left_max_effect must be finite and in [0, 1]")
+        if (not math.isfinite(float(moves_left_threshold))
+                or not 0.0 <= float(moves_left_threshold) < 1.0):
+            raise ValueError("moves_left_threshold must be finite and in [0, 1)")
+        if (not math.isfinite(float(moves_left_slope))
+                or float(moves_left_slope) < 0.0):
+            raise ValueError("moves_left_slope must be finite and >= 0")
         # `seed=None` draws from Python's global RNG **at construction**, which
         # is how this engine inherits per-game seeding. `mcts.MCTS` reads that
         # global module directly, and both `data_generation._worker` and
@@ -225,6 +265,10 @@ class NativeMCTS:
         self.c_puct = float(c_puct)
         self.fpu_reduction = float(fpu_reduction)
         self.policy_temperature = float(policy_temperature)
+        self.moves_left_utility = bool(moves_left_utility)
+        self.moves_left_max_effect = float(moves_left_max_effect)
+        self.moves_left_threshold = float(moves_left_threshold)
+        self.moves_left_slope = float(moves_left_slope)
         # Advanced once per decision. The native RNG is constructed from the
         # seed it is GIVEN, so passing a constant re-seeds an identical stream
         # every call: temperature sampling then returns the same move every
@@ -238,10 +282,17 @@ class NativeMCTS:
 
         nn = _underlying_nn(eval_fn)
         self._heuristic_values = _uses_heuristic_values(eval_fn)
+        if (self.moves_left_utility
+                and (nn is None
+                     or not bool(getattr(nn.model,
+                                         "use_moves_left_head", False)))):
+            raise ValueError("moves-left utility requires a checkpoint with a "
+                             "trained moves-left head")
         if nn is not None:
             self._bridge, self._channels = make_bridge(
                 nn, policy_temperature=self.policy_temperature,
-                graph_width=self.batch_size)
+                graph_width=self.batch_size,
+                include_moves_left=self.moves_left_utility)
         else:
             self._bridge, self._channels = None, None
 
@@ -319,7 +370,11 @@ class NativeMCTS:
                 allow_early_stop=self.allow_early_stop,
                 root_noise=self.root_noise, seed=decision_seed,
                 heuristic_values=self._heuristic_values, solver=self.solver,
-                c_puct=self.c_puct, fpu_reduction=self.fpu_reduction)
+                c_puct=self.c_puct, fpu_reduction=self.fpu_reduction,
+                moves_left_max_effect=(self.moves_left_max_effect
+                                       if self.moves_left_utility else 0.0),
+                moves_left_threshold=self.moves_left_threshold,
+                moves_left_slope=self.moves_left_slope)
         else:
             tree.run_sequential(self.num_simulations,
                                 allow_early_stop=self.allow_early_stop,

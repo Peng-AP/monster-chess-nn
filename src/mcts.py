@@ -8,7 +8,8 @@ import numpy as np
 from config import (
     EXPLORATION_CONSTANT, C_PUCT, MCTS_SIMULATIONS, POLICY_SIZE,
     DIRICHLET_ALPHA, DIRICHLET_EPSILON, FPU_REDUCTION, POLICY_TARGET_PSEUDOCOUNT,
-    POLICY_TEMPERATURE,
+    POLICY_TEMPERATURE, MOVES_LEFT_MAX_EFFECT, MOVES_LEFT_THRESHOLD,
+    MOVES_LEFT_SLOPE,
 )
 from evaluation import evaluate
 
@@ -227,6 +228,7 @@ class MCTSNode:
     __slots__ = (
         "state", "parent", "children", "action",
         "visit_count", "total_value", "prior",
+        "total_moves_left", "moves_left_count",
         "_untried_actions", "_is_expanded",
     )
 
@@ -237,6 +239,8 @@ class MCTSNode:
         self.prior = prior
         self.visit_count = 0
         self.total_value = 0.0
+        self.total_moves_left = 0.0
+        self.moves_left_count = 0
         self.children = []
         self._untried_actions = None
         self._is_expanded = False
@@ -246,6 +250,12 @@ class MCTSNode:
         if self.visit_count == 0:
             return 0.0
         return self.total_value / self.visit_count
+
+    @property
+    def moves_left(self):
+        if self.moves_left_count == 0:
+            return None
+        return self.total_moves_left / self.moves_left_count
 
     # --- UCB1 (heuristic mode) ---
 
@@ -261,7 +271,10 @@ class MCTSNode:
 
     # --- PUCT (NN policy mode) ---
 
-    def puct_score(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION):
+    def puct_score(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                   moves_left_max_effect=0.0,
+                   moves_left_threshold=MOVES_LEFT_THRESHOLD,
+                   moves_left_slope=MOVES_LEFT_SLOPE):
         """AlphaZero-style PUCT: Q + c * P * sqrt(N_parent) / (1 + N)."""
         parent_visits = max(1, self.parent.visit_count) if self.parent else 1
         if self.visit_count == 0:
@@ -284,10 +297,33 @@ class MCTSNode:
                     parent_q = -parent_q
                 fpu_q = max(-1.0, min(1.0, parent_q - fpu_reduction))
             return fpu_q + c_puct * self.prior * math.sqrt(parent_visits)
-        return self.q_value + c_puct * self.prior * math.sqrt(parent_visits) / (1 + self.visit_count)
+        score = (self.q_value
+                 + c_puct * self.prior * math.sqrt(parent_visits)
+                 / (1 + self.visit_count))
+        if (moves_left_max_effect <= 0 or moves_left_slope <= 0
+                or self.parent is None or self.moves_left is None
+                or self.parent.moves_left is None):
+            return score
+        q = self.q_value
+        urgency = max(0.0, min(
+            1.0,
+            (abs(q) - moves_left_threshold) / (1.0 - moves_left_threshold),
+        ))
+        expected_child = max(0.0, self.parent.moves_left - 1.0)
+        length_signal = math.tanh(
+            (expected_child - self.moves_left) * moves_left_slope)
+        return (score + math.copysign(1.0, q) * moves_left_max_effect
+                * urgency * length_signal)
 
-    def best_child_puct(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION):
-        return max(self.children, key=lambda ch: ch.puct_score(c_puct, fpu_reduction=fpu_reduction))
+    def best_child_puct(self, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                        moves_left_max_effect=0.0,
+                        moves_left_threshold=MOVES_LEFT_THRESHOLD,
+                        moves_left_slope=MOVES_LEFT_SLOPE):
+        return max(self.children, key=lambda ch: ch.puct_score(
+            c_puct, fpu_reduction=fpu_reduction,
+            moves_left_max_effect=moves_left_max_effect,
+            moves_left_threshold=moves_left_threshold,
+            moves_left_slope=moves_left_slope))
 
     # --- Expansion ---
 
@@ -343,7 +379,11 @@ class MCTS:
     def __init__(self, num_simulations=MCTS_SIMULATIONS, eval_fn=None,
                  batch_size=16, root_noise=True, allow_early_stop=True,
                  c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
-                 policy_temperature=POLICY_TEMPERATURE):
+                 policy_temperature=POLICY_TEMPERATURE,
+                 moves_left_utility=False,
+                 moves_left_max_effect=MOVES_LEFT_MAX_EFFECT,
+                 moves_left_threshold=MOVES_LEFT_THRESHOLD,
+                 moves_left_slope=MOVES_LEFT_SLOPE):
         if not math.isfinite(float(c_puct)) or float(c_puct) < 0:
             raise ValueError("c_puct must be finite and >= 0")
         if not math.isfinite(float(fpu_reduction)) or float(fpu_reduction) < 0:
@@ -351,11 +391,24 @@ class MCTS:
         if (not math.isfinite(float(policy_temperature))
                 or float(policy_temperature) <= 0):
             raise ValueError("policy_temperature must be finite and > 0")
+        if (not math.isfinite(float(moves_left_max_effect))
+                or not 0.0 <= float(moves_left_max_effect) <= 1.0):
+            raise ValueError("moves_left_max_effect must be finite and in [0, 1]")
+        if (not math.isfinite(float(moves_left_threshold))
+                or not 0.0 <= float(moves_left_threshold) < 1.0):
+            raise ValueError("moves_left_threshold must be finite and in [0, 1)")
+        if (not math.isfinite(float(moves_left_slope))
+                or float(moves_left_slope) < 0.0):
+            raise ValueError("moves_left_slope must be finite and >= 0")
         self.num_simulations = num_simulations
         self.eval_fn = eval_fn or evaluate
         self.c_puct = float(c_puct)
         self.fpu_reduction = float(fpu_reduction)
         self.policy_temperature = float(policy_temperature)
+        self.moves_left_utility = bool(moves_left_utility)
+        self.moves_left_max_effect = float(moves_left_max_effect)
+        self.moves_left_threshold = float(moves_left_threshold)
+        self.moves_left_slope = float(moves_left_slope)
         # Leaf-parallel batch width.  Kept small: wide in-tree batching queues many
         # leaves against the same shallow tree and degrades selection quality.  GPU
         # throughput comes from parallelism ACROSS games (workers), not within one
@@ -564,13 +617,20 @@ class MCTS:
         selection attempts (REWORK_PLAN.md Phase 1.1-1.2).
         """
         if root.state.is_terminal():
-            self._backpropagate(root, root.state.get_result())
+            self._backpropagate(root, root.state.get_result(), moves_left=0.0)
             return
 
-        root_value, root_policy = self.eval_fn.evaluate_with_policy(root.state)
+        if (self.moves_left_utility
+                and hasattr(self.eval_fn,
+                            "evaluate_with_policy_and_moves_left")):
+            root_value, root_policy, root_moves_left = (
+                self.eval_fn.evaluate_with_policy_and_moves_left(root.state))
+        else:
+            root_value, root_policy = self.eval_fn.evaluate_with_policy(root.state)
+            root_moves_left = None
         if not root.is_fully_expanded():
             self._expand_with_policy(root, root_policy)
-        self._backpropagate(root, root_value)
+        self._backpropagate(root, root_value, moves_left=root_moves_left)
         if self.root_noise and root.children:
             self._add_dirichlet_noise(root)
 
@@ -601,19 +661,27 @@ class MCTS:
             nn_results = {}
             if nn_nodes:
                 states = [n.state for n in nn_nodes]
-                values, policies = self.eval_fn.batch_evaluate_with_policy(states)
-                for n, v, p in zip(nn_nodes, values, policies):
-                    nn_results[id(n)] = (v, p)
+                if (self.moves_left_utility
+                        and hasattr(self.eval_fn,
+                                    "batch_evaluate_with_policy_and_moves_left")):
+                    values, policies, moves_left = (
+                        self.eval_fn.batch_evaluate_with_policy_and_moves_left(states))
+                else:
+                    values, policies = self.eval_fn.batch_evaluate_with_policy(states)
+                    moves_left = [None] * len(states)
+                for n, v, p, ml in zip(nn_nodes, values, policies, moves_left):
+                    nn_results[id(n)] = (v, p, ml)
 
             for node, needs, imm in leaves:
                 self._revert_virtual_loss(node)
                 if needs:
-                    value, policy = nn_results[id(node)]
+                    value, policy, moves_left = nn_results[id(node)]
                     if not node.is_fully_expanded():
                         self._expand_with_policy(node, policy)
-                    self._backpropagate(node, value)
+                    self._backpropagate(node, value, moves_left=moves_left)
                 else:
-                    self._backpropagate(node, imm)
+                    terminal_ml = 0.0 if node.state.is_terminal() else None
+                    self._backpropagate(node, imm, moves_left=terminal_ml)
 
             sims_done += len(leaves)
 
@@ -625,7 +693,12 @@ class MCTS:
             if not node.children:
                 return node  # fully expanded with no legal moves
             node = node.best_child_puct(c_puct=self.c_puct,
-                                        fpu_reduction=self.fpu_reduction)
+                                        fpu_reduction=self.fpu_reduction,
+                                        moves_left_max_effect=(
+                                            self.moves_left_max_effect
+                                            if self.moves_left_utility else 0.0),
+                                        moves_left_threshold=self.moves_left_threshold,
+                                        moves_left_slope=self.moves_left_slope)
         return node
 
     def _expand_with_policy(self, node, policy_logits):
@@ -714,13 +787,14 @@ class MCTS:
             n.total_value += vl
             n = n.parent
 
-    def _backpropagate(self, node, value):
+    def _backpropagate(self, node, value, moves_left=None):
         """Propagate value (from White's perspective) back up to root.
 
         A node's total_value accumulates in the perspective of the side that moved
         into it (its parent's side-to-move), so Q is read consistently by that
         parent during selection.
         """
+        distance = 0.0
         while node is not None:
             node.visit_count += 1
             if node.parent is not None:
@@ -729,7 +803,11 @@ class MCTS:
             else:
                 is_white = node.state.is_white_turn
                 node.total_value += value if is_white else -value
+            if moves_left is not None and math.isfinite(float(moves_left)):
+                node.total_moves_left += max(0.0, float(moves_left)) + distance
+                node.moves_left_count += 1
             node = node.parent
+            distance += 1.0
 
     @staticmethod
     def _action_key(action, is_white):

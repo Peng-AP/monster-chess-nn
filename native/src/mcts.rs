@@ -43,6 +43,10 @@ pub struct Node {
     pub prior: f64,
     pub visit_count: u32,
     pub total_value: f64,
+    /// Sum/count of remaining-decision estimates backed up through this node.
+    /// Kept separate from visits so legacy two-output evaluators stay valid.
+    pub total_moves_left: f64,
+    pub moves_left_count: u32,
     pub children: Vec<usize>,
     pub is_expanded: bool,
     /// Game-theoretic proof in **White's** perspective: `Some(1.0)` White wins
@@ -64,6 +68,8 @@ impl Node {
             prior,
             visit_count: 0,
             total_value: 0.0,
+            total_moves_left: 0.0,
+            moves_left_count: 0,
             children: Vec::new(),
             is_expanded: false,
             proof: None,
@@ -75,6 +81,14 @@ impl Node {
             0.0
         } else {
             self.total_value / self.visit_count as f64
+        }
+    }
+
+    pub fn moves_left(&self) -> Option<f64> {
+        if self.moves_left_count == 0 {
+            None
+        } else {
+            Some(self.total_moves_left / self.moves_left_count as f64)
         }
     }
 }
@@ -127,6 +141,45 @@ impl Arena {
         }
     }
 
+    /// PUCT plus a bounded LC0-style moves-left utility. In a position already
+    /// evaluated as a likely win, shorter continuations are preferred; in a
+    /// likely loss, longer continuations are preferred. The value adjustment is
+    /// deliberately bounded and is zero unless both nodes have MLH estimates.
+    fn puct_score_with_moves_left(
+        &self,
+        idx: usize,
+        c_puct: f64,
+        fpu_reduction: f64,
+        max_effect: f64,
+        threshold: f64,
+        slope: f64,
+    ) -> f64 {
+        let base = self.puct_score(idx, c_puct, fpu_reduction);
+        if max_effect <= 0.0 || slope <= 0.0 || self.nodes[idx].visit_count == 0 {
+            return base;
+        }
+        let parent_idx = match self.nodes[idx].parent {
+            Some(p) => p,
+            None => return base,
+        };
+        let parent_ml = match self.nodes[parent_idx].moves_left() {
+            Some(v) => v,
+            None => return base,
+        };
+        let child_ml = match self.nodes[idx].moves_left() {
+            Some(v) => v,
+            None => return base,
+        };
+        let q = self.nodes[idx].q_value();
+        let urgency = ((q.abs() - threshold) / (1.0 - threshold)).clamp(0.0, 1.0);
+        if urgency == 0.0 {
+            return base;
+        }
+        let expected_child_ml = (parent_ml - 1.0).max(0.0);
+        let length_signal = ((expected_child_ml - child_ml) * slope).tanh();
+        base + q.signum() * max_effect * urgency * length_signal
+    }
+
     /// UCB1, heuristic mode. Unvisited children sort first, as in Python's `inf`.
     pub fn ucb_score(&self, idx: usize, c: f64) -> f64 {
         let node = &self.nodes[idx];
@@ -155,7 +208,17 @@ impl Arena {
 
     /// Propagate a White-perspective value to the root.
     pub fn backpropagate(&mut self, from: usize, value: f64) {
+        self.backpropagate_with_moves_left(from, value, None);
+    }
+
+    pub fn backpropagate_with_moves_left(
+        &mut self,
+        from: usize,
+        value: f64,
+        moves_left: Option<f64>,
+    ) {
         let mut current = Some(from);
+        let mut distance = 0.0;
         while let Some(idx) = current {
             self.nodes[idx].visit_count += 1;
             let signed = match self.nodes[idx].parent {
@@ -175,7 +238,14 @@ impl Arena {
                 }
             };
             self.nodes[idx].total_value += signed;
+            if let Some(ml) = moves_left {
+                if ml.is_finite() {
+                    self.nodes[idx].total_moves_left += ml.max(0.0) + distance;
+                    self.nodes[idx].moves_left_count += 1;
+                }
+            }
             current = self.nodes[idx].parent;
+            distance += 1.0;
         }
     }
 }
@@ -462,7 +532,16 @@ impl Arena {
     /// With the solver on, a proven-lost child is never descended into (its
     /// value is already known, so visits there buy nothing) and a proven node
     /// is a dead end rather than something to keep sampling.
-    fn select_puct(&self, root: usize, c_puct: f64, fpu: f64, solver: bool) -> usize {
+    fn select_puct(
+        &self,
+        root: usize,
+        c_puct: f64,
+        fpu: f64,
+        solver: bool,
+        moves_left_max_effect: f64,
+        moves_left_threshold: f64,
+        moves_left_slope: f64,
+    ) -> usize {
         let mut node = root;
         while !self.nodes[node].state.is_terminal_rust() {
             if solver && self.nodes[node].proof.is_some() {
@@ -475,9 +554,15 @@ impl Arena {
                 return node;
             }
             let next = if solver {
-                self.best_child_puct_unproven(node, c_puct, fpu)
-            } else {
+                self.best_child_puct_unproven(
+                    node, c_puct, fpu, moves_left_max_effect,
+                    moves_left_threshold, moves_left_slope)
+            } else if moves_left_max_effect <= 0.0 {
                 self.best_child_puct(node, c_puct, fpu)
+            } else {
+                self.best_child_puct_with_moves_left(
+                    node, c_puct, fpu, moves_left_max_effect,
+                    moves_left_threshold, moves_left_slope)
             };
             node = match next {
                 Some(child) => child,
@@ -488,13 +573,43 @@ impl Arena {
     }
 
     /// `best_child_puct`, skipping children already proven lost for the mover.
-    fn best_child_puct_unproven(&self, idx: usize, c_puct: f64, fpu: f64) -> Option<usize> {
+    fn best_child_puct_with_moves_left(
+        &self,
+        idx: usize,
+        c_puct: f64,
+        fpu: f64,
+        max_effect: f64,
+        threshold: f64,
+        slope: f64,
+    ) -> Option<usize> {
+        let mut best: Option<(usize, f64)> = None;
+        for &child in &self.nodes[idx].children {
+            let score = self.puct_score_with_moves_left(
+                child, c_puct, fpu, max_effect, threshold, slope);
+            match best {
+                Some((_, b)) if !(score > b) => {}
+                _ => best = Some((child, score)),
+            }
+        }
+        best.map(|(i, _)| i)
+    }
+
+    fn best_child_puct_unproven(
+        &self,
+        idx: usize,
+        c_puct: f64,
+        fpu: f64,
+        max_effect: f64,
+        threshold: f64,
+        slope: f64,
+    ) -> Option<usize> {
         let mut best: Option<(usize, f64)> = None;
         for &child in &self.nodes[idx].children {
             if self.is_proven_loss_for_mover(idx, child) {
                 continue;
             }
-            let score = self.puct_score(child, c_puct, fpu);
+            let score = self.puct_score_with_moves_left(
+                child, c_puct, fpu, max_effect, threshold, slope);
             match best {
                 Some((_, b)) if !(score > b) => {}
                 _ => best = Some((child, score)),
@@ -502,7 +617,8 @@ impl Arena {
         }
         // Every child refuted: fall back so selection still terminates.
         best.map(|(i, _)| i)
-            .or_else(|| self.best_child_puct(idx, c_puct, fpu))
+            .or_else(|| self.best_child_puct_with_moves_left(
+                idx, c_puct, fpu, max_effect, threshold, slope))
     }
 
     /// Expand every legal half-move with priors from the policy head.
@@ -770,6 +886,8 @@ impl Arena {
                 prior: old.prior,
                 visit_count: old.visit_count,
                 total_value: old.total_value,
+                total_moves_left: old.total_moves_left,
+                moves_left_count: old.moves_left_count,
                 children: old
                     .children
                     .iter()
@@ -894,6 +1012,11 @@ impl PyTree {
         self.arena.nodes[idx].total_value = total_value;
     }
 
+    fn set_moves_left_stats(&mut self, idx: usize, count: u32, total: f64) {
+        self.arena.nodes[idx].moves_left_count = count;
+        self.arena.nodes[idx].total_moves_left = total;
+    }
+
     fn set_prior(&mut self, idx: usize, prior: f64) {
         self.arena.nodes[idx].prior = prior;
     }
@@ -908,6 +1031,10 @@ impl PyTree {
 
     fn q_value(&self, idx: usize) -> f64 {
         self.arena.nodes[idx].q_value()
+    }
+
+    fn moves_left(&self, idx: usize) -> Option<f64> {
+        self.arena.nodes[idx].moves_left()
     }
 
     fn is_white_turn(&self, idx: usize) -> bool {
@@ -927,6 +1054,21 @@ impl PyTree {
         self.arena.puct_score(idx, c_puct, fpu_reduction)
     }
 
+    #[pyo3(signature = (idx, c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
+                        max_effect=0.03, threshold=0.80, slope=0.10))]
+    fn puct_score_with_moves_left(
+        &self,
+        idx: usize,
+        c_puct: f64,
+        fpu_reduction: f64,
+        max_effect: f64,
+        threshold: f64,
+        slope: f64,
+    ) -> f64 {
+        self.arena.puct_score_with_moves_left(
+            idx, c_puct, fpu_reduction, max_effect, threshold, slope)
+    }
+
     #[pyo3(signature = (idx, c=EXPLORATION_CONSTANT))]
     fn ucb_score(&self, idx: usize, c: f64) -> f64 {
         self.arena.ucb_score(idx, c)
@@ -934,6 +1076,11 @@ impl PyTree {
 
     fn backpropagate(&mut self, from: usize, value: f64) {
         self.arena.backpropagate(from, value);
+    }
+
+    fn backpropagate_with_moves_left(&mut self, from: usize, value: f64, moves_left: f64) {
+        self.arena
+            .backpropagate_with_moves_left(from, value, Some(moves_left));
     }
 
     /// Sequential UCB1 with heuristic leaves, entirely inside the crate.
@@ -959,13 +1106,16 @@ impl PyTree {
     }
 
     /// Batched PUCT. `eval_fn(batch_bytes, n, channels)` must return
-    /// `(values_bytes, policy_bytes)` — n values and n*policy_width logits,
-    /// little-endian. Bytes, not lists: a batch of 16 is ~17k floats and list
-    /// marshalling would cost more than the search it serves.
+    /// `(values_bytes, policy_bytes)` or, for an MLH checkpoint,
+    /// `(values_bytes, policy_bytes, moves_left_bytes)`. Bytes, not lists: a
+    /// batch of 16 is ~17k floats and list marshalling would cost more than the
+    /// search it serves.
     #[pyo3(signature = (simulations, eval_fn, batch_size=16, channels=17,
                         c_puct=C_PUCT, fpu_reduction=FPU_REDUCTION,
                         allow_early_stop=true, root_noise=false, seed=20260803,
-                        heuristic_values=false, solver=false))]
+                        heuristic_values=false, solver=false,
+                        moves_left_max_effect=0.0, moves_left_threshold=0.80,
+                        moves_left_slope=0.10))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -989,8 +1139,24 @@ impl PyTree {
         // measured on its own rather than folded into the port. Declared last
         // to match the pyo3 signature order exactly.
         solver: bool,
+        moves_left_max_effect: f64,
+        moves_left_threshold: f64,
+        moves_left_slope: f64,
     ) -> PyResult<()> {
-        let call = |py: Python<'_>, nodes: &[usize], arena: &Arena| -> PyResult<(Vec<f64>, Vec<f32>)> {
+        if !moves_left_max_effect.is_finite() || !(0.0..=1.0).contains(&moves_left_max_effect) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "moves_left_max_effect must be finite and in [0, 1]"));
+        }
+        if !moves_left_threshold.is_finite() || !(0.0..1.0).contains(&moves_left_threshold) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "moves_left_threshold must be finite and in [0, 1)"));
+        }
+        if !moves_left_slope.is_finite() || moves_left_slope < 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "moves_left_slope must be finite and >= 0"));
+        }
+        let call = |py: Python<'_>, nodes: &[usize], arena: &Arena|
+            -> PyResult<(Vec<f64>, Vec<f32>, Vec<f64>)> {
             let mut buf: Vec<f32> = Vec::with_capacity(nodes.len() * channels * 64);
             for &n in nodes {
                 arena.encode_into(n, channels, &mut buf);
@@ -999,7 +1165,13 @@ impl PyTree {
                 std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 4)
             };
             let result = eval_fn.call1((PyBytes::new(py, bytes), nodes.len(), channels))?;
-            let (vb, pb): (Vec<u8>, Vec<u8>) = result.extract()?;
+            let (vb, pb, mb) = match result.extract::<(Vec<u8>, Vec<u8>, Vec<u8>)>() {
+                Ok((v, p, m)) => (v, p, m),
+                Err(_) => {
+                    let (v, p): (Vec<u8>, Vec<u8>) = result.extract()?;
+                    (v, p, Vec::new())
+                }
+            };
             // The value head speaks in the SIDE-TO-MOVE perspective; the tree
             // backpropagates in White's. `NNEvaluator._to_white_perspective`
             // does this conversion in Python, and a bridge that forwards the
@@ -1022,17 +1194,21 @@ impl PyTree {
                 .chunks_exact(4)
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect();
-            Ok((values, policies))
+            let moves_left: Vec<f64> = mb
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
+                .collect();
+            Ok((values, policies, moves_left))
         };
 
         if self.arena.nodes[0].state.is_terminal_rust() {
             let v = self.arena.nodes[0].state.result_rust().unwrap_or(0.0);
-            self.arena.backpropagate(0, v);
+            self.arena.backpropagate_with_moves_left(0, v, Some(0.0));
             return Ok(());
         }
 
         // Root synchronously first, so the batch loop descends into real children.
-        let (values, policies) = call(py, &[0], &self.arena)?;
+        let (values, policies, moves_left) = call(py, &[0], &self.arena)?;
         let root_value = if heuristic_values {
             let st = &self.arena.nodes[0].state;
             crate::eval::evaluate(st.board_ref(), st.is_white_turn, st.white_half_pending)
@@ -1047,7 +1223,8 @@ impl PyTree {
             };
             self.arena.expand_with_policy(0, logits);
         }
-        self.arena.backpropagate(0, root_value);
+        self.arena.backpropagate_with_moves_left(
+            0, root_value, moves_left.first().copied());
         if root_noise && !self.arena.nodes[0].children.is_empty() {
             let mut rng = Rng::new(seed);
             self.arena
@@ -1064,7 +1241,9 @@ impl PyTree {
             let mut leaves: Vec<(usize, Option<f64>, bool)> = Vec::with_capacity(target);
             let mut pending: Vec<usize> = Vec::with_capacity(target);
             while leaves.len() < target {
-                let node = self.arena.select_puct(0, c_puct, fpu_reduction, solver);
+                let node = self.arena.select_puct(
+                    0, c_puct, fpu_reduction, solver, moves_left_max_effect,
+                    moves_left_threshold, moves_left_slope);
                 if pending.contains(&node) {
                     break; // frontier exhausted; padding would be duplicate work
                 }
@@ -1114,8 +1293,8 @@ impl PyTree {
                 .filter(|(_, imm, _)| imm.is_none())
                 .map(|(n, _, _)| *n)
                 .collect();
-            let (nn_values, nn_policies) = if nn_nodes.is_empty() {
-                (Vec::new(), Vec::new())
+            let (nn_values, nn_policies, nn_moves_left) = if nn_nodes.is_empty() {
+                (Vec::new(), Vec::new(), Vec::new())
             } else {
                 call(py, &nn_nodes, &self.arena)?
             };
@@ -1135,7 +1314,13 @@ impl PyTree {
                                 self.arena.nodes[*node].proof = Some(p);
                             }
                         }
-                        self.arena.backpropagate(*node, *v);
+                        let terminal_moves_left = if !*expand {
+                            Some(0.0)
+                        } else {
+                            None
+                        };
+                        self.arena.backpropagate_with_moves_left(
+                            *node, *v, terminal_moves_left);
                         if solver && self.arena.nodes[*node].proof.is_some() {
                             self.arena.propagate_proof(*node);
                         }
@@ -1166,7 +1351,8 @@ impl PyTree {
                             };
                             self.arena.expand_with_policy(*node, logits);
                         }
-                        self.arena.backpropagate(*node, value);
+                        self.arena.backpropagate_with_moves_left(
+                            *node, value, nn_moves_left.get(nn_cursor).copied());
                         if solver {
                             // A freshly expanded node may already be decided --
                             // e.g. every child hands over the king.

@@ -789,6 +789,23 @@ def configure_promotion_head_only(model, enabled=False):
     return trainable
 
 
+def configure_moves_left_head_only(model, enabled=False):
+    """Freeze a checkpoint exactly and train only its moves-left head."""
+    if not enabled:
+        return [name for name, parameter in model.named_parameters()
+                if parameter.requires_grad]
+    if not model.use_moves_left_head:
+        raise ValueError("moves-left-head-only training requires moves-left head")
+    model._freeze_backbone_batchnorm = True
+    trainable = []
+    for name, parameter in model.named_parameters():
+        keep = name.startswith("moves_left_head.")
+        parameter.requires_grad_(keep)
+        if keep:
+            trainable.append(name)
+    return trainable
+
+
 def _set_training_mode(model):
     """Enter training mode without mutating frozen backbone BN statistics."""
     model.train()
@@ -1438,6 +1455,11 @@ def main():
         "--train-promotion-head-only", action="store_true",
         help="Freeze v20 and train only distinct-promotion deltas; requires "
              "--promotion-policy and --resume-from")
+    parser.add_argument(
+        "--train-moves-left-head-only", action="store_true",
+        help="Freeze the resumed checkpoint (including BatchNorm statistics) "
+             "and train only a newly added moves-left head; requires "
+             "--moves-left-head and --resume-from")
     parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
     parser.add_argument("--ema-decay", type=float, default=0.0,
                         help="EMA decay for validation/checkpoints; 0 disables")
@@ -1554,7 +1576,16 @@ def main():
         raise ValueError("--train-promotion-head-only requires --resume-from")
     if args.train_promotion_head_only and not args.promotion_policy:
         raise ValueError("--train-promotion-head-only requires --promotion-policy")
-    if args.train_promotion_head_only and args.train_policy_head_only:
+    if args.train_moves_left_head_only and not args.resume_from:
+        raise ValueError("--train-moves-left-head-only requires --resume-from")
+    if args.train_moves_left_head_only and not args.moves_left_head:
+        raise ValueError("--train-moves-left-head-only requires --moves-left-head")
+    if args.train_moves_left_head_only and args.moves_left_loss_weight <= 0:
+        raise ValueError("--train-moves-left-head-only requires positive "
+                         "--moves-left-loss-weight")
+    if sum(bool(mode) for mode in (
+            args.train_policy_head_only, args.train_promotion_head_only,
+            args.train_moves_left_head_only)) > 1:
         raise ValueError("head-only training modes are mutually exclusive")
     if not (0.0 < args.lr_gamma <= 1.0):
         raise ValueError("--lr-gamma must be in (0, 1]")
@@ -1719,6 +1750,8 @@ def main():
 
     if args.train_promotion_head_only:
         trainable_parameter_names = configure_promotion_head_only(model, True)
+    elif args.train_moves_left_head_only:
+        trainable_parameter_names = configure_moves_left_head_only(model, True)
     else:
         trainable_parameter_names = configure_policy_head_only(
             model, args.train_policy_head_only)
@@ -1726,6 +1759,9 @@ def main():
         print("Training policy head only: " + ", ".join(trainable_parameter_names))
     if args.train_promotion_head_only:
         print("Training promotion head only: "
+              + ", ".join(trainable_parameter_names))
+    if args.train_moves_left_head_only:
+        print("Training moves-left head only: "
               + ", ".join(trainable_parameter_names))
 
     optimizer, decay_count, no_decay_count = build_optimizer(
@@ -1795,6 +1831,7 @@ def main():
         "resume_skipped_keys": resume_skipped if resume_skipped is not None else [],
         "train_policy_head_only": bool(args.train_policy_head_only),
         "train_promotion_head_only": bool(args.train_promotion_head_only),
+        "train_moves_left_head_only": bool(args.train_moves_left_head_only),
         "trainable_parameter_names": trainable_parameter_names,
         "optimizer": {
             "name": "AdamW",
@@ -2008,7 +2045,10 @@ def main():
         if args.select_relative_to_resume:
             relative_score, relative_deltas = _relative_decisive_score(
                 val_decisive, selection_baseline)
-        if relative_score is not None:
+        if args.train_moves_left_head_only:
+            selection_value = val_moves_left
+            selection_desc = f"moves_left_huber={val_moves_left:.4f}"
+        elif relative_score is not None:
             selection_value = -relative_score
             selection_desc = f"incumbent_relative_score={relative_score:+.4f}"
         elif args.select_metric == "decisive" and val_decisive["score"] is not None:

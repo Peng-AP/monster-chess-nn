@@ -311,5 +311,70 @@ class TestNativeMatchesPythonNumerically(unittest.TestCase):
         self.assertEqual(mn.C_PUCT, C_PUCT)
         self.assertEqual(mn.FPU_REDUCTION, FPU_REDUCTION)
 
+
+class TestMovesLeftBackupAndUtility(unittest.TestCase):
+    def test_python_backup_adds_distance_to_the_leaf_prediction(self):
+        root, a, b, c = build_chain()
+        MCTS._backpropagate(None, c, 0.8, moves_left=5.0)
+        self.assertEqual(
+            [c.moves_left, b.moves_left, a.moves_left, root.moves_left],
+            [5.0, 6.0, 7.0, 8.0],
+        )
+
+    def test_python_utility_prefers_shorter_wins_and_longer_losses(self):
+        root, a, _b, _c = build_chain()
+        root.visit_count = 10
+        root.total_moves_left = 10.0
+        root.moves_left_count = 1
+        a.visit_count = 10
+        a.total_value = 9.0
+        a.total_moves_left = 2.0
+        a.moves_left_count = 1
+        base = a.puct_score(c_puct=0.0)
+        short_win = a.puct_score(
+            c_puct=0.0, moves_left_max_effect=0.03,
+            moves_left_threshold=0.8, moves_left_slope=1.0)
+        self.assertGreater(short_win, base)
+
+        a.total_value = -9.0
+        a.total_moves_left = 16.0
+        base = a.puct_score(c_puct=0.0)
+        long_loss = a.puct_score(
+            c_puct=0.0, moves_left_max_effect=0.03,
+            moves_left_threshold=0.8, moves_left_slope=1.0)
+        self.assertGreater(long_loss, base)
+
+    @unittest.skipIf(mn is None, "native crate not built")
+    def test_native_backup_and_utility_match_python(self):
+        tree, (root, a, b, c) = build_native_chain()
+        tree.backpropagate_with_moves_left(c, 0.8, 5.0)
+        self.assertEqual(
+            [tree.moves_left(c), tree.moves_left(b),
+             tree.moves_left(a), tree.moves_left(root)],
+            [5.0, 6.0, 7.0, 8.0],
+        )
+
+        py_root, py_a, _py_b, _py_c = build_chain()
+        py_root.visit_count = 10
+        py_root.total_moves_left = 10.0
+        py_root.moves_left_count = 1
+        py_a.visit_count = 10
+        py_a.total_value = 9.0
+        py_a.total_moves_left = 2.0
+        py_a.moves_left_count = 1
+
+        tree.set_stats(root, 10, 0.0)
+        tree.set_moves_left_stats(root, 1, 10.0)
+        tree.set_stats(a, 10, 9.0)
+        tree.set_moves_left_stats(a, 1, 2.0)
+        self.assertAlmostEqual(
+            tree.puct_score_with_moves_left(
+                a, c_puct=0.0, max_effect=0.03,
+                threshold=0.8, slope=1.0),
+            py_a.puct_score(
+                c_puct=0.0, moves_left_max_effect=0.03,
+                moves_left_threshold=0.8, moves_left_slope=1.0),
+        )
+
 if __name__ == "__main__":
     unittest.main()

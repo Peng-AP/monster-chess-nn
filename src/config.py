@@ -94,11 +94,14 @@ USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
 
 # Optional LC0-style auxiliary target: predict remaining recorded decisions.
-# It is representation training only for now; search does not consume it.
-# Off by default so old recipes and checkpoint behavior stay unchanged.
+# Search can consume it through a bounded utility, but both the head and its
+# search use remain opt-in so old recipes and checkpoints behave identically.
 USE_MOVES_LEFT_HEAD = False
 MOVES_LEFT_HEAD_CHANNELS = 64
 MOVES_LEFT_LOSS_WEIGHT = 0.01
+MOVES_LEFT_MAX_EFFECT = 0.03
+MOVES_LEFT_THRESHOLD = 0.80
+MOVES_LEFT_SLOPE = 0.10
 
 # Training
 BATCH_SIZE = 256
