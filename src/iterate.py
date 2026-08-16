@@ -8,7 +8,7 @@ One generation is a reproducible state machine:
 
 The current champion is never overwritten.  A passing candidate is archived
 under ``models/bootstrap/champions`` and selected through ``champion.json``.
-The historical V20 checkpoint remains immutable.
+Numbered release checkpoints remain immutable.
 
 Use ``--dry-run`` first.  Long executions should be launched through
 ``tools/runs.py`` so their combined output is also visible in ``logs/``.
@@ -29,20 +29,29 @@ import numpy as np
 from config import (
     PROJECT_ROOT,
     RANDOM_SEED,
-    ITERATE_GAMES,
-    ITERATE_SIMS,
     ITERATE_ARENA_SIMS,
-    ITERATE_EPOCHS,
     DEFAULT_GAME_WORKERS,
 )
 
 ROOT = Path(PROJECT_ROOT)
 PY = sys.executable
 DEFAULT_RUN_ROOT = ROOT / "iterations"
-DEFAULT_CHAMPION = ROOT / "models" / "fresh_start_v20" / "best_value_net.pt"
+DEFAULT_CHAMPION = ROOT / "models" / "fresh_start_v22" / "best_value_net.pt"
 DEFAULT_ANCHOR_DATA = ROOT / "data" / "processed" / "combined_v19_B_r50h60_capture"
 DEFAULT_SPARRING = (
     ROOT / "models" / "rejected" / "fresh_start_v18_ramp" / "best_value_net.pt")
+SCRATCH_EPOCHS = 30
+SCRATCH_PATIENCE = 10
+SCRATCH_LR = 0.002
+SCRATCH_WARMUP_EPOCHS = 3
+BOOTSTRAP_GAMES = 500
+BOOTSTRAP_SIMS = 700
+BOOTSTRAP_REANALYSIS_SAMPLE = 8000
+BOOTSTRAP_REANALYSIS_KEEP = 4000
+BOOTSTRAP_REANALYSIS_SIMS = 3200
+BOOTSTRAP_VALUE_FLOOR = 0.5
+BOOTSTRAP_VALUE_HORIZON = 60
+TEACHER_POLICY_MULTIPLIER = 4.0
 BOOTSTRAP_MODELS = ROOT / "models" / "bootstrap"
 CHAMPIONS_DIR = BOOTSTRAP_MODELS / "champions"
 CHAMPION_POINTER = BOOTSTRAP_MODELS / "champion.json"
@@ -152,7 +161,7 @@ def _resolve_champion(explicit=None):
 
 
 def _checkpoint_spec(checkpoint):
-    """Infer every architecture flag needed to resume the current champion."""
+    """Infer every flag needed to rebuild the champion architecture fresh."""
     import torch
     from train import (
         infer_backbone_architecture,
@@ -197,14 +206,23 @@ def _accepted_registry_path(run_root):
 def _accept_generation_data(state, paths, run_root):
     """Register immutable champion-generated data before candidate training."""
     processed = Path(paths["new_processed"])
-    required = (
+    required = [
         "positions.npy", "mcts_values.npy", "game_results.npy",
-        "policies.npy", "policy_weights.npy", "value_weights.npy",
-        "splits.npz",
-    )
+        "policy_weights.npy", "value_weights.npy", "splits.npz",
+        "split_game_ids.json", "generation_audit.json",
+    ]
+    if (processed / "policies_sparse.npz").exists():
+        required.append("policies_sparse.npz")
+    else:
+        required.append("policies.npy")
     missing = [name for name in required if not (processed / name).exists()]
     if missing:
         raise RuntimeError(f"cannot accept incomplete processed data: {missing}")
+    generation_audit = _load_json(processed / "generation_audit.json")
+    if (not isinstance(generation_audit, dict)
+            or generation_audit.get("verdict") != "PASS"):
+        raise RuntimeError(
+            "cannot accept processed data without a passing generation audit")
     positions = np.load(processed / "positions.npy", mmap_mode="r")
     with np.load(processed / "splits.npz") as split_file:
         split_rows = {name: int(len(split_file[name]))
@@ -219,6 +237,7 @@ def _accept_generation_data(state, paths, run_root):
         "artifact_sha256": {
             name: _sha256(processed / name) for name in required
         },
+        "generation_audit": generation_audit,
         "incumbent": state["incumbent"],
         "incumbent_sha256": state["incumbent_sha256"],
         "run_state": state["paths"]["state"],
@@ -302,6 +321,17 @@ def _paths_for_generation(run_root, generation):
     }
 
 
+def _binding_book_span(protocol):
+    """Return entries consumed by gate.py, using its live protocol constants."""
+    tools_dir = str(ROOT / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    from gate import FULL_LEGS, QUICK_LEGS, book_leg_offsets
+    spec = FULL_LEGS if protocol == "full" else QUICK_LEGS
+    _offsets, needed = book_leg_offsets(spec)
+    return int(needed)
+
+
 def _command_plan(args, generation, incumbent, architecture, paths,
                   replay_sources):
     seed = args.seed + generation * 1009
@@ -370,6 +400,9 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--output-dir", str(paths["new_processed"]),
         "--min-nonhuman-plies", "0",
         "--max-generation-age", "0",
+        "--value-floor", str(args.value_floor),
+        "--value-horizon", str(args.value_horizon),
+        "--value-discount-mode", "near_mate",
         "--channels", str(architecture["input_channels"]),
         "--seed", str(args.seed),
     ]
@@ -379,8 +412,13 @@ def _command_plan(args, generation, incumbent, architecture, paths,
     compose = ["tools/compose_processed.py"]
     compose += ["--source", f"anchor={_absolute(args.anchor_data)}"]
     for old_generation, source in replay_sources:
-        compose += ["--source", f"gen_{old_generation:04d}={source}"]
+        name = f"gen_{old_generation:04d}"
+        compose += ["--source", f"{name}={source}",
+                    "--policy-only-multiplier",
+                    f"{name}={args.teacher_policy_multiplier}"]
     compose += ["--source", f"gen_{generation:04d}={paths['new_processed']}",
+                "--policy-only-multiplier",
+                f"gen_{generation:04d}={args.teacher_policy_multiplier}",
                 "--output-dir", str(paths["replay_processed"]),
                 "--balance-alpha", str(args.replay_balance_alpha),
                 "--balance-seed", str(seed + 700_000)]
@@ -397,15 +435,16 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--lr", str(args.lr),
         "--lr-gamma", str(args.lr_gamma),
         "--policy-loss-weight", "1.0",
+        "--black-policy-weight", "1.0",
         "--weight-decay", "0.0001",
         "--grad-clip", "1.0",
         "--warmup-epochs", str(args.warmup_epochs),
+        "--warmup-start-factor", "0.1",
         "--ema-decay", str(args.ema_decay),
         "--seed", str(args.seed),
         "--target", "game_result",
         "--value-head", architecture["value_head"],
         "--select-metric", "decisive",
-        "--select-relative-to-resume",
         "--stem-channels", str(architecture["stem_channels"]),
         "--res-channels", ",".join(map(str, architecture["residual_channels"])),
         "--policy-head", architecture["policy_head"],
@@ -415,9 +454,6 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--moves-left-head-channels",
         str(architecture["moves_left_head_channels"]),
         "--moves-left-loss-weight", str(args.moves_left_loss_weight),
-        "--resume-from", str(incumbent),
-        "--max-policy-ce-regression", str(args.max_policy_ce_regression),
-        "--max-side-top1-drop", str(args.max_side_top1_drop),
         "--save-selection-snapshots",
     ]
     train.append("--use-se-blocks" if architecture["use_se_blocks"]
@@ -432,6 +468,17 @@ def _command_plan(args, generation, incumbent, architecture, paths,
     if architecture["use_wdl_head"] and architecture["value_head"] == "scalar":
         train.append("--aux-wdl-head")
 
+    audit = [
+        "tools/audit_generation_data.py",
+        "--raw-dir", str(paths["raw"]),
+        "--reanalysis-dir", str(paths["reanalysis"]),
+        "--processed-dir", str(paths["new_processed"]),
+        "--expected-teachers", str(args.reanalysis_keep),
+        "--expected-black-fraction", str(args.reanalysis_black_fraction),
+        "--value-floor", str(args.value_floor),
+        "--value-horizon", str(args.value_horizon),
+    ]
+
     offline_report = paths["reports"] / "offline_model_diff.json"
     checkpoint_report = paths["reports"] / "checkpoint_screen.json"
     gate_report = paths["reports"] / "binding_gate.json"
@@ -444,6 +491,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--output-model", str(paths["candidate"]),
         "--report-path", str(checkpoint_report),
         "--games", str(args.checkpoint_screen_games),
+        "--probe-games", str(args.checkpoint_probe_games),
         "--sims", str(args.checkpoint_screen_sims),
         "--workers", str(args.workers),
         "--engine", args.engine,
@@ -482,6 +530,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--games", str(args.high_fidelity_games),
         "--sims", str(args.high_fidelity_sims),
         "--workers", str(args.workers),
+        "--engine", args.engine,
+        "--stall-timeout", str(args.worker_stall_timeout),
         "--seed", str(seed + 450_000),
         "--out", str(high_fidelity_report),
     ]
@@ -497,13 +547,40 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--stall-timeout", str(args.worker_stall_timeout),
         "--report-path", str(self_skew_report),
     ]
+    if args.book:
+        book = str(_absolute(args.book))
+        screen_offset = int(args.book_offset)
+        screen_span = (
+            args.checkpoint_probe_games + args.checkpoint_screen_games) // 2
+        binding_offset = screen_offset + screen_span
+        high_fidelity_offset = (
+            binding_offset + _binding_book_span(args.gate_protocol))
+        self_skew_offset = (
+            high_fidelity_offset + args.high_fidelity_games // 2)
+        checkpoint_screen += [
+            "--book", book, "--book-offset", str(screen_offset)]
+        binding += ["--book", book, "--book-offset", str(binding_offset)]
+        high_fidelity += [
+            "--book", book, "--book-offset", str(high_fidelity_offset),
+        ]
+        self_skew += [
+            "--book", book, "--book-offset", str(self_skew_offset)]
+        with open(book, encoding="utf-8") as handle:
+            available = len(json.load(handle).get("entries", []))
+        needed = self_skew_offset + args.self_skew_games // 2
+        if needed > available:
+            raise ValueError(
+                f"book has {available} entries but this generation reserves "
+                f"through {needed} (base offset {screen_offset})")
     return {
         "generate": {"commands": generated_commands,
                      "outputs": generated_outputs},
         "reanalyze": {"commands": [reanalyze],
                       "outputs": [str(paths["reanalysis"] / "reanalysis_summary.json")]},
-        "process": {"commands": [process],
-                    "outputs": [str(paths["new_processed"] / "splits.npz")]},
+        "process": {"commands": [process, audit],
+                    "outputs": [str(paths["new_processed"] / "splits.npz"),
+                                str(paths["new_processed"] /
+                                    "generation_audit.json")]},
         "compose": {"commands": [compose],
                     "outputs": [str(paths["replay_processed"] / "replay_manifest.json")]},
         "train": {"commands": [train],
@@ -658,7 +735,8 @@ def _acquire_lock(path):
 
 
 def _validate_args(args):
-    for name in ("games", "sims", "workers", "epochs", "batch_size",
+    for name in ("games", "sims", "workers", "epochs", "patience",
+                 "batch_size", "warmup_epochs", "value_horizon",
                  "reanalysis_sample", "reanalysis_keep", "reanalysis_sims",
                  "offline_positions", "checkpoint_screen_games",
                  "checkpoint_screen_sims", "high_fidelity_games",
@@ -666,6 +744,14 @@ def _validate_args(args):
                  "worker_stall_timeout"):
         if getattr(args, name, 1) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
+    if getattr(args, "checkpoint_probe_games", 40) <= 0:
+        raise ValueError("--checkpoint-probe-games must be positive")
+    for name in ("checkpoint_probe_games", "checkpoint_screen_games",
+                 "high_fidelity_games", "self_skew_games"):
+        if getattr(args, name, 2) % 2:
+            raise ValueError(f"--{name.replace('_', '-')} must be even")
+    if getattr(args, "book_offset", 0) < 0:
+        raise ValueError("--book-offset must be non-negative")
     if args.reanalysis_keep > args.reanalysis_sample:
         raise ValueError("--reanalysis-keep must be <= --reanalysis-sample")
     if getattr(args, "league_games", 0) < 0:
@@ -678,10 +764,13 @@ def _validate_args(args):
         raise ValueError("--reanalysis-black-fraction must be in [0, 1]")
     if not 0 <= getattr(args, "replay_balance_alpha", 0.0) <= 1:
         raise ValueError("--replay-balance-alpha must be in [0, 1]")
+    if not 0 <= getattr(args, "value_floor", 0.5) <= 1:
+        raise ValueError("--value-floor must be in [0, 1]")
+    if getattr(args, "teacher_policy_multiplier", 1.0) <= 0:
+        raise ValueError("--teacher-policy-multiplier must be positive")
     if not 0 < getattr(args, "min_generation_success_rate", 1.0) <= 1:
         raise ValueError("--min-generation-success-rate must be in (0, 1]")
     for name in ("lr", "lr_gamma", "ema_decay", "moves_left_loss_weight",
-                 "max_policy_ce_regression", "max_side_top1_drop",
                  "offline_margin"):
         if getattr(args, name, 0) < 0:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
@@ -964,17 +1053,22 @@ def build_parser():
     ap.add_argument("--anchor-data", default=str(DEFAULT_ANCHOR_DATA),
                     help="immutable processed replay anchor")
     ap.add_argument("--sparring-model", default=str(DEFAULT_SPARRING))
-    ap.add_argument("--games", type=int, default=ITERATE_GAMES)
-    ap.add_argument("--league-games", type=int, default=100)
+    ap.add_argument("--games", type=int, default=BOOTSTRAP_GAMES)
+    ap.add_argument("--league-games", type=int, default=0,
+                    help="optional champion-league games in addition to the "
+                         "500-game production self-play batch")
     ap.add_argument("--opponent-pool-size", type=int, default=5)
-    ap.add_argument("--sims", type=int, default=ITERATE_SIMS)
+    ap.add_argument("--sims", type=int, default=BOOTSTRAP_SIMS)
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--worker-stall-timeout", type=float, default=600.0,
                     help="fail a generation/reanalysis/match after no progress")
     ap.add_argument("--engine", choices=("python", "native"), default="native")
-    ap.add_argument("--reanalysis-sample", type=int, default=4000)
-    ap.add_argument("--reanalysis-keep", type=int, default=1000)
-    ap.add_argument("--reanalysis-sims", type=int, default=1600)
+    ap.add_argument("--reanalysis-sample", type=int,
+                    default=BOOTSTRAP_REANALYSIS_SAMPLE)
+    ap.add_argument("--reanalysis-keep", type=int,
+                    default=BOOTSTRAP_REANALYSIS_KEEP)
+    ap.add_argument("--reanalysis-sims", type=int,
+                    default=BOOTSTRAP_REANALYSIS_SIMS)
     ap.add_argument("--reanalysis-black-fraction", type=float, default=0.60,
                     help="share of deep-search teachers reserved for Black")
     ap.add_argument("--replay-generations", type=int, default=4,
@@ -983,19 +1077,25 @@ def build_parser():
                     help="smooth train replay across side/outcome/phase strata")
     ap.add_argument("--min-generation-success-rate", type=float, default=1.0,
                     help="minimum saved/requested ratio for every game batch")
-    ap.add_argument("--epochs", type=int, default=ITERATE_EPOCHS)
-    ap.add_argument("--patience", type=int, default=5)
+    ap.add_argument("--epochs", type=int, default=SCRATCH_EPOCHS)
+    ap.add_argument("--patience", type=int, default=SCRATCH_PATIENCE)
     ap.add_argument("--batch-size", type=int, default=256)
-    ap.add_argument("--lr", type=float, default=0.0002,
-                    help="fine-tuning LR; V20 scratch recipe used 0.002")
+    ap.add_argument("--lr", type=float, default=SCRATCH_LR,
+                    help="from-scratch learning rate")
     ap.add_argument("--lr-gamma", type=float, default=0.95)
-    ap.add_argument("--warmup-epochs", type=int, default=1)
+    ap.add_argument("--warmup-epochs", type=int,
+                    default=SCRATCH_WARMUP_EPOCHS)
     ap.add_argument("--ema-decay", type=float, default=0.999)
+    ap.add_argument("--value-floor", type=float,
+                    default=BOOTSTRAP_VALUE_FLOOR)
+    ap.add_argument("--value-horizon", type=int,
+                    default=BOOTSTRAP_VALUE_HORIZON)
+    ap.add_argument("--teacher-policy-multiplier", type=float,
+                    default=TEACHER_POLICY_MULTIPLIER,
+                    help="effective policy weight for policy-only teachers")
     ap.add_argument("--moves-left-head", action=argparse.BooleanOptionalAction,
                     default=False)
     ap.add_argument("--moves-left-loss-weight", type=float, default=0.01)
-    ap.add_argument("--max-policy-ce-regression", type=float, default=0.01)
-    ap.add_argument("--max-side-top1-drop", type=float, default=0.01)
     ap.add_argument("--offline-positions", type=int, default=8192)
     ap.add_argument("--offline-margin", type=float, default=0.01)
     ap.add_argument(
@@ -1006,13 +1106,20 @@ def build_parser():
     )
     ap.add_argument("--gate-protocol", choices=("quick", "full"), default="full")
     ap.add_argument("--arena-sims", type=int, default=ITERATE_ARENA_SIMS)
-    ap.add_argument("--checkpoint-screen-games", type=int, default=20,
+    ap.add_argument("--checkpoint-screen-games", type=int, default=200,
                     help="same-opening games per preserved training checkpoint")
+    ap.add_argument("--checkpoint-probe-games", type=int, default=40,
+                    help="cheap paired games per checkpoint before finalists")
     ap.add_argument("--checkpoint-screen-sims", type=int, default=400)
     ap.add_argument("--high-fidelity-games", type=int, default=80,
                     help="calibrated final confirmation games before promotion")
     ap.add_argument("--high-fidelity-sims", type=int, default=800)
     ap.add_argument("--self-skew-games", type=int, default=80)
+    ap.add_argument("--book", default=None,
+                    help="fixed paired opening book shared by every play phase")
+    ap.add_argument("--book-offset", type=int, default=0,
+                    help="first entry reserved for this generation; later "
+                         "phases receive disjoint blocks automatically")
     ap.add_argument("--seed", type=int, default=RANDOM_SEED)
     ap.add_argument("--promote-on-pass", action="store_true",
                     help="archive a passing candidate and advance champion.json")

@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
 if str(TOOLS) not in sys.path:
@@ -63,6 +64,24 @@ class ReanalysisContracts(unittest.TestCase):
         black = sum(row["record"]["current_player"] == "black"
                     for row in selected)
         self.assertEqual(black, 6)
+
+    def test_deep_value_selection_is_deterministic(self):
+        engine = mock.Mock()
+        engine.get_best_action.return_value = (
+            "a1a2", {"a1a2": 1.0}, 0.25)
+        reanalyze._worker_engine = engine
+        item = {
+            "path": "game_00000.jsonl", "line": 1,
+            "record": {
+                "fen": "8/8/8/8/8/8/8/K6k w - - 0 1",
+                "current_player": "white", "half": 0,
+                "policy": {"a1a2": 1.0}, "mcts_value": 0.0,
+            },
+        }
+        result = reanalyze._reanalyze_one(item)
+        self.assertEqual(result["deep_value"], 0.25)
+        self.assertEqual(
+            engine.get_best_action.call_args.kwargs["temperature"], 0.0)
 
 
 if __name__ == "__main__":

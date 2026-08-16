@@ -44,6 +44,54 @@ class BootstrapPipelineContracts(unittest.TestCase):
         args = it.build_parser().parse_args([])
         self.assertEqual(args.workers, it.DEFAULT_GAME_WORKERS)
 
+    def test_iteration_defaults_to_successful_scratch_recipe(self):
+        args = it.build_parser().parse_args([])
+        architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
+        paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
+        plan = it._command_plan(
+            args, 99, it.DEFAULT_CHAMPION, architecture, paths, [])
+        train = plan["train"]["commands"][0]
+        process = plan["process"]["commands"][0]
+        generate = plan["generate"]["commands"][0]
+        reanalyze = plan["reanalyze"]["commands"][0]
+        self.assertNotIn("--resume-from", train)
+        self.assertNotIn("--select-relative-to-resume", train)
+        self.assertEqual(train[train.index("--lr") + 1], "0.002")
+        self.assertEqual(train[train.index("--epochs") + 1], "30")
+        self.assertEqual(train[train.index("--patience") + 1], "10")
+        self.assertEqual(train[train.index("--warmup-epochs") + 1], "3")
+        self.assertEqual(process[process.index("--value-floor") + 1], "0.5")
+        self.assertEqual(process[process.index("--value-horizon") + 1], "60")
+        self.assertEqual(
+            process[process.index("--min-nonhuman-plies") + 1], "0")
+        self.assertEqual(len(plan["process"]["commands"]), 2)
+        self.assertEqual(generate[generate.index("--num-games") + 1], "500")
+        self.assertEqual(generate[generate.index("--simulations") + 1], "700")
+        self.assertEqual(len(plan["generate"]["commands"]), 1)
+        self.assertEqual(reanalyze[reanalyze.index("--sample") + 1], "8000")
+        self.assertEqual(reanalyze[reanalyze.index("--keep") + 1], "4000")
+        self.assertEqual(
+            reanalyze[reanalyze.index("--simulations") + 1], "3200")
+
+    def test_book_blocks_are_disjoint_across_every_play_phase(self):
+        args = it.build_parser().parse_args([
+            "--book",
+            "books/gate_mixed_v20_v21_v21b_gen7_gen9_p8_20260816.json",
+        ])
+        architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
+        paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
+        plan = it._command_plan(
+            args, 99, it.DEFAULT_CHAMPION, architecture, paths, [])
+
+        def offset(phase):
+            command = plan[phase]["commands"][0]
+            return int(command[command.index("--book-offset") + 1])
+
+        self.assertEqual(offset("checkpoint_screen"), 0)
+        self.assertEqual(offset("binding_gate"), 120)
+        self.assertEqual(offset("high_fidelity_gate"), 340)
+        self.assertEqual(offset("self_skew"), 380)
+
     def test_next_generation_uses_isolated_run_directories(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(it._next_generation(directory), 1)
@@ -56,7 +104,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         args = argparse.Namespace(
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
-            offline_positions=1, self_skew_games=1,
+            offline_positions=1, self_skew_games=2,
             checkpoint_screen_games=2, checkpoint_screen_sims=1,
             high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, generations=2,
@@ -69,7 +117,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         args = argparse.Namespace(
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
-            offline_positions=1, self_skew_games=1,
+            offline_positions=1, self_skew_games=2,
             checkpoint_screen_games=2, checkpoint_screen_sims=1,
             high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, replay_balance_alpha=0.5,
@@ -82,7 +130,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         args = argparse.Namespace(
             games=1, sims=1, workers=1, epochs=1, batch_size=1,
             reanalysis_sample=1, reanalysis_keep=1, reanalysis_sims=1,
-            offline_positions=1, self_skew_games=1,
+            offline_positions=1, self_skew_games=2,
             checkpoint_screen_games=2, checkpoint_screen_sims=1,
             high_fidelity_games=2, high_fidelity_sims=1,
             reanalysis_black_fraction=0.5, generations=1,
@@ -131,6 +179,11 @@ class BootstrapPipelineContracts(unittest.TestCase):
             np.savez(processed / "splits.npz",
                      train=np.array([0]), val=np.array([1]),
                      test=np.array([2]))
+            (processed / "split_game_ids.json").write_text(
+                json.dumps({"train": [], "val": [], "test": []}),
+                encoding="utf-8")
+            (processed / "generation_audit.json").write_text(
+                json.dumps({"verdict": "PASS"}), encoding="utf-8")
             state = {
                 "generation": 1,
                 "status": "rejected",
@@ -146,11 +199,43 @@ class BootstrapPipelineContracts(unittest.TestCase):
             registry = json.loads(
                 (root / "accepted_data.json").read_text(encoding="utf-8"))
             self.assertEqual(registry["entries"][0]["generation"], 1)
+            self.assertEqual(accepted["generation_audit"]["verdict"], "PASS")
             np.savez(processed / "splits.npz",
                      train=np.array([0, 1]), val=np.array([1]),
                      test=np.array([2]))
             with self.assertRaisesRegex(RuntimeError, "was modified"):
                 it._recent_replay_sources(root, 2, 4)
+
+    def test_accepted_data_hashes_sparse_policy_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            processed = root / "processed"
+            processed.mkdir()
+            np.save(processed / "positions.npy",
+                    np.zeros((1, 8, 8, 15), np.float32))
+            np.savez(processed / "policies_sparse.npz",
+                     indptr=np.array([0, 0], np.int64),
+                     indices=np.array([], np.int32),
+                     values=np.array([], np.float32), shape=np.array([1, 4096]))
+            for name in ("mcts_values.npy", "game_results.npy",
+                         "policy_weights.npy", "value_weights.npy"):
+                np.save(processed / name, np.zeros((1,), np.float32))
+            np.savez(processed / "splits.npz", train=np.array([0]),
+                     val=np.array([], np.int64), test=np.array([], np.int64))
+            (processed / "split_game_ids.json").write_text(
+                json.dumps({"train": [], "val": [], "test": []}),
+                encoding="utf-8")
+            (processed / "generation_audit.json").write_text(
+                json.dumps({"verdict": "PASS"}), encoding="utf-8")
+            state = {
+                "generation": 1, "incumbent": "bar.pt",
+                "incumbent_sha256": "abc",
+                "paths": {"state": "iterations/test/state.json"},
+            }
+            accepted = it._accept_generation_data(
+                state, {"new_processed": processed}, root)
+            self.assertIn("policies_sparse.npz", accepted["artifact_sha256"])
+            self.assertNotIn("policies.npy", accepted["artifact_sha256"])
 
     def test_generation_quality_rejects_incomplete_batch(self):
         with tempfile.TemporaryDirectory() as directory:
