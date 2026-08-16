@@ -86,6 +86,26 @@ the four recovered games being ones the oracle had been losing. Black reads
 0.375 -> 0.479, but that is descriptive only: n=24 and it is a different rule
 set, so it is not comparable to any earlier figure.
 
+**Tree reuse and the exact finisher are now on by default too** (2026-08-16;
+`MONSTER_NO_REUSE=1` / `MONSTER_NO_FINISHER=1` disable). Reuse is -23% wall
+clock where early stopping runs (matches, gates, screens) and -6% in
+generation, at strength-null. The finisher was a null at 700 sims **only
+because the oracle blocked its class**: with the oracle dropped it fires 18
+times across 6 of 24 games and converts one extra win at **zero** time cost
+(1m01s -> 1m02s), which is what the 145x native solver bought.
+
+**Full stack against the pre-2026-08-16 baseline: generation 4.08x**
+(4m13s -> 1m02s over 24 games), mean records 93.3 -> 59.8, Black wins 5 -> 7,
+White wins 11 -> 7. A full generation cycle is estimated at **~79 min against
+~156 min** (~2.0x), with reanalysis now the largest un-optimised block at
+14.5 min -- and §33 found the teacher program it feeds to be a measured null,
+so the open question there is whether to run it at all.
+
+Deliberately still off, because each measured WORSE, not from oversight: the
+inference server (1.30x slower search), the solver leaf probe (null at ~1900x
+cost), `MONSTER_SOLVER`, moves-left utility, promotion-aware policy, SE blocks,
+capture-WDL, side adapters, spatial value head, and `HybridEvaluator`.
+
 **CUDA graphs were already on** (`MONSTER_CUDA_GRAPH`, default 1), captured one
 graph per batch size because padding to a fixed width was 2.67x faster and
 *changed move selection*.
