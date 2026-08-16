@@ -37,8 +37,29 @@ def _apply(game, action):
 
 ENGINE_ENV = "MONSTER_ENGINE"
 SOLVER_ENV = "MONSTER_SOLVER"   # certainty propagation, off unless set
-REUSE_ENV = "MONSTER_REUSE"     # tree reuse across moves, off unless set
-FINISHER_ENV = "MONSTER_FINISHER"   # exact forced-capture search, off unless set
+# Tree reuse across moves. ON by default (owner, 2026-08-16); disable with
+# MONSTER_NO_REUSE=1. Measured 2026-08-04: strength at equal simulations
+# 0.5000 over 200 games -- a clean null -- for **-23% wall clock** where early
+# stopping is on (matches, gates, screens) and -6% where it is off. The
+# inherited visit lead makes `should_stop_early` fire sooner, which is why the
+# saving is concentrated in the early-stop path.
+REUSE_ENV = "MONSTER_REUSE"
+REUSE_OFF_ENV = "MONSTER_NO_REUSE"
+# Exact forced-capture search. ON by default (owner, 2026-08-16); disable with
+# MONSTER_NO_FINISHER=1. It measured a null at 700-sim generation, but two
+# things changed on 2026-08-16: the native solver made it ~18.8x cheaper than
+# the Python path (cheaper than running without it), and dropping the scripted
+# oracle opened the bare-king class it used to defer to -- the class where the
+# oracle was losing 5 of 12 games.
+FINISHER_ENV = "MONSTER_FINISHER"
+FINISHER_OFF_ENV = "MONSTER_NO_FINISHER"
+
+
+def _default_on(off_env):
+    """True unless the caller explicitly switched the feature off."""
+    import os as _os
+    return _os.environ.get(off_env, "").strip().lower() not in (
+        "1", "true", "yes", "on")
 
 # White's non-king material at or below which the finisher is worth trying.
 # The pathology lives at bare-or-nearly-bare king: in the 24 capped games
@@ -66,7 +87,9 @@ class _FinisherEngine:
     falls through to the network -- an exhausted search is "no answer", never
     "no win".
 
-    Off unless MONSTER_FINISHER is set, so no existing result changes.
+    ON by default since 2026-08-16 (MONSTER_NO_FINISHER=1 disables): the native
+    solver made it ~18.8x cheaper, and dropping the scripted oracle opened the
+    bare-king class it previously deferred to.
     """
 
     def __init__(self, inner, max_black_moves=3, node_budget=200_000):
@@ -169,7 +192,7 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
     if choice == "native":
         from native_mcts import NativeMCTS
         solver = _env_flag(SOLVER_ENV)
-        reuse = _env_flag(REUSE_ENV)
+        reuse = _default_on(REUSE_OFF_ENV)
         search = NativeMCTS(num_simulations=sims, eval_fn=eval_fn,
                             root_noise=False, allow_early_stop=True,
                             solver=solver, reuse_across_moves=reuse, **kwargs)
@@ -183,7 +206,7 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
     else:
         search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
                       allow_early_stop=True, **kwargs)
-    if _env_flag(FINISHER_ENV):
+    if _default_on(FINISHER_OFF_ENV):
         search = _FinisherEngine(search)
         label += "+finisher"
     return search, label

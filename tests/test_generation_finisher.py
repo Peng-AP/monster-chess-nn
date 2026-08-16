@@ -41,23 +41,30 @@ LONE_BLACK_KING = "6k1/8/8/8/8/8/4P3/4K3 b - - 0 1"
 
 
 class TestFinisherIsOptIn(unittest.TestCase):
-    def test_disabled_when_env_is_absent(self):
-        """A generation switch that defaulted on would rewrite the corpus."""
+    def test_enabled_by_default(self):
+        """On since 2026-08-16: the native solver made it ~18.8x cheaper, and
+        dropping the oracle handed it the bare-king class."""
         with mock.patch.dict(os.environ, {}, clear=True):
+            enabled, _depth, _nodes, _mat = dg._finisher_settings()
+        self.assertTrue(enabled)
+
+    def test_disabled_by_the_escape_hatch(self):
+        with mock.patch.dict(os.environ, {"MONSTER_NO_FINISHER": "1"},
+                             clear=True):
             enabled, _depth, _nodes, _mat = dg._finisher_settings()
         self.assertFalse(enabled)
 
     def test_enabled_defaults_to_the_measured_depth_four(self):
         # REPORT.md section 30.1: depth 4 completed all 72 probe positions with
         # zero budget exhaustion; depth 5 cost ~2 orders of magnitude more.
-        with mock.patch.dict(os.environ, {"MONSTER_FINISHER": "1"}, clear=True):
+        with mock.patch.dict(os.environ, {}, clear=True):
             enabled, depth, nodes, _mat = dg._finisher_settings()
         self.assertTrue(enabled)
         self.assertEqual(depth, 4)
         self.assertGreater(nodes, 0)
 
     def test_depth_and_budget_are_tunable(self):
-        env = {"MONSTER_FINISHER": "1", "MONSTER_FINISHER_DEPTH": "3",
+        env = {"MONSTER_FINISHER_DEPTH": "3",
                "MONSTER_FINISHER_NODES": "1234"}
         with mock.patch.dict(os.environ, env, clear=True):
             _enabled, depth, nodes, _mat = dg._finisher_settings()
@@ -65,7 +72,7 @@ class TestFinisherIsOptIn(unittest.TestCase):
         self.assertEqual(nodes, 1234)
 
     def test_garbage_overrides_fall_back_to_defaults(self):
-        env = {"MONSTER_FINISHER": "1", "MONSTER_FINISHER_DEPTH": "deep",
+        env = {"MONSTER_FINISHER_DEPTH": "deep",
                "MONSTER_FINISHER_NODES": ""}
         with mock.patch.dict(os.environ, env, clear=True):
             _enabled, depth, nodes, _mat = dg._finisher_settings()

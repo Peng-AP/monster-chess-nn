@@ -102,7 +102,12 @@ None would have crashed.
    made it un-ignorable. Fixed → 400/400.
 5. **Hybrid value source** — `HybridEvaluator` takes values from the heuristic
    and only policy from the NN, and skips the forward at |h| ≥ 0.95.
-   Generation uses it; the native search initially couldn't express it.
+   The native search initially couldn't express it. **Correction (2026-08-16):
+   generation does NOT use it.** `data_generation` defaults `hybrid_eval` to
+   False and neither `iterate.py` nor `generation_driver.py` passes
+   `--hybrid-eval`, so the flag is available but unused. It substitutes
+   heuristic values for network values, which made sense when the network was
+   weak and is very unlikely to now.
 6. **Frozen RNG, within a run** — a constant seed re-created an identical
    stream per decision: temperature sampling returned the same move 10/10,
    Dirichlet noise the same vector 5/5.

@@ -57,6 +57,8 @@ class TestEngineChoice(unittest.TestCase):
             _engine_choice("rust")
 
     def test_python_factory_returns_the_python_search(self):
+        os.environ["MONSTER_NO_FINISHER"] = "1"      # test engine choice, not the wrapper
+        self.addCleanup(os.environ.pop, "MONSTER_NO_FINISHER", None)
         engine, label = _build_engine(
             None, 32, engine="python", c_puct=1.25,
             fpu_reduction=0.2, policy_temperature=1.4)
@@ -108,6 +110,8 @@ class TestAdapterContract(unittest.TestCase):
 
     def test_factory_builds_the_native_search(self):
         from native_mcts import NativeMCTS
+        os.environ["MONSTER_NO_FINISHER"] = "1"      # test engine choice, not the wrapper
+        self.addCleanup(os.environ.pop, "MONSTER_NO_FINISHER", None)
         engine, label = _build_engine(
             None, 32, engine="native", c_puct=1.25,
             fpu_reduction=0.2, policy_temperature=1.4)

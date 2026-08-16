@@ -289,7 +289,10 @@ from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa:
 # abstains. A hit ends the game with a REAL king capture, so the label becomes
 # a true Black win instead of a -0.5 move-limit relabel.
 #
-# Off unless MONSTER_FINISHER is set, so no historical generation changes.
+# ON by default (owner, 2026-08-16); MONSTER_NO_FINISHER=1 disables. It was a
+# null at 700-sim generation, but the native solver made it ~18.8x cheaper and
+# dropping the scripted oracle handed it the bare-king class the oracle used to
+# take -- the class where the oracle was losing 5 of the 12 games it drove.
 # Depth 4 is REPORT.md section 30.1's measured operating point: it completed
 # every one of 72 probe positions with zero budget exhaustion, where depth 5
 # cost roughly two orders of magnitude more for two extra wins.
@@ -330,9 +333,9 @@ def _finisher_settings():
     way. Imported lazily from benchmark so there is one definition of the flag
     and of the material ceiling.
     """
-    from benchmark import (FINISHER_ENV, FINISHER_WHITE_MATERIAL_MAX,
-                           _env_flag)
-    if not _env_flag(FINISHER_ENV):
+    from benchmark import (FINISHER_OFF_ENV, FINISHER_WHITE_MATERIAL_MAX,
+                           _default_on)
+    if not _default_on(FINISHER_OFF_ENV):
         return False, 0, 0, FINISHER_WHITE_MATERIAL_MAX
     try:
         depth = int(os.environ.get(FINISHER_DEPTH_ENV, FINISHER_DEFAULT_DEPTH))
