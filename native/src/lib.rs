@@ -13,6 +13,7 @@ mod eval;
 mod game;
 mod mcts;
 mod monster;
+mod solver;
 
 /// Build identity, so the Python side can assert it loaded the crate it built.
 #[pyfunction]
@@ -29,6 +30,7 @@ fn monster_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     eval::register(m)?;
     encoding::register(m)?;
     mcts::register(m)?;
+    solver::register(m)?;
     Ok(())
 }
 
