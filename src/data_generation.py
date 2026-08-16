@@ -298,6 +298,22 @@ FINISHER_NODES_ENV = "MONSTER_FINISHER_NODES"
 FINISHER_DEFAULT_DEPTH = 4
 FINISHER_DEFAULT_NODES = 2_000_000
 
+# The scripted oracle has never had an off switch, which is why its real cost
+# was never measured. It is verified at 11/12 on an AUTHORED deck (Black
+# K+Q+R+R vs a bare White king) but generation hands it positions carrying
+# extra pawns and minors. Measured 2026-08-16 over 24 games: it drove Black in
+# 12 of them and converted 2, drew 5, and LOST 5 against a bare king -- 17%
+# against the deck's 92% -- while stamping every move at policy 1.0.
+#
+# Default stays ON so no historical behaviour changes; this exists so the
+# oracle can be measured against its own absence.
+SCRIPTED_MATE_OFF_ENV = "MONSTER_NO_SCRIPTED_MATE"
+
+
+def _scripted_mate_enabled():
+    from benchmark import _env_flag
+    return not _env_flag(SCRIPTED_MATE_OFF_ENV)
+
 
 def _finisher_settings():
     """(enabled, depth, node_budget) for this worker, read from the env.
@@ -477,6 +493,7 @@ def play_game(num_simulations, game_deadline=None):
     mate_bot = None  # ScriptedMate takes over Black once the position qualifies
     (finisher_on, finisher_depth, finisher_nodes,
      finisher_material_max) = _finisher_settings()
+    scripted_mate_on = _scripted_mate_enabled()
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
@@ -504,12 +521,14 @@ def play_game(num_simulations, game_deadline=None):
         # verified behaviour on the bare-king class is untouched. A miss costs
         # a bounded search and falls through to the network below.
         finisher_move = None
+        oracle_here = scripted_mate_on and _mate_algo_applicable(game)
+
         if (finisher_on and not is_white and mate_bot is None
-                and not _mate_algo_applicable(game)
+                and not oracle_here
                 and _finisher_applicable(game, finisher_material_max)):
             finisher_move = _finisher_move(game, finisher_depth, finisher_nodes)
 
-        if not is_white and (mate_bot is not None or _mate_algo_applicable(game)):
+        if not is_white and (mate_bot is not None or oracle_here):
             # Provably-won ending reached (bare White king vs 3+ Black
             # heavies): defer Black to the verified scripted conversion so the
             # game finishes with a REAL outcome instead of a shuffle-timeout.

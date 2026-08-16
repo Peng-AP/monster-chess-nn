@@ -1956,5 +1956,49 @@ reference implementation, and a test asserts the two agree — this component
 returns proofs, so a fast path that quietly disagreed would corrupt every
 conclusion drawn from it.
 
+### 35.5 Depth 6 partially revises the section 34 null
+
+The depth-6 row above had 3 positions exhaust at a 40M budget. Re-run
+single-threaded at 400M, they resolve with **zero exhaustion**:
+
+| depth | forced wins | proven NOT won | exhausted |
+|---|---:|---:|---:|
+| 3–5 | 0 | 24 | 0 |
+| **6** | **2** | 22 | 0 |
+
+Both wins sit in the **same game** — 1 of the 8 capped games contains a forced
+king capture within six Black moves. So section 34's "nothing to convert at 700
+simulations" is right at depth 4 and wrong at depth 6, but the opportunity is
+much thinner than deep play offers: 1 of 8 games here against section 30's 6 of
+24 at 1600 simulations. Conversion opportunity scales with the *generator's*
+search depth, not just the finisher's.
+
+At 15.2s per position a depth-6 finisher cannot run at every gated Black move —
+there are 46–55 of them per capped game. It would have to fire selectively,
+near the cap, which is where the unconverted win actually matters.
+
+### 35.6 Threaded root search: correct, but it scales poorly
+
+Root Black moves shard cleanly, so `threads` is exposed and defaults to 1
+(bit-identical to the sequential path). Depth 6 over 24 positions:
+
+| threads | time | speedup |
+|---|---:|---:|
+| 1 | 382.4s | 1.00× |
+| 4 | 303.0s | 1.26× |
+| 8 | 220.6s | 1.73× |
+| 16 | 183.7s | **2.08×** |
+
+2.08× on 16 threads is poor, and the cause is structural: each worker keeps its
+own memo, so parallelism is bought by discarding the transposition sharing that
+makes the solver fast in the first place. A shared table would need a lock on
+the hottest path. Threading is therefore a weak lever here and is left opt-in.
+
+The apparent "mismatches" at threads > 1 were investigated rather than assumed:
+all 3 were positions where the single-threaded run exhausted its budget and the
+threaded run — carrying one budget per worker — completed. **Zero proof
+disagreements.** A completed proof is never contradicted; only "no answer"
+becomes an answer.
+
 *Updated 2026-08-16. Suite 690 passing. Predecessor reports
 retire to git history per project convention.*

@@ -111,7 +111,11 @@ class TestFinisherRespectsTheOracle(unittest.TestCase):
     def test_generation_consults_the_finisher_only_where_oracle_abstains(self):
         source = (ROOT / "src" / "data_generation.py").read_text(
             encoding="utf-8")
-        self.assertIn("not _mate_algo_applicable(game)", source)
+        # The finisher is gated on the oracle NOT taking the position, and the
+        # oracle branch and the finisher branch key off the same decision.
+        self.assertIn("oracle_here = scripted_mate_on "
+                      "and _mate_algo_applicable(game)", source)
+        self.assertIn("and not oracle_here", source)
         self.assertIn("_finisher_applicable(game, finisher_material_max)",
                       source)
 

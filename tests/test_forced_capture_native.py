@@ -139,6 +139,33 @@ class TestTheDefaultPathIsNative(unittest.TestCase):
             self.assertEqual(native[2], python[2], fen)
 
 
+@unittest.skipIf(mn is None, "native module not built")
+class TestThreadedSearchNeverContradictsAProof(unittest.TestCase):
+    """Threads may find MORE, never something different.
+
+    Each worker carries its own budget, so `threads > 1` permits more total
+    nodes. That can turn an exhausted search into a real answer -- which is
+    why the exhausted flag may differ -- but a COMPLETED single-threaded proof
+    must never be contradicted. Measured 2026-08-16 over 24 positions at depth
+    6: 21 identical, 3 budget-resolved, 0 proof disagreements.
+    """
+
+    def test_threads_agree_where_the_single_thread_completed(self):
+        for fen in (IMMEDIATE, TWO_ROOKS, LONE_KING):
+            one = mn.forced_capture_move(fen, 4, 6_000_000, 1)
+            many = mn.forced_capture_move(fen, 4, 6_000_000, 8)
+            if one[2]:
+                continue                      # single-threaded ran out; no claim
+            self.assertEqual(one[0] is None, many[0] is None, fen)
+            self.assertEqual(one[1], many[1], fen)
+
+    def test_threads_default_to_one(self):
+        """The default path must stay bit-identical to the sequential search."""
+        default = mn.forced_capture_move(IMMEDIATE, 4, 6_000_000)
+        explicit = mn.forced_capture_move(IMMEDIATE, 4, 6_000_000, 1)
+        self.assertEqual(default, explicit)
+
+
 class TestPythonSolverOptimisationsAreExact(unittest.TestCase):
     """Memoisation must not change an answer, and must not cache a cut search."""
 
