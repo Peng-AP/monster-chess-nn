@@ -130,6 +130,7 @@ Ramp-target training uses the scalar head:
 
 LC0-inspired candidates are separate, opt-in experiments: `--moves-left-head`
 adds masked Huber regression on decisive trusted trajectories;
+`--train-moves-left-head-only` makes an exact frozen lift of a resumed model;
 `--legal-policy-mask` excludes illegal logits from policy loss and top-1;
 `--policy-head attention` selects the compact policy head; and
 `--ema-decay 0.999` validates and checkpoints an exponential weight average.
@@ -140,6 +141,13 @@ lifts an existing checkpoint and freezes every legacy parameter and BatchNorm
 buffer. Checkpoint selection can be bounded with
 `--max-policy-ce-regression` and `--max-side-top1-drop`.
 None of these flags changes the default recipe.
+
+Moves-left can now be consumed by Python or native PUCT through a bounded,
+opt-in utility. The match harness exposes it independently per side with
+`--moves-left-a` / `--moves-left-b` and tunable max-effect, threshold, and
+slope flags. The first exact Gen9 lift learned a real length signal but was a
+clean playing null (0.5062 over 80 paired games; 0/16 conversion moves changed),
+so it remains infrastructure rather than a successor. See `REPORT.md` §32.
 
 Current numbered release: `models/fresh_start_v21/best_value_net.pt`. The
 stronger unnumbered owner-approved gate is

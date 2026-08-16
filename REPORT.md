@@ -7,8 +7,8 @@ rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
 intake, and the answer to the question the whole campaign was premised on.
 
 Every claim cites its artifact in `benchmarks/` (`benchmarks/INDEX.md` maps the
-active evidence set). Every bug below is pinned by a regression test. **Suite: 643 passing
-plus 3 subtests, verified 2026-08-15 by full discovery; native Rust: 5 passing.**
+active evidence set). Every bug below is pinned by a regression test. **Suite: 606 passing,
+verified 2026-08-15 by full discovery; native Rust: 5 passing.**
 Long runs log to `logs/`; `py -3 tools/runs.py status` shows active/recent
 progress (`status --all` includes older history).
 
@@ -1542,7 +1542,7 @@ Measured instead, on 24 capped games from full-game play at 1600 sims:
 - **Both sides are shuffling.** The last 100 plies contain a mean of **12.6
   distinct positions**.
 
-### 30.1 The exact solver: bounded, and mostly against the fortress
+### 30.1 The exact solver: bounded horizon, not a fortress classifier
 
 `src/forced_capture.py` answers "is this won?" exactly, and neutralises the turn
 counter so it asks about the position rather than the clock. Run on the last 3
@@ -1553,10 +1553,11 @@ Black-to-move positions of each capped game (72 positions):
 | within 3 Black moves | 9 | 63 | 0 |
 | within 4 Black moves | **15** | 57 | **0** |
 
-**Zero exhaustion at either depth** — every search ran to completion, so the
-negatives are proven facts rather than search failures. Grouped by game, **6 of
-24 capped games contained a forced king capture within four Black moves that
-the engine walked past at 1600 sims.**
+**Zero exhaustion at either depth** — every search ran to completion, so each
+negative proves only that there is no forced capture *within that stated
+horizon*. It does not prove a draw, fortress, or unchangeable state. Grouped by
+game, **6 of 24 capped games contained a forced king capture within four Black
+moves that the engine walked past at 1600 sims.**
 
 Depth 5 on the 57 remaining ended without completing and without an error, at
 15 of 57: **2 more forced wins, 13 more proven not won, still zero
@@ -1661,5 +1662,41 @@ sampling temperature. At **temp 1.0** each of 5 models produced 12 unique
 positions in exactly 12 attempts — **zero duplicates**, 60 entries in 34
 seconds.
 
-*Updated 2026-08-15. Suite 643 passing plus 3 subtests. Predecessor reports
+## 32. Moves-left reaches search, and is a clean null (2026-08-15)
+
+The old moves-left experiment was auxiliary training only: inference discarded
+the head, so it tested backbone regularisation rather than LC0's search use.
+That gap is now implemented end to end. Python and native inference optionally
+return a third buffer, tree backup carries remaining-decision estimates with
+path distance added, and PUCT can apply a bounded utility: shorten likely wins,
+lengthen likely losses. Defaults remain byte- and behavior-compatible; search
+use is explicit and rejects checkpoints without the head. The match harness can
+enable it independently for either player.
+
+A frozen Gen9 lift trained only four new head tensors (8,321 parameters) on the
+Gen10 replay. All 117 inherited tensors are bit-identical to the gated Gen9
+nominee. The corpus has 1,047,422 rows, 699,546 trusted moves-left labels
+(66.8%). Epoch 8 minimized validation Huber at 24.747; test Huber is 24.908.
+On the 71,998 trusted test rows, MAE is 26.54 decisions versus 31.60 for the
+constant median, Pearson correlation is 0.449, and mean bias is -9.54. The head
+learns useful ordering but underestimates long games.
+
+The game result is neutral. With the same lifted checkpoint on both sides and
+only the default bounded utility toggled, 80 paired games at 400 sims scored
+**0.5062** for utility-on (W 0.6750 / B 0.3375, paired SE 0.0062). On the more
+important conversion probe — the last non-terminal Black state from each of 16
+real capped Gen9 self-play draws, clock reset, 1600 sims — it changed **0/16**
+selected moves and removed **0/4** reversals. A more aggressive threshold of
+0.5 was also checked diagnostically and still changed 0/16, so there is no case
+for parameter-mining this null.
+
+Conclusion: retain the general, opt-in mechanism and the exact Gen9 lift, but
+do not call it a successor or a conversion fix. The result supports the deeper
+diagnosis: the visit leads behind shuffling are not small tie-break errors, and
+a modest length utility cannot overcome the value/policy loop that created
+them. Evidence: `match_gen9_mlh_on_vs_off_400_block700.json` and
+`moves_left_gen9_conversion_probe_1600.json`. Training metadata is
+`models/candidates/gen9_mlh_lift/train_run_20260815_214328.json`.
+
+*Updated 2026-08-15. Suite 606 passing. Predecessor reports
 retire to git history per project convention.*

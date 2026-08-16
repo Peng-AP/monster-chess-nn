@@ -49,9 +49,18 @@ draw is a cap draw** — all exactly 225 plies, while decisive games top out at
 ahead on material (mean **+26.4**, White on a **bare king in 21**) while both
 sides shuffled: a mean of 12.6 distinct positions in the last 100 plies. The
 exact solver proved **6 of those 24 games contained a forced king capture within
-four Black moves** that search walked past — with **zero budget exhaustion**, so
-the negatives are proven too. These are unconverted wins, not fortresses. See
+four Black moves** that search walked past. Complete negative searches prove
+only the absence of a forced capture inside that horizon, not a fortress or
+game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
+
+**Moves-left is now implemented in search, but the isolated result is null.** A
+frozen Gen9 lift kept all 117 inherited tensors bit-identical and trained only
+the 8,321-parameter head. It learned a measurable length signal (test MAE 26.54
+versus 31.60 for the median constant; correlation 0.449), but default bounded
+utility scored 0.5062 in an 80-game paired A/B and changed 0 of 16 real capped
+conversion moves at 1600 sims, removing 0 of 4 reversals. Keep the mechanism
+opt-in; it does not supersede Gen9 or solve conversion (`REPORT.md` §32).
 
 **The colour gap is largely a search artifact.** On identical positions with
 sims as the only variable, Gen9's self-play gap closes **0.250 -> 0.067** from
