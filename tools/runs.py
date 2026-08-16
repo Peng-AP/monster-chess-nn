@@ -283,8 +283,27 @@ def cmd_stop(args):
         print(f"{args.name}: killed process group {pid}")
 
 
+def _find_archived_log(filename):
+    """Locate an archived log wherever it was filed.
+
+    The archive is organised into dated subdirectories, and older eras used
+    their own date folders, so a flat lookup would silently fail to find a log
+    that is present. Returns the newest match, or None.
+    """
+    archive = os.path.join(LOGS, "archive")
+    if not os.path.isdir(archive):
+        return None
+    found = []
+    for root, _dirs, files in os.walk(archive):
+        if filename in files:
+            found.append(os.path.join(root, filename))
+    if not found:
+        return None
+    return max(found, key=lambda p: os.path.getmtime(p))
+
+
 def cmd_prune(args):
-    """Move old finished runs to logs/archive/. Never touches a live run."""
+    """Move old finished runs to logs/archive/<date>/. Never touches a live run."""
     archive = os.path.join(LOGS, "archive")
     os.makedirs(archive, exist_ok=True)
     now = time.time()
@@ -308,24 +327,61 @@ def cmd_prune(args):
         if state in ("RUNNING", "external") or now - last_activity < cutoff:
             kept += 1
             continue
+        # File by the day the run went idle. A flat archive becomes unreadable
+        # long before it becomes large: 191 files in one directory is harder to
+        # search than 191 files under a dozen dated ones.
+        day = time.strftime("%Y-%m-%d", time.localtime(last_activity))
+        day_dir = os.path.join(archive, day)
+        os.makedirs(day_dir, exist_ok=True)
         for src in (meta_path, log_path):
             if os.path.exists(src):
-                target = os.path.join(archive, os.path.basename(src))
+                target = os.path.join(day_dir, os.path.basename(src))
                 if os.path.exists(target):
                     os.remove(target)
                 os.replace(src, target)
         moved += 1
         if args.verbose:
             print(f"  archived {name}")
-    print(f"archived {moved} run(s) idle over {args.days}d, kept {kept}; "
-          f"archive at logs/archive/")
+
+    # Sweep orphans: a job launched outside runs.py writes a .log (and maybe a
+    # .err) with no .json beside it. The loop above iterates metadata, so it can
+    # never see those -- they accumulated in the root indefinitely.
+    orphans = 0
+    remaining = set(os.listdir(LOGS))
+    stems = {f[:-5] for f in remaining if f.endswith(".json")}
+    for fname in sorted(remaining):
+        if not fname.endswith((".log", ".err")):
+            continue
+        stem = fname.rsplit(".", 1)[0]
+        if stem in stems:
+            continue                    # owned by a run that was kept above
+        src = os.path.join(LOGS, fname)
+        if not os.path.isfile(src):
+            continue
+        mtime = os.path.getmtime(src)
+        if now - mtime < cutoff:
+            continue                    # too recent, may still be written to
+        day = time.strftime("%Y-%m-%d", time.localtime(mtime))
+        day_dir = os.path.join(archive, day)
+        os.makedirs(day_dir, exist_ok=True)
+        target = os.path.join(day_dir, fname)
+        if os.path.exists(target):
+            os.remove(target)
+        os.replace(src, target)
+        orphans += 1
+        if args.verbose:
+            print(f"  archived orphan {fname}")
+
+    suffix = f", {orphans} orphan log(s)" if orphans else ""
+    print(f"archived {moved} run(s) idle over {args.days}d, kept {kept}"
+          f"{suffix}; archive at logs/archive/")
 
 
 def cmd_tail(args):
     path = os.path.join(LOGS, f"{args.name}.log")
     if not os.path.exists(path):
-        archived = os.path.join(LOGS, "archive", f"{args.name}.log")
-        if os.path.exists(archived):
+        archived = _find_archived_log(f"{args.name}.log")
+        if archived:
             path = archived        # pruning must not make a log unreadable
         else:
             raise SystemExit(f"no log at {path}")

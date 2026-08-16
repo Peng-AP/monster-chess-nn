@@ -192,8 +192,13 @@ class PruneTests(unittest.TestCase):
             self._record(directory, "ancient", 123, 30 * 86400)
             self._prune(directory, live_pid=None)
             self.assertFalse((directory / "ancient.json").exists())
-            self.assertTrue((directory / "archive" / "ancient.json").exists())
-            self.assertTrue((directory / "archive" / "ancient.log").exists())
+            # Archived under the day the run went idle, not flat in the root.
+            day = time.strftime(
+                "%Y-%m-%d", time.localtime(time.time() - 30 * 86400))
+            self.assertTrue((directory / "archive" / day / "ancient.json")
+                            .exists())
+            self.assertTrue((directory / "archive" / day / "ancient.log")
+                            .exists())
 
     def test_prune_keeps_recent_finished_runs(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -212,6 +217,74 @@ class PruneTests(unittest.TestCase):
                     contextlib.redirect_stdout(output):
                 runs.cmd_tail(SimpleNamespace(name="ancient", lines=10))
             self.assertIn("finished useful work", output.getvalue())
+
+    def test_prune_files_into_a_dated_subdirectory(self):
+        """A flat archive is unreadable long before it is large."""
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self._record(directory, "ancient", 123, 30 * 86400)
+            self._prune(directory, live_pid=None)
+
+            archive = directory / "archive"
+            self.assertFalse((archive / "ancient.log").exists(),
+                             "log must not land flat in the archive root")
+            day = time.strftime(
+                "%Y-%m-%d", time.localtime(time.time() - 30 * 86400))
+            self.assertTrue((archive / day / "ancient.log").exists())
+            self.assertTrue((archive / day / "ancient.json").exists())
+
+
+class PruneOrphanLogTests(unittest.TestCase):
+    """A job launched outside runs.py leaves a .log with no .json beside it.
+
+    cmd_prune iterates metadata files, so those orphans were invisible to it
+    and accumulated in the log root forever.
+    """
+
+    _prune = PruneTests._prune
+
+    def _orphan(self, directory, name, age_seconds):
+        path = directory / name
+        path.write_text("detached job output\n", encoding="utf-8")
+        stamp = time.time() - age_seconds
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def test_old_orphan_log_is_archived_by_date(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self._orphan(directory, "detached.log", 30 * 86400)
+            self._orphan(directory, "detached.err", 30 * 86400)
+
+            self._prune(directory, live_pid=None)
+
+            day = time.strftime(
+                "%Y-%m-%d", time.localtime(time.time() - 30 * 86400))
+            self.assertFalse((directory / "detached.log").exists())
+            self.assertTrue((directory / "archive" / day / "detached.log")
+                            .exists())
+            self.assertTrue((directory / "archive" / day / "detached.err")
+                            .exists())
+
+    def test_recent_orphan_log_is_left_alone(self):
+        """It may still be being written to by a live detached job."""
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self._orphan(directory, "still_running.log", 60)
+
+            self._prune(directory, live_pid=None)
+
+            self.assertTrue((directory / "still_running.log").exists())
+
+    def test_orphan_sweep_does_not_steal_a_kept_runs_log(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            RunsStatusTests._record(self, directory, "recent", 123, 60)
+
+            self._prune(directory, live_pid=None)
+
+            self.assertTrue((directory / "recent.log").exists())
+            self.assertTrue((directory / "recent.json").exists())
 
 
 if __name__ == "__main__":
