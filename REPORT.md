@@ -2124,5 +2124,49 @@ quality-neutral speedup, it is already implemented in the native engine with
 derived Q-rebasing, and it has sat behind `MONSTER_REUSE=1` ever since. Nothing
 needs building.
 
+### 38.2 Reanalysis discards half its deep searches, and pre-filtering is a trade
+
+`--sample 8000 --keep 4000` searches 8,000 positions at 3,200 simulations,
+computes priority **from** that search, then discards the lower half. Those
+4,000 searches are the largest single piece of pure waste in the pipeline:
+roughly 7 minutes of a 14.5-minute stage, every generation.
+
+Priority compares the deep policy/value against the *recorded* ones, so it
+cannot be known without searching. But a cheap pass could rank first. Measured
+on 300 real positions against a 3,200-simulation reference:
+
+| cheap sims | two-stage cost | index overlap @50% | spearman | **retained priority mass** |
+|---|---:|---:|---:|---:|
+| 200 | 0.57x | 80% | 0.734 | 87.9% |
+| **400** | **0.64x** | 85% | 0.811 | **91.2%** |
+| 800 | 0.77x | 85% | 0.852 | 91.9% |
+
+800 is dominated — the same overlap as 400 for more cost. Index overlap
+flatters the method, because swaps happen at the 50% cutoff where priorities
+are near-identical by construction, so the honest metric is the deep-priority
+mass the cheap selection retains: **91.2% at 400 sims**, capturing 78.2% of the
+distance between a random half and the true best half.
+
+**So this is a 36% saving for a ~9% degradation in teacher selection, not a
+free speedup.** Whether 9% matters is unresolved and may not be worth resolving:
+section 33 found the deep-teacher program itself a measured null across 1x, 2x,
+4x and balanced arms, so the stage being optimised has no demonstrated value.
+
+### 38.3 What is already exploited
+
+Checked and found correct, so no gain remains: fp16 inference; `pre_nn_clamp`
+skipping the forward on decided positions; the eight-worker default (measured
+optimum); the native engine; and early stopping, which is **on** for matches
+and deliberately **off** for generation because it truncates the visit
+distribution that *is* the policy target.
+
+**The one genuinely quality-neutral speedup available is tree reuse** (§38.1):
+strength-null at equal simulations, −23% wall clock, implemented, and switched
+off since 2026-08-04. Everything else measured today is either a loss (the
+inference server, the leaf probe) or a trade (pre-filtering, repetition,
+dropping the oracle). The remaining untested free candidate is CUDA graphs or
+`torch.compile` on a 1.9M-parameter network at batch 16, where kernel launch
+overhead plausibly dominates and the arithmetic would be unchanged.
+
 *Updated 2026-08-16. Suite 711 passing. Predecessor reports
 retire to git history per project convention.*
