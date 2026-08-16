@@ -77,6 +77,15 @@ is on the same footing as anything measured after.
   endings already scored as draws; what changes is the **training label**,
   -0.5 -> 0.0.
 
+**Both changes together: 4.15x on generation** (4m13s -> 1m01s over 24 games,
+seed 4242), mean records 93.3 -> 64.9, and **zero cap draws** — every
+non-decisive game now ends by rule rather than by clock. They interact: with
+the oracle's anti-repetition drift gone, repetition draws rose 6 -> 11. Outcomes
+moved further than the clock did — Black wins 5 -> 6 and White wins 11 -> 7,
+the four recovered games being ones the oracle had been losing. Black reads
+0.375 -> 0.479, but that is descriptive only: n=24 and it is a different rule
+set, so it is not comparable to any earlier figure.
+
 **CUDA graphs were already on** (`MONSTER_CUDA_GRAPH`, default 1), captured one
 graph per batch size because padding to a fixed width was 2.67x faster and
 *changed move selection*.
