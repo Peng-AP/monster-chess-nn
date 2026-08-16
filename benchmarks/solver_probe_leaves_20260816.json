@@ -1,0 +1,47 @@
+{
+ "experiment": "solver_probe_at_mcts_leaves",
+ "date": "2026-08-16",
+ "position": "7k/4b1p1/p1rp4/q3pp2/2b4r/8/1K6/8 b - - 65 71",
+ "ground_truth": {
+  "move": "h4h3",
+  "wins_in_black_moves": 6,
+  "solver_seconds": 65.6
+ },
+ "simulations": 1600,
+ "evaluator": "flat stub (search-only preference)",
+ "arms": [
+  {
+   "config": "no probe",
+   "move": "c6b6",
+   "matches_truth": false,
+   "probes": 0,
+   "hits": 0,
+   "seconds": 0.06
+  },
+  {
+   "config": "depth 3 limit 200",
+   "move": "c6b6",
+   "matches_truth": false,
+   "probes": 200,
+   "hits": 9,
+   "seconds": 2.22
+  },
+  {
+   "config": "depth 4 limit 100",
+   "move": "c6b6",
+   "matches_truth": false,
+   "probes": 100,
+   "hits": 5,
+   "seconds": 28.89
+  },
+  {
+   "config": "depth 4 limit 400",
+   "move": "c6b6",
+   "matches_truth": false,
+   "probes": 400,
+   "hits": 46,
+   "seconds": 112.94
+  }
+ ],
+ "verdict": "NULL. 46 proven leaf wins changed no move at ~1900x cost. A proof must survive an AND node (every White reply proven losing) and 1600 sims cannot cover a 390-wide AND layer. Restates REPORT 30.2. The solver belongs at the root."
+}

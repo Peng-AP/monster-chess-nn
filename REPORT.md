@@ -2049,5 +2049,43 @@ It is off by default (`MONSTER_REPETITION`), because it remains a rules change
 and would make earlier numbers incomparable the way the 2026-08-03
 captures-only correction did.
 
-*Updated 2026-08-16. Suite 708 passing. Predecessor reports
+## 37. The exact solver at MCTS leaves is a null (2026-08-16)
+
+With the solver 145x faster (section 35), a shallow exact probe at leaves
+became affordable in principle: inject proven wins where the network has only
+a guess, and let the existing proof machinery propagate them. Implemented in
+`run_batched_puct` behind `solver_probe_depth` (0 = off).
+
+Measured on a position the solver proves won in **6 Black moves** — 18 plies,
+against an endgame PV pinned at 4:
+
+| configuration | move played | is the solver's winning move | probes | hits | time |
+|---|---|---|---:|---:|---:|
+| solver at the root | **h4h3** | ground truth | — | — | 65.6s |
+| MCTS, no probe | c6b6 | no | 0 | 0 | **0.06s** |
+| probe depth 3, limit 200 | c6b6 | no | 200 | 9 | 2.22s |
+| probe depth 4, limit 100 | c6b6 | no | 100 | 5 | 28.89s |
+| probe depth 4, limit 400 | c6b6 | no | 400 | **46** | **112.94s** |
+
+**Forty-six proven leaf wins changed nothing**, at roughly 1,900x the cost.
+
+The reason is structural and restates section 30.2's certainty-propagation
+null. A proof is only useful if it survives an **AND** node — every White reply
+proven losing — and proving that layer *is* the whole problem. 1,600
+simulations cannot cover a 390-wide AND layer, so proofs accumulate at leaves
+and die one level up. Scattering probes pays the solver's cost repeatedly and
+buys none of its power.
+
+An earlier version of this measurement asked whether the ROOT becomes proven.
+That was the wrong question and was abandoned: reconstructing a root proof from
+leaf probes costs hours, while calling the solver at the root answers it
+outright. The corrected question — does the probe change what the search
+*plays* — is the one above.
+
+**Conclusion: the exact solver belongs at the root, not in the tree.** That is
+where the finisher already calls it, at 0.14s for depth 4. The mechanism is
+retained at a depth-0 default so the negative stays reproducible, exactly as
+the moves-left head was.
+
+*Updated 2026-08-16. Suite 711 passing. Predecessor reports
 retire to git history per project convention.*

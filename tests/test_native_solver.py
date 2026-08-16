@@ -140,3 +140,43 @@ class TestItIsOffByDefault(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(mn is None, "native crate not built")
+class TestLeafProbeIsOffAndInert(unittest.TestCase):
+    """The exact probe at leaves is implemented, measured, and a NULL.
+
+    Measured 2026-08-16 on a position the solver proves won in 6 Black moves:
+    injecting 46 proven leaf wins did not change the move MCTS played, at 113s
+    against 0.06s. A proof only helps if it survives an AND node -- every White
+    reply proven losing -- and 1600 simulations cannot cover a 390-wide AND
+    layer. That is section 30.2's certainty-propagation null restated, and it
+    is why the solver belongs at the ROOT (the finisher, 0.14s at depth 4).
+
+    Retained behind a depth-0 default so the negative stays reproducible.
+    """
+
+    def test_probe_defaults_to_off(self):
+        tree = mn.Tree(MATE_IN_2)
+        tree.run_batched_puct(200, stub, batch_size=16, channels=17,
+                              allow_early_stop=False)
+        used, hits = tree.probe_stats()
+        self.assertEqual((used, hits), (0, 0))
+
+    def test_probe_off_leaves_the_search_unchanged(self):
+        off = search(MATE_IN_2, 400, solver=True).best_action(temperature=0.0)
+        explicit = mn.Tree(MATE_IN_2)
+        explicit.run_batched_puct(400, stub, batch_size=16, channels=17,
+                                  allow_early_stop=False, solver=True,
+                                  solver_probe_depth=0, solver_probe_limit=0)
+        self.assertEqual(off[0], explicit.best_action(temperature=0.0)[0])
+
+    def test_probe_limit_bounds_the_cost(self):
+        """A probe is orders of magnitude dearer than a network evaluation."""
+        tree = mn.Tree("6k1/8/8/8/8/8/8/r3K3 b - - 0 1")
+        tree.run_batched_puct(400, stub, batch_size=16, channels=17,
+                              allow_early_stop=False, solver=True,
+                              solver_probe_depth=2, solver_probe_nodes=100_000,
+                              solver_probe_limit=7)
+        used, _hits = tree.probe_stats()
+        self.assertLessEqual(used, 7)
