@@ -2030,9 +2030,21 @@ side has a null move. Here White does, so the third occurrence is not yet
 evidence of shuffling; the fourth is.
 
 Four, five and six are identical on outcomes and differ only in records
-retained, so the entire risk sits in the single step from 4 to 3. The default
-is therefore **4**, giving **1.41×** for a score identical to baseline, against
-threefold's 1.85× that costs a conversion.
+retained, so the entire risk sits in the single step from 4 to 3.
+
+**The owner set the default to 3** (2026-08-16), taking the 1.85×. The one game
+that costs was then inspected rather than assumed, and it is not a conversion
+cut short: in `game_00004` Black held **eleven pieces against a bare king from
+record 40** and needed until record 129 to capture, repeating positions on the
+way. That is floundering, not maneuvering — maneuvering by definition reaches
+new positions — so ending it as a draw is a fair verdict on the play. An
+earlier version of this section justified 4 by claiming Black repeats while
+maneuvering; that reasoning was wrong and is withdrawn.
+
+The scripted oracle was dropped in the same change, which matters here: its
+explicit anti-repetition drift kept oracle-driven games at 94–98 distinct
+positions per 100 records, blunting this rule. Without it, repetition should
+fire more often than the sweep above measured.
 
 ### 36.2 What it does and does not change
 
