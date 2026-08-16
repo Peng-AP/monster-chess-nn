@@ -180,3 +180,24 @@ def _finisher_applicable(game):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScriptedOracleIsDropped(unittest.TestCase):
+    """The oracle is off by default (owner, 2026-08-16).
+
+    Measured over 24 generated games: it drove Black in 12 and converted 2,
+    drew 5, and LOST 5 against a bare White king -- 17% against its authored
+    deck's 92% -- stamping every move at policy 1.0 including the losses. Of
+    387 policy-1.0 records in that batch, 241 came from games that never
+    converted. A 120-game A/B without it ran 2.1x faster with Black 0.317 ->
+    0.375.
+    """
+
+    def test_disabled_by_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(dg._scripted_mate_enabled())
+
+    def test_opt_in_restores_it_for_reproductions(self):
+        with mock.patch.dict(os.environ, {"MONSTER_SCRIPTED_MATE": "1"},
+                             clear=True):
+            self.assertTrue(dg._scripted_mate_enabled())

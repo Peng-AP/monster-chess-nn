@@ -298,21 +298,28 @@ FINISHER_NODES_ENV = "MONSTER_FINISHER_NODES"
 FINISHER_DEFAULT_DEPTH = 4
 FINISHER_DEFAULT_NODES = 2_000_000
 
-# The scripted oracle has never had an off switch, which is why its real cost
-# was never measured. It is verified at 11/12 on an AUTHORED deck (Black
-# K+Q+R+R vs a bare White king) but generation hands it positions carrying
-# extra pawns and minors. Measured 2026-08-16 over 24 games: it drove Black in
-# 12 of them and converted 2, drew 5, and LOST 5 against a bare king -- 17%
-# against the deck's 92% -- while stamping every move at policy 1.0.
+# The scripted oracle is DROPPED (owner, 2026-08-16). It had never had an off
+# switch, which is why its real cost went unmeasured for so long.
 #
-# Default stays ON so no historical behaviour changes; this exists so the
-# oracle can be measured against its own absence.
-SCRIPTED_MATE_OFF_ENV = "MONSTER_NO_SCRIPTED_MATE"
+# It is verified at 11/12 on an AUTHORED deck (Black K+Q+R+R vs a bare White
+# king), but generation hands it positions carrying extra pawns and minors.
+# Measured over 24 games: it drove Black in 12 of them and converted 2, drew 5,
+# and **LOST 5** against a bare king -- 17% against the deck's 92% -- while
+# stamping every move it made at policy 1.0, including the losses. Across the
+# batch that was 387 policy-1.0 records, 241 of them from games that never
+# converted: roughly one record in nine teaching a shuffling move at certainty.
+#
+# A 120-game A/B without it: Black 0.317 -> 0.375, White wins 67 -> 57, and
+# 2.1x faster. The score delta is only ~1 SE, so the case rests on the cost and
+# the label pollution rather than on that number.
+#
+# Opt back in with MONSTER_SCRIPTED_MATE=1 to reproduce historical generations.
+SCRIPTED_MATE_ON_ENV = "MONSTER_SCRIPTED_MATE"
 
 
 def _scripted_mate_enabled():
     from benchmark import _env_flag
-    return not _env_flag(SCRIPTED_MATE_OFF_ENV)
+    return _env_flag(SCRIPTED_MATE_ON_ENV)
 
 
 def _finisher_settings():

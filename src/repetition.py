@@ -7,16 +7,19 @@ the capped games the network drives, the last 100 records contain as few as
 **29 distinct positions**, so those games are spending most of their length
 re-deriving the same handful of states.
 
-**This is a rules change and is OFF by default.** Two consequences the caller
-must accept before enabling it:
+**This is a rules change and it is ON by default** (owner, 2026-08-16).
+Disable with `MONSTER_NO_REPETITION=1`. Two consequences it carries:
 
 1. **It is not comparable to earlier numbers.** The same break the 2026-08-03
    captures-only correction caused, which invalidated the whole v19 ladder.
-2. **It lowers Black.** A capped ending currently scores **-0.5** ("leaning
-   Black"); a repetition draw scores **0.0**. It also hands White a saving
-   resource, and White is unusually good at using it: `Ke1e2` then `Ke2e1` is a
-   legal action pair returning the identical position, so White can pass a turn
-   and Black cannot.
+   Every gate, match and screen taken before this is on the other side of it.
+2. **It changes the training label, not the match score.** A capped ending
+   already scored as a draw under the captures-only rule, so match scoring
+   moves only where a *decisive* result changes. What moves is the label:
+   -0.5 ("leaning Black") becomes 0.0, removing partial value credit the old
+   proxy gave Black. It also hands White a saving resource, and White is
+   unusually good at using it -- `Ke1e2` then `Ke2e1` is a legal action pair
+   returning the identical position, so White can pass a turn and Black cannot.
 
 It lives here, in the driver, rather than in the search: repetition is
 path-dependent, so putting it in the tree reintroduces the graph-history
@@ -25,41 +28,49 @@ problem and fights any transposition table.
 import os
 from collections import Counter
 
-REPETITION_ENV = "MONSTER_REPETITION"
+REPETITION_OFF_ENV = "MONSTER_NO_REPETITION"
+REPETITION_ENV = "MONSTER_REPETITION"      # retained; setting it also enables
 REPETITION_N_ENV = "MONSTER_REPETITION_N"
 
-# FOURfold, not the chess convention of three. Swept 2026-08-16 over 24 games:
+# THREEfold (owner, 2026-08-16). The sweep below measured what it costs:
 #
-#   threshold | Black wins | score  | mean records | wins destroyed
-#      3      |     4      | 0.3542 |     77.0     |      1
-#      4      |     5      | 0.3750 |     84.2     |      0
-#      5      |     5      | 0.3750 |     84.8     |      0
-#      6      |     5      | 0.3750 |     86.6     |      0
+#   threshold | Black wins | score  | mean records | wall  | wins destroyed
+#      3      |     4      | 0.3542 |     77.0     | 2m17s |      1
+#      4      |     5      | 0.3750 |     84.2     | 2m59s |      0
+#      5      |     5      | 0.3750 |     84.8     |   -   |      0
+#      6      |     5      | 0.3750 |     86.6     |   -   |      0
 #
-# Threefold truncated a real conversion -- game_00004, a king capture at ply
-# 130 cut to a draw at ply 84 -- because Black repeats a position while
-# maneuvering, which is ordinary technique against a king that can pass its
-# turn. The fourth occurrence is the first that actually indicates shuffling.
-# Five and six only add records back, so the entire risk sits in the step from
-# 4 to 3. At 4 the speedup is 1.41x (2m59s vs 4m13s) for an identical score.
-DEFAULT_THRESHOLD = 4
+# Threefold is 1.85x against fourfold's 1.41x, and it ends one game that would
+# otherwise have been a Black king capture. That game is why 4 was the earlier
+# default -- but inspection showed the "win" was not a conversion being cut
+# short: Black held ELEVEN pieces against a bare king from record 40 and took
+# until record 129 to finish, repeating positions on the way. Under threefold
+# that reads as a draw, which is a fair verdict on the play.
+DEFAULT_THRESHOLD = 3
 
 
 def repetition_enabled():
-    """Off unless MONSTER_REPETITION is set, so no existing result moves."""
-    return os.environ.get(REPETITION_ENV, "").strip().lower() in (
-        "1", "true", "yes", "on")
+    """ON by default (owner, 2026-08-16). Disable with MONSTER_NO_REPETITION=1.
+
+    This is a RULES CHANGE and it breaks comparability with every number taken
+    before it, exactly as the 2026-08-03 captures-only correction did. It is on
+    because the owner directed it after seeing that cost.
+    """
+    if os.environ.get(REPETITION_OFF_ENV, "").strip().lower() in (
+            "1", "true", "yes", "on"):
+        return False
+    return True
 
 
 def repetition_threshold():
     """How many occurrences end the game.
 
-    Three is the chess convention, not a law of this game, and it is measurably
-    too tight here: at threefold a real Black win was truncated (game_00004,
-    a king capture at ply 130 cut to a draw at ply 84). Black converts against
-    a double-moving king by MANEUVERING, and repeating a position while
-    improving is ordinary technique -- so the threshold is tunable and the knee
-    is an empirical question, not a rules question.
+    Tunable because the right number is empirical, not a rules question. The
+    one game threefold ends that fourfold does not (game_00004) was examined
+    rather than assumed: it is not a conversion cut short. Black held eleven
+    pieces against a bare king from record 40 and needed until record 129 to
+    capture, repeating positions on the way -- floundering, not maneuvering,
+    since maneuvering by definition reaches NEW positions.
     """
     raw = os.environ.get(REPETITION_N_ENV, "").strip()
     if not raw:

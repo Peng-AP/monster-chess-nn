@@ -54,6 +54,33 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**Two rule/behaviour changes landed 2026-08-16 on the owner's instruction, and
+they break comparability with every earlier number** — the same discontinuity
+the 2026-08-03 captures-only correction caused. Nothing measured before today
+is on the same footing as anything measured after.
+
+- **The scripted oracle is dropped** (off by default; `MONSTER_SCRIPTED_MATE=1`
+  reproduces the old behaviour). It is verified 11/12 on an authored
+  K+Q+R+R-vs-bare-king deck, but in real generation it drove Black in 12 of 24
+  games and converted **2**, drew 5, and **lost 5** — 17% against the deck's
+  92% — while stamping every move at policy 1.0. Of 387 policy-1.0 records in
+  that batch, **241 came from games that never converted**: about one record in
+  nine teaching a shuffling move at certainty, which is a mechanical source of
+  law 1a. A 120-game A/B without it ran **2.1x faster** with Black 0.317 ->
+  0.375 (≈1 SE, so the case rests on cost and label quality, not that delta).
+- **Threefold repetition is a draw** (on by default; `MONSTER_NO_REPETITION=1`
+  disables, `MONSTER_REPETITION_N` retunes). **1.85x** on generation. It ends
+  one game per 24 that would otherwise have been a Black king capture; that
+  game was inspected and is not a conversion cut short — Black held eleven
+  pieces against a bare king from record 40 and needed until record 129, so
+  calling it drawn is a fair verdict. Match scoring barely moves because capped
+  endings already scored as draws; what changes is the **training label**,
+  -0.5 -> 0.0.
+
+**CUDA graphs were already on** (`MONSTER_CUDA_GRAPH`, default 1), captured one
+graph per batch size because padding to a fixed width was 2.67x faster and
+*changed move selection*.
+
 **The exact solver is now native, 145x faster, and the finisher is free.**
 `native/src/solver.rs` reimplements the AND/OR forced-capture search on the
 bitboard engine with a transposition memo and resulting-position dedup. Against

@@ -33,13 +33,15 @@ ENDGAME = "6k1/8/8/8/8/8/8/r3K3 b - - 0 1"
 
 
 class TestOptIn(unittest.TestCase):
-    def test_disabled_without_the_env_flag(self):
+    def test_enabled_by_default(self):
+        """Owner directed it on, 2026-08-16, knowing it breaks comparability."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertFalse(repetition_enabled())
-
-    def test_enabled_with_the_flag(self):
-        with mock.patch.dict(os.environ, {"MONSTER_REPETITION": "1"}):
             self.assertTrue(repetition_enabled())
+
+    def test_disabled_by_the_escape_hatch(self):
+        with mock.patch.dict(os.environ, {"MONSTER_NO_REPETITION": "1"},
+                             clear=True):
+            self.assertFalse(repetition_enabled())
 
     def test_a_disabled_tracker_never_fires(self):
         tracker = RepetitionTracker(enabled=False)
@@ -49,18 +51,17 @@ class TestOptIn(unittest.TestCase):
 
 
 class TestThreefold(unittest.TestCase):
-    def test_default_threshold_is_four_not_the_chess_convention(self):
-        """Threefold truncated a real Black conversion; fourfold did not.
+    def test_default_threshold_is_three(self):
+        """Owner's call, 2026-08-16: 1.85x against fourfold's 1.41x.
 
-        Swept over 24 games: at 3 a king capture at ply 130 was cut to a draw
-        at ply 84 and the score moved 0.3750 -> 0.3542; at 4, 5 and 6 no win
-        was destroyed and the score was unchanged. Black repeats while
-        maneuvering because White can pass its turn, so the third occurrence
-        is not yet evidence of shuffling.
+        The one game threefold ends that fourfold does not was inspected, not
+        assumed: Black held eleven pieces against a bare king from record 40
+        and took until record 129 to capture. Calling that a draw is a fair
+        verdict on the play.
         """
         from repetition import DEFAULT_THRESHOLD
-        self.assertEqual(DEFAULT_THRESHOLD, 4)
-        self.assertEqual(RepetitionTracker(enabled=True).threshold, 4)
+        self.assertEqual(DEFAULT_THRESHOLD, 3)
+        self.assertEqual(RepetitionTracker(enabled=True).threshold, 3)
 
     def test_fires_on_the_configured_occurrence_not_before(self):
         tracker = RepetitionTracker(threshold=3, enabled=True)
@@ -92,12 +93,12 @@ class TestThreefold(unittest.TestCase):
         self.assertEqual(RepetitionTracker(enabled=True).draw_result, 0.0)
 
     def test_records_the_ply_it_fired_on(self):
-        tracker = RepetitionTracker(enabled=True)   # default threshold 4
+        tracker = RepetitionTracker(enabled=True)   # default threshold 3
         game = MonsterChessGame(fen=ENDGAME)
-        for ply in (10, 20, 30):
+        for ply in (10, 20):
             self.assertFalse(tracker.record(game, ply))
-        self.assertTrue(tracker.record(game, 40))
-        self.assertEqual(tracker.fired_at, 40)
+        self.assertTrue(tracker.record(game, 30))
+        self.assertEqual(tracker.fired_at, 30)
 
 
 class TestPositionIdentity(unittest.TestCase):
