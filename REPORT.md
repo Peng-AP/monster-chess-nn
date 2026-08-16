@@ -1468,5 +1468,187 @@ a White-collapse penalty, and the normal untouched binding gate remains
 decisive. This makes the next recipe search reproducible without pretending
 offline loss is playing strength or manually trying isolated settings.
 
-*Updated 2026-08-15. Predecessor reports retire to git history per project
-convention.*
+## 29. Depth redistributes the colour gap without changing who wins (2026-08-15)
+
+Three paired matches at **1600 sims**, 120 games each, on reserved book blocks
+500-679:
+
+| | overall | White | Black | paired SE |
+|---|---:|---:|---:|---:|
+| Gen9 vs v21b @1600 | 0.6000 | 0.7000 | **0.5000** | 0.0280 |
+| Gen9 vs v21b @400 | 0.5763 | 0.6975 | 0.4550 | 0.0157 |
+| Gen9 vs Gen7 @1600 | 0.5750 | 0.6833 | 0.4667 | 0.0261 |
+| Gen9 vs Gen7 @400 | 0.5763 | 0.7125 | 0.4400 | — |
+
+**The ordering survives 4x the search.** Overall scores barely move; what moves
+is the split. Black gains in all three (+0.045, +0.027, +0.092) while White is
+flat or down. Both engines are deepened equally, so the correct statement is
+about the game rather than the model: **deeper search benefits whichever side
+plays Black.**
+
+### 29.1 A confound in the first design, and the control that fixed it
+
+The 400-sim references used book entries 0-200; the 1600 runs used 500-560 and
+620-680 — different openings. Every comparison confounded simulations with
+which positions were drawn. Re-running self-play at 400 sims **on the 1600 run's
+own block** decomposed it:
+
+| Gen9 self-play | White | Black | gap |
+|---|---:|---:|---:|
+| block 0-200 @400 (reference) | 0.6675 | 0.3325 | 0.3350 |
+| block 620-680 @400 (control) | 0.6250 | 0.3750 | 0.2500 |
+| block 620-680 @1600 | 0.5333 | 0.4667 | **0.0667** |
+
+A third of the apparent effect was the block. The sims effect survives: on
+identical positions the gap closes 0.250 -> 0.067. v21b run through the same
+control closes 0.133 -> 0.033 — **both narrow by about 74%**.
+
+For self-play under a book the paired SE is 0.0000 *by construction* (identical
+engines replay the same game), so it says nothing about between-block variance.
+Measuring a model's true skew needs several disjoint blocks, not more games in
+one.
+
+### 29.2 The two models close the gap by opposite mechanisms
+
+| | White wins | Black wins | draws |
+|---|---:|---:|---:|
+| Gen9 @400 | 25 | 10 | 25 |
+| Gen9 @1600 | 19 | **15** | 26 |
+| v21b @400 | 24 | 16 | 20 |
+| v21b @1600 | 19 | 17 | **24** |
+
+Both shed the same White wins. Gen9 turns them into **Black wins**; v21b turns
+them into **draws**. The gap number hides this completely.
+
+A caution recorded because it was got wrong first: self-play Black faces its own
+White, so a wider self-play gap does **not** imply a weaker Black. Against a
+common opponent Gen9's Black is clearly stronger — 0.5000 against v21b's White
+versus v21b's 0.3000 against Gen9's.
+
+## 30. The draws are unconverted wins, not fortresses (2026-08-15)
+
+Owner, watching the games: *"all of the draws involve shuffling so anything
+that reaches a shuffling state will continue to."* Correct, and it killed a
+planned experiment — raising `MAX_GAME_TURNS` would have produced "still drawn"
+for the wrong reason, because both engines were in a repetition loop.
+
+Measured instead, on 24 capped games from full-game play at 1600 sims:
+
+- **Every draw is a cap draw.** All 24 ended at exactly 225 plies, min and max
+  identical. Decisive games average 57.7 plies and top out at 147: games either
+  resolve by ~ply 147 or run the whole clock, with nothing in between.
+- **Black is winning all of them.** Ahead on material in 24 of 24, mean edge
+  **+26.4**, with White on a **bare king in 21**.
+- **Both sides are shuffling.** The last 100 plies contain a mean of **12.6
+  distinct positions**.
+
+### 30.1 The exact solver: bounded, and mostly against the fortress
+
+`src/forced_capture.py` answers "is this won?" exactly, and neutralises the turn
+counter so it asks about the position rather than the clock. Run on the last 3
+Black-to-move positions of each capped game (72 positions):
+
+| | forced wins | proven NOT won | budget exhausted |
+|---|---:|---:|---:|
+| within 3 Black moves | 9 | 63 | 0 |
+| within 4 Black moves | **15** | 57 | **0** |
+
+**Zero exhaustion at either depth** — every search ran to completion, so the
+negatives are proven facts rather than search failures. Grouped by game, **6 of
+24 capped games contained a forced king capture within four Black moves that
+the engine walked past at 1600 sims.** Depth 5 on the 57 remaining is running at
+the time of writing; exhaustion there must be read as "no answer", never "no
+win".
+
+### 30.2 Certainty propagation is a null
+
+`MONSTER_SOLVER=1` (in-tree certainty propagation, implemented and defaulted
+off) on the same three matchups and seed:
+
+```
+                     solver     baseline
+Gen9 vs Gen9         6- 1-17    5- 1-18
+Gen7 (W) vs Gen9     5- 4- 2    5- 3- 2
+v21b (W) vs Gen9     5- 2- 6    5- 2- 6
+```
+
+Identical inside noise. A four-move forced line is far beyond what 1600
+simulations will prove through this branching factor.
+
+### 30.3 The finisher, and what it is worth
+
+`benchmark._FinisherEngine` runs the exact search ahead of the network at
+Black-to-move positions where White holds at most one non-king piece — the
+phase the pathology lives in, and where White's branching is smallest. Opt-in
+via `MONSTER_FINISHER`; nothing historical moves. Budget exhaustion falls
+through to the network, pinned by test.
+
+Against an **unbiased** 24-game self-play baseline (no early stop in either
+arm):
+
+| Gen9 self-play, 24 games | White | Black | draws |
+|---|---:|---:|---:|
+| baseline | 5 | 1 | 18 |
+| finisher | 5 | **3** | 16 |
+
+Black 0.417 -> **0.458**. Two of eighteen draws converted; White unchanged,
+which is right since the finisher only fires for Black. That matches the solver
+evidence rather than exceeding it: at `max_black_moves=3` it can only catch the
+depth-<=3 subset, which was 9 positions across 3 games.
+
+**An earlier read of this was biased and is corrected here.** The first
+finisher run stopped after 8 games once its categories filled, showing 3-3-2;
+those 8 are the first to *complete*, which skews short, and short games are
+decisive because draws take the full 225 plies. The unbiased rerun is the
+number above.
+
+**Implication:** the depth-4 solve found wins in 6 of 24 games where the depth-3
+finisher converts ~2. Raising the finisher to depth 4 should roughly triple the
+effect, and depth 4 completed inside 6M nodes on every position, so it is
+affordable.
+
+## 31. Exhibition tooling, and what the opening books contain (2026-08-15)
+
+`tools/matchup_examples.py` records complete games across a curated matchup set,
+both colour assignments, keeping a balanced sample of each outcome. Three
+lessons are baked into it:
+
+- **Stop when full, don't play the block.** It originally played every game and
+  selected afterwards, discarding 26 of 32 at 2-per-category. `--games` is now a
+  ceiling; a matchup whose categories fill early stops.
+- **Full games from the true start.** A handful of book entries reused across
+  matchups makes every game a variation on the same few openings. With no book,
+  play starts from the real position and the first 8 plies are sampled at
+  temperature 1.0 purely to break determinism.
+- **Duplicate rejection must be global and transposition-aware.** A per-matchup
+  move-list key let four *different* White models' identical games through:
+  White moves twice, so playing its half-moves in either order transposes. The
+  key is now the sequence of settled positions, shared across matchups.
+
+### 31.1 The p16 book starts games already decided
+
+Owner: *"too many plies in the opening, some positions are won/lost outright."*
+Measured across both books:
+
+| | mean White | mean Black | White down a pawn | both armies intact |
+|---|---:|---:|---:|---:|
+| p16 (gate/screen book, n=800) | 3.69/5 | 14.25/16 | **89%** | **3%** |
+| p8 (n=60) | 4.87/5 | 15.75/16 | 13% | 78% |
+
+At 16 plies White has already lost **1.3 of its 4 pawns** on average, and only
+3% of positions still have both armies whole. Given White's entire force is a
+king and four pawns, that is a large and highly variable material swing before
+either engine plays a move. Screens and gates run on this book: pairing controls
+for it, but the measurement starts from lopsided middlegames rather than from
+the opening. Changing it is a pinned-artifact decision with a re-anchor cost.
+
+### 31.2 The shallow-book failure was temperature, not a reachability ceiling
+
+An 8-ply book previously failed at 31 of 100 unique positions across 3 models,
+which was read as a hard ceiling on reachable shallow positions. It was the
+sampling temperature. At **temp 1.0** each of 5 models produced 12 unique
+positions in exactly 12 attempts — **zero duplicates**, 60 entries in 34
+seconds.
+
+*Updated 2026-08-15. Suite 643 passing plus 3 subtests. Predecessor reports
+retire to git history per project convention.*
