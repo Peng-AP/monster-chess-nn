@@ -2185,5 +2185,50 @@ dropping the oracle). The remaining untested free candidate is CUDA graphs or
 `torch.compile` on a 1.9M-parameter network at batch 16, where kernel launch
 overhead plausibly dominates and the arithmetic would be unchanged.
 
-*Updated 2026-08-16. Suite 711 passing. Predecessor reports
+## 39. V22 replayed under the new rules: the colour gap closes 31% (2026-08-16)
+
+The 2026-08-16 rule changes invalidate every earlier number, so the bar's own
+self-calibration had to be re-established. Identical model, identical book
+blocks, identical seeds; only the rules differ.
+
+| block | old W / B | new W / B | dBlack | draws |
+|---|---|---|---:|---|
+| 120 | 0.6050 / 0.3950 | 0.5700 / **0.4300** | +0.0350 | 94 -> 84 |
+| 240 | 0.6950 / 0.3050 | 0.6600 / **0.3400** | +0.0350 | 74 -> 60 |
+| 540 | 0.6100 / 0.3900 | 0.5550 / **0.4450** | +0.0550 | 88 -> 66 |
+| 660 | 0.6600 / 0.3400 | 0.6100 / **0.3900** | +0.0500 | 76 -> 60 |
+
+Black rises on **all four blocks**, by +0.035 to +0.055. Mean **0.3575 ->
+0.4012**. The colour gap falls **0.2850 -> 0.1975, a 31% reduction**.
+
+### 39.1 It is conversion, not a change in who loses
+
+| block | Black W/L/D before | Black W/L/D after | mean plies |
+|---|---|---|---|
+| 120 | 16W **37L** 47D | **22W** 36L 42D | 128.8 -> **56.1** |
+| 540 | 17W **39L** 44D | **28W** 39L 33D | 122.4 -> **58.2** |
+
+**Black's losses are unchanged and its draws became wins.** White gains
+nothing. That is the finisher cashing endings Black already reached, which is
+precisely the pathology §30 identified and §34 could not move while the
+scripted oracle still owned the bare-king class. `time_leaning_wins` drops to
+zero because cap draws no longer exist, and games run less than half as long.
+
+### 39.2 The 0.40 Black floor is no longer unreachable by the incumbent
+
+Under the old rules V22's self-Black ran 0.3050-0.3950 and cleared the gate's
+absolute 0.40 floor on **none** of the four blocks -- an exact copy of the bar,
+submitted as a candidate, would have failed. It now averages **0.4012** and
+clears the floor on **two of four**. The threshold has not moved; the game
+under it has.
+
+**Block variance did not tighten** (sd 0.0372 -> 0.0407, spread 0.090 ->
+0.105), so §33.4's measurement floor stands: a calibrated colour delta still
+carries SE around 0.064 and single-block screen deltas remain unreliable.
+
+**Caveat.** This is a self-match, so White falls as Black rises by
+construction. It is a conversion result, not a strength gain against an
+opponent.
+
+*Updated 2026-08-16. Suite 714 passing. Predecessor reports
 retire to git history per project convention.*
