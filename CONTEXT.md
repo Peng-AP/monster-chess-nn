@@ -34,7 +34,7 @@ en passant is conferred only by the **last** move of White's turn; White may
 not **end** its turn with its own king attacked (forced-blunder exception
 unchanged, in `_get_white_actions`).
 
-## 2. Where the project stands (2026-08-15)
+## 2. Where the project stands (2026-08-16)
 
 **The bootstrap loop works, and its defect was never the game.** Two apparatus
 faults cost more than every recipe idea combined: fine-tuning from the champion
@@ -71,11 +71,12 @@ side plays Black; that is a fact about the game, not about a model.
 
 | model | role |
 |---|---|
-| `models/fresh_start_v21b` | **the bar.** Owner: *"it'll be the gate but I'm not impressed enough for it to be 22."* Playtest still outstanding. |
-| `models/fresh_start_v21` | holds the version number. The bar and the number are separate again, exactly as when v17 held the number and v18_ramp was the bar. |
+| `models/fresh_start_v22` | **numbered release and formal bar.** Byte-identical to the Gen9 epoch-6 arena checkpoint; explicitly promoted by the owner on 2026-08-16. |
+| `models/fresh_start_v21b` | prior unnumbered bar, retained unchanged. |
+| `models/fresh_start_v21` | prior numbered release, retained unchanged. |
 | `models/candidates/gen7_scratch/screen_nominee.pt` | passed the gate against v21b (pooled 0.5600 over 400 games, z=+2.40); the working bar inside the bootstrap loop. |
 | `models/candidates/gen8_scratch/screen_nominee.pt` | paired re-screen selected epoch 7; it passed the first Gen7 leg but failed fresh confirmation at Black 0.3500. No promotion. |
-| `models/candidates/gen9_scratch/screen_nominee.pt` | **passed the complete paired gate against Gen7.** It scored 0.5950 (W 0.7200/B 0.4700), then confirmed at 0.5575 (W 0.7050/B 0.4100). Leading v23 candidate; owner playtest and numbering remain outstanding. |
+| `models/candidates/gen9_scratch/screen_nominee.pt` | source of V22. It passed the complete paired gate against Gen7 at 0.5950 (W 0.7200/B 0.4700), then 0.5575 (W 0.7050/B 0.4100), and directly beat v21b 0.5763 over 400 games. |
 | `models/candidates/gen10_scratch/screen_nominee.pt` | rejected. It scored 0.5225 against Gen9 but Black 0.3850 failed the unchanged 0.40 floor; seed-43 also failed at 0.4925/W 0.6300/B 0.3550. No confirmation was earned. |
 
 **The loop has now produced a clean successor.** Gen8 remained a useful data
@@ -96,8 +97,21 @@ gain and failed the Gen9 gate (`REPORT.md` §28).
 
 **Gen9 post-gate diagnostics.** Its paired self-skew is W 0.6675/B 0.3325 over
 400 games. Directly against v21b it scores 0.5763 overall, W 0.6975/B 0.4550
-(400 games, paired SE 0.0157). Gen9 remains the clear successor candidate after
-both Gen10 seed paths failed.
+(400 games, paired SE 0.0157). Gen9 became V22 on 2026-08-16 after both Gen10
+seed paths failed. New candidates must beat the byte-identical release model.
+
+**The repeated confirmation Black drop is mostly measurement structure, not a
+second-game model mutation.** Across 28 historical confirmed gates, Black's
+raw score fell on 23 confirmations; all five modern 200-game confirmations
+fell, by 6.2 points on average. This is partly selection regression (only a
+lucky first leg earns confirmation) and partly the opening blocks themselves.
+On the original p8 book, V22-versus-itself scored W 0.605/B 0.395 on the first
+recovery gate block but W 0.695/B 0.305 on its confirmation block: a built-in
+nine-point Black drop before changing either model. Checkpoint screens already
+subtract an incumbent self-calibration separately by colour. Until the binding
+gate does the same, interpret raw colour scores together with exact-block self
+calibration and require positive calibrated deltas on both colours for a new
+successor claim.
 
 **Opening books start games already decided.** The p16 book used by screens
 and gates has White down **1.3 of its 4 pawns** on average, with both armies
@@ -108,10 +122,58 @@ earlier 8-ply build failure (31 of 100 unique) was sampling temperature, not a
 reachability ceiling; at 1.0 it produced 60 unique entries in 34 seconds with
 zero duplicates (`REPORT.md` §31).
 
-**Next strength experiment:** use the currentized multi-fidelity tuner on the
-Gen10 corpus against Gen9, with paired book entries 680–747 reserved for trial
-ranking. Treat training seed as a nuisance variable and send only a tuner
-winner to a fresh binding book; do not mine more seeds against the same gate.
+**Deep-teacher ingestion defect found 2026-08-16.** Gen7--Gen10 each generated
+4,000 retained one-row teachers at 3,200 simulations, but the historical
+`generation_driver.py` processing call inherited the four-ply non-human minimum
+and dropped every teacher. Gen9's 102,906 rows and Gen10's 111,098 rows are
+exactly twice their ordinary record counts; neither has a policy-only value
+mask. This means the expensive reanalysis completed but supplied zero training
+signal. The raw teacher files remain intact.
+
+Gen7--Gen9 are now recovered into new, non-overwriting `*_teacher3200_fixed`
+processed increments. Each has exactly 4,000 teachers / 8,000 mirrored rows,
+2,400 Black and 1,600 White, zero teacher value weight, and verified source-game
+split linkage. Their hashes are registered in `iterations/accepted_data.json`.
+**The recovery campaign is closed: four arms, one trade, no successor
+(2026-08-16).** Teacher policy weights 1x, 2x, and 4x on the historical
+teachers, plus a fourth arm whose teachers were re-searched by V22 itself at a
+balanced 50/50 side split, all move Black up and White down. None produced a
+checkpoint positive on both colours at 200 games; the two that reached the
+binding gate failed it (1x: Black 0.3850, aggregate 0.4925; balanced 4x:
+Black 0.3800, aggregate 0.4825), as did both 4x checkpoints. No threshold
+moved. See `REPORT.md` §33.
+
+**The loop cannot currently resolve the effects it is chasing.** Eight
+200-game self-calibrations of V22 *against itself* span Black 0.280–0.395
+(mean 0.3425, sd 0.043) — ordinary sampling noise at 100 games per colour
+leg, not block difficulty. A calibrated colour delta subtracts two such
+measurements, so its SE is ≈ 0.064 and every effect this campaign measured
+sits inside 2 SE of zero. The balanced arm proved it end to end: its nominee
+screened at Black **+0.105**, projected to raw 0.495 on the gate block, and
+scored **0.380** there against that block's own calibration of 0.390 — a
+calibrated −0.010. Its raw Black barely moved (0.4050 → 0.380); the
+*calibration* moved (0.300 → 0.390). The screen had selected the luckiest of
+eight checkpoints. Resolving a 0.05 colour effect at 2 SE needs roughly 400
+games per colour for both candidate and calibration, about 4x the current
+screen cost. **Do not read a single-block 200-game colour delta as a real
+effect, and do not gate on one.**
+
+A corollary worth holding: the absolute 0.40 Black floor is being applied on
+blocks where V22 scores 0.280–0.395 as Black, so an exact copy of V22 would
+fail its own floor on five of the eight blocks measured. The floor has not
+been changed and is not proposed to change — but a raw colour score is only
+interpretable next to that block's self-calibration.
+
+The canonical `src/iterate.py` path now uses the actual successful workload:
+500 games at 700 simulations, 8,000/4,000 reanalysis at 3,200 simulations,
+fresh LR-0.002/EMA training, value floor/horizon 0.5/60, mandatory teacher
+census, sparse-policy-aware registry hashes, and automatically disjoint book
+blocks. A new 1,200-entry p8/temperature-1.0 book draws exactly 240 positions
+from each of v20, v21, v21b, Gen7, and Gen9. The recovered-teacher control is
+now settled (closed, no successor), so hyperparameter tuning is no longer
+blocked on it — but §33.4 applies to the tuner too: its trial ranking runs on
+the same 200-game blocks and inherits the same ≈0.064 SE, so a trial winner
+selected on one block is not evidence until it survives a fresh one.
 
 ### The v20-era ledger (2026-08-05, retained)
 

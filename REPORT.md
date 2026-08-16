@@ -1698,5 +1698,105 @@ them. Evidence: `match_gen9_mlh_on_vs_off_400_block700.json` and
 `moves_left_gen9_conversion_probe_1600.json`. Training metadata is
 `models/candidates/gen9_mlh_lift/train_run_20260815_214328.json`.
 
-*Updated 2026-08-15. Suite 606 passing. Predecessor reports
+## 33. Deep-teacher recovery: four arms, one trade, no successor (2026-08-16)
+
+### 33.1 The defect
+
+Gen7--Gen10 each generated 4,000 retained one-row teachers at 3,200
+simulations. The historical `generation_driver.py` processing call inherited
+the four-ply non-human minimum, and a teacher is a deliberate **one-row**
+policy-only file, so every one of them was dropped. Gen9's 102,906 rows and
+Gen10's 111,098 rows are exactly twice their ordinary record counts, and
+neither carries a policy-only value mask. The expensive reanalysis had been
+completing and supplying zero training signal. Raw teacher files were intact,
+so Gen7--Gen9 were reprocessed into non-overwriting `*_teacher3200_fixed`
+increments, each passing an exact census: 4,000 teacher files, 8,000 mirrored
+rows, 60/40 Black split, zero teacher value weight, source-linked splits.
+
+### 33.2 Four arms, all rejected
+
+Every arm trained fresh at seed 42 on the same recipe, and every bar is
+byte-identical to V22 (SHA-256 `6a59b1f7…`; the 4x arm names it
+`gen9_scratch/screen_nominee.pt`, the same weights).
+
+| arm | teacher policy weight | teachers searched by | side split | screen ΔW / ΔB | both? | binding gate |
+|---|---|---|---|---|---|---|
+| 4x | 4 | historical | 60/40 | +0.050 / +0.050 | yes | e6 FAIL (confirm B 0.3850); e7 FAIL (first leg B 0.3850) |
+| 1x | 1 | historical | 60/40 | +0.005 / +0.020 | yes | FAIL (B 0.3850, agg 0.4925) |
+| 2x | 2 | historical | 60/40 | −0.080 / +0.125 | no | not gated |
+| balanced 4x | 4 | **V22** | **50/50** | −0.030 / +0.105 | no | FAIL (B 0.3800, agg 0.4825) |
+
+The balanced arm re-ran reanalysis with V22 itself at `--black-fraction 0.5`
+(4,000 kept teachers, 2,000 per side, action-change rate 0.94) to test whether
+the trade was an artifact of stale teachers or the 60/40 Black reservation. It
+was neither: the same signature appeared.
+
+### 33.3 The arms agree on a White-for-Black trade
+
+Across weights 1x/2x/4x, both side splits, and both teacher-search models, the
+recovered teachers move Black up and White down. On the balanced arm's screen
+block all four finalists reproduce it (ΔB +0.070 to +0.105, ΔW −0.030 to
+−0.105), and the ordering is monotone: the checkpoint with the largest Black
+gain carries the largest White loss. No arm produced a checkpoint that was
+positive on both colours at 200 games.
+
+### 33.4 The effect being chased is smaller than the measurement noise
+
+This is the campaign's most useful result. Eight 200-game self-calibrations of
+**V22 against itself** on disjoint blocks of the two p8 books:
+
+| block | 0 (v22) | 420 (v22) | 240 | 0 (gen9) | 660 | 420 (gen9) | 540 | 120 |
+|---|---|---|---|---|---|---|---|---|
+| V22 self-Black | 0.280 | 0.300 | 0.305 | 0.360 | 0.340 | 0.370 | 0.390 | 0.395 |
+
+Mean 0.3425, spread **0.115**, sd **0.043** — consistent with ordinary
+sampling noise at 100 games per colour leg (SE ≈ 0.045), not with block
+difficulty. A calibrated colour delta subtracts two such measurements, so its
+SE is ≈ **0.064**. Every effect in §33.2 is inside 2 SE of zero.
+
+The balanced arm demonstrated this directly and expensively. Its epoch-5
+nominee screened at ΔB **+0.105** on block 420 and was projected to reach
+raw Black 0.495 on gate block 540. It scored **0.380** — against that block's
+own V22 self-calibration of 0.390, a calibrated **−0.010**. The candidate's
+raw Black barely moved (0.4050 → 0.380); what moved was the *calibration*
+(0.300 → 0.390). The apparent gain was V22 playing unusually poorly as Black
+on block 420, harvested by selecting the luckiest of eight checkpoints.
+White, whose block-to-block variance is the same but whose effect was near
+zero, predicted almost exactly: 0.580 projected, 0.585 measured.
+
+**Consequence for method.** A 200-game screen against a 200-game calibration
+cannot resolve a 0.05 colour effect; it will keep nominating the checkpoint
+with the luckiest block and that nomination will keep regressing at the gate.
+Detecting +0.05 at 2 SE needs roughly 400 games per colour for both candidate
+and calibration — about 4x the current screen cost. This also tempers the 4x
+arm's reading: its +0.095 and +0.080 calibrated Black legs are ~1.5 SE each,
+and only mildly stronger (~2.1 SE) taken together.
+
+### 33.5 The floor is measuring the same noise
+
+Three arms failed a Black leg at exactly 0.3850 with different W/D/L
+decompositions (22/45/33, 18/41/41, 19/42/39), so this is coincidence, not a
+replayed match. But it sits against an absolute 0.40 floor while V22 itself
+scores 0.280--0.395 as Black on these blocks: **an exact copy of V22 submitted
+as a candidate would fail its own floor on five of the eight blocks measured.**
+The threshold was not moved and is not proposed to move; this is recorded so
+raw colour scores are read together with exact-block self-calibration, as
+§2 already requires.
+
+The conversion diagnosis is unchanged and visible in every leg. In the
+balanced arm's binding Black leg, all **36 of 100** draws were reached with
+Black ahead on material at the cap. Converting them would score 0.740 instead
+of 0.380. No teacher weighting touched that.
+
+**Conclusion.** The ingestion defect was real and worth fixing — the recovered
+increments are correct and registered. But recovering the teachers does not
+produce a successor at any weight or side split, and the loop cannot currently
+distinguish a 0.05 colour effect from block noise. Evidence:
+`screen_gen9_teacher_recovery{1x,2x,4x}_seed42_p8_20260816.json`,
+`screen_gen9_v22balanced_teacher4x_seed42_p8_20260816.json`,
+`gate_gen9_teacher_recovery{1x,4x}_seed42*_p8_20260816.json`,
+`gate_gen9_v22balanced_teacher4x_seed42_p8_20260816.json`, and the four
+`match_v22_self_p8_offset*_20260816.json` calibrations.
+
+*Updated 2026-08-16. Suite 659 passing. Predecessor reports
 retire to git history per project convention.*
