@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 import torch
@@ -73,6 +74,37 @@ class CheckpointScreenTests(unittest.TestCase):
         names = {item["name"] for item in finalists}
         self.assertEqual(
             names, {"balanced", "runner_up", "black_best", "offline"})
+
+    def test_shortlist_covers_peak_neighborhood_black_metrics_and_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model_dir = Path(directory)
+            checkpoints = []
+            for epoch in range(1, 15):
+                checkpoints.append({
+                    "name": f"selected_epoch_{epoch:03d}",
+                    "weights_sha256": str(epoch),
+                    "offline_selected": epoch == 4,
+                })
+            rows = []
+            for epoch in range(1, 15):
+                rows.append({
+                    "epoch": epoch,
+                    "val_decisive": {
+                        "policy_top1_black": 1.0 if epoch == 8 else 0.0,
+                        "sign_acc_black": 1.0 if epoch == 10 else 0.0,
+                    },
+                })
+            (model_dir / "train_run_test.json").write_text(json.dumps({
+                "best_epoch": 4, "epochs": rows,
+            }), encoding="utf-8")
+            shortlist = screen.shortlist_checkpoints(
+                checkpoints, model_dir, maximum=8)
+            epochs = {
+                int(row["name"].removeprefix("selected_epoch_"))
+                for row in shortlist
+            }
+            self.assertTrue({2, 3, 4, 5, 6, 8, 10, 14} <= epochs)
+            self.assertEqual(len(shortlist), 8)
 
 
 if __name__ == "__main__":

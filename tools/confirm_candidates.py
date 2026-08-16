@@ -25,10 +25,10 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from config import DEFAULT_GAME_WORKERS  # noqa: E402
-from match import run_match  # noqa: E402
+from match import load_book, run_match  # noqa: E402
 
 
-BAR = ROOT / "models/fresh_start_v20/best_value_net.pt"
+BAR = ROOT / "models/fresh_start_v22/best_value_net.pt"
 
 
 def file_sha256(path: Path) -> str:
@@ -82,10 +82,28 @@ def main() -> None:
     parser.add_argument("--sims", type=int, default=800)
     parser.add_argument("--seed", type=int, default=20560820)
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
+    parser.add_argument("--engine", choices=("python", "native"),
+                        default="native")
+    parser.add_argument("--stall-timeout", type=float, default=600.0)
+    parser.add_argument("--book", default=None,
+                        help="paired opening book used for both calibration "
+                             "and candidates")
+    parser.add_argument("--book-offset", type=int, default=0,
+                        help="first book entry reserved for this confirmation")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
-    if args.games < 2 or args.games % 2 or args.sims <= 0 or args.workers <= 0:
-        parser.error("games must be positive and even; sims/workers must be > 0")
+    if (args.games < 2 or args.games % 2 or args.sims <= 0
+            or args.workers <= 0 or args.stall_timeout <= 0
+            or args.book_offset < 0):
+        parser.error("games must be positive and even; sims/workers/timeout "
+                     "must be > 0; book offset must be non-negative")
+    if args.book:
+        available = len(load_book(args.book)[0])
+        needed = args.book_offset + args.games // 2
+        if needed > available:
+            parser.error(
+                f"confirmation needs book entries through {needed}, but "
+                f"{args.book} has {available}")
     bar = Path(args.bar)
     if not bar.is_absolute():
         bar = ROOT / bar
@@ -104,13 +122,17 @@ def main() -> None:
           flush=True)
     calibration = run_match(
         str(bar), str(bar), args.games, args.sims, args.seed,
-        workers=args.workers, engine="native")
+        workers=args.workers, engine=args.engine,
+        stall_timeout=args.stall_timeout,
+        book=args.book, book_offset=args.book_offset)
     results = []
     for name, path in candidates:
         print(f"[confirm] {name} vs {bar_name}", flush=True)
         match = run_match(
             str(path), str(bar), args.games, args.sims, args.seed,
-            workers=args.workers, engine="native")
+            workers=args.workers, engine=args.engine,
+            stall_timeout=args.stall_timeout,
+            book=args.book, book_offset=args.book_offset)
         result = calibrated_result(match, calibration)
         result.update({
             "name": name,
@@ -132,6 +154,8 @@ def main() -> None:
         "games": args.games,
         "sims": args.sims,
         "seed": args.seed,
+        "book": args.book,
+        "book_offset": args.book_offset if args.book else None,
         "calibration": calibration,
         "results": results,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),

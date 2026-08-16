@@ -9,9 +9,11 @@ gate's own sim count and finals play 200 (SE 0.035), which is the resolution
 needed to separate checkpoints that differ by the ~40 Elo measured between
 epoch 4 and epoch 10 of a from-scratch run.
 
-Every unique ``selected_epoch_*.pt`` model receives a cheap paired-color probe.
-The strongest probe results, the offline-selected epoch, and the Black-best
-epoch advance to the normal calibrated screen.  The screen only nominates a
+Up to eight representative ``selected_epoch_*.pt`` models receive a cheap
+paired-color probe: the offline peak and its neighborhood, Black-metric peaks,
+the final epoch as an overfit control, then evenly spaced coverage. The
+strongest probe results, the offline-selected epoch, and the Black-best epoch
+advance to the normal calibrated screen. The screen only nominates a
 checkpoint: the binding and high-fidelity gates remain decisive.
 """
 from __future__ import annotations
@@ -84,6 +86,74 @@ def discover_checkpoints(model_dir: Path) -> list[dict]:
     return unique
 
 
+def shortlist_checkpoints(checkpoints: list[dict], model_dir: Path,
+                          maximum: int) -> list[dict]:
+    """Select representative epochs before spending games on all of them."""
+    if maximum <= 0 or len(checkpoints) <= maximum:
+        return checkpoints
+    by_epoch = {}
+    for checkpoint in checkpoints:
+        prefix = "selected_epoch_"
+        if checkpoint["name"].startswith(prefix):
+            try:
+                by_epoch[int(checkpoint["name"][len(prefix):])] = checkpoint
+            except ValueError:
+                pass
+    chosen = []
+
+    def add(checkpoint):
+        if checkpoint is not None and checkpoint not in chosen:
+            chosen.append(checkpoint)
+
+    for checkpoint in checkpoints:
+        if checkpoint["offline_selected"]:
+            add(checkpoint)
+    metadata_files = sorted(model_dir.glob("train_run_*.json"))
+    metadata = {}
+    if metadata_files:
+        try:
+            metadata = json.loads(metadata_files[-1].read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            metadata = {}
+    best_epoch = metadata.get("best_epoch")
+    if isinstance(best_epoch, int):
+        # Arena winners have historically landed shortly after the offline
+        # peak, so cover both sides rather than probing the entire tail.
+        for epoch in range(best_epoch - 2, best_epoch + 3):
+            add(by_epoch.get(epoch))
+    epoch_metrics = {
+        int(row["epoch"]): row.get("val_decisive", {})
+        for row in metadata.get("epochs", [])
+        if isinstance(row, dict) and isinstance(row.get("epoch"), int)
+        and isinstance(row.get("val_decisive"), dict)
+    }
+    for metric in ("policy_top1_black", "sign_acc_black"):
+        eligible = [(values.get(metric), epoch)
+                    for epoch, values in epoch_metrics.items()
+                    if isinstance(values.get(metric), (int, float))
+                    and epoch in by_epoch]
+        if eligible:
+            add(by_epoch[max(eligible)[1]])
+    if by_epoch:
+        add(by_epoch[max(by_epoch)])
+
+    # Fill any remaining budget with deterministic, evenly spaced coverage.
+    ordered = [by_epoch[epoch] for epoch in sorted(by_epoch)]
+    if ordered:
+        for index in range(maximum):
+            position = round(index * (len(ordered) - 1) / max(1, maximum - 1))
+            add(ordered[position])
+            if len(chosen) >= maximum:
+                break
+    for checkpoint in checkpoints:
+        add(checkpoint)
+        if len(chosen) >= maximum:
+            break
+    selected = {checkpoint["weights_sha256"] for checkpoint in chosen[:maximum]}
+    return [checkpoint for checkpoint in checkpoints
+            if checkpoint["weights_sha256"] in selected]
+
+
 def calibrated_result(candidate: dict, calibration: dict) -> dict:
     deltas = {
         "white": (candidate["a_as_white"]["score"]
@@ -139,6 +209,8 @@ def main() -> None:
     parser.add_argument("--probe-games", type=int, default=40)
     parser.add_argument("--probe-sims", type=int, default=400)
     parser.add_argument("--finalists", type=int, default=4)
+    parser.add_argument("--max-probe-checkpoints", type=int, default=8,
+                        help="representative epochs to probe; 0 probes all")
     parser.add_argument("--seed", type=int, default=20260806)
     parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--engine", choices=("python", "native"), default="native")
@@ -162,9 +234,16 @@ def main() -> None:
     incumbent = Path(args.incumbent).resolve()
     output_model = Path(args.output_model).resolve()
     report_path = Path(args.report_path).resolve()
-    checkpoints = discover_checkpoints(model_dir)
-    if not checkpoints:
+    discovered = discover_checkpoints(model_dir)
+    if not discovered:
         raise FileNotFoundError(f"no preserved checkpoints in {model_dir}")
+    if args.max_probe_checkpoints and args.max_probe_checkpoints < args.finalists:
+        parser.error("--max-probe-checkpoints must be 0 or >= --finalists")
+    checkpoints = shortlist_checkpoints(
+        discovered, model_dir, args.max_probe_checkpoints)
+    print(f"[checkpoint-screen] probing {len(checkpoints)}/"
+          f"{len(discovered)} unique checkpoints: "
+          f"{', '.join(row['name'] for row in checkpoints)}", flush=True)
     if not incumbent.is_file():
         raise FileNotFoundError(incumbent)
 
@@ -270,6 +349,9 @@ def main() -> None:
         "book": args.book,
         "book_base_offset": args.book_offset if args.book else None,
         "probe": {
+            "discovered_names": [row["name"] for row in discovered],
+            "shortlisted_names": [row["name"] for row in checkpoints],
+            "max_probe_checkpoints": args.max_probe_checkpoints,
             "games": args.probe_games,
             "sims": args.probe_sims,
             "seed": args.seed,

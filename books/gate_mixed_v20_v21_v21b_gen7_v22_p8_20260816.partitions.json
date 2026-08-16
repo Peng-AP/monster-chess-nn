@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "book": "books/gate_mixed_v20_v21_v21b_gen7_v22_p8_20260816.json",
+  "book_sha256": "45890ecf7d839167f101af8af40885f1f96afbca0d61cf9c4f30c3e8ff5dab02",
+  "entries": 1600,
+  "policy": "Every interval is half-open [start, end). A screen calibration and its candidates share one interval; selection, gate, confirmation, high-fidelity, and self-skew intervals are disjoint.",
+  "blocks": [
+    {"name": "recovery2x_checkpoint_screen", "start": 0, "end": 120},
+    {"name": "recovery2x_binding_gate", "start": 120, "end": 340},
+    {"name": "recovery2x_high_fidelity", "start": 340, "end": 380},
+    {"name": "recovery2x_self_skew", "start": 380, "end": 420},
+    {"name": "latest_teacher_checkpoint_screen", "start": 420, "end": 540},
+    {"name": "latest_teacher_binding_gate", "start": 540, "end": 760},
+    {"name": "latest_teacher_high_fidelity", "start": 760, "end": 800},
+    {"name": "latest_teacher_self_skew", "start": 800, "end": 840},
+    {"name": "replicate_checkpoint_screen", "start": 840, "end": 960},
+    {"name": "replicate_binding_gate", "start": 960, "end": 1180},
+    {"name": "final_h2h", "start": 1180, "end": 1380},
+    {"name": "reserved", "start": 1380, "end": 1600}
+  ]
+}
