@@ -2300,5 +2300,56 @@ teacher recovery at 1x/2x/4x/balanced, and this one. The corpus fix removed a
 real defect (the oracle's policy-1.0 labels on non-converting play) and still
 did not break the pattern.
 
+## 41. Generation 11 clears the high-power gate (2026-08-17)
+
+Section 40 rejected the first v23 attempt and noted the run was **starved**:
+331,844 rows against Gen9's 936,324, because it was built in a fresh lineage
+with nothing to accumulate. Generation 11 repeats the attempt in the MAIN
+lineage at the canonical defaults -- anchor plus a four-generation sliding
+window, ~670,000 rows, no V20-era data -- with the 2026-08-16 corpus fixes
+(oracle dropped, threefold repetition, finisher active).
+
+### 41.1 The screen broke a seven-arm pattern
+
+| checkpoint | dWhite | dBlack | dAggregate | raw aggregate |
+|---|---:|---:|---:|---:|
+| **epoch 8** | **+0.025** | **+0.100** | **+0.062** | **0.5625** |
+| epoch 16 | -0.020 | +0.135 | +0.057 | 0.5575 |
+| **epoch 6** | **+0.015** | **+0.075** | +0.045 | 0.5450 |
+| epoch 7 | -0.035 | +0.120 | +0.042 | 0.5425 |
+
+Every arm since Gen9 -- Gen10, its seed-43 replicate, teacher recovery at
+1x/2x/4x/balanced, and the starved v23 arm -- traded White away for Black.
+**Epochs 8 and 6 are positive on both colours.** The difference is the corpus,
+not the recipe: this is direct evidence the v23 failure was starvation rather
+than exhausted self-play.
+
+### 41.2 The gate
+
+`bootstrap_main_gen_0011/selected_epoch_008` versus V22, 800-game legs:
+
+| leg | games | aggregate | White | Black |
+|---|---:|---:|---:|---:|
+| vs_v22 | 800 | **0.5750** | 0.6075 | 0.5425 |
+| vs_ramp | 40 | 0.9625 | 1.0000 | 0.9250 |
+| anchor | 20 | 0.9500 | 1.0000 | 0.9000 |
+| vs_v22_confirm | 800 | **0.5431** | 0.6112 | 0.4750 |
+
+**PASS, confirmed, no failures.** Both model legs clear aggregate > 0.50 by
+3.9-6.8 SE with neither colour near the 0.40 floor, over **1,600 games** of
+binding evidence. The confirmation Black drop (0.5425 -> 0.4750, -6.75 points)
+matches the documented structural pattern almost exactly; five prior modern
+confirmations averaged -6.2.
+
+This time the screen was accurate: it predicted 0.5625 and the gate returned
+0.5750. Contrast section 40, where the 200-game screen said 0.515 and the gate
+returned 0.426 -- optimistic by 3 SE. A screen is reliable enough to shortlist
+and not to nominate.
+
+**This is not a version.** Under the owner's rules a number requires his
+playtest and explicit naming; the automated evidence is complete, the promotion
+is not. Generation 12 is already running from this checkpoint as the working
+bar inside the loop, exactly as Gen7 served before Gen9.
+
 *Updated 2026-08-17. Suite 716 passing. Predecessor reports
 retire to git history per project convention.*
