@@ -2383,5 +2383,45 @@ the gate in both directions -- conservative for seed 42, optimistic for seed 43
 -- which is exactly the section 33.4 floor and why a screen shortlists rather
 than nominates.
 
+## 42. Generation 12 compounds on generation 11 (2026-08-17)
+
+Generation 12 was generated from the gen11 candidate as the working bar, the
+same arrangement Gen9 used against Gen7, and gated against it.
+
+| leg | games | aggregate | White | Black |
+|---|---:|---:|---:|---:|
+| vs bar (gen11 ep8) | 800 | **0.5231** | 0.5450 | 0.5012 |
+| vs_ramp | 40 | 0.9625 | 1.0000 | 0.9250 |
+| anchor | 20 | 0.9750 | 1.0000 | 0.9500 |
+| vs bar, confirm | 800 | **0.5225** | 0.5450 | 0.5000 |
+
+**PASS, confirmed.** The two model legs agree to within 0.0006, which is an
+unusually tight read.
+
+(The legs print as `vs_v22` because `BAR` is a constant in `gate.py`; the
+actual opponent is `bootstrap_main_gen_0011/selected_epoch_008`, recorded in
+`bar_model`.)
+
+**The chain compounds: V22 -> gen11 -> gen12.** These are the first consecutive
+gated successors since Gen7 -> Gen9, and they answer the question the owner
+raised directly -- self-play does still drive the bootstrap. What had stalled it
+was a starved replay in one experiment and, before that, a corpus carrying the
+scripted oracle's policy-1.0 labels on play that never converted.
+
+### 42.1 The colour gap collapsed
+
+Self-calibration, same book, same 400 sims:
+
+| model | White | Black | gap |
+|---|---:|---:|---:|
+| V22 | 0.5900 | 0.4100 | **0.180** |
+| gen11 epoch 8 | 0.5200 | 0.4800 | **0.040** |
+
+The colour gap has been treated as near-structural for months; section 29 could
+close it only through deeper search, and then by redistribution rather than
+improvement. gen11 self-plays nearly balanced at 400 simulations. gen12 then
+scores Black **0.5012 / 0.5000** against that already-balanced bar, so this is
+not V22's Black being weak -- it is a real change in what the models play.
+
 *Updated 2026-08-17. Suite 716 passing. Predecessor reports
 retire to git history per project convention.*

@@ -1,0 +1,37 @@
+{
+ "experiment": "gen12_epoch7_binding_gate",
+ "date": "2026-08-17",
+ "candidate": "models/candidates/bootstrap_main_gen_0012/selected_epoch_007.pt",
+ "bar_model": "models\\candidates\\bootstrap_main_gen_0011\\selected_epoch_008.pt",
+ "note": "leg names print as vs_v22 because BAR is a constant in gate.py; the real opponent is gen11 epoch 8",
+ "verdict": "PASS",
+ "confirmed": true,
+ "legs": {
+  "vs_v22": {
+   "games": 800,
+   "aggregate": 0.5231,
+   "white": 0.545,
+   "black": 0.5012
+  },
+  "vs_ramp": {
+   "games": 40,
+   "aggregate": 0.9625,
+   "white": 1.0,
+   "black": 0.925
+  },
+  "anchor": {
+   "games": 20,
+   "aggregate": 0.975,
+   "white": 1.0,
+   "black": 0.95
+  },
+  "vs_v22_confirm": {
+   "games": 800,
+   "aggregate": 0.5225,
+   "white": 0.545,
+   "black": 0.5
+  }
+ },
+ "chain": "V22 -> gen11 (pooled 0.534 over two seeds) -> gen12 (0.523 vs gen11)",
+ "significance": "First consecutive gated successors since Gen7->Gen9."
+}
