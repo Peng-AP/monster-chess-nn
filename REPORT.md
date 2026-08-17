@@ -2611,6 +2611,11 @@ bar measured twice, and it demanded a check rather than a reassurance.
 
 ### The check: White has not eroded, it has stalled
 
+**The evidence in this subsection is superseded by section 48**, which measured
+the same question under control. The numbers below each come from a DIFFERENT
+book block, and block colour-bias is +-0.056 -- larger than the spread they
+were read as a trend in. The conclusion survived; the reasoning did not.
+
 Against v22, whose White has not moved since the chain began:
 
 | gen | aggregate | White | Black |
@@ -2694,6 +2699,83 @@ that is underpower, not a null.
 or data one.** The exact forced-capture solver exists but searches only Black's
 forced captures, and §37's leaf-probe null was measured on Black. A White-side
 equivalent is the untried lever.
+
+## 48. White never improved at all, measured under control (2026-08-17)
+
+Section 47 concluded that White had stalled, from per-colour scores against v22
+collected across six generations. Every one of those came from a different book
+block, and that invalidates the reasoning: **a block's colour bias is larger
+than the effect being measured.**
+
+The size of it, measured directly. gen16 was played against ITSELF over 800
+games on the block gen17's binding gate leg used, where the true score is
+0.5000 by construction:
+
+| gen16 vs gen16, 800 games, block 200 | score |
+|---|---:|
+| as White | **0.4437** |
+| as Black | **0.5563** |
+
+The aggregate is exactly 0.5000 -- it must be. So the **-0.056 White skew is
+entirely the opening set**, and at 800 games it is 3.6 SE from even. On the
+40-game probe block of the same book the same self-match read White **0.3000**.
+
+This immediately re-reads gen17's gate. Its White legs, against that 0.4437
+baseline rather than against 0.50:
+
+| leg | White | baseline | vs baseline |
+|---|---:|---:|---:|
+| vs bar | 0.4650 | 0.4437 | **+0.0213** |
+| vs bar, confirm | 0.4338 | 0.4437 | **-0.0099** |
+
+gen17's White is **at par**, not "the lowest in the chain" and not "2.2 SE from
+the floor". This is the law recorded after Gen8 -- a per-colour score
+references the bar's self-match, never 0.50 -- and it was not applied.
+
+It also exposes a property of the gate: on this block the absolute 0.40
+per-side floor sits only **0.044 below neutral** for White. A floor meant to
+catch a collapse is, on a Black-favouring block, within one poor sample of
+firing on a healthy model.
+
+### The controlled measurement
+
+Five generations, the **identical 300 openings**, the identical opponent, 600
+paired games each. Only the model varies.
+
+| gen | aggregate | White | Black |
+|---|---:|---:|---:|
+| gen11 | 0.5683 | 0.6383 | 0.4983 |
+| gen13 | 0.6200 | 0.6017 | 0.6383 |
+| gen15 | 0.6592 | 0.6683 | 0.6500 |
+| gen16 | 0.6692 | 0.6683 | 0.6700 |
+| gen17 | 0.6783 | 0.6417 | 0.7150 |
+
+| colour | gen11 -> gen17 | significance | range | monotone |
+|---|---:|---:|---:|:--|
+| White | **+0.0034** | **0.1 SE** | 0.0666 | no |
+| Black | **+0.2167** | **5.3 SE** | 0.2167 | **yes, all five** |
+
+**White did not improve. At all.** It wanders between 0.60 and 0.67 and ends
+where it began. Black rises at every single step. The chain's entire +139 Elo
+is Black's.
+
+White is not weak in absolute terms -- against v21b, two releases back, gen17
+scores **0.7742** and White is its *stronger* colour (0.7867 vs 0.7617). White
+stopped improving around v22; Black did not.
+
+**Consequences.** Black cannot gain 5 SE per six generations forever, and when
+it flattens the chain stops, because White contributes nothing. The Elo steps
+are already bending: +35, +30, +13, +13. White is therefore not a diminishing
+return but **unexploited headroom**, and section 47's draw anatomy gives its
+shape: White wins by ply 30 or never, 95% of wins land by ply 60, and every
+failure is a repetition after the attack stalls.
+
+**Methodological rule this establishes.** A per-colour score is meaningless
+without both a named opponent *and* a measured baseline for the block it was
+played on. Three separate readings failed today for want of the second: gate
+legs compared to 0.50, cross-generation scores compared across blocks, and a
+screen delta of +0.04 (0.6 SE) reported as a turning point. Either play the
+bar against itself on the same block, or do not quote a per-colour number.
 
 *Updated 2026-08-17. Suite 733 passing. Predecessor reports
 retire to git history per project convention.*

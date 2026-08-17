@@ -54,17 +54,32 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
-**White has stalled; Black is carrying the chain alone (2026-08-17).** Against
-v22, whose White never moves, the chain's White gained **+0.059** over six
-generations against Black's **+0.138**, and since gen13 White has moved
-**+0.013** -- under one standard error. The Elo steps halved to match (+35,
-+30, +13, +13). White's draws are **not** material: it scores 0.6141 from
+**White never improved at all; Black is the entire chain (2026-08-17).**
+Measured under control -- five generations, the identical 300 openings, the
+identical opponent, 600 games each -- **White moved +0.0034 (0.1 SE) from gen11
+to gen17 while Black moved +0.2167 (5.3 SE), monotone at every step.** White
+wanders between 0.60 and 0.67 and ends where it began. The entire +139 Elo is
+Black's, and the Elo steps are already bending (+35, +30, +13, +13): when Black
+flattens the chain stops.
+
+**Per-colour scores need a baseline, not just an opponent.** A block's colour
+bias is +-0.056, larger than most effects being measured: gen16 against
+*itself* scored White **0.4437** over 800 games on one block (true value 0.5000
+by construction) and **0.3000** on a 40-game block of the same book. Read
+against 0.4437 rather than 0.50, gen17's "alarming" gate White of 0.4338 is at
+par. Either play the bar against itself on the same block, or do not quote a
+per-colour number. Note also that on a Black-favouring block the absolute 0.40
+White floor sits only 0.044 below neutral.
+
+**White is unexploited headroom, not a diminishing return.** It is not weak
+absolutely -- against v21b gen17 scores 0.7742 with White its *stronger* colour
+-- it simply stopped improving around v22. Its failure mode is specific: White
+wins by ply 30 or never, 95% of wins land by ply 60, and every failure is a
+repetition after the attack stalls. White's draws are **not** material: it scores 0.6141 from
 pawnless positions against 0.6293 with pawns, and 34 of gen16's 62 wins ended
 with zero pawns, because the double-moving king hunts exactly as
-`evaluation.py` always claimed. Outcomes separate on **time** -- wins average
-30 plies with 95% landing by ply 60, draws average 82 with identical material,
-and every draw is a repetition. **White's ceiling is a search problem in the
-attack.** `REPORT.md` §47.
+`evaluation.py` always claimed. **White's ceiling is a search problem in the
+attack.** `REPORT.md` §§47-48.
 
 **The bootstrap chain now runs V22 -> gen11 -> gen12 -> gen13 -> gen14, and a
 round robin proves it is a single strength scale.** Every step passed the full
