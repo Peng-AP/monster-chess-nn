@@ -2351,5 +2351,37 @@ playtest and explicit naming; the automated evidence is complete, the promotion
 is not. Generation 12 is already running from this checkpoint as the working
 bar inside the loop, exactly as Gen7 served before Gen9.
 
+### 41.3 The seed replicate passes too
+
+Gen10 passed a screen and then failed twice, and its controlled seed-43
+replicate failed independently at 0.4925. So generation 11 was replicated the
+same way: identical corpus (662,190 rows) and identical recipe, training seed
+the only variable.
+
+| seed / checkpoint | leg | aggregate | White | Black |
+|---|---|---:|---:|---:|
+| 42 / epoch 8 | first | **0.5750** | 0.6075 | 0.5425 |
+| 42 / epoch 8 | confirm | **0.5431** | 0.6112 | 0.4750 |
+| 43 / epoch 16 | first | **0.5106** | 0.5637 | 0.4575 |
+| 43 / epoch 16 | confirm | **0.5081** | 0.5600 | 0.4562 |
+
+**Both pass, both confirmed** -- four legs, 3,200 games, every aggregate above
+0.50 and every colour above 0.40. Gen9 was promoted on a single seed; this is
+stronger evidence than the incumbent ever had.
+
+**The margin is seed-dependent and the pooled figure is the honest one.** Seed
+42 averages 0.559, seed 43 averages 0.509, pooled **0.534**. Seed 42 is the
+favourable tail rather than the expectation. What replicates is the direction:
+the corpus beats V22 on every leg from both seeds. Seed 43's two legs landing
+at 0.5106 and 0.5081 is a consistent small edge, not noise straddling the line.
+
+The screens agreed on magnitude and disagreed on which epoch: seed 42 chose
+epoch 8, seed 43 chose epoch 16, with top-three aggregate deltas of
++0.062/+0.057/+0.045 and +0.060/+0.057/+0.042. Checkpoint identity is seed
+noise; the effect is a property of the data. Screen error ran +/-0.05 against
+the gate in both directions -- conservative for seed 42, optimistic for seed 43
+-- which is exactly the section 33.4 floor and why a screen shortlists rather
+than nominates.
+
 *Updated 2026-08-17. Suite 716 passing. Predecessor reports
 retire to git history per project convention.*
