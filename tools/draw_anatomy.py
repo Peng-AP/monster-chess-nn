@@ -1,20 +1,36 @@
-"""Why does one side's games end drawn? Split the draws by cause and material.
+"""Why does one side's games end drawn? Split them by cause and by GAME LENGTH.
 
-A match report counts draws but never says what kind they were, and the two
-kinds mean opposite things. A **repetition** draw is a position the engine
-chose to repeat; a **cap** draw ran out of plies; a **structural** draw is one
-neither side could ever have won. Against v22 the chain's Black cut its draw
-rate 30.0% -> 13.3% over six generations while White's stayed put at 35-43%, so
-the question "is White's ceiling strength or conversion?" is now the one that
-decides where work goes -- and no artifact in `benchmarks/` can answer it.
+A match report counts draws but never says what kind they were. Against v22 the
+chain's Black cut its draw rate 30.0% -> 13.3% over six generations while
+White's stayed at 35-43%, so "is White's ceiling strength or conversion?" is
+the question that decides where work goes, and no artifact in `benchmarks/`
+could answer it.
 
-Material is what separates the cases for White. White is a king plus four
-pawns and wins only by capturing the black king; a White that has lost every
-pawn is a lone double-moving king against a full army and is not drawing a won
-game, it is drawing a drawn one. So the split that matters is:
+**Material is not the answer, and this tool used to claim it was.** The first
+version split draws by White's remaining pawns, on the reasoning that White is
+a king plus four pawns and a pawnless White must be structurally drawn. The
+data refuted it flatly (150 games, gen16 vs v22, 2026-08-17):
 
-    drawn, White still has pawns   -> conversion failure, worth attacking
-    drawn, White is a bare king    -> structural, no technique recovers it
+    score from pawnless positions   0.6141  (n=92)
+    score with pawns remaining      0.6293  (n=58)
+    of 62 White wins, 34 ended with ZERO pawns
+
+`evaluation.py` said so all along -- "a lone king can still hunt and capture
+Black's king. White without pawns is NOT lost" -- and the double-moving king
+really does hunt. The training signal supposedly missing is present too:
+`WHITE_PAWN_VALUE` is 0.18, *larger* than `PAWN_ELIMINATION_BONUS` at 0.14, and
+a lost pawn costs White 0.32 across the two terms.
+
+**Time is what separates the outcomes.** On the same 150 games:
+
+    win    n=62  mean  30.0 plies   90% of wins land by ply 50, 95% by ply 60
+    draw   n=62  mean  82.4 plies   median 82, every one a repetition
+    loss   n=26  mean  71.7 plies   none earlier than ply 46
+
+White either captures the king early or never does; a game still alive past
+ply 60 is a draw or a loss with near-certainty, and the material on both sides
+is the same in all three buckets. So the reported split is outcome x length,
+and material is printed as description only -- never as a verdict.
 
 Games are played exactly as `benchmark.play_one` plays them -- same repetition
 rule, same ply cap, same book start state including the half-move flag and
@@ -153,22 +169,66 @@ def main():
     for reason, count in reasons.most_common():
         print(f"   {reason:<12} {count:>4}  ({100 * count / max(1, len(draws)):.1f}% of draws)")
 
-    # The split that decides where work goes.
-    live = [g for g in draws if g["white_pawns"] > 0]
-    bare = [g for g in draws if g["white_pawns"] == 0]
-    print(f"\ndraws by White material:")
-    print(f"   White still has pawns  {len(live):>4}  "
-          f"({100 * len(live) / max(1, len(draws)):.1f}% of draws) "
-          f"-- conversion failures")
-    print(f"   White is a bare king   {len(bare):>4}  "
-          f"({100 * len(bare) / max(1, len(draws)):.1f}% of draws) "
-          f"-- structural, unwinnable")
-    if live:
-        pawns = collections.Counter(g["white_pawns"] for g in live)
-        print("   pawn count among the conversion failures: "
-              + ", ".join(f"{k}p x{v}" for k, v in sorted(pawns.items())))
-        black_left = sum(g["black_pieces"] for g in live) / len(live)
-        print(f"   mean black pieces remaining in those: {black_left:.1f}")
+    # Outcome x length: the axis the outcomes actually separate on.
+    def stats(rows):
+        if not rows:
+            return None
+        lengths = sorted(r["plies"] for r in rows)
+        return {"n": len(rows),
+                "mean_plies": round(sum(lengths) / len(lengths), 1),
+                "median_plies": lengths[len(lengths) // 2],
+                "min_plies": lengths[0], "max_plies": lengths[-1],
+                "mean_white_pawns": round(
+                    sum(r["white_pawns"] for r in rows) / len(rows), 2),
+                "mean_black_pieces": round(
+                    sum(r["black_pieces"] for r in rows) / len(rows), 2)}
+
+    buckets = {"win": stats(wins), "draw": stats(draws), "loss": stats(losses)}
+    print("\noutcome by game length:")
+    print("   %-6s %4s %9s %8s %8s %10s %8s"
+          % ("", "n", "mean", "median", "range", "wht pawns", "blk pcs"))
+    for label in ("win", "draw", "loss"):
+        s = buckets[label]
+        if not s:
+            continue
+        print("   %-6s %4d %9.1f %8d %4d-%-4d %10.2f %8.2f"
+              % (label, s["n"], s["mean_plies"], s["median_plies"],
+                 s["min_plies"], s["max_plies"], s["mean_white_pawns"],
+                 s["mean_black_pieces"]))
+
+    # How long the winning window stays open. A game past the last cutoff with
+    # no result is, empirically, no longer winnable.
+    horizon = {}
+    if wins:
+        win_lengths = sorted(r["plies"] for r in wins)
+        print("\nwins landing by ply:")
+        for cut in (20, 30, 40, 50, 60, 80, 120):
+            landed = sum(1 for p in win_lengths if p <= cut)
+            horizon[cut] = landed
+            print("   by %3d: %3d/%3d (%.0f%%)"
+                  % (cut, landed, len(win_lengths), 100 * landed / len(win_lengths)))
+
+    # Material, reported because it is cheap to record -- NOT as a verdict.
+    # Splitting draws on pawn count is what this tool got wrong on 2026-08-17;
+    # the two scores below are the refutation, printed every run so the mistake
+    # cannot quietly return.
+    def score_of(rows):
+        if not rows:
+            return None
+        return sum(1 if r["result"] > 0 else 0.5 if r["result"] == 0 else 0
+                   for r in rows) / len(rows)
+
+    pawnless = [g for g in games if g["white_pawns"] == 0]
+    with_pawns = [g for g in games if g["white_pawns"] > 0]
+    print("\nmaterial does not predict the result (descriptive only):")
+    print("   White ended pawnless   n=%-4d score %s"
+          % (len(pawnless), f"{score_of(pawnless):.4f}" if pawnless else "-"))
+    print("   White kept a pawn      n=%-4d score %s"
+          % (len(with_pawns), f"{score_of(with_pawns):.4f}" if with_pawns else "-"))
+    if wins:
+        bare_wins = sum(1 for r in wins if r["white_pawns"] == 0)
+        print("   of %d wins, %d ended with ZERO pawns -- the double-moving "
+              "king hunts" % (len(wins), bare_wins))
 
     doc = {"white": args.white, "black": args.black, "games": total,
            "sims": args.sims, "book": args.book,
@@ -176,8 +236,10 @@ def main():
            "score": (len(wins) + 0.5 * len(draws)) / total,
            "wins": len(wins), "losses": len(losses), "draws": len(draws),
            "draw_reasons": dict(reasons),
-           "draws_white_has_pawns": len(live),
-           "draws_white_bare_king": len(bare),
+           "by_outcome": buckets,
+           "wins_landing_by_ply": horizon,
+           "score_when_pawnless": score_of(pawnless),
+           "score_when_pawns_remain": score_of(with_pawns),
            "games_detail": games}
     if args.report_path:
         out = resolve(args.report_path)

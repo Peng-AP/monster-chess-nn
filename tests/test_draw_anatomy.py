@@ -1,9 +1,15 @@
-"""The material split is the whole verdict, so it gets pinned.
+"""Pins for `draw_anatomy`, including the mistake it used to make.
 
-`draw_anatomy` sorts drawn games into "White still had pawns" (a conversion
-failure worth attacking) and "White was a bare king" (structurally drawn). Get
-the parse wrong and the tool still produces a confident, plausible table
-pointing at the wrong work.
+The tool originally sorted drawn games by White's remaining pawns and labelled
+the pawnless ones "structural, unwinnable". That was an assumption written into
+the output and then read back as a finding. 150 games refuted it: White scores
+0.6141 from pawnless positions against 0.6293 with pawns, and 34 of its 62 wins
+ended with zero pawns -- the double-moving king really does hunt, exactly as
+`evaluation.py` always said.
+
+Outcomes separate on TIME, not material. So the material parse is still pinned
+(it is reported as description), and the framing is pinned too, so the
+discredited verdict cannot quietly return.
 """
 import importlib.util
 import os
@@ -76,6 +82,41 @@ class ProbeContract(unittest.TestCase):
                       encoding="utf-8").read()
         for reason in ('"repetition"', '"terminal"', '"ply_cap"', '"no_move"'):
             self.assertIn(reason, source)
+
+    def test_material_is_never_reported_as_a_verdict(self):
+        """The discredited labels must not come back.
+
+        "structural, unwinnable" was wrong: pawnless White scores 0.6141, and
+        more than half its wins end with no pawns at all. Material is cheap to
+        record and worth printing, but it does not predict the result and the
+        tool must not imply that it does.
+        """
+        source = open(os.path.join(ROOT, "tools", "draw_anatomy.py"),
+                      encoding="utf-8").read()
+        analysis = source.split('"""', 2)[2]      # skip the module docstring
+        for discredited in ("structural, unwinnable", "conversion failures"):
+            self.assertNotIn(discredited, analysis)
+        self.assertIn("material does not predict the result", analysis)
+
+    def test_outcomes_are_split_by_game_length(self):
+        """Time is the axis that separates win from draw.
+
+        Wins average 30 plies and 90% land by ply 50; draws average 82 with the
+        same material on both sides. A report that omits length cannot show it.
+        """
+        source = open(os.path.join(ROOT, "tools", "draw_anatomy.py"),
+                      encoding="utf-8").read()
+        self.assertIn("outcome by game length", source)
+        self.assertIn("wins landing by ply", source)
+        self.assertIn('"by_outcome": buckets', source)
+        self.assertIn('"wins_landing_by_ply": horizon', source)
+
+    def test_the_refutation_is_printed_on_every_run(self):
+        """Both scores, side by side, so the mistake stays visible."""
+        source = open(os.path.join(ROOT, "tools", "draw_anatomy.py"),
+                      encoding="utf-8").read()
+        self.assertIn('"score_when_pawnless"', source)
+        self.assertIn('"score_when_pawns_remain"', source)
 
     def test_the_book_start_state_is_restored(self):
         """A FEN alone cannot say which half of White's turn is pending.
