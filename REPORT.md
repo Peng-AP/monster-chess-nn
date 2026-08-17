@@ -2534,5 +2534,61 @@ Both legs clear 0.50 aggregate and every colour clears the 0.40 floor, so the
 owner's criterion -- score above 0.50 with neither side collapsing, high power
 and confirmed -- is met on both.
 
-*Updated 2026-08-17. Suite 717 passing. Predecessor reports
+## 46. The full matrix, and gen15 is promoted as v23 (2026-08-17)
+
+The four pairs the ladder had never tested were played at 600 games each on a
+fresh 3,000-entry book, completing the matrix for all six models.
+
+| row scores this vs column | v22 | gen11 | gen12 | gen13 | gen14 | gen15 |
+|---|---:|---:|---:|---:|---:|---:|
+| gen15 | **0.6567** | 0.6250 | 0.6300 | 0.5700 | 0.5256 | - |
+| gen14 | 0.6408 | 0.6250 | 0.5958 | 0.5481 | - | |
+| gen13 | 0.6267 | 0.5808 | 0.5444 | - | | |
+| gen12 | 0.5817 | 0.5231 | - | | | |
+| gen11 | 0.5750 | - | | | | |
+
+**All 15 pairs measured, no inversions.** Every model beats every predecessor
+and loses to every successor. Least-squares Elo with v22 pinned at zero:
+
+| model | Elo | step |
+|---|---:|---:|
+| v22 | +0.0 | - |
+| gen11 | +36.9 | +36.9 |
+| gen12 | +50.4 | +13.5 |
+| gen13 | +85.5 | +35.1 |
+| gen14 | +115.4 | +29.9 |
+| **gen15** | **+130.4** | +15.0 |
+
+Largest residual 0.0226. One strength scale explains the whole pool.
+
+### A chained ladder oversells itself by about a sixth
+
+Summing the five adjacent 800-game gate passes as Elo gives **+150.8**. The
+joint fit over all 15 pairs gives **+130.4** — the chain is **15.7% high**.
+This is not noise; it is what happens when each step is measured against an
+opponent that is itself an estimate. **Never quote a sum of chained gate
+passes as a strength claim.** The correction matters for any cross-era
+comparison: v21 -> v22 was itself three gate passes chaining to +161.2, which
+deflates to roughly **+139** on the same basis.
+
+### Promotion
+
+That +139 is the only clean release-to-release precedent in the repo, and
+v22 -> gen15 is +130.4 against it. **One version, not five.** The owner
+promoted gen15 as **v23** on 2026-08-17, and it becomes both the release and
+the formal bar (`gate.BAR = "vs_v23"`).
+
+It is also the first release of the **bootstrap series**:
+`models/bootstrap_v23/`, not `fresh_start_v23`. The version number continues so
+that every score measured against the release ladder stays comparable; the
+prefix changes because the lineage did. v22 closed the `fresh_start` series
+after v2 through v22; v23 opens the one produced entirely by the self-play
+bootstrap loop.
+
+Caveat carried forward: the v21-era gates were 200 games (and 40 before that),
+and they predate the 2026-08-16 rule changes, which `CONTEXT.md` records as
+breaking comparability outright. Treat +139 as indicative of scale. The +130.4
+is the measured number.
+
+*Updated 2026-08-17. Suite 723 passing. Predecessor reports
 retire to git history per project convention.*

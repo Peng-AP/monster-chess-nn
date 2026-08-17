@@ -28,7 +28,7 @@ from config import DEFAULT_GAME_WORKERS  # noqa: E402
 from match import load_book, run_match  # noqa: E402
 
 
-BAR = ROOT / "models/fresh_start_v22/best_value_net.pt"
+BAR = ROOT / "models/bootstrap_v23/best_value_net.pt"
 
 
 def file_sha256(path: Path) -> str:

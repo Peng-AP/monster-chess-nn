@@ -40,9 +40,9 @@ class TestPostE5Ladder(unittest.TestCase):
 
     def test_binding_gate_uses_the_operating_point_and_current_bar(self):
         self.assertEqual(driver.GATE_SIMS, 3200)
-        # Second pin on the bar (gate.py holds the first). Moved to v21 when
-        # the owner promoted the gen-5 teacher-3200 candidate on 2026-08-06.
-        self.assertEqual(gate.BAR, "vs_v22")
+        # Second pin on the bar (gate.py holds the first). Moved to v23 when
+        # the owner promoted the generation-15 bootstrap candidate 2026-08-17.
+        self.assertEqual(gate.BAR, "vs_v23")
         source = (ROOT / "tools" / "post_e5_driver.py").read_text(encoding="utf-8")
         self.assertIn('"--engine", "native", "--sims", str(GATE_SIMS)', source)
 
