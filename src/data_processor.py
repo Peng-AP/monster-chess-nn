@@ -17,8 +17,10 @@ import re
 import numpy as np
 from tqdm import tqdm
 
+import sparse_policy
+
 from config import (
-    TENSOR_SHAPE, POLICY_SIZE,
+    TENSOR_SHAPE, POLICY_SIZE, PROMOTION_AWARE_POLICY_SIZE,
     RAW_DATA_DIR, PROCESSED_DATA_DIR,
     DATA_RETENTION_MAX_GENERATION_AGE, DATA_RETENTION_MIN_NONHUMAN_PLIES,
     RANDOM_SEED, VALUE_TARGET_HORIZON, VALUE_TARGET_FLOOR,
@@ -28,7 +30,7 @@ from config import (
 from encoding import (  # noqa: F401
     PIECE_TO_LAYER,
     fen_to_tensor, mirror_tensor,
-    move_to_index, mirror_move_index,
+    move_to_index, move_to_policy_index, mirror_move_index,
     policy_dict_to_target, mirror_policy,
 )
 
@@ -79,12 +81,21 @@ def load_all_games(raw_dir, include_human=True,
             continue
         input_positions += len(records)
         result = records[-1].get("game_result", 0)
+        source_record = records[0].get("source_record")
+        split_parent = None
+        if isinstance(source_record, dict) and source_record.get("path"):
+            # Deep-search teachers are alternate labels for an existing
+            # position, not independent games.  Keep every teacher in the
+            # source game's split so the same FEN cannot leak from training
+            # into validation/test under a new teacher filename.
+            split_parent = str(source_record["path"]).replace("\\", "/")
         games.append({
             "game_id": rel,
             "records": records,
             "source_kind": _source_kind_from_rel(rel, is_human),
             "result_bucket": _result_bucket(result),
             "generation": _generation_from_game_id(rel),
+            "split_parent": split_parent,
         })
 
     input_games = len(games)
@@ -145,13 +156,29 @@ def _result_bucket(result):
 
 
 def _split_games_by_result(games, seed):
-    """Stratified game-level split (80/10/10) by result bucket."""
-    rng = np.random.default_rng(seed)
-    by_bucket = {-1: [], 0: [], 1: []}
-    for game in games:
-        by_bucket[game["result_bucket"]].append(game)
+    """Stratified group-level split (80/10/10) by result bucket.
 
-    split = {"train": [], "val": [], "test": []}
+    Ordinary games form one-member groups.  Reanalysis teachers carry a
+    ``split_parent`` pointing at their source game and therefore move with it.
+    This preserves game-level isolation even when one source position has
+    several alternate policy labels.
+    """
+    rng = np.random.default_rng(seed)
+    grouped = {}
+    for game in games:
+        key = game.get("split_parent") or game["game_id"]
+        entry = grouped.setdefault(key, {
+            "result_bucket": game["result_bucket"], "games": []})
+        if entry["result_bucket"] != game["result_bucket"]:
+            raise ValueError(
+                f"split group {key!r} contains conflicting result buckets")
+        entry["games"].append(game)
+
+    by_bucket = {-1: [], 0: [], 1: []}
+    for entry in grouped.values():
+        by_bucket[entry["result_bucket"]].append(entry["games"])
+
+    split_groups = {"train": [], "val": [], "test": []}
     for bucket in (-1, 0, 1):
         group = by_bucket[bucket]
         if not group:
@@ -161,26 +188,30 @@ def _split_games_by_result(games, seed):
         n = len(group)
         n_train = int(0.8 * n)
         n_val = int(0.1 * n)
-        split["train"].extend(group[:n_train])
-        split["val"].extend(group[n_train:n_train + n_val])
-        split["test"].extend(group[n_train + n_val:])
-
-    for key in ("train", "val", "test"):
-        rng.shuffle(split[key])
+        split_groups["train"].extend(group[:n_train])
+        split_groups["val"].extend(group[n_train:n_train + n_val])
+        split_groups["test"].extend(group[n_train + n_val:])
 
     # Small-dataset fallback: keep splits non-empty when possible.
-    if len(games) >= 3 and len(split["val"]) == 0:
-        donor = "test" if len(split["test"]) > 1 else "train"
-        if split[donor]:
-            split["val"].append(split[donor].pop())
-    if len(games) >= 2 and len(split["test"]) == 0:
-        donor = "val" if len(split["val"]) > 1 else "train"
-        if split[donor]:
-            split["test"].append(split[donor].pop())
-    if len(split["train"]) == 0:
-        donor = "test" if split["test"] else "val"
-        if split[donor]:
-            split["train"].append(split[donor].pop())
+    group_count = len(grouped)
+    if group_count >= 3 and len(split_groups["val"]) == 0:
+        donor = "test" if len(split_groups["test"]) > 1 else "train"
+        if split_groups[donor]:
+            split_groups["val"].append(split_groups[donor].pop())
+    if group_count >= 2 and len(split_groups["test"]) == 0:
+        donor = "val" if len(split_groups["val"]) > 1 else "train"
+        if split_groups[donor]:
+            split_groups["test"].append(split_groups[donor].pop())
+    if len(split_groups["train"]) == 0:
+        donor = "test" if split_groups["test"] else "val"
+        if split_groups[donor]:
+            split_groups["train"].append(split_groups[donor].pop())
+
+    split = {"train": [], "val": [], "test": []}
+    for key in split:
+        for group in split_groups[key]:
+            split[key].extend(group)
+        rng.shuffle(split[key])
 
     return split
 
@@ -232,7 +263,14 @@ def _discounted_results(records, horizon=VALUE_TARGET_HORIZON,
     out = [0.0] * len(records)
     for a, b in zip(bounds, bounds[1:]):
         for i in range(a, b):
-            plies_to_end = b - 1 - i
+            # Preferred: an explicit distance stamped at generation time.
+            # The positional fallback below is correct only for a game recorded
+            # whole, so any consumer that drops records (filtering to a phase,
+            # truncating a tail) silently relabels the survivors -- the new last
+            # record reads as the finish and takes a full-strength target.
+            # tests/test_ramp_label_positional.py pins that hazard.
+            explicit = records[i].get("plies_to_end")
+            plies_to_end = int(explicit) if explicit is not None else b - 1 - i
             if mode == "near_mate":
                 plies_to_end = min(plies_to_end, horizon)
             out[i] = records[i].get("game_result", 0) * (gamma ** plies_to_end)
@@ -263,23 +301,141 @@ def policy_weight_for_record(rec, mask_human_ai=True):
     return 1.0 if human_won else 0.0
 
 
+def value_weight_for_record(rec):
+    """Return whether a record is a trustworthy VALUE teacher.
+
+    Mirrors policy_weight_for_record, and defaults to 1.0 for everything, so
+    every corpus built before this existed trains exactly as it did.
+
+    It exists because "teach policy from this source but not value" was not
+    expressible (HANDOFF SS7.1 called it bounded but unscoped). ps_monster
+    carries mcts_value 0.0 and outcome labels from 1600-blitz games: excellent
+    policy teachers, and beliefs about who was winning that nobody wants in
+    the value head unless the evidence says so. Setting value_weight on those
+    records turns the knowledge-vs-belief question into an A/B (DIRECTIVE D2).
+    """
+    if "value_weight" in rec:
+        return float(rec["value_weight"])
+    return 1.0
+
+
+def moves_left_weight_for_record(rec):
+    """Weight for the optional moves-left auxiliary target.
+
+    An explicit weight always wins. Otherwise only decisive, trusted value
+    trajectories teach game length. This excludes capped draws and preserves
+    the policy-only contract of imported sources such as PlayStrategy.
+    """
+    if "moves_left_weight" in rec:
+        return float(rec["moves_left_weight"])
+    # Only exact capture outcomes are trustworthy duration targets. The
+    # move-limit proxy is +/-0.5, and curriculum opinions can be fractional;
+    # teaching their distance would make the head predict time-to-cap/tier.
+    if abs(float(rec.get("game_result", 0.0))) < 0.999:
+        return 0.0
+    return value_weight_for_record(rec)
+
+
+def _segment_bounds(records):
+    """Return half-open bounds for repeated segments stored in one file."""
+    if not records:
+        return []
+    if any("segment" in rec for rec in records):
+        starts = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("segment") != records[i - 1].get("segment")]
+    else:
+        start_fen = records[0].get("fen")
+        starts = [i for i, rec in enumerate(records)
+                  if i == 0 or rec.get("fen") == start_fen]
+    return list(zip(starts, starts[1:] + [len(records)]))
+
+
+def _moves_left_targets(records):
+    """Remaining decisions, including the decision represented by each row."""
+    out = np.zeros((len(records),), dtype=np.float32)
+    for a, b in _segment_bounds(records):
+        for i in range(a, b):
+            explicit = records[i].get("plies_to_end")
+            remaining_after = int(explicit) if explicit is not None else b - 1 - i
+            out[i] = max(1, remaining_after + 1)
+    return out
+
+
+def _legal_policy_mask_packed(rec, promotion_aware=False):
+    """Packed legal-move mask for one half-move training record."""
+    from monster_chess import MonsterChessGame
+
+    is_white = rec["current_player"] == "white"
+    game = MonsterChessGame(fen=rec["fen"])
+    game.is_white_turn = is_white
+    game.board.turn = is_white
+    game.white_half_pending = bool(rec.get("half"))
+    policy_size = PROMOTION_AWARE_POLICY_SIZE if promotion_aware else POLICY_SIZE
+    mask = np.zeros((policy_size,), dtype=np.uint8)
+    if not is_white:
+        actions = game._get_black_actions(truncate_wins=False)
+    elif game.white_half_pending:
+        actions = game._white_second_half_moves(truncate_wins=False)
+    else:
+        actions = game._white_single_moves()
+    indices = [move_to_policy_index(move, promotion_aware) for move in actions]
+    if indices:
+        mask[indices] = 1
+    mirrored_indices = [mirror_move_index(index) for index in indices]
+    mirrored = np.zeros_like(mask)
+    if mirrored_indices:
+        mirrored[mirrored_indices] = 1
+    return (np.packbits(mask), np.packbits(mirrored),
+            frozenset(indices), frozenset(mirrored_indices))
+
+
+BLACK_WEIGHT_BALANCED = 1.75
+"""Multiplier that roughly equalises the two sides' gradient share.
+
+White moves twice per turn in this variant, so every turn emits two White
+half-move records against Black's one: the corpus is ~64/36 White/Black by
+construction, not by collection bias. Any capacity or training budget added to
+the SHARED trunk is therefore spent mostly on White, because that is where the
+loss reduction is. Measured on combined_v19_K: White 64.4% / Black 35.6%, and
+64/36 = 1.78.
+
+This exists to make "does Black benefit from more capacity?" a testable
+question (owner hypothesis, 2026-08-02). Arm C added a 2.74x tower to
+unbalanced data and White improved more -- which is what you would predict
+either way, so it tested nothing about the hypothesis.
+"""
+
+
 def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
                              value_floor=VALUE_TARGET_FLOOR,
                              value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                             input_channels=None, mask_human_ai=True):
+                             input_channels=None, mask_human_ai=True,
+                             black_weight=1.0, include_moves_left=False,
+                             include_legal_masks=False,
+                             include_capture_results=False,
+                             promotion_aware=False,
+                             mask_illegal_policy_targets=True,
+                             conversion_stats=None):
     """Flat conversion of game records to tensors for one split."""
     tensors = []
     values = []
     game_results = []
     policy_targets = []
     policy_weights = []
+    value_weights = []
+    moves_left_targets = []
+    moves_left_weights = []
+    legal_masks_packed = []
+    capture_results = []
 
     for game in tqdm(games, desc="Converting", leave=False):
         discounted = _discounted_results(
             game["records"], value_horizon, value_floor,
             mode=value_discount_mode,
         )
-        for rec, gr in zip(game["records"], discounted):
+        game_moves_left = _moves_left_targets(game["records"])
+        for rec, gr, moves_left in zip(
+                game["records"], discounted, game_moves_left):
             is_white = rec["current_player"] == "white"
             half_pending = bool(rec.get("half"))
             tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white,
@@ -289,20 +445,60 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             # side-to-move perspective for both White and Black.
             # gr comes pre-discounted from _discounted_results.
             val = rec["mcts_value"]
-            pol = policy_dict_to_target(rec["policy"], is_white)
+            pol = policy_dict_to_target(
+                rec["policy"], is_white, promotion_aware=promotion_aware)
             pol_weight = policy_weight_for_record(rec, mask_human_ai=mask_human_ai)
+            val_weight = value_weight_for_record(rec)
+            ml_weight = moves_left_weight_for_record(rec)
+            if include_legal_masks:
+                (legal_mask, mirrored_legal_mask,
+                 legal_indices, _mirrored_legal_indices) = (
+                    _legal_policy_mask_packed(
+                        rec, promotion_aware=promotion_aware))
+                target_indices = frozenset(np.flatnonzero(pol > 0))
+                if pol_weight > 0 and not target_indices.issubset(legal_indices):
+                    illegal = sorted(target_indices - legal_indices)
+                    if not mask_illegal_policy_targets:
+                        raise ValueError(
+                            "policy target contains illegal move indices "
+                            f"{illegal[:8]} at {rec['fen']} "
+                            f"(half={rec.get('half', 0)})")
+                    pol_weight = 0.0
+                    if conversion_stats is not None:
+                        key = "illegal_policy_targets_masked"
+                        conversion_stats[key] = conversion_stats.get(key, 0) + 1
+            if black_weight != 1.0 and not is_white:
+                # Scales, so an explicitly masked record (weight 0) stays masked.
+                pol_weight *= black_weight
+                val_weight *= black_weight
+                ml_weight *= black_weight
 
             tensors.append(tensor)
             values.append(val)
             game_results.append(gr)
             policy_targets.append(pol)
             policy_weights.append(pol_weight)
+            value_weights.append(val_weight)
+            moves_left_targets.append(moves_left)
+            moves_left_weights.append(ml_weight)
+            capture_result = float(rec.get("game_result", 0.0))
+            capture_result = (1.0 if capture_result >= 1.0 else
+                              -1.0 if capture_result <= -1.0 else 0.0)
+            capture_results.append(capture_result)
+            if include_legal_masks:
+                legal_masks_packed.append(legal_mask)
             if augment:
                 tensors.append(mirror_tensor(tensor))
                 values.append(val)
                 game_results.append(gr)
                 policy_targets.append(mirror_policy(pol))
                 policy_weights.append(pol_weight)
+                value_weights.append(val_weight)
+                moves_left_targets.append(moves_left)
+                moves_left_weights.append(ml_weight)
+                capture_results.append(capture_result)
+                if include_legal_masks:
+                    legal_masks_packed.append(mirrored_legal_mask)
 
     if tensors:
         X = np.array(tensors, dtype=np.float32)
@@ -310,14 +506,33 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
         y_result = np.array(game_results, dtype=np.float32)
         y_policy = np.array(policy_targets, dtype=np.float32)
         y_policy_weight = np.array(policy_weights, dtype=np.float32)
+        y_value_weight = np.array(value_weights, dtype=np.float32)
+        y_moves_left = np.array(moves_left_targets, dtype=np.float32)
+        y_moves_left_weight = np.array(moves_left_weights, dtype=np.float32)
+        y_legal_masks = np.array(legal_masks_packed, dtype=np.uint8)
+        y_capture_result = np.array(capture_results, dtype=np.float32)
     else:
         channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
         X = np.zeros((0, 8, 8, channels), dtype=np.float32)
         y_value = np.zeros((0,), dtype=np.float32)
         y_result = np.zeros((0,), dtype=np.float32)
-        y_policy = np.zeros((0, POLICY_SIZE), dtype=np.float32)
+        policy_size = (PROMOTION_AWARE_POLICY_SIZE
+                       if promotion_aware else POLICY_SIZE)
+        y_policy = np.zeros((0, policy_size), dtype=np.float32)
         y_policy_weight = np.zeros((0,), dtype=np.float32)
-    return X, y_value, y_result, y_policy, y_policy_weight
+        y_value_weight = np.zeros((0,), dtype=np.float32)
+        y_moves_left = np.zeros((0,), dtype=np.float32)
+        y_moves_left_weight = np.zeros((0,), dtype=np.float32)
+        y_legal_masks = np.zeros((0, policy_size // 8), dtype=np.uint8)
+        y_capture_result = np.zeros((0,), dtype=np.float32)
+    base = (X, y_value, y_result, y_policy, y_policy_weight, y_value_weight)
+    if include_moves_left:
+        base = base + (y_moves_left, y_moves_left_weight)
+    if include_legal_masks:
+        base = base + (y_legal_masks,)
+    if include_capture_results:
+        base = base + (y_capture_result,)
+    return base
 
 
 def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
@@ -327,7 +542,8 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
                      value_horizon=VALUE_TARGET_HORIZON,
                      value_floor=VALUE_TARGET_FLOOR,
                      value_discount_mode=VALUE_TARGET_DISCOUNT_MODE,
-                     input_channels=None, mask_human_ai=True):
+                     input_channels=None, mask_human_ai=True, black_weight=1.0,
+                     promotion_aware=False):
     """Convert raw game records to training tensors and save.
 
     When augment=True (default), each position is also horizontally
@@ -364,6 +580,7 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print("Game split integrity: PASS (no overlap across train/val/test game IDs)")
     print(f"  Games: train={len(train_games)}, val={len(val_games)}, test={len(test_games)}")
     print(f"  Processing positions (augment={augment})...")
+    conversion_stats = {}
 
     if value_floor < 1.0:
         if value_discount_mode == "progress":
@@ -372,28 +589,62 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
         else:
             print(f"  Value targets: near-mate ramp {value_floor} -> 1.0 "
                   f"over last {value_horizon} plies")
-    X_train, yv_train, yr_train, yp_train, ypw_train = _convert_games_to_arrays(
+    (X_train, yv_train, yr_train, yp_train, ypw_train, yvw_train,
+     yml_train, ymlw_train, ylm_train, ycr_train) = _convert_games_to_arrays(
         train_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
-    X_val, yv_val, yr_val, yp_val, ypw_val = _convert_games_to_arrays(
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, include_capture_results=True,
+        promotion_aware=promotion_aware,
+        conversion_stats=conversion_stats)
+    (X_val, yv_val, yr_val, yp_val, ypw_val, yvw_val,
+     yml_val, ymlw_val, ylm_val, ycr_val) = _convert_games_to_arrays(
         val_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
-    X_test, yv_test, yr_test, yp_test, ypw_test = _convert_games_to_arrays(
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, include_capture_results=True,
+        promotion_aware=promotion_aware,
+        conversion_stats=conversion_stats)
+    (X_test, yv_test, yr_test, yp_test, ypw_test, yvw_test,
+     yml_test, ymlw_test, ylm_test, ycr_test) = _convert_games_to_arrays(
         test_games, augment, value_horizon, value_floor, value_discount_mode,
-        input_channels=input_channels, mask_human_ai=mask_human_ai)
+        input_channels=input_channels, mask_human_ai=mask_human_ai,
+        black_weight=black_weight, include_moves_left=True,
+        include_legal_masks=True, include_capture_results=True,
+        promotion_aware=promotion_aware,
+        conversion_stats=conversion_stats)
 
     X = np.concatenate([X_train, X_val, X_test], axis=0)
     y_value = np.concatenate([yv_train, yv_val, yv_test], axis=0)
     y_result = np.concatenate([yr_train, yr_val, yr_test], axis=0)
     y_policy = np.concatenate([yp_train, yp_val, yp_test], axis=0)
     y_policy_weight = np.concatenate([ypw_train, ypw_val, ypw_test], axis=0)
+    y_value_weight = np.concatenate([yvw_train, yvw_val, yvw_test], axis=0)
+    y_moves_left = np.concatenate([yml_train, yml_val, yml_test], axis=0)
+    y_moves_left_weight = np.concatenate(
+        [ymlw_train, ymlw_val, ymlw_test], axis=0)
+    y_legal_masks = np.concatenate([ylm_train, ylm_val, ylm_test], axis=0)
+    y_capture_result = np.concatenate(
+        [ycr_train, ycr_val, ycr_test], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
     np.save(os.path.join(output_dir, "positions.npy"), X)
     np.save(os.path.join(output_dir, "mcts_values.npy"), y_value)
     np.save(os.path.join(output_dir, "game_results.npy"), y_result)
-    np.save(os.path.join(output_dir, "policies.npy"), y_policy)
+    # Policy targets go out sparse: measured density is 0.16% (6.6 non-zeros
+    # in 4096), so the dense form was ~416x its own content and was pushing
+    # training off the page cache. See src/sparse_policy.py.
+    builder = sparse_policy.Builder(y_policy.shape[1])
+    for start in range(0, len(y_policy), 8192):
+        builder.add_dense(y_policy[start:start + 8192])
+    builder.save(output_dir)
     np.save(os.path.join(output_dir, "policy_weights.npy"), y_policy_weight)
+    np.save(os.path.join(output_dir, "value_weights.npy"), y_value_weight)
+    np.save(os.path.join(output_dir, "moves_left.npy"), y_moves_left)
+    np.save(os.path.join(output_dir, "moves_left_weights.npy"),
+            y_moves_left_weight)
+    np.save(os.path.join(output_dir, "legal_masks_packed.npy"), y_legal_masks)
+    np.save(os.path.join(output_dir, "capture_results.npy"), y_capture_result)
 
     n_train, n_val, n_test = len(X_train), len(X_val), len(X_test)
     splits = {
@@ -415,6 +666,14 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
             "value_floor": float(value_floor),
             "input_channels": int(X.shape[3]) if len(X) else None,
             "total_positions": int(len(X)),
+            "moves_left_target": "remaining recorded decisions including current",
+            "moves_left_trust": "decisive records with positive value weight",
+            "policy_size": int(y_policy.shape[1]),
+            "promotion_aware_policy": bool(promotion_aware),
+            "legal_policy_mask": (
+                f"{y_policy.shape[1]} bits per row, numpy packbits big-endian"),
+            "capture_result": "white-perspective king-capture outcome; move caps are 0",
+            "conversion_stats": conversion_stats,
         }, f, indent=2)
 
     print(f"\nSaved to {output_dir}:")
@@ -424,6 +683,18 @@ def process_raw_data(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR,
     print(f"  policies.npy:     {y_policy.shape}")
     print(f"  policy_weights.npy: {y_policy_weight.shape} "
           f"(masked={int((y_policy_weight == 0).sum())})")
+    print(f"  value_weights.npy:  {y_value_weight.shape} "
+          f"(masked={int((y_value_weight == 0).sum())})")
+    print(f"  moves_left.npy:     {y_moves_left.shape}")
+    print(f"  moves_left_weights.npy: {y_moves_left_weight.shape} "
+          f"(masked={int((y_moves_left_weight == 0).sum())})")
+    print(f"  legal_masks_packed.npy: {y_legal_masks.shape} uint8")
+    unique_capture, capture_counts = np.unique(
+        y_capture_result, return_counts=True)
+    print("  capture_results.npy: "
+          f"{dict(zip(unique_capture.tolist(), capture_counts.tolist()))}")
+    print(f"  invalid enabled policy rows masked: "
+          f"{conversion_stats.get('illegal_policy_targets_masked', 0)}")
     print(f"  splits.npz:       train={n_train}, val={n_val}, test={n_test}")
     print("  split_game_ids.json: game-level split membership saved")
 
@@ -452,10 +723,17 @@ if __name__ == "__main__":
     parser.add_argument("--channels", type=int, default=None,
                         help="Position encoding width (15 legacy or 17; "
                              "default: config TENSOR_SHAPE)")
+    parser.add_argument("--black-weight", type=float, default=1.0,
+                        help="multiply policy AND value weights for "
+                             f"Black-to-move records ({BLACK_WEIGHT_BALANCED} "
+                             "roughly equalises the sides; default 1.0 = off)")
     parser.add_argument("--no-human-ai-mask", action="store_true",
                         help="v16/v17-faithful policy weighting: human-game AI "
                              "moves stay policy teachers (explicit weights "
                              "still honored)")
+    parser.add_argument(
+        "--promotion-aware-policy", action="store_true",
+        help="Keep q/r/b/n promotions distinct in the 4288-logit policy ABI")
     args = parser.parse_args()
     if args.max_generation_age is not None and args.max_generation_age < 0:
         raise ValueError("--max-generation-age must be >= 0")
@@ -475,4 +753,6 @@ if __name__ == "__main__":
         value_discount_mode=args.value_discount_mode,
         input_channels=args.channels,
         mask_human_ai=not args.no_human_ai_mask,
+        black_weight=args.black_weight,
+        promotion_aware=args.promotion_aware_policy,
     )

@@ -1,0 +1,124 @@
+{
+ "experiment": "v22_self_match_replayed_under_new_rules",
+ "date": "2026-08-16",
+ "model": "models/fresh_start_v22/best_value_net.pt",
+ "games_per_block": 200,
+ "sims": 400,
+ "book": "books/gate_mixed_v20_v21_v21b_gen7_gen9_p8_20260816.json",
+ "rules_changed": [
+  "threefold repetition on",
+  "scripted oracle dropped",
+  "tree reuse on",
+  "exact finisher on"
+ ],
+ "blocks": [
+  {
+   "offset": 120,
+   "old": {
+    "white": 0.605,
+    "black": 0.395,
+    "black_wld": [
+     16,
+     37,
+     47
+    ],
+    "mean_plies": 128.85
+   },
+   "new": {
+    "white": 0.57,
+    "black": 0.43,
+    "black_wld": [
+     22,
+     36,
+     42
+    ],
+    "mean_plies": 56.14
+   }
+  },
+  {
+   "offset": 240,
+   "old": {
+    "white": 0.695,
+    "black": 0.305,
+    "black_wld": [
+     12,
+     51,
+     37
+    ],
+    "mean_plies": 107.43
+   },
+   "new": {
+    "white": 0.66,
+    "black": 0.34,
+    "black_wld": [
+     19,
+     51,
+     30
+    ],
+    "mean_plies": 51.47
+   }
+  },
+  {
+   "offset": 540,
+   "old": {
+    "white": 0.61,
+    "black": 0.39,
+    "black_wld": [
+     17,
+     39,
+     44
+    ],
+    "mean_plies": 122.42
+   },
+   "new": {
+    "white": 0.555,
+    "black": 0.445,
+    "black_wld": [
+     28,
+     39,
+     33
+    ],
+    "mean_plies": 58.24
+   }
+  },
+  {
+   "offset": 660,
+   "old": {
+    "white": 0.66,
+    "black": 0.34,
+    "black_wld": [
+     15,
+     47,
+     38
+    ],
+    "mean_plies": 112.61
+   },
+   "new": {
+    "white": 0.61,
+    "black": 0.39,
+    "black_wld": [
+     24,
+     46,
+     30
+    ],
+    "mean_plies": 56.68
+   }
+  }
+ ],
+ "black_mean": {
+  "old": 0.3575,
+  "new": 0.4012
+ },
+ "colour_gap_mean": {
+  "old": 0.285,
+  "new": 0.1975,
+  "reduction": 0.31
+ },
+ "block_sd": {
+  "old": 0.0372,
+  "new": 0.0407
+ },
+ "attribution": "Black LOSSES unchanged; DRAWS became wins. The finisher converts endings Black already reached. Mean plies roughly halved.",
+ "gate_implication": "V22 self-Black now averages 0.4012 and clears the absolute 0.40 floor on 2 of 4 blocks; under the old rules it was 0.3575 and cleared it on none.",
+ "caveat": "Self-match: White falls as Black rises by construction. This is conversion, not a strength gain against an opponent."
+}

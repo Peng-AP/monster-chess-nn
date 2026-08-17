@@ -1,0 +1,53 @@
+{
+ "experiment": "reanalysis_prefilter_and_pipeline_audit",
+ "date": "2026-08-16",
+ "reanalysis_prefilter": {
+  "reference_sims": 3200,
+  "positions": 300,
+  "deep_ms_per_pos": 167,
+  "waste_today": "sample 8000 / keep 4000 -> half of every deep search is discarded (~7 of 14.5 min)",
+  "levels": [
+   {
+    "cheap_sims": 200,
+    "two_stage_cost": 0.57,
+    "overlap_at_50pct": 0.8,
+    "spearman": 0.734,
+    "retained_priority_mass": 0.879
+   },
+   {
+    "cheap_sims": 400,
+    "two_stage_cost": 0.64,
+    "overlap_at_50pct": 0.85,
+    "spearman": 0.811,
+    "retained_priority_mass": 0.912
+   },
+   {
+    "cheap_sims": 800,
+    "two_stage_cost": 0.77,
+    "overlap_at_50pct": 0.85,
+    "spearman": 0.852,
+    "retained_priority_mass": 0.919
+   }
+  ],
+  "verdict": "TRADE, not free: 36% saving at 400 sims for ~9% loss of deep-priority mass. Not quality-neutral."
+ },
+ "already_exploited": [
+  "fp16",
+  "pre_nn_clamp",
+  "8 workers (measured optimum)",
+  "native engine",
+  "early stop ON for matches, correctly OFF for generation (would corrupt visit targets)"
+ ],
+ "measured_losses": [
+  "inference server (1.30x worse search)",
+  "solver probe at leaves (null at ~1900x cost)"
+ ],
+ "free_and_unused": {
+  "tree_reuse": {
+   "wall_clock": -0.23,
+   "strength": "null 0.5000 over 200 games",
+   "status": "built, off by default since 2026-08-04"
+  }
+ },
+ "untested_free_candidate": "CUDA graphs / torch.compile on a 1.9M-param net at batch 16"
+}

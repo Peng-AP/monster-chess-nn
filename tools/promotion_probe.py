@@ -4,6 +4,7 @@ Each model defends the same starts against the same heuristic opponent. Reports
 promotion prevention, defender-king survival, and game score independently.
 """
 import argparse
+import importlib.util
 import json
 import multiprocessing as mp
 import os
@@ -15,11 +16,18 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from promotion_probe import (  # noqa: E402
-    compare_probe_reports,
-    play_probe_game,
-    summarize_probe_results,
-)
+from config import DEFAULT_GAME_WORKERS  # noqa: E402
+# This tool deliberately shares a basename with src/promotion_probe.py. A plain
+# ``from promotion_probe import ...`` becomes a circular self-import when a test
+# runner has already put tools/ first on sys.path. Load the core under an
+# unambiguous private name so collection order cannot change which file wins.
+_core_spec = importlib.util.spec_from_file_location(
+    "_monster_promotion_probe_core", os.path.join(ROOT, "src", "promotion_probe.py"))
+_core = importlib.util.module_from_spec(_core_spec)
+_core_spec.loader.exec_module(_core)
+compare_probe_reports = _core.compare_probe_reports
+play_probe_game = _core.play_probe_game
+summarize_probe_results = _core.summarize_probe_results
 
 
 _white_engine = None
@@ -91,7 +99,7 @@ def main():
     parser.add_argument("--defender", choices=("white", "black"), required=True)
     parser.add_argument("--sims", type=int, default=400)
     parser.add_argument("--seed", type=int, default=20260704)
-    parser.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 2))
+    parser.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     parser.add_argument("--max-plies", type=int, default=600)
     parser.add_argument("--max-prevention-drop", type=float, default=0.0)
     parser.add_argument("--max-king-survival-drop", type=float, default=0.0)

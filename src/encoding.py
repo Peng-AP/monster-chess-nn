@@ -10,7 +10,7 @@ from config import (
     MOVE_COUNT_LAYER,
     LEGACY_TENSOR_CHANNELS, LEGACY_PAWN_ADVANCEMENT_LAYER,
     RANK_COORD_LAYER, WHITE_PAWN_PROGRESS_LAYER, BLACK_PAWN_PROGRESS_LAYER,
-    POLICY_SIZE,
+    POLICY_SIZE, PROMOTION_POLICY_SIZE, PROMOTION_AWARE_POLICY_SIZE,
 )
 
 # Piece -> layer index
@@ -108,16 +108,69 @@ def mirror_tensor(tensor):
 
 
 # ------------------------------------------------------------------
-# Policy encoding: flat from_sq * 64 + to_sq  (4096 indices)
+# Policy encoding
+#   0..4095: source * 64 + destination (legacy ABI)
+#   4096..4287: color/rank * source-file * direction * promotion piece
 # ------------------------------------------------------------------
 
+_PROMOTION_PIECES = (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT)
+_PROMOTION_PIECE_TO_OFFSET = {
+    piece: offset for offset, piece in enumerate(_PROMOTION_PIECES)
+}
+
 def move_to_index(move):
-    """Convert a chess.Move to a flat policy index."""
+    """Convert a move to the legacy source/destination policy index."""
     return move.from_square * 64 + move.to_square
 
 
+def promotion_move_to_index(move):
+    """Return the distinct promotion-policy index for a promotion move.
+
+    The two color bands are identified by the pawn's source rank.  Requiring a
+    real promotion geometry makes malformed UCI suffixes fail loudly instead
+    of silently entering an unrelated target cell.
+    """
+    if move.promotion not in _PROMOTION_PIECE_TO_OFFSET:
+        raise ValueError("move is not a q/r/b/n promotion")
+    from_rank = chess.square_rank(move.from_square)
+    to_rank = chess.square_rank(move.to_square)
+    if (from_rank, to_rank) == (6, 7):
+        color_band = 0
+    elif (from_rank, to_rank) == (1, 0):
+        color_band = 1
+    else:
+        raise ValueError("promotion move does not cross a promotion rank")
+    from_file = chess.square_file(move.from_square)
+    to_file = chess.square_file(move.to_square)
+    direction = to_file - from_file
+    if direction not in (-1, 0, 1):
+        raise ValueError("promotion destination must be on an adjacent file")
+    direction_offset = direction + 1
+    piece_offset = _PROMOTION_PIECE_TO_OFFSET[move.promotion]
+    return (POLICY_SIZE + color_band * 96 + from_file * 12
+            + direction_offset * 4 + piece_offset)
+
+
+def move_to_policy_index(move, promotion_aware=False):
+    """Policy index for either the legacy or promotion-aware ABI."""
+    if promotion_aware and move.promotion is not None:
+        return promotion_move_to_index(move)
+    return move_to_index(move)
+
+
 def mirror_move_index(idx):
-    """Mirror a flat policy index across the file axis (a<->h)."""
+    """Mirror either policy ABI index across the file axis (a<->h)."""
+    if idx >= POLICY_SIZE:
+        relative = idx - POLICY_SIZE
+        if relative >= PROMOTION_POLICY_SIZE:
+            raise ValueError(f"policy index out of range: {idx}")
+        color_band, relative = divmod(relative, 96)
+        from_file, relative = divmod(relative, 12)
+        direction_offset, piece_offset = divmod(relative, 4)
+        mirrored_file = 7 - from_file
+        mirrored_direction = 2 - direction_offset
+        return (POLICY_SIZE + color_band * 96 + mirrored_file * 12
+                + mirrored_direction * 4 + piece_offset)
     from_sq = idx // 64
     to_sq = idx % 64
     from_file, from_rank = from_sq % 8, from_sq // 8
@@ -127,7 +180,7 @@ def mirror_move_index(idx):
     return new_from * 64 + new_to
 
 
-def policy_dict_to_target(policy_dict, is_white):
+def policy_dict_to_target(policy_dict, is_white, promotion_aware=False):
     """Convert an MCTS action_probs dict to a dense policy target vector.
 
     For Black: each key is a UCI move string -> index directly.
@@ -135,7 +188,8 @@ def policy_dict_to_target(policy_dict, is_white):
     get P(m1), since the policy head predicts single moves and m2 is
     evaluated from the post-m1 board state during MCTS.
     """
-    target = np.zeros(POLICY_SIZE, dtype=np.float32)
+    policy_size = PROMOTION_AWARE_POLICY_SIZE if promotion_aware else POLICY_SIZE
+    target = np.zeros(policy_size, dtype=np.float32)
     if policy_dict is None:
         return target  # uniform-ish fallback (all zeros, masked later)
 
@@ -145,7 +199,7 @@ def policy_dict_to_target(policy_dict, is_white):
             move = chess.Move.from_uci(m1_uci)
         else:
             move = chess.Move.from_uci(action_str)
-        target[move_to_index(move)] += prob
+        target[move_to_policy_index(move, promotion_aware)] += prob
 
     # Renormalize (White's m1 marginal should already sum to ~1)
     total = target.sum()
@@ -160,10 +214,22 @@ def policy_dict_to_target(policy_dict, is_white):
 # mirror_move_index stays as the definition (and for external callers).
 _MIRROR_PERM = np.array([mirror_move_index(i) for i in range(POLICY_SIZE)],
                         dtype=np.intp)
+_PROMOTION_MIRROR_PERM = np.array(
+    [mirror_move_index(i) for i in range(PROMOTION_AWARE_POLICY_SIZE)],
+    dtype=np.intp,
+)
 
 
 def mirror_policy(policy_vec):
     """Mirror a dense policy vector across the file axis."""
+    if policy_vec.shape[-1] == POLICY_SIZE:
+        permutation = _MIRROR_PERM
+    elif policy_vec.shape[-1] == PROMOTION_AWARE_POLICY_SIZE:
+        permutation = _PROMOTION_MIRROR_PERM
+    else:
+        raise ValueError(
+            f"unsupported policy width {policy_vec.shape[-1]}; expected "
+            f"{POLICY_SIZE} or {PROMOTION_AWARE_POLICY_SIZE}")
     mirrored = np.zeros_like(policy_vec)
-    mirrored[_MIRROR_PERM] = policy_vec
+    mirrored[permutation] = policy_vec
     return mirrored

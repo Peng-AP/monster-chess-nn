@@ -56,9 +56,15 @@ BLACK_PAWN_PROGRESS_LAYER = 16
 TENSOR_SHAPE = (8, 8, 17)
 
 # Policy head
-POLICY_SIZE = 4096       # flat from_sq(64) * to_sq(64) encoding
+POLICY_SIZE = 4096       # legacy flat from_sq(64) * to_sq(64) encoding
+# Optional LC0-style extension.  A source/destination action cannot distinguish
+# q/r/b/n promotions.  There are two promotion ranks, eight source files,
+# three destination-file offsets and four promoted pieces: 2*8*3*4 = 192.
+PROMOTION_POLICY_SIZE = 192
+PROMOTION_AWARE_POLICY_SIZE = POLICY_SIZE + PROMOTION_POLICY_SIZE
 C_PUCT = 1.5             # PUCT exploration constant (replaces UCB1 C)
 FPU_REDUCTION = 0.30     # First-Play Urgency reduction for unvisited PUCT children
+POLICY_TEMPERATURE = 1.0 # scale policy logits before legal-move softmax
 DIRICHLET_ALPHA = 0.3    # Dirichlet noise concentration parameter
 DIRICHLET_EPSILON = 0.25 # fraction of noise mixed into root priors
 POLICY_TARGET_PSEUDOCOUNT = 0.0  # policy-target smoothing as a FRACTION of total root
@@ -66,6 +72,9 @@ POLICY_TARGET_PSEUDOCOUNT = 0.0  # policy-target smoothing as a FRACTION of tota
                                  # targets, the AlphaZero default). See mcts.get_best_action.
 POLICY_LOSS_WEIGHT = 1.0 # weight of policy CE loss relative to value MSE
 POLICY_HEAD_CHANNELS = 32  # policy head bottleneck channels (widened from 16 for fresh start)
+POLICY_HEAD_TYPE = "dense"  # "dense" or compact source-to-destination "attention"
+POLICY_ATTENTION_CHANNELS = 32
+SIDE_POLICY_ADAPTERS = False  # opt-in White/Black residual attention projection
 STEM_CHANNELS = 64
 RESIDUAL_BLOCK_CHANNELS = (
     64, 64, 128, 128, 128, 128, 128, 128
@@ -83,6 +92,16 @@ VALUE_HEAD_CONV_CHANNELS = 32  # 1x1 bottleneck width for the spatial value head
 
 USE_SE_BLOCKS = False     # optional squeeze-excitation in residual blocks
 SE_REDUCTION = 16         # channel reduction ratio for SE bottleneck
+
+# Optional LC0-style auxiliary target: predict remaining recorded decisions.
+# Search can consume it through a bounded utility, but both the head and its
+# search use remain opt-in so old recipes and checkpoints behave identically.
+USE_MOVES_LEFT_HEAD = False
+MOVES_LEFT_HEAD_CHANNELS = 64
+MOVES_LEFT_LOSS_WEIGHT = 0.01
+MOVES_LEFT_MAX_EFFECT = 0.03
+MOVES_LEFT_THRESHOLD = 0.80
+MOVES_LEFT_SLOPE = 0.10
 
 # Training
 BATCH_SIZE = 256
@@ -116,7 +135,7 @@ MODEL_DIR = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__),
 # to) models/best_value_net.pt, which has never existed — so play.py silently
 # fell back to the heuristic and a fresh iterate.py run would believe there was
 # no incumbent at all. Both now resolve the real one through this constant.
-INCUMBENT_MODEL = os.path.join(MODEL_DIR, "fresh_start_v17", "best_value_net.pt")
+INCUMBENT_MODEL = os.path.join(MODEL_DIR, "bootstrap_v23", "best_value_net.pt")
 
 # Data retention (data_processor.py)
 DATA_RETENTION_MAX_GENERATION_AGE = 32  # drop nn_gen* older than this many generations behind latest (<=0 disables)
@@ -134,7 +153,7 @@ ITERATE_GATE_THRESHOLD = 0.55    # min candidate score vs incumbent
 ITERATE_ANCHOR_GAMES = 20        # anchor benchmark games per candidate
 ITERATE_ANCHOR_EPSILON = 0.05    # allowed anchor-score regression
 ITERATE_MAX_GENERATION_AGE = 4   # processing window in generations
-ITERATE_EPOCHS = 30              # training epochs per generation
+ITERATE_EPOCHS = 12              # V20 fine-tuning ceiling; early epochs dominate
 
 # White-king aggression (heuristic eval, adopted 2026-07-07). 1.0/1.0 = the
 # original GA-tuned baseline; these values scale the White-king terms:
@@ -157,6 +176,20 @@ KING_MOBILITY_WEIGHT = 0.01         # penalty per restricted square (2-move reac
 BARRIER_RANK_FILE_WEIGHT = 0.12     # bonus per barrier rank/file between king and edge
 PIECE_SAFETY_BONUS = 0.08           # bonus per Black heavy piece at safe distance (>= 3) from White king
 BLACK_KING_EXPOSURE_PENALTY = 0.04  # penalty per square adjacent to Black king attacked by White
+
+# Default worker count for anything that plays games in a process pool.
+#
+# NOT os.cpu_count() and not cpu_count()-2. On the 5060 Ti box every worker
+# builds its own CUDA context, and 14 of them dies at init with
+# "fatal : Memory allocation failure", leaving orphaned ~1.4 GB processes
+# behind -- the zombie-worker pattern that has cost this project runs before.
+# Measured aggregate throughput at 400 sims (2026-08-01) plateaus long before
+# the crash anyway: 4 workers 5.39 decisions/s, 8 workers 7.11, 12 workers
+# 7.38. Eight buys the whole win and leaves the box usable while it runs.
+#
+# Every --workers flag still overrides this; it is the default that matters,
+# because the default is what an unattended overnight driver uses.
+DEFAULT_GAME_WORKERS = 8
 
 # File paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

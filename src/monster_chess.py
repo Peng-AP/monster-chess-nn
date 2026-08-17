@@ -4,6 +4,22 @@ import random
 from config import STARTING_FEN, MAX_GAME_TURNS
 from evaluation import evaluate as _heuristic_evaluate
 
+# How many plies of move history a clone carries.
+#
+# python-chess copies the WHOLE move stack by default, one copy.copy per ply,
+# so clone() cost grows with game length -- and MCTS clones once per node
+# expansion.  Measured 2026-08-01 at ply ~60, 400 sims: 18.6 s of a 22.6 s
+# decision was board.copy(), 3.0M copy.copy calls, against 0.63 s of NN
+# forward.  That is the whole reason late-game decisions cost ~5x opening ones.
+#
+# Only one thing reads history: mcts._own_previous_moves, for oscillation
+# detection, at offsets -1/-3/-4 -- four plies.  Eight is that with a doubled
+# margin, and makes clone O(1) in game length.  Raising it costs speed; going
+# below 4 silently disables the oscillation override (including in the owner's
+# play path, which searches from a clone).  tests/test_clone_history_depth.py
+# pins the relationship.
+CLONE_HISTORY_PLIES = 8
+
 
 class MonsterChessGame:
     """Wraps python-chess to enforce Monster Chess rules.
@@ -35,7 +51,7 @@ class MonsterChessGame:
 
     def clone(self):
         g = MonsterChessGame.__new__(MonsterChessGame)
-        g.board = self.board.copy()
+        g.board = self.board.copy(stack=CLONE_HISTORY_PLIES)
         g.is_white_turn = self.is_white_turn
         g.turn_count = self.turn_count
         g._terminal = self._terminal
@@ -260,12 +276,18 @@ class MonsterChessGame:
             return self._white_second_half_moves()
         return self._white_single_moves()
 
-    def _white_second_half_moves(self):
-        """White's legal second half-moves: king-safe ones, else all (forced blunder)."""
+    def _white_second_half_moves(self, truncate_wins=True):
+        """White's legal second halves: wins first, then safe/forced moves.
+
+        Search keeps the established winning-capture shortcut. Data processing
+        requests the complete set so every genuinely legal policy target can be
+        represented by its training mask.
+        """
         self.board.turn = chess.WHITE
         candidates = list(self.board.pseudo_legal_moves)
         if not candidates:
             return []
+        wins = []
         safe = []
         allm = []
         for m2 in candidates:
@@ -274,13 +296,16 @@ class MonsterChessGame:
             # with White's own king left attacked (the game is already over).
             if self.board.king(chess.BLACK) is None:
                 self.board.pop()
-                return [m2]
+                if truncate_wins:
+                    return [m2]
+                wins.append(m2)
+                continue
             allm.append(m2)
             wk = self.board.king(chess.WHITE)
             if wk is not None and not self.board.is_attacked_by(chess.BLACK, wk):
                 safe.append(m2)
             self.board.pop()
-        return safe if safe else allm
+        return wins + (safe if safe else allm)
 
     def apply_search_action(self, action):
         """Apply one half-move (or a Black move) in-place and advance state."""

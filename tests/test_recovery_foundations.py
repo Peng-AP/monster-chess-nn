@@ -12,7 +12,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from encoding import fen_to_tensor
 from model_diff import convert_channels
-from train import _decisive_score
+from train import (
+    _checkpoint_regression_guard,
+    _decisive_score,
+    _relative_decisive_score,
+)
 import data_processor
 
 FENS = [
@@ -66,6 +70,49 @@ def test_decisive_score_none_when_side_missing():
     }) is None
 
 
+def test_relative_score_uses_worst_color_gains():
+    baseline = {
+        "policy_top1_white": 0.40, "policy_top1_black": 0.30,
+        "sign_acc_white": 0.80, "sign_acc_black": 0.75,
+    }
+    candidate = {
+        "policy_top1_white": 0.50, "policy_top1_black": 0.31,
+        "sign_acc_white": 0.85, "sign_acc_black": 0.77,
+    }
+    score, deltas = _relative_decisive_score(candidate, baseline)
+    assert score == pytest.approx(0.03)
+    assert deltas["policy_top1_white"] == pytest.approx(0.10)
+    assert deltas["policy_top1_black"] == pytest.approx(0.01)
+
+
+def test_checkpoint_guard_rejects_policy_collapse_despite_better_scalar():
+    incumbent = {
+        "policy_ce": 2.0,
+        "policy_top1_white": 0.40,
+        "policy_top1_black": 0.35,
+    }
+    decisive = {"policy_top1_white": 0.39, "policy_top1_black": 0.34}
+    passed, reasons = _checkpoint_regression_guard(
+        2.84, decisive, incumbent,
+        max_policy_ce_regression=0.02, max_side_top1_drop=0.02)
+    assert not passed
+    assert any("policy_ce" in reason for reason in reasons)
+
+
+def test_checkpoint_guard_allows_small_bounded_tradeoff():
+    incumbent = {
+        "policy_ce": 2.0,
+        "policy_top1_white": 0.40,
+        "policy_top1_black": 0.35,
+    }
+    decisive = {"policy_top1_white": 0.395, "policy_top1_black": 0.345}
+    passed, reasons = _checkpoint_regression_guard(
+        2.02, decisive, incumbent,
+        max_policy_ce_regression=0.02, max_side_top1_drop=0.01)
+    assert passed
+    assert reasons == []
+
+
 @pytest.mark.parametrize("channels,expected", [(15, 15), (17, 17), (None, 17)])
 def test_processor_emits_requested_channel_width(channels, expected):
     board, turn, half = FENS[1]
@@ -77,6 +124,8 @@ def test_processor_emits_requested_channel_width(channels, expected):
         "game_result": -1,
         "policy": {"d4d3": 1.0},
     }]
-    X, _, _, _, _ = data_processor._convert_games_to_arrays(
-        [{"records": records}], augment=False, input_channels=channels)
+    # Positional unpack deliberately avoided: the arity grew when D1 added
+    # value weights, and this test only ever cared about the channel width.
+    X = data_processor._convert_games_to_arrays(
+        [{"records": records}], augment=False, input_channels=channels)[0]
     assert X.shape == (1, 8, 8, expected)

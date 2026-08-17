@@ -1,0 +1,77 @@
+{
+ "experiment": "repetition_draw_threshold_sweep",
+ "date": "2026-08-16",
+ "model": "models/fresh_start_v22/best_value_net.pt",
+ "games": 24,
+ "simulations": 700,
+ "seed": 4242,
+ "note": "arms run sequentially; concurrent 8-worker arms froze the machine",
+ "arms": {
+  "off": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 8,
+   "rep_draw": 0,
+   "white_win": 11,
+   "records": 2240,
+   "mean_records": 93.3,
+   "black_score": 0.375
+  },
+  "n3": {
+   "games": 24,
+   "black_win": 4,
+   "cap_draw": 3,
+   "rep_draw": 6,
+   "white_win": 11,
+   "records": 1847,
+   "mean_records": 77.0,
+   "black_score": 0.3542
+  },
+  "n4": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 5,
+   "rep_draw": 3,
+   "white_win": 11,
+   "records": 2020,
+   "mean_records": 84.2,
+   "black_score": 0.375
+  },
+  "n5": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 5,
+   "rep_draw": 3,
+   "white_win": 11,
+   "records": 2036,
+   "mean_records": 84.8,
+   "black_score": 0.375
+  },
+  "n6": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 5,
+   "rep_draw": 3,
+   "white_win": 11,
+   "records": 2078,
+   "mean_records": 86.6,
+   "black_score": 0.375
+  }
+ },
+ "wall_clock": {
+  "off": "4m13s",
+  "n3": "2m17s",
+  "n4": "2m59s"
+ },
+ "speedup": {
+  "n3": 1.85,
+  "n4": 1.41
+ },
+ "black_wins_destroyed": {
+  "n3": 1,
+  "n4": 0,
+  "n5": 0,
+  "n6": 0
+ },
+ "verdict": "default threshold 4: 1.41x speedup, score identical to baseline, no conversion truncated. Threefold destroys a real Black win because White can pass and Black repeats while maneuvering."
+}

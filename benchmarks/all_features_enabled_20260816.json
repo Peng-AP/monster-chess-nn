@@ -1,0 +1,73 @@
+{
+ "experiment": "all_features_enabled",
+ "date": "2026-08-16",
+ "owner_directed": true,
+ "games": 24,
+ "simulations": 700,
+ "seed": 4242,
+ "model": "models/fresh_start_v22/best_value_net.pt",
+ "enabled": [
+  "threefold repetition",
+  "tree reuse",
+  "exact finisher",
+  "cuda graphs (already on)"
+ ],
+ "disabled": [
+  "scripted oracle (dropped)"
+ ],
+ "left_off_because_measured_worse": [
+  "inference server (1.30x slower)",
+  "solver leaf probe (null, ~1900x cost)",
+  "MONSTER_SOLVER certainty propagation (null)",
+  "moves-left utility (null)",
+  "promotion-aware policy (gate fail)",
+  "SE blocks / capture-WDL / side adapters / spatial value head (lost their screens)",
+  "HybridEvaluator (worse value source)"
+ ],
+ "arms": {
+  "baseline": {
+   "games": 24,
+   "black_win": 5,
+   "cap_draw": 8,
+   "rep_draw": 0,
+   "white_win": 11,
+   "records": 2240,
+   "finisher_moves": 0,
+   "finisher_games": 0,
+   "mean_records": 93.3,
+   "black_score": 0.375
+  },
+  "oracle_dropped_plus_repetition": {
+   "games": 24,
+   "black_win": 6,
+   "cap_draw": 0,
+   "rep_draw": 11,
+   "white_win": 7,
+   "records": 1558,
+   "finisher_moves": 0,
+   "finisher_games": 0,
+   "mean_records": 64.9,
+   "black_score": 0.4792
+  },
+  "all_on": {
+   "games": 24,
+   "black_win": 7,
+   "cap_draw": 0,
+   "rep_draw": 10,
+   "white_win": 7,
+   "records": 1436,
+   "finisher_moves": 18,
+   "finisher_games": 6,
+   "mean_records": 59.8,
+   "black_score": 0.5
+  }
+ },
+ "wall_clock": {
+  "baseline": "4m13s",
+  "oracle_dropped_plus_repetition": "1m01s",
+  "all_on": "1m02s"
+ },
+ "generation_speedup": 4.08,
+ "key_interaction": "the finisher was a null ONLY because the oracle blocked its class; with the oracle dropped it fires 18 times across 6 games and converts one extra win at zero time cost",
+ "caveat": "RULES CHANGE: not comparable to any pre-2026-08-16 number, including V22 promotion evidence. n=24, so outcome deltas are descriptive."
+}

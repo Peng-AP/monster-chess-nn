@@ -449,6 +449,44 @@ class NNEvaluator:
         value_white = self._to_white_perspective(value_side, game_state.is_white_turn)
         return value_white, policy_out[0].cpu().float().numpy()
 
+    def evaluate_with_policy_and_moves_left(self, game_state):
+        """Return ``(value, policy_logits, moves_left)`` for search.
+
+        ``moves_left`` is ``None`` for legacy checkpoints and evaluator clamps.
+        Keeping this separate from :meth:`evaluate_with_policy` preserves the
+        long-standing two-result inference ABI for every existing caller.
+        """
+        board = game_state.board
+        if board.king(chess.WHITE) is None:
+            return -1.0, None, 0.0
+        if board.king(chess.BLACK) is None:
+            return 1.0, None, 0.0
+        if game_state.is_white_turn:
+            if _white_threat_scan(game_state):
+                return 0.95, None, None
+        elif _black_can_capture_king(board):
+            return -0.95, None, None
+
+        tensor = self.fen_to_tensor(
+            game_state.fen(),
+            is_white_turn=game_state.is_white_turn,
+            half_pending=getattr(game_state, "white_half_pending", False),
+            input_channels=self.input_channels,
+        )
+        inp = self.torch.from_numpy(
+            tensor.transpose(2, 0, 1)[np.newaxis]
+        ).to(self.device)
+        if self._half:
+            inp = inp.half()
+
+        with self.torch.no_grad():
+            value_out, policy_out, _wdl, moves_out = self.model.forward_with_aux(inp)
+        value_side = float(value_out[0, 0].item())
+        value_white = self._to_white_perspective(value_side, game_state.is_white_turn)
+        moves_left = (None if moves_out is None
+                      else max(0.0, float(moves_out[0, 0].item())))
+        return value_white, policy_out[0].cpu().float().numpy(), moves_left
+
     def batch_evaluate(self, game_states):
         """Evaluate multiple states, returning values only (list of float)."""
         vals, _ = self._batch_impl(game_states)
@@ -457,6 +495,10 @@ class NNEvaluator:
     def batch_evaluate_with_policy(self, game_states):
         """Evaluate multiple states, return (values, policies) lists."""
         return self._batch_impl(game_states)
+
+    def batch_evaluate_with_policy_and_moves_left(self, game_states):
+        """Batched search inference with the optional moves-left prediction."""
+        return self._batch_impl(game_states, include_moves_left=True)
 
     def batch_policies(self, game_states):
         """Policy logits only, one NN forward, NO threat scans.
@@ -480,9 +522,10 @@ class NNEvaluator:
             _val_out, pol_out = self.model(batch)
         return list(pol_out.cpu().float().numpy())
 
-    def _batch_impl(self, game_states):
+    def _batch_impl(self, game_states, include_moves_left=False):
         values = []
         policy_list = []
+        moves_left_list = [] if include_moves_left else None
         indices_to_predict = []
         tensors = []
         sides = []
@@ -492,18 +535,28 @@ class NNEvaluator:
             if board.king(chess.WHITE) is None:
                 values.append(-1.0)
                 policy_list.append(None)
+                if include_moves_left:
+                    moves_left_list.append(0.0)
             elif board.king(chess.BLACK) is None:
                 values.append(1.0)
                 policy_list.append(None)
+                if include_moves_left:
+                    moves_left_list.append(0.0)
             elif gs.is_white_turn and _white_threat_scan(gs):
                 values.append(0.95)
                 policy_list.append(None)
+                if include_moves_left:
+                    moves_left_list.append(None)
             elif not gs.is_white_turn and _black_can_capture_king(board):
                 values.append(-0.95)
                 policy_list.append(None)
+                if include_moves_left:
+                    moves_left_list.append(None)
             else:
                 values.append(None)
                 policy_list.append(None)
+                if include_moves_left:
+                    moves_left_list.append(None)
                 indices_to_predict.append(i)
                 sides.append(gs.is_white_turn)
                 tensors.append(self.fen_to_tensor(
@@ -520,14 +573,22 @@ class NNEvaluator:
                 batch = batch.half()
 
             with self.torch.no_grad():
-                val_out, pol_out = self.model(batch)
+                if include_moves_left:
+                    val_out, pol_out, _wdl, moves_out = self.model.forward_with_aux(batch)
+                else:
+                    val_out, pol_out = self.model(batch)
+                    moves_out = None
 
             val_np = val_out.cpu().float().numpy().flatten()
             pol_np = pol_out.cpu().float().numpy()
             for j, idx in enumerate(indices_to_predict):
                 values[idx] = self._to_white_perspective(float(val_np[j]), sides[j])
                 policy_list[idx] = pol_np[j]
+                if include_moves_left and moves_out is not None:
+                    moves_left_list[idx] = max(0.0, float(moves_out[j, 0].item()))
 
+        if include_moves_left:
+            return values, policy_list, moves_left_list
         return values, policy_list
 
 
@@ -565,6 +626,15 @@ class HybridEvaluator:
         policy = self._nn.batch_policies([game_state])[0]
         return value, policy
 
+    def evaluate_with_policy_and_moves_left(self, game_state):
+        """Heuristic value plus NN policy and optional moves-left output."""
+        value = evaluate(game_state)
+        if abs(value) >= 0.95:
+            return value, None, None
+        _nn_value, policy, moves_left = (
+            self._nn.evaluate_with_policy_and_moves_left(game_state))
+        return value, policy, moves_left
+
     def batch_evaluate(self, game_states):
         return [evaluate(gs) for gs in game_states]
 
@@ -582,3 +652,18 @@ class HybridEvaluator:
             for i, p in zip(undecided, pols):
                 policies[i] = p
         return values, policies
+
+    def batch_evaluate_with_policy_and_moves_left(self, game_states):
+        """Heuristic values plus NN policy and optional moves-left output."""
+        values = [evaluate(gs) for gs in game_states]
+        policies = [None] * len(game_states)
+        moves_left = [None] * len(game_states)
+        undecided = [i for i, v in enumerate(values) if abs(v) < 0.95]
+        if undecided:
+            _nn_values, pols, mls = (
+                self._nn.batch_evaluate_with_policy_and_moves_left(
+                    [game_states[i] for i in undecided]))
+            for i, p, ml in zip(undecided, pols, mls):
+                policies[i] = p
+                moves_left[i] = ml
+        return values, policies, moves_left

@@ -6,14 +6,14 @@ import random
 import signal
 import time
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
 from tqdm import tqdm
 
 from config import (
     MCTS_SIMULATIONS, NUM_GAMES, OPPONENT_SIMULATIONS,
     TEMPERATURE_HIGH, TEMPERATURE_LOW, TEMPERATURE_MOVES,
-    RAW_DATA_DIR,
+    RAW_DATA_DIR, DEFAULT_GAME_WORKERS,
     SKIP_CHECK_POSITIONS, MAX_GAME_TURNS,
 )
 from curriculum import (
@@ -220,13 +220,16 @@ def _curriculum_indices_for_range(tier_min, tier_max):
     return indices
 
 
-def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_results,
+def _init_worker(engine_choice, model_path, opponent_model_path, curriculum,
+                 curriculum_live_results,
                  force_result, train_side, opponent_sims, opponent_pool_paths,
                  skip_check_positions, start_fens, start_fen_source, curriculum_indices,
                  temperature_high, temperature_low, temperature_moves,
                  record_all_plies, hybrid_eval=False,
                  root_noise=True, allow_early_stop=False):
     """Initializer for worker processes - loads model(s) once per worker."""
+    global _SEARCH_ENGINE
+    _SEARCH_ENGINE = engine_choice
     global _eval_fn, _opponent_eval_fn, _opponent_eval_pool
     global _curriculum, _curriculum_live_results
     global _force_result, _train_side, _opponent_sims, _skip_check_positions, _start_fens
@@ -267,17 +270,169 @@ def _init_worker(model_path, opponent_model_path, curriculum, curriculum_live_re
             _opponent_eval_pool.append(NNEvaluator(p))
 
 
-def _mate_algo_applicable(game):
-    """True when the verified scripted conversion applies: bare White king vs
-    Black king + at least three heavies (Q/R)."""
+# Moved to scripted_mate, which is where the algorithm it guards lives; the
+# play notebook needs it too. Re-exported under the old name for any caller.
+from scripted_mate import mate_algo_applicable as _mate_algo_applicable  # noqa: E402
+
+
+# --- Exact forced-capture finisher, for generation ---------------------------
+#
+# Law 1a: the model plays won positions as lost because the CORPUS says they
+# are. Black converts 88% with White on a bare king but only 36% from
+# king+3-pawns, and REPORT.md section 30 showed why -- capped games are
+# unconverted wins, not fortresses, with a forced king capture inside four
+# Black moves in 6 of 24 sampled games that search walked past.
+#
+# The scripted oracle already rescues its own class and must not grow past it
+# (owner, 2026-08-03: "the complexity will skyrocket"). This is the sanctioned
+# alternative: an exact search, not a heuristic, run only where the oracle
+# abstains. A hit ends the game with a REAL king capture, so the label becomes
+# a true Black win instead of a -0.5 move-limit relabel.
+#
+# ON by default (owner, 2026-08-16); MONSTER_NO_FINISHER=1 disables. It was a
+# null at 700-sim generation, but the native solver made it ~18.8x cheaper and
+# dropping the scripted oracle handed it the bare-king class the oracle used to
+# take -- the class where the oracle was losing 5 of the 12 games it drove.
+# Depth 4 is REPORT.md section 30.1's measured operating point: it completed
+# every one of 72 probe positions with zero budget exhaustion, where depth 5
+# cost roughly two orders of magnitude more for two extra wins.
+FINISHER_DEPTH_ENV = "MONSTER_FINISHER_DEPTH"
+FINISHER_NODES_ENV = "MONSTER_FINISHER_NODES"
+FINISHER_DEFAULT_DEPTH = 4
+FINISHER_DEFAULT_NODES = 2_000_000
+
+# The scripted oracle is DROPPED (owner, 2026-08-16). It had never had an off
+# switch, which is why its real cost went unmeasured for so long.
+#
+# It is verified at 11/12 on an AUTHORED deck (Black K+Q+R+R vs a bare White
+# king), but generation hands it positions carrying extra pawns and minors.
+# Measured over 24 games: it drove Black in 12 of them and converted 2, drew 5,
+# and **LOST 5** against a bare king -- 17% against the deck's 92% -- while
+# stamping every move it made at policy 1.0, including the losses. Across the
+# batch that was 387 policy-1.0 records, 241 of them from games that never
+# converted: roughly one record in nine teaching a shuffling move at certainty.
+#
+# A 120-game A/B without it: Black 0.317 -> 0.375, White wins 67 -> 57, and
+# 2.1x faster. The score delta is only ~1 SE, so the case rests on the cost and
+# the label pollution rather than on that number.
+#
+# Opt back in with MONSTER_SCRIPTED_MATE=1 to reproduce historical generations.
+SCRIPTED_MATE_ON_ENV = "MONSTER_SCRIPTED_MATE"
+
+
+def _scripted_mate_enabled():
+    from benchmark import _env_flag
+    return _env_flag(SCRIPTED_MATE_ON_ENV)
+
+
+def _finisher_settings():
+    """(enabled, depth, node_budget) for this worker, read from the env.
+
+    The environment is the transport because these have to reach Pool workers,
+    which are separate processes -- the same reason MONSTER_ENGINE travels this
+    way. Imported lazily from benchmark so there is one definition of the flag
+    and of the material ceiling.
+    """
+    from benchmark import (FINISHER_OFF_ENV, FINISHER_WHITE_MATERIAL_MAX,
+                           _default_on)
+    if not _default_on(FINISHER_OFF_ENV):
+        return False, 0, 0, FINISHER_WHITE_MATERIAL_MAX
+    try:
+        depth = int(os.environ.get(FINISHER_DEPTH_ENV, FINISHER_DEFAULT_DEPTH))
+    except ValueError:
+        depth = FINISHER_DEFAULT_DEPTH
+    try:
+        nodes = int(os.environ.get(FINISHER_NODES_ENV, FINISHER_DEFAULT_NODES))
+    except ValueError:
+        nodes = FINISHER_DEFAULT_NODES
+    return True, max(1, depth), max(1, nodes), FINISHER_WHITE_MATERIAL_MAX
+
+
+def _finisher_applicable(game, material_max):
+    """Black to move, with White at or near a bare king.
+
+    That is where the pathology lives and where White's branching is smallest,
+    so the exact search stays affordable.
+    """
+    if game.is_white_turn or getattr(game, "white_half_pending", False):
+        return False
     board = game.board
-    if chess.popcount(board.occupied_co[chess.WHITE]) != 1:
-        return False
-    if board.king(chess.BLACK) is None or board.king(chess.WHITE) is None:
-        return False
-    heavies = (board.pieces(chess.QUEEN, chess.BLACK)
-               | board.pieces(chess.ROOK, chess.BLACK))
-    return len(heavies) >= 3
+    white_pieces = chess.popcount(board.occupied_co[chess.WHITE])
+    return (white_pieces - 1) <= material_max
+
+
+def _finisher_probe(game, depth, node_budget):
+    """(move, exhausted) -- a proven forced king capture, or why there is none.
+
+    Play treats both misses identically and falls through to the network, since
+    an exhausted search is "no answer", never "no win". But the two must stay
+    DISTINGUISHABLE for measurement: collapsing them makes a starved budget
+    look exactly like a proven absence, and the whole question of whether a
+    capped game was convertible turns on telling those apart.
+    """
+    from forced_capture import try_forced_capture_move
+    move, _depth, exhausted = try_forced_capture_move(
+        game, max_black_moves=depth, node_budget=node_budget)
+    return move, bool(exhausted)
+
+
+def _finisher_move(game, depth, node_budget):
+    """Just the move, for callers that do not record diagnostics."""
+    return _finisher_probe(game, depth, node_budget)[0]
+
+
+_SEARCH_ENGINE = None  # set per worker; None means "follow the environment"
+
+
+def terminate_pool(executor, join_timeout=3):
+    """Tear a ProcessPoolExecutor down so the NEXT pool can start.
+
+    The historic failure (three confirmed occurrences, March 2026): one game
+    times out, workers are killed, and the humanseed phase that follows never
+    starts -- no error, just a frozen log and ~1.2GB processes still resident.
+
+    Two things make the difference, and both are easy to write the wrong way:
+
+    * **Snapshot `_processes` BEFORE `shutdown`.** `shutdown(wait=False)` clears
+      the internal dict, so iterating it afterwards finds nothing to kill and
+      leaves exactly the zombies that block the next pool.
+    * **Escalate.** SIGTERM, bounded join, then SIGKILL. A worker blocked inside
+      a CUDA call will not honour SIGTERM, and an unbounded join is how the
+      "hang" presented in the first place.
+
+    Returns the number of processes that needed killing, so callers and tests
+    can assert on it instead of guessing.
+    """
+    snapshot = dict(getattr(executor, "_processes", {}))
+    executor.shutdown(wait=False, cancel_futures=True)
+    killed = 0
+    for pid, proc in snapshot.items():
+        if not proc.is_alive():
+            continue
+        killed += 1
+        try:
+            os.kill(pid, signal.SIGTERM)
+            proc.join(timeout=join_timeout)
+            if proc.is_alive():
+                os.kill(pid, 9)  # SIGKILL: CUDA-blocked workers ignore SIGTERM
+                proc.join(timeout=join_timeout)
+        except (OSError, ProcessLookupError):
+            pass
+    return killed
+
+
+def _resolve_search_cls():
+    """MCTS or the native drop-in, decided once per worker.
+
+    Workers are separate processes, so the choice travels via the initializer
+    argument or the MONSTER_ENGINE environment variable rather than a shared
+    global. Both classes satisfy the same get_best_action contract (D5).
+    """
+    from benchmark import _engine_choice
+    if _engine_choice(_SEARCH_ENGINE) == "native":
+        from native_mcts import NativeMCTS
+        return NativeMCTS
+    return MCTS
 
 
 def play_game(num_simulations, game_deadline=None):
@@ -299,11 +454,14 @@ def play_game(num_simulations, game_deadline=None):
     """
     import random as rng
 
-    # Build engine(s) based on training mode
+    # Build engine(s) based on training mode. `_search_cls` is MCTS or the
+    # native drop-in; both present the same get_best_action contract (D5), so
+    # nothing below this line knows which engine it is driving.
+    _search_cls = _resolve_search_cls()
     if _train_side == "both":
         # Single engine for both sides (backward-compatible)
-        engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
-                      root_noise=_root_noise, allow_early_stop=_allow_early_stop)
+        engine = _search_cls(num_simulations=num_simulations, eval_fn=_eval_fn,
+                             root_noise=_root_noise, allow_early_stop=_allow_early_stop)
         white_engine = engine
         black_engine = engine
     else:
@@ -312,11 +470,13 @@ def play_game(num_simulations, game_deadline=None):
         opponent_eval = _opponent_eval_fn
         if _opponent_eval_pool:
             opponent_eval = rng.choice(_opponent_eval_pool)
-        train_engine = MCTS(num_simulations=num_simulations, eval_fn=_eval_fn,
-                            root_noise=_root_noise, allow_early_stop=_allow_early_stop)
-        opponent_engine = MCTS(num_simulations=_opponent_sims,
-                               eval_fn=opponent_eval,
-                               root_noise=_root_noise, allow_early_stop=_allow_early_stop)
+        train_engine = _search_cls(num_simulations=num_simulations, eval_fn=_eval_fn,
+                                   root_noise=_root_noise,
+                                   allow_early_stop=_allow_early_stop)
+        opponent_engine = _search_cls(num_simulations=_opponent_sims,
+                                      eval_fn=opponent_eval,
+                                      root_noise=_root_noise,
+                                      allow_early_stop=_allow_early_stop)
         if _train_side == "white":
             white_engine = train_engine
             black_engine = opponent_engine
@@ -341,6 +501,13 @@ def play_game(num_simulations, game_deadline=None):
     move_number = 0
     aborted = False
     mate_bot = None  # ScriptedMate takes over Black once the position qualifies
+    (finisher_on, finisher_depth, finisher_nodes,
+     finisher_material_max) = _finisher_settings()
+    scripted_mate_on = _scripted_mate_enabled()
+    from repetition import RepetitionTracker
+    repetition = RepetitionTracker()
+    repeated = False
+    repetition.record(game, 0)
 
     while not game.is_terminal():
         if game_deadline is not None and time.time() > game_deadline:
@@ -364,7 +531,18 @@ def play_game(num_simulations, game_deadline=None):
             rng=rng,
         )
 
-        if not is_white and (mate_bot is not None or _mate_algo_applicable(game)):
+        # Try the exact finisher only where the oracle abstains, so its
+        # verified behaviour on the bare-king class is untouched. A miss costs
+        # a bounded search and falls through to the network below.
+        finisher_move = None
+        oracle_here = scripted_mate_on and _mate_algo_applicable(game)
+
+        if (finisher_on and not is_white and mate_bot is None
+                and not oracle_here
+                and _finisher_applicable(game, finisher_material_max)):
+            finisher_move = _finisher_move(game, finisher_depth, finisher_nodes)
+
+        if not is_white and (mate_bot is not None or oracle_here):
             # Provably-won ending reached (bare White king vs 3+ Black
             # heavies): defer Black to the verified scripted conversion so the
             # game finishes with a REAL outcome instead of a shuffle-timeout.
@@ -387,6 +565,25 @@ def play_game(num_simulations, game_deadline=None):
                     "start_source": _start_fen_source,
                 })
             game.apply_search_action(action)
+        elif finisher_move is not None:
+            # A proven forced king capture. Recorded exactly like the oracle's
+            # move -- policy 1.0 on a move the search proved, not an asserted
+            # value label. The game now ends in a real capture, which is the
+            # whole point: it turns a -0.5 move-limit relabel into a true
+            # Black win in the corpus.
+            if not skip_record:
+                from evaluation import evaluate
+                root_value = evaluate(game)
+                records.append({
+                    "fen": game.fen(),
+                    "mcts_value": round(-root_value, 4),
+                    "policy": {finisher_move.uci(): 1.0},
+                    "current_player": "black",
+                    "half": 0,
+                    "start_source": _start_fen_source,
+                    "finisher": True,
+                })
+            game.apply_search_action(finisher_move)
         else:
             # Pick the engine for the current side
             engine = white_engine if is_white else black_engine
@@ -408,6 +605,9 @@ def play_game(num_simulations, game_deadline=None):
             game.apply_search_action(action)
 
         move_number += 1
+        if repetition.record(game, move_number):
+            repeated = True
+            break
 
     if aborted:
         # Discard aborted games entirely: no reliable label exists.
@@ -423,10 +623,26 @@ def play_game(num_simulations, game_deadline=None):
             result = CURRICULUM_TIER_VALUES[tier - 1]
         else:
             result = game.get_result()
+    elif repeated:
+        # Drawn by rule, so it carries no lean -- unlike the cap's +-0.5 proxy
+        # for an unfinished game. A forced result or a forced curriculum tier
+        # value still wins, since those are asserted by the caller.
+        result = repetition.draw_result
     else:
         result = game.get_result()
-    for rec in records:
+    for i, rec in enumerate(records):
         rec["game_result"] = result
+        # Distance to the real end of THIS game, stamped now while it is known.
+        #
+        # data_processor._discounted_results otherwise infers it positionally,
+        # as (last index in segment - i), which is correct only for a game
+        # recorded whole. Any consumer that drops records -- filtering to a
+        # phase, truncating a tail -- silently relabels every survivor, because
+        # the new last record then reads as the finish and gets a full-strength
+        # target. Stamping it makes those operations safe; the processor
+        # prefers this field and falls back to the positional rule for the many
+        # corpora written before it existed.
+        rec["plies_to_end"] = len(records) - 1 - i
 
     return records, False
 
@@ -462,6 +678,29 @@ def _simulation_stats(sim_values):
     }
 
 
+def _result_summary(results):
+    """Separate captured-king wins from move-limit training labels.
+
+    Self-play keeps the historical +/-0.5 label for a move-limit ending, but
+    evaluation correctly scores that outcome as a draw. Lumping every positive
+    label into ``white_wins`` made long generations look more decisive than
+    the games they actually produced.
+    """
+    white_wins = int(results.get(1, 0))
+    black_wins = int(results.get(-1, 0))
+    neutral = int(results.get(0, 0))
+    leaning_white = int(results.get(0.5, 0))
+    leaning_black = int(results.get(-0.5, 0))
+    return {
+        "white_wins": white_wins,
+        "black_wins": black_wins,
+        "draws": neutral + leaning_white + leaning_black,
+        "neutral_draws": neutral,
+        "time_leaning_white": leaning_white,
+        "time_leaning_black": leaning_black,
+    }
+
+
 def _worker(args):
     """Worker function for multiprocessing."""
     game_id, num_simulations, seed = args
@@ -488,6 +727,8 @@ def _worker(args):
 def main():
     parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
     parser.add_argument("--num-games", type=int, default=NUM_GAMES)
+    parser.add_argument("--engine", choices=("python", "native"), default=None,
+                        help="search engine; defaults to MONSTER_ENGINE or python")
     parser.add_argument("--simulations", type=int, default=MCTS_SIMULATIONS)
     parser.add_argument("--simulations-min", type=int, default=None,
                         help="Minimum simulations per game (default: --simulations)")
@@ -495,7 +736,9 @@ def main():
                         help="Maximum simulations per game (default: --simulations)")
     parser.add_argument("--output-dir", type=str, default=RAW_DATA_DIR)
     parser.add_argument("--workers", type=int, default=None,
-                        help="Number of parallel workers (default: CPU count)")
+                        help=f"Number of parallel workers (default: {DEFAULT_GAME_WORKERS})")
+    parser.add_argument("--stall-timeout", type=float, default=600.0,
+                        help="stop if no game completes for this many seconds")
     parser.add_argument("--use-model", type=str, default=None,
                         help="Path to trained .pt model for NN evaluation")
     parser.add_argument("--hybrid-eval", action="store_true",
@@ -553,6 +796,8 @@ def main():
         raise ValueError("--hybrid-eval requires --use-model")
     if args.simulations <= 0:
         raise ValueError("--simulations must be > 0")
+    if args.stall_timeout <= 0:
+        raise ValueError("--stall-timeout must be > 0")
     if args.simulations_min is not None and args.simulations_min <= 0:
         raise ValueError("--simulations-min must be > 0")
     if args.simulations_max is not None and args.simulations_max <= 0:
@@ -595,7 +840,7 @@ def main():
     else:
         curriculum_indices = None
 
-    workers = args.workers or os.cpu_count()
+    workers = args.workers or DEFAULT_GAME_WORKERS
     model_path = args.use_model
     opponent_model_path = args.opponent_model
     opponent_pool_paths = []
@@ -612,9 +857,13 @@ def main():
             pool_candidates = pool_candidates[-args.opponent_pool_size:]
         opponent_pool_paths = pool_candidates
 
-    # With NN evaluation, use fewer workers (GPU memory)
+    # NN workers each own a CUDA context and model copy.  The shared project
+    # default is deliberately eight: this exact 5060 Ti measured 5.39, 7.11,
+    # and 7.38 decisions/s at 4, 8, and 12 workers respectively, while 14
+    # workers exhausted memory (tests/test_worker_defaults.py).  Do not
+    # silently undo an explicit/default eight-worker request with the old
+    # February-era four-worker cap.
     if model_path or opponent_model_path or opponent_pool_paths:
-        workers = min(workers, 4)
         if model_path:
             print(f"Using NN evaluator: {model_path}")
         if opponent_model_path:
@@ -623,7 +872,7 @@ def main():
             print(f"Using opponent pool ({len(opponent_pool_paths)} models):")
             for p in opponent_pool_paths:
                 print(f"  - {p}")
-        print(f"(Limiting to {workers} workers for NN memory)")
+        print(f"NN worker processes: {workers} (one CUDA context per worker)")
 
     if args.train_side != "both":
         print(f"Alternating training: {args.train_side} side is training "
@@ -707,7 +956,8 @@ def main():
     executor = ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(model_path, opponent_model_path, args.curriculum, args.curriculum_live_results,
+        initargs=(args.engine, model_path, opponent_model_path, args.curriculum,
+                  args.curriculum_live_results,
                   args.force_result,
                   args.train_side, args.opponent_sims, opponent_pool_paths,
                   not args.keep_check_positions, start_fens, args.start_fen_source,
@@ -720,26 +970,20 @@ def main():
         futures = {executor.submit(_worker, task): task[0] for task in tasks}
 
         with tqdm(total=args.num_games, desc="Games") as pbar:
-            try:
-                # Timeout scales with sim budget: a 150-turn game at max sims
-                # can legitimately take 10+ minutes.  Allow ~0.02s per sim
-                # per turn × MAX_GAME_TURNS, with a floor of 600s.
-                per_game_budget = max(600, int(sim_max * MAX_GAME_TURNS * 0.025))
-                # Total timeout = per-game budget scaled by number of sequential
-                # batches (num_games / workers), plus 120s overhead.
-                # Previously used per_game_budget + 60 (per-game budget as batch
-                # budget), which caused systematic data loss for slower games.
-                #
-                # IMPORTANT: cap per_game_budget for batch timeout at 600s.
-                # The worker's game_deadline already handles legitimate slow games
-                # (and allows up to the full per_game_budget inside the game loop).
-                # The batch timeout must be short enough to catch a CUDA or worker
-                # deadlock within a few hours rather than 30+.  If a game-logic
-                # loop hangs, the worker's deadline breaks it; if CUDA deadlocks,
-                # the batch timeout below is the only escape hatch.
-                per_game_budget_batch = min(per_game_budget, 600)
-                total_timeout = per_game_budget_batch * max(1, args.num_games // workers) + 120
-                for future in as_completed(futures, timeout=total_timeout):
+            pending = set(futures)
+            while pending:
+                done, pending = wait(
+                    pending, timeout=args.stall_timeout,
+                    return_when=FIRST_COMPLETED)
+                if not done:
+                    hung = len(pending)
+                    tqdm.write(
+                        f"\n  WARNING: no game completed for "
+                        f"{args.stall_timeout:.0f}s; killing {hung} pending workers")
+                    timed_out_games += hung
+                    pbar.update(hung)
+                    break
+                for future in done:
                     try:
                         game_id, _sim_used, records, elapsed, aborted = future.result()
                     except Exception as e:
@@ -767,38 +1011,22 @@ def main():
                     game_result = records[-1]["game_result"]
                     results[game_result] = results.get(game_result, 0) + 1
 
-                    if game_result > 0:
+                    if game_result == 1:
                         winner = "White"
-                    elif game_result < 0:
+                    elif game_result == -1:
                         winner = "Black"
+                    elif game_result == 0.5:
+                        winner = "Draw (leans White)"
+                    elif game_result == -0.5:
+                        winner = "Draw (leans Black)"
                     else:
                         winner = "Draw"
                     tqdm.write(f"  Game {game_id}: {n_moves} moves, {winner} ({game_result}), {elapsed:.1f}s")
                     pbar.update(1)
-            except TimeoutError:
-                hung = sum(1 for f in futures if not f.done())
-                tqdm.write(f"\n  WARNING: {hung} game(s) timed out after 600s, killing workers")
-                timed_out_games += hung
-                pbar.update(hung)
     finally:
-        # Snapshot _processes BEFORE shutdown — shutdown(wait=False) clears the
-        # internal dict, leaving nothing to iterate over and producing zombie
-        # workers that block the next subprocess pool.
-        _procs_snapshot = dict(getattr(executor, '_processes', {}))
-        executor.shutdown(wait=False, cancel_futures=True)
-        for pid, proc in _procs_snapshot.items():
-            if proc.is_alive():
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    proc.join(timeout=3)
-                    if proc.is_alive():
-                        os.kill(pid, 9)  # SIGKILL
-                except (OSError, ProcessLookupError):
-                    pass
+        terminate_pool(executor)
 
-    white = sum(v for k, v in results.items() if k > 0)
-    black = sum(v for k, v in results.items() if k < 0)
-    draws = results.get(0, 0)
+    result_summary = _result_summary(results)
     print(f"\nDone! {total_positions} total positions across {saved_games} saved games (attempted {args.num_games}).")
     if skipped_empty > 0:
         print(f"Skipped empty games: {skipped_empty}")
@@ -806,7 +1034,15 @@ def main():
         print(f"Failed games: {failed_games}")
     if timed_out_games > 0:
         print(f"Timed out games: {timed_out_games}")
-    print(f"Results - White: {white}, Black: {black}, Draw: {draws} (saved games only)")
+    print("Capture results - "
+          f"White: {result_summary['white_wins']}, "
+          f"Black: {result_summary['black_wins']}, "
+          f"Draw: {result_summary['draws']} (saved games only)")
+    if (result_summary["time_leaning_white"]
+            or result_summary["time_leaning_black"]):
+        print("Move-limit draw labels - "
+              f"lean White: {result_summary['time_leaning_white']}, "
+              f"lean Black: {result_summary['time_leaning_black']}")
     sim_stats = _simulation_stats(sampled_simulations)
     if sim_stats["min"] is not None:
         print(
@@ -825,11 +1061,7 @@ def main():
             "failed_games": int(failed_games),
             "timed_out_games": int(timed_out_games),
             "total_positions": int(total_positions),
-            "results": {
-                "white_wins": int(white),
-                "black_wins": int(black),
-                "draws": int(draws),
-            },
+            "results": result_summary,
             "simulations": {
                 "configured_base": int(args.simulations),
                 "configured_min": int(sim_min),
@@ -842,6 +1074,7 @@ def main():
                 "moves": int(args.temperature_moves),
             },
             "workers": int(workers),
+            "stall_timeout": float(args.stall_timeout),
             "train_side": args.train_side,
             "curriculum": bool(args.curriculum),
             "curriculum_live_results": bool(args.curriculum_live_results),

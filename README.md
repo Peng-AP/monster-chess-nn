@@ -47,9 +47,12 @@ turn are clamped before any network call.
 **Network** (`src/train.py`) is a ResNet (configurable stem and tower, default
 8 blocks up to 128 channels) with a policy head over a flat 4096-move space
 (`from_square × to_square`) and a value head that can train as a scalar regression
-or a win/draw/loss classifier. Checkpoint architecture is inferred from the state
-dict at load time, so older checkpoints with different widths or encodings remain
-loadable.
+or a win/draw/loss classifier. The established policy head is dense; an opt-in
+source-to-destination attention head provides the same logits with far fewer
+parameters. An opt-in moves-left auxiliary head predicts remaining recorded
+decisions without reshaping the value target. Checkpoint architecture is inferred
+from the state dict, so older checkpoints remain loadable and inference still
+returns the same `(value, policy)` pair.
 
 **Position encoding** (`src/encoding.py`) is 17 planes: 12 piece planes, side to
 move, a half-move indicator (distinguishing White's second half-turn), a signed
@@ -82,7 +85,7 @@ pip install -r requirements.txt
 Play against the engine in the terminal:
 
 ```bash
-python src/play.py --color black --model models/fresh_start_v17/best_value_net.pt
+python src/play.py --color black --model models/fresh_start_v19/best_value_net.pt
 ```
 
 or open `src/play.ipynb` for a widget UI with model selection, curriculum decks,
@@ -111,6 +114,10 @@ Sanity-check a merged corpus before spending a training run on it:
 python tools/pretrain_check.py data/raw/my_run --reference data/raw/previous_run
 ```
 
+`data/processed/` intentionally retains only the active v19_B-derived corpus;
+see `data/processed/README.md` and the cleanup manifest under `logs/archive/`
+before regenerating concluded experiment datasets.
+
 Train:
 
 ```bash
@@ -121,11 +128,152 @@ python src/train.py --data-dir data/processed/my_run --model-dir models/my_model
 Ramp-target training uses the scalar head:
 `--value-head scalar` after processing with `--value-floor 0.5 --value-horizon 60`.
 
-Run one full generate → process → train → gate cycle:
+LC0-inspired candidates are separate, opt-in experiments: `--moves-left-head`
+adds masked Huber regression on decisive trusted trajectories;
+`--train-moves-left-head-only` makes an exact frozen lift of a resumed model;
+`--legal-policy-mask` excludes illegal logits from policy loss and top-1;
+`--policy-head attention` selects the compact policy head; and
+`--ema-decay 0.999` validates and checkpoints an exponential weight average.
+`--promotion-policy` enables the backward-compatible 4288-logit policy that
+keeps q/r/b/n promotions distinct; its corpus must be built with
+`data_processor.py --promotion-aware-policy`. `--train-promotion-head-only`
+lifts an existing checkpoint and freezes every legacy parameter and BatchNorm
+buffer. Checkpoint selection can be bounded with
+`--max-policy-ce-regression` and `--max-side-top1-drop`.
+None of these flags changes the default recipe.
+
+Moves-left can now be consumed by Python or native PUCT through a bounded,
+opt-in utility. The match harness exposes it independently per side with
+`--moves-left-a` / `--moves-left-b` and tunable max-effect, threshold, and
+slope flags. The first exact Gen9 lift learned a real length signal but was a
+clean playing null (0.5062 over 80 paired games; 0/16 conversion moves changed),
+so it remains infrastructure rather than a successor. See `REPORT.md` §32.
+
+Current numbered release and formal strength bar:
+`models/fresh_start_v22/best_value_net.pt`. This is the former Gen9 epoch-6
+arena checkpoint, explicitly promoted by the owner on 2026-08-16 after it
+passed Gen7 twice on disjoint paired openings and beat the prior v21b bar
+directly over 400 games. The source candidate and all earlier numbered models
+remain immutable. See `CONTEXT.md` for the current ledger and `REPORT.md`
+§§24–27 for the paired evaluation evidence.
+
+Preview one complete bootstrap generation without writing anything:
 
 ```bash
-python src/iterate.py --generations 1
+python src/iterate.py --dry-run
 ```
+
+Then run it. Promotion is deliberately explicit and is allowed only after the
+full binding gate; it advances the bootstrap champion pointer but does not
+create a numbered release or bypass the owner's release playtest.
+
+```bash
+python src/iterate.py --generations 1 --promote-on-pass
+```
+
+The resumable state machine is `generate → reanalyze → process → compose →
+train → checkpoint_screen → offline_gate → binding_gate →
+high_fidelity_gate → self_skew → promote`. Every unique checkpoint preserved
+by validation receives a same-openings arena screen; the best worst-color result
+is only a nomination for the normal gates. The offline comparison is advisory
+by default: it records held-out policy/value warnings, but actual games decide
+rejection. A binding winner must also improve both calibrated colors in an
+independent 80-game, 800-simulation confirmation before promotion. The legacy
+hard offline behavior is available with `--reject-on-offline-regression`. Each generation
+has immutable state, command logs, and reports under `iterations/gen_NNNN/`.
+Resume an interrupted generation with the original experiment arguments plus
+`--resume`; changing a training or data argument is rejected. `--through-phase`
+can stop safely after any phase.
+
+Self-play is augmented by ordinary-position deep search, not tactical rules:
+`tools/reanalyze.py` selects positions where deeper champion search most
+changes the policy/value and writes policy-only teachers, with 60% of the
+pipeline's teacher budget reserved for Black. Production defaults reproduce
+the successful Gen9 workload: 500 games at 700 simulations, then sample 8,000
+positions and retain 4,000 teachers searched at 3,200 simulations. Training is
+fresh with the Gen9/V20 scratch optimizer recipe; it does not resume incumbent
+weights. Every processed generation must pass an exact teacher census before
+it can be registered or composed: one-row retention, mirrored row count,
+60/40 side split, policy-only value mask, and source-linked split membership.
+`tools/compose_processed.py`
+combines the exact immutable v19_B/V20 anchor, recent accepted replay, and the
+current generation while preserving validation/test membership. Processed
+self-play is registered in `accepted_data.json` before candidate training, so
+useful champion data survives a rejected model. The training split is
+deterministically smoothed across side, true outcome, and corpus-derived
+material-phase quantiles; this is general replay balancing, not a tactical
+rule. `--continue-after-reject` permits explicit multi-generation data
+accumulation while leaving the champion unchanged.
+
+Reanalysis teachers inherit their source game's split, so an alternate deep
+policy for a position can never cross from training into validation/test.
+Reanalysis, generation, gates, and self-skew matches all have bounded
+no-progress timeouts; every generated batch must meet its configured saved-game
+rate before processing. Reanalysis and replay composition publish completed
+directories atomically, accepted replay hashes every required artifact, and a
+run-root lock prevents concurrent bootstrap loops. Large replay position and
+policy arrays are memory-mapped during pipeline training to keep later
+generations inside host-memory limits.
+
+Pass `--book books/<pinned-book>.json` to reserve disjoint paired blocks for
+checkpoint screening, the binding gate, high-fidelity confirmation, and
+self-skew automatically. The current early-play book has 1,200 unique p8
+positions drawn equally from v20, v21, v21b, Gen7, and Gen9; its immutable
+block allocation is recorded beside it in a `.partitions.json` manifest.
+
+Game-playing phases use the measured eight-worker default on the 5060 Ti. That
+setting delivered 7.11 decisions/s versus 5.39 at four workers; twelve workers
+only reached 7.38 and fourteen exhausted GPU memory. Each NN worker owns a CUDA
+context, so the worker count stays explicit and bounded rather than following
+the host CPU count.
+
+Pipeline training evaluates the incumbent on the same validation rows before
+epoch one. Validation preserves checkpoints using worst-color policy and
+value-sign gains over that fixed baseline; the checkpoint arena then tests
+every preserved model and ranks by its calibrated worst color. Regression
+guards remain fixed to the incumbent rather than walking between epochs. If no
+epoch is safe, training emits `selection_rejected.json` and the generation
+becomes `rejected_training`. The moves-left head exists as an opt-in experiment
+but is off in the first pipeline generation so infrastructure and architecture
+changes are not conflated.
+
+Training hyperparameters can be searched with multi-fidelity Optuna trials
+whose objective is calibrated arena play rather than validation loss. The
+tuner accepts the current corpus, bar, architecture, EMA setting, and a paired
+book; every trial at a fidelity rung sees the same openings, while any winner
+must still use an untouched block for the normal binding gate. Example for the
+post-Gen10 state:
+
+```bash
+python tools/tune_training.py --trials 8 --timeout-hours 10 \
+  --study-name gen10_training_hpo \
+  --storage logs/hpo/gen10_training_hpo.sqlite3 \
+  --model-root models/tuning/gen10_training_hpo \
+  --log-root logs/hpo/gen10_training_hpo \
+  --report-prefix hpo_gen10_training \
+  --data data/processed/bootstrap_replay_main_gen_0010 \
+  --bar models/fresh_start_v22/best_value_net.pt \
+  --policy-head attention --policy-attention-channels 64 \
+  --ema-decay 0.999 --memory-map-data \
+  --book books/gate_mixed_v21b_gen7_gen9_p16_20260815.json \
+  --book-offset 680
+```
+
+Historical bootstrap milestone: the first fixed-architecture successor to
+clear all automated gates was
+`models/candidates/bootstrap_gen5_teacher3200_full/selected_epoch_002.pt`;
+that lineage became V21.
+It uses the full replay with 4x policy-only teachers searched at 3200
+simulations. The calibrated 80x800 confirmation measured +0.0125 Black,
++0.1375 White, and +0.075 overall versus V20. A separate full binding gate
+passed both V20 seeds (initial 0.650 overall / 0.825 White / 0.475 Black;
+confirmation 0.550 / 0.675 / 0.425), plus ramp and heuristic retention. Its
+80-game self-match reduced pooled White skew from V20's 0.6938 to 0.5875.
+Those figures explain the V21 promotion; they are not the current candidate.
+The isolated moves-left auxiliary follow-up did not supersede it: epoch six
+passed a direct 80x800 A/B but failed the fresh V20 Black floor at 0.375, and
+the earlier epoch three lost 0.050 Black in its independent A/B confirmation.
+The head remains available but off by default.
 
 ## Evaluation
 
@@ -145,7 +293,7 @@ times):
 
 ```bash
 python tools/match.py --model-a models/my_model/best_value_net.pt \
-    --model-b models/fresh_start_v17/best_value_net.pt --games 20
+    --model-b models/fresh_start_v22/best_value_net.pt --games 20
 ```
 
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent
@@ -155,6 +303,8 @@ strength are demonstrably decoupled in this project), `tools/heuristic_ab.py`
 (promotion prevention / defender survival), and deck builders
 (`tools/make_human_deck.py`, `tools/make_promo_deck.py`) that turn recorded games
 into targeted start-position decks.
+`tools/search_sweep.py` runs resumable, non-binding one-factor PUCT sweeps against
+the same checkpoint, ranks Black first, and retains the White/aggregate floors.
 
 ### Model lifecycle
 
@@ -179,10 +329,17 @@ src/
   data_processor.py    # raw JSONL -> training tensors, leak-free splits
   train.py             # network, training loop, checkpoint selection
   benchmark.py         # fixed heuristic-anchor benchmark
-  iterate.py           # generate -> process -> train -> gate loop
-  scripted_mate.py     # deterministic K+heavies-vs-K conversion (verified)
+  iterate.py           # resumable self-play/reanalysis/replay/train/gate loop
+  scripted_mate.py     # deterministic K+heavies-vs-bare-K conversion (verified)
   play.py / play.ipynb # play against the engine (terminal / notebook)
-tools/                 # matches, corpus gates, diffs, deck builders
+tools/                 # gate, matches, probes, corpus and deck builders
+  gate.py              # the promotion protocol, thresholds as constants
+  match.py             # head-to-head, the single match JSON schema
+  value_side_bias.py   # per-side value calibration on held-out games
+  promotion_defense_probe.py  # search behaviour + conversion from a deck
+  reanalyze.py         # general deep-search policy teachers
+  compose_processed.py # immutable processed-corpus replay composition
+  phase3_driver.py     # train+gate a set of corpus arms unattended
 tests/                 # contract tests
 benchmarks/            # benchmark and match JSON history
 data/                  # raw games, processed tensors, start-position decks
@@ -198,7 +355,11 @@ concludes; git history is the archive (`git log --diff-filter=D --name-only`).
 python -m unittest discover -s tests
 ```
 
-121 contract tests cover the rules (including the unconditional-king-capture edge
+498 contract tests cover the rules (including the unconditional-king-capture edge
 cases), search invariants, encoding round-trips, data-pipeline contracts, the
-training CLI schema, and the corpus gates. CI runs the suite on push
+training CLI schema, the corpus gates, the promotion protocol's thresholds, and
+several hazards that have produced wrong numbers here before (ramp labels are
+positional, so filtering records silently relabels survivors; match seeds closer
+than the game count replay the same games; worker defaults derived from
+`cpu_count()` crash CUDA init on this box). CI runs the suite on push
 (`.github/workflows/contract-tests.yml`).

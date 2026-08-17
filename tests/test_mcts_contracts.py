@@ -10,7 +10,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from evaluation import evaluate
-from mcts import MCTS, MCTSNode
+from mcts import MCTS, MCTSNode, _softmax_masked
 from monster_chess import MonsterChessGame
 
 
@@ -20,6 +20,27 @@ class _DummyState:
 
 
 class MCTSContracts(unittest.TestCase):
+    def test_policy_temperature_flattens_priors(self):
+        logits = [0.0, 2.0]
+        baseline = _softmax_masked(logits, [0, 1], temperature=1.0)
+        flatter = _softmax_masked(logits, [0, 1], temperature=2.0)
+        self.assertGreater(flatter[0], baseline[0])
+        self.assertLess(flatter[1], baseline[1])
+        self.assertAlmostEqual(sum(flatter.values()), 1.0)
+
+    def test_policy_temperature_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            _softmax_masked([0.0], [0], temperature=0.0)
+        with self.assertRaises(ValueError):
+            MCTS(policy_temperature=-1.0)
+
+    def test_search_parameters_are_instance_scoped(self):
+        engine = MCTS(c_puct=1.25, fpu_reduction=0.2,
+                      policy_temperature=1.4)
+        self.assertEqual(engine.c_puct, 1.25)
+        self.assertEqual(engine.fpu_reduction, 0.2)
+        self.assertEqual(engine.policy_temperature, 1.4)
+
     def test_puct_fpu_uses_root_parent_perspective(self):
         root = MCTSNode(_DummyState(is_white_turn=True))
         root.visit_count = 10

@@ -1,0 +1,36 @@
+{
+  "experiment": "lc0b_attention_ema_successor_summary",
+  "binding": true,
+  "status": "PASS_owner_playtest_pending",
+  "candidate_manifest": "models/candidates/lc0b_attention_ema/candidate_manifest.json",
+  "candidate_checkpoint": "models/candidates/lc0b_attention_ema/best_value_net.pt",
+  "candidate_sha256": "b4de71a7ebe682c0bd20d064130eafd6ca7765df62847c0cdcd5ca529b1e6dc5",
+  "bar_checkpoint": "models/candidates/v19_B/best_value_net.pt",
+  "bar_sha256": "cb4ad13dcc2b443fe57f85464a46b896e373b541dc64a1560946ce2660627ceb",
+  "screen": {
+    "artifact": "benchmarks/lc0b_attention_followup_screen_20260805.json",
+    "games": 40,
+    "sims": 400,
+    "seed": 21160820,
+    "black_delta_vs_self_calibrated_bar": 0.25,
+    "white_delta_vs_self_calibrated_bar": 0.075,
+    "aggregate_delta_vs_self_calibrated_bar": 0.1625
+  },
+  "binding_gate": {
+    "artifact": "benchmarks/gate_lc0b_attention_ema_20260805_052437.json",
+    "verdict": "PASS",
+    "confirmed": true,
+    "first_bar_leg": {"overall": 0.7125, "white": 0.925, "black": 0.5},
+    "fresh_bar_replay": {"overall": 0.7375, "white": 0.925, "black": 0.55},
+    "ramp_leg": {"overall": 0.825, "white": 0.925, "black": 0.725},
+    "anchor_leg": {"overall": 1.0, "white": 1.0, "black": 1.0}
+  },
+  "decision": {
+    "comfortable_v19_B_improvement": true,
+    "improves_white": true,
+    "improves_black": true,
+    "unchanged_gate_passed_twice": true,
+    "recommended_for_owner_playtest": true,
+    "promoted_automatically": false
+  }
+}

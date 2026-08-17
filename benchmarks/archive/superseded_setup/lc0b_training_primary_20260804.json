@@ -1,0 +1,119 @@
+{
+  "experiment": "lc0b_one_variable_training_sweep",
+  "binding": false,
+  "status": "running",
+  "raw": "data/raw/combined_v19_B",
+  "processed": "data/processed/combined_v19_B_r50h60_aux",
+  "reference_processed": "data/processed/combined_v19_B_r50h60",
+  "control": "models/candidates/v19_B/best_value_net.pt",
+  "priority": "black_score",
+  "safeguards": {
+    "black_min": 0.4,
+    "white_min": 0.4,
+    "aggregate_exclusive": 0.5
+  },
+  "training_recipe": [
+    "--epochs",
+    "30",
+    "--patience",
+    "10",
+    "--batch-size",
+    "256",
+    "--lr",
+    "0.002",
+    "--policy-loss-weight",
+    "1.0",
+    "--weight-decay",
+    "0.0001",
+    "--grad-clip",
+    "1.0",
+    "--warmup-epochs",
+    "3",
+    "--warmup-start-factor",
+    "0.1",
+    "--seed",
+    "42",
+    "--target",
+    "game_result",
+    "--value-head",
+    "scalar",
+    "--select-metric",
+    "decisive",
+    "--stem-channels",
+    "64"
+  ],
+  "processing_recipe": [
+    "--seed",
+    "42",
+    "--value-floor",
+    "0.5",
+    "--value-horizon",
+    "60",
+    "--value-discount-mode",
+    "near_mate",
+    "--channels",
+    "15"
+  ],
+  "arms": [
+    {
+      "arm": "control",
+      "changed_flags": [],
+      "checkpoint": "models/candidates/lc0b_control/best_value_net.pt",
+      "black_score": 0.15,
+      "white_score": 0.6,
+      "aggregate_score": 0.375,
+      "screen_pass": false,
+      "match": {
+        "match": "lc0b_control vs v19_B",
+        "name_a": "lc0b_control",
+        "name_b": "v19_B",
+        "games": 20,
+        "sims": 400,
+        "sims_b": 400,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 20260806,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.375,
+        "a_as_white": {
+          "games": 10,
+          "wins": 5,
+          "losses": 3,
+          "draws": 2,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 2,
+          "score": 0.6,
+          "mean_plies": 98.2,
+          "mean_plies_when_won": 53.6,
+          "mean_plies_when_lost": 88.0
+        },
+        "a_as_black": {
+          "games": 10,
+          "wins": 1,
+          "losses": 8,
+          "draws": 1,
+          "time_leaning_wins": 1,
+          "time_leaning_losses": 0,
+          "score": 0.15,
+          "mean_plies": 85.0,
+          "mean_plies_when_won": 111.0,
+          "mean_plies_when_lost": 64.25
+        },
+        "elapsed_sec": 80.1,
+        "timestamp": "2026-08-04T19:54:54"
+      }
+    }
+  ],
+  "started_at": "2026-08-04T19:43:28"
+}

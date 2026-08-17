@@ -10,9 +10,9 @@ Checks (each one is a failure we actually shipped once):
   2. Human duplication     — human games are the highest-quality source and
      their UNIQUE share is uncapped; what fails is the in-file duplication
      multiple inflating a small set into memorization (--max-dup).
-  3. Composition diff      — per-material-phase Black-win-label share vs a
-     reference corpus (the incumbent's); big shifts are flagged before they
-     become mystery regressions.
+  3. Composition diff      — per-material-phase Black-win-label share among
+     value-contributing records vs a reference corpus (the incumbent's); big
+     shifts are flagged before they become mystery regressions.
   4. Label-transform bias  — applies data_processor._discounted_results and
      compares mean |target| for White-won vs Black-won positions (v13: a
      global discount taxed Black's long wins 2x White's).
@@ -64,17 +64,23 @@ def _iter_games(raw_dir):
 
 
 def _phase_mix(raw_dir):
-    """phase -> (positions, black_win_labeled)."""
+    """phase -> (value weight, Black-win value weight).
+
+    A policy-only source cannot alter the value head, so its outcome labels do
+    not belong in a value-label composition audit. Fractional value teachers
+    contribute in proportion to the same weight the trainer will apply.
+    """
     mix = defaultdict(lambda: [0, 0])
     for _rel, records in _iter_games(raw_dir):
         for rec in records:
             fen = rec.get("fen")
-            if not fen:
+            weight = float(rec.get("value_weight", 1.0))
+            if not fen or weight <= 0:
                 continue
             cell = mix[_phase(_bm(fen))]
-            cell[0] += 1
+            cell[0] += weight
             if rec.get("game_result", 0) < 0:
-                cell[1] += 1
+                cell[1] += weight
     return mix
 
 
@@ -90,7 +96,8 @@ def main():
     ap.add_argument("--diff-warn", type=float, default=0.08)
     ap.add_argument("--diff-fail", type=float, default=0.15)
     ap.add_argument("--bias-fail", type=float, default=0.05,
-                    help="max relative gap in mean |target| White-won vs Black-won")
+                    help="max relative gap in mean |target| White-won vs "
+                         "Black-won, or max additional gap vs --reference")
     ap.add_argument("--value-discount-mode", choices=["near_mate", "progress"],
                     default=VALUE_TARGET_DISCOUNT_MODE)
     ap.add_argument("--value-horizon", type=int, default=VALUE_TARGET_HORIZON)
@@ -174,9 +181,10 @@ def main():
             )
             for t, rec in zip(transformed, records):
                 raw = rec.get("game_result", 0)
-                if raw:
-                    tgt_sum[side] += abs(t) / abs(raw)
-                    tgt_n[side] += 1
+                value_weight = float(rec.get("value_weight", 1.0))
+                if raw and value_weight > 0:
+                    tgt_sum[side] += value_weight * abs(t) / abs(raw)
+                    tgt_n[side] += value_weight
 
     print(f"=== pretrain_check: {args.merged_dir} ===")
     print(f"total positions: {total_positions}, sources: {dict(src_positions)}")
@@ -247,7 +255,8 @@ def main():
     else:
         print("  OK  " + line)
 
-    # 3. composition diff vs reference
+    # 3. value-label composition diff vs reference. Policy-only teachers are
+    # intentionally absent: their labels cannot reach the value loss.
     if args.reference and os.path.isdir(args.reference):
         cur = _phase_mix(args.merged_dir)
         ref = _phase_mix(args.reference)
@@ -266,14 +275,48 @@ def main():
             else:
                 print("  OK  " + line)
 
-    # 4. label-transform side bias
+    # 4. label-transform side bias over records that reach the value loss.
+    # With a reference, the frozen incumbent recipe is the zero point: an
+    # incremental corpus must not add more than --bias-fail. Without one, the
+    # absolute guard remains in force. This distinction matters for the
+    # approved r50h60 recipe, whose incumbent corpus has a 15.5% raw side gap;
+    # an absolute-only check would reject every candidate including the
+    # unchanged control and could not detect what the new corpus introduced.
     if tgt_n["white"] and tgt_n["black"]:
         mw = tgt_sum["white"] / tgt_n["white"]
         mb = tgt_sum["black"] / tgt_n["black"]
         rel_gap = abs(mw - mb) / max(mw, mb)
         line = (f"label bias: mean |target| white-won {mw:.3f} vs black-won {mb:.3f} "
                 f"(rel gap {rel_gap:.1%}, max {args.bias_fail:.0%})")
-        if rel_gap > args.bias_fail:
+        introduced_gap = rel_gap
+        if args.reference and os.path.isdir(args.reference):
+            ref_sum = {"white": 0.0, "black": 0.0}
+            ref_n = {"white": 0.0, "black": 0.0}
+            for _rel, records in _iter_games(args.reference):
+                result = records[-1].get("game_result", 0)
+                if result == 0:
+                    continue
+                side = "black" if result < 0 else "white"
+                transformed = _discounted_results(
+                    records,
+                    horizon=args.value_horizon,
+                    floor=args.value_floor,
+                    mode=args.value_discount_mode,
+                )
+                for target, rec in zip(transformed, records):
+                    raw = rec.get("game_result", 0)
+                    weight = float(rec.get("value_weight", 1.0))
+                    if raw and weight > 0:
+                        ref_sum[side] += weight * abs(target) / abs(raw)
+                        ref_n[side] += weight
+            if ref_n["white"] and ref_n["black"]:
+                ref_w = ref_sum["white"] / ref_n["white"]
+                ref_b = ref_sum["black"] / ref_n["black"]
+                ref_gap = abs(ref_w - ref_b) / max(ref_w, ref_b)
+                introduced_gap = rel_gap - ref_gap
+                line = (line[:-1] + f"; reference {ref_gap:.1%}, "
+                        f"delta {introduced_gap:+.1%})")
+        if introduced_gap > args.bias_fail:
             failures.append(line)
         else:
             print("  OK  " + line)

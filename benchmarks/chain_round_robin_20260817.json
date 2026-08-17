@@ -1,0 +1,69 @@
+{
+ "experiment": "chain_round_robin",
+ "date": "2026-08-17",
+ "models": [
+  "v22",
+  "gen11",
+  "gen12",
+  "gen13",
+  "gen14"
+ ],
+ "design": "complete 5x5 matrix; adjacent pairs from 800-game binding gates, remaining six pairs at 600 games",
+ "round_robin_pairs": {
+  "gen12_vs_v22": {
+   "aggregate": 0.5817,
+   "white": 0.6,
+   "black": 0.5633,
+   "games": 600
+  },
+  "gen13_vs_gen11": {
+   "aggregate": 0.5808,
+   "white": 0.555,
+   "black": 0.6067,
+   "games": 600
+  },
+  "gen13_vs_v22": {
+   "aggregate": 0.6267,
+   "white": 0.6533,
+   "black": 0.6,
+   "games": 600
+  },
+  "gen14_vs_gen11": {
+   "aggregate": 0.625,
+   "white": 0.5983,
+   "black": 0.6517,
+   "games": 600
+  },
+  "gen14_vs_gen12": {
+   "aggregate": 0.5958,
+   "white": 0.5767,
+   "black": 0.615,
+   "games": 600
+  },
+  "gen14_vs_v22": {
+   "aggregate": 0.6408,
+   "white": 0.635,
+   "black": 0.6467,
+   "games": 600
+  }
+ },
+ "adjacent_from_gates": {
+  "gen11_vs_v22": 0.575,
+  "gen12_vs_gen11": 0.5231,
+  "gen13_vs_gen12": 0.5444,
+  "gen14_vs_gen13": 0.5481
+ },
+ "least_squares_elo_v22_zero": {
+  "v22": 0.0,
+  "gen11": 39.0,
+  "gen12": 55.7,
+  "gen13": 89.4,
+  "gen14": 119.2
+ },
+ "max_residual": 0.0243,
+ "finding": "A single strength scale explains all ten pairs; max residual 0.024 (~1.8 SE at 600 games). Ratings strictly increase. gen14 is +119 Elo over V22.",
+ "refutes": [
+  "White erosion: gen14 White vs V22 is 0.6350 against gen11 0.6075 -- absolute White improved",
+  "Intransitivity: chaining pairwise differences compounds error; the least-squares fit resolves it"
+ ]
+}

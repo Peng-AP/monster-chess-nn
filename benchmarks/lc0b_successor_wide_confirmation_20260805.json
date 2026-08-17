@@ -1,0 +1,124 @@
+{
+  "experiment": "strict_two_color_candidate_confirmation",
+  "binding": false,
+  "bar": "models/candidates/lc0b_attention_ema/best_value_net.pt",
+  "bar_sha256": "b4de71a7ebe682c0bd20d064130eafd6ca7765df62847c0cdcd5ca529b1e6dc5",
+  "games": 80,
+  "sims": 800,
+  "seed": 22560820,
+  "calibration": {
+    "match": "lc0b_attention_ema vs lc0b_attention_ema",
+    "name_a": "lc0b_attention_ema",
+    "name_b": "lc0b_attention_ema",
+    "games": 80,
+    "sims": 800,
+    "sims_b": 800,
+    "batch_a": null,
+    "batch_b": null,
+    "seed": 22560820,
+    "search_a": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "search_b": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3,
+      "policy_temperature": 1.0
+    },
+    "opening_temp_plies": 16,
+    "workers": 8,
+    "a_score": 0.4688,
+    "a_as_white": {
+      "games": 40,
+      "wins": 21,
+      "losses": 8,
+      "draws": 11,
+      "time_leaning_wins": 0,
+      "time_leaning_losses": 11,
+      "score": 0.6625,
+      "mean_plies": 97.05,
+      "mean_plies_when_won": 33.14,
+      "mean_plies_when_lost": 88.88
+    },
+    "a_as_black": {
+      "games": 40,
+      "wins": 7,
+      "losses": 25,
+      "draws": 8,
+      "time_leaning_wins": 8,
+      "time_leaning_losses": 0,
+      "score": 0.275,
+      "mean_plies": 84.88,
+      "mean_plies_when_won": 107.14,
+      "mean_plies_when_lost": 33.8
+    },
+    "elapsed_sec": 828.6,
+    "timestamp": "2026-08-05T12:16:47"
+  },
+  "results": [
+    {
+      "deltas": {
+        "black": 0.16249999999999998,
+        "white": 0.0625,
+        "aggregate": 0.11250000000000004
+      },
+      "passes_both_colors": true,
+      "minimum_color_delta": 0.0625,
+      "name": "wide64ema",
+      "checkpoint": "models/candidates/lc0b_attention_ema_wide64/best_value_net.pt",
+      "checkpoint_sha256": "f09fd872defdbded89ed6ab518cab959386fdcf17b9c5f1d52ce4773cdb936e3",
+      "match": {
+        "match": "lc0b_attention_ema_wide64 vs lc0b_attention_ema",
+        "name_a": "lc0b_attention_ema_wide64",
+        "name_b": "lc0b_attention_ema",
+        "games": 80,
+        "sims": 800,
+        "sims_b": 800,
+        "batch_a": null,
+        "batch_b": null,
+        "seed": 22560820,
+        "search_a": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "search_b": {
+          "c_puct": 1.5,
+          "fpu_reduction": 0.3,
+          "policy_temperature": 1.0
+        },
+        "opening_temp_plies": 16,
+        "workers": 8,
+        "a_score": 0.5813,
+        "a_as_white": {
+          "games": 40,
+          "wins": 26,
+          "losses": 8,
+          "draws": 6,
+          "time_leaning_wins": 0,
+          "time_leaning_losses": 6,
+          "score": 0.725,
+          "mean_plies": 82.45,
+          "mean_plies_when_won": 42.04,
+          "mean_plies_when_lost": 106.88
+        },
+        "a_as_black": {
+          "games": 40,
+          "wins": 11,
+          "losses": 16,
+          "draws": 13,
+          "time_leaning_wins": 13,
+          "time_leaning_losses": 0,
+          "score": 0.4375,
+          "mean_plies": 116.45,
+          "mean_plies_when_won": 102.82,
+          "mean_plies_when_lost": 37.62
+        },
+        "elapsed_sec": 558.7,
+        "timestamp": "2026-08-05T12:26:05"
+      }
+    }
+  ],
+  "timestamp": "2026-08-05T12:26:05"
+}

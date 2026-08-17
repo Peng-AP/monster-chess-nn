@@ -27,9 +27,11 @@ class TrainWdlContracts(unittest.TestCase):
             np.savez(data_dir / "splits.npz", train=np.array([0]),
                      val=np.array([], dtype=np.int64), test=np.array([1]))
 
-            _x, _mv, _gr, _pol, weights, _splits = train.load_data(data_dir)
+            (_x, _mv, _gr, _pol, weights, value_weights,
+             _splits) = train.load_data(data_dir)
 
             self.assertEqual(weights.tolist(), [1.0, 1.0])
+            self.assertEqual(value_weights.tolist(), [1.0, 1.0])
 
     def test_policy_loss_ignores_zero_weight_targets(self):
         logits = torch.tensor([[2.0, 0.0], [0.0, 2.0]], requires_grad=True)
@@ -96,32 +98,68 @@ class TrainWdlContracts(unittest.TestCase):
         self.assertEqual(train.infer_input_channels(legacy.state_dict()), 15)
         self.assertEqual(train.infer_input_channels(current.state_dict()), 17)
 
+    def test_auxiliary_wdl_checkpoint_retains_scalar_inference_mode(self):
+        model = train.build_model(
+            input_channels=15,
+            use_wdl_head=True,
+            value_head_mode="scalar",
+            use_se_blocks=False,
+        )
+
+        self.assertIn("_aux_wdl_head", model.state_dict())
+        self.assertEqual(
+            train.infer_wdl_head_config(model.state_dict()),
+            (True, "scalar"),
+        )
+
     def test_unpack_loader_batch_accepts_3_and_4_tuple_batches(self):
         x = torch.zeros((1, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
         yv = torch.zeros((1, 1), dtype=torch.float32)
         yp = torch.zeros((1, train.POLICY_SIZE), dtype=torch.float32)
         yw = torch.zeros((1,), dtype=torch.int64)
 
-        X3, yv3, yp3, ypw3, yw3 = train._unpack_loader_batch((x, yv, yp))
+        X3, yv3, yp3, ypw3, yvw3, yw3 = train._unpack_loader_batch((x, yv, yp))
         self.assertIsNone(yw3)
         self.assertEqual(ypw3.tolist(), [1.0])
+        self.assertEqual(yvw3.tolist(), [1.0])
         self.assertEqual(tuple(X3.shape), tuple(x.shape))
         self.assertEqual(tuple(yv3.shape), tuple(yv.shape))
         self.assertEqual(tuple(yp3.shape), tuple(yp.shape))
 
-        X4, yv4, yp4, ypw4, yw4 = train._unpack_loader_batch((x, yv, yp, yw))
+        X4, yv4, yp4, ypw4, yvw4, yw4 = train._unpack_loader_batch((x, yv, yp, yw))
         self.assertIsNotNone(yw4)
         self.assertEqual(ypw4.tolist(), [1.0])
+        self.assertEqual(yvw4.tolist(), [1.0])
         self.assertEqual(tuple(X4.shape), tuple(x.shape))
         self.assertEqual(tuple(yv4.shape), tuple(yv.shape))
         self.assertEqual(tuple(yp4.shape), tuple(yp.shape))
         self.assertEqual(tuple(yw4.shape), tuple(yw.shape))
 
         policy_weight = torch.zeros((1,), dtype=torch.float32)
-        X5, yv5, yp5, ypw5, yw5 = train._unpack_loader_batch(
+        X5, yv5, yp5, ypw5, yvw5, yw5 = train._unpack_loader_batch(
             (x, yv, yp, policy_weight, yw))
         self.assertEqual(ypw5.tolist(), [0.0])
+        self.assertEqual(yvw5.tolist(), [1.0])
         self.assertEqual(yw5.tolist(), [0])
+
+    def test_aux_unpacker_accepts_dataloader_list_without_other_aux_heads(self):
+        x = torch.zeros((1, train.IN_CHANNELS, 8, 8), dtype=torch.float32)
+        yv = torch.zeros((1, 1), dtype=torch.float32)
+        yp = torch.zeros((1, train.POLICY_SIZE), dtype=torch.float32)
+        policy_weight = torch.ones((1,), dtype=torch.float32)
+        value_weight = torch.ones((1,), dtype=torch.float32)
+        yw = torch.zeros((1,), dtype=torch.int64)
+
+        unpacked = train._unpack_aux_loader_batch(
+            [x, yv, yp, policy_weight, value_weight, yw],
+            use_wdl_head=True,
+        )
+
+        self.assertEqual(len(unpacked), 9)
+        self.assertEqual(unpacked[5].tolist(), [0])
+        self.assertIsNone(unpacked[6])
+        self.assertIsNone(unpacked[7])
+        self.assertIsNone(unpacked[8])
 
 if __name__ == "__main__":
     unittest.main()

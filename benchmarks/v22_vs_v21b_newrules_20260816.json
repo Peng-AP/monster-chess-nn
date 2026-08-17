@@ -1,0 +1,37 @@
+{
+ "experiment": "v22_vs_v21b_replayed_under_new_rules",
+ "date": "2026-08-16",
+ "games": 400,
+ "sims": 400,
+ "book": "books/gate_mixed_v21b_gen7_gen9_p16_20260815.json",
+ "offset": 0,
+ "seed": 20260816,
+ "old": {
+  "overall": 0.5763,
+  "white": 0.6975,
+  "black": 0.455,
+  "black_wld": [
+   58,
+   76,
+   66
+  ]
+ },
+ "new": {
+  "overall": 0.5837,
+  "white": 0.6725,
+  "black": 0.495,
+  "black_wld": [
+   74,
+   76,
+   50
+  ]
+ },
+ "colour_gap": {
+  "old": 0.2425,
+  "new": 0.1775,
+  "reduction": 0.27
+ },
+ "finding": "Black losses IDENTICAL (76->76); 16 draws became wins. Conversion improves against a real opponent, not just in self-play.",
+ "but": "Relative strength UNCHANGED: overall 0.5763 -> 0.5837 is ~0.5 SE at n=400. These are ENGINE-level changes, so v21b-as-Black converts better too and V22 White falls 0.6975 -> 0.6725.",
+ "implication": "The rule/engine changes fix conversion for whoever plays Black. They do not make one model stronger than another, and they do not substitute for a better model."
+}

@@ -1,0 +1,170 @@
+{
+  "candidate": "v19_K",
+  "model": "models\\candidates\\v19_K\\best_value_net.pt",
+  "protocol": "full",
+  "binding": true,
+  "verdict": "PASS",
+  "raw_verdict": "PASS",
+  "failures": [],
+  "bar": "vs_ramp",
+  "confirmed": true,
+  "thresholds": {
+    "per_side_floor": 0.4,
+    "aggregate_min_exclusive": 0.5,
+    "aggregate_legs": [
+      "vs_ramp",
+      "vs_v17"
+    ],
+    "sims": 400
+  },
+  "per_side_totals_across_legs": {
+    "white": {
+      "points": 56.0,
+      "games": 70,
+      "score": 0.8,
+      "se_points": 4.18
+    },
+    "black": {
+      "points": 47.0,
+      "games": 70,
+      "score": 0.6714,
+      "se_points": 4.18
+    }
+  },
+  "legs": {
+    "vs_ramp": {
+      "match": "v19_K vs fresh_start_v18_ramp",
+      "name_a": "v19_K",
+      "name_b": "fresh_start_v18_ramp",
+      "games": 40,
+      "sims": 400,
+      "seed": 20260801,
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.725,
+      "a_as_white": {
+        "games": 20,
+        "wins": 13,
+        "losses": 7,
+        "draws": 0,
+        "score": 0.65,
+        "mean_plies": 103.3,
+        "mean_plies_when_won": 37.77,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 16,
+        "losses": 4,
+        "draws": 0,
+        "score": 0.8,
+        "mean_plies": 181.15,
+        "mean_plies_when_won": 197.25,
+        "mean_plies_when_lost": 116.75
+      },
+      "elapsed_sec": 1042.5,
+      "timestamp": "2026-08-02T01:34:26"
+    },
+    "vs_v17": {
+      "match": "v19_K vs fresh_start_v17",
+      "name_a": "v19_K",
+      "name_b": "fresh_start_v17",
+      "games": 40,
+      "sims": 400,
+      "seed": 20260901,
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.8,
+      "a_as_white": {
+        "games": 20,
+        "wins": 19,
+        "losses": 1,
+        "draws": 0,
+        "score": 0.95,
+        "mean_plies": 38.35,
+        "mean_plies_when_won": 28.53,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 13,
+        "losses": 7,
+        "draws": 0,
+        "score": 0.65,
+        "mean_plies": 171.7,
+        "mean_plies_when_won": 202.38,
+        "mean_plies_when_lost": 114.71
+      },
+      "elapsed_sec": 658.2,
+      "timestamp": "2026-08-02T01:45:24"
+    },
+    "anchor": {
+      "match": "v19_K vs heuristic",
+      "name_a": "v19_K",
+      "name_b": "heuristic",
+      "games": 20,
+      "sims": 400,
+      "seed": 20261001,
+      "opening_temp_plies": 0,
+      "workers": 8,
+      "a_score": 0.7,
+      "a_as_white": {
+        "games": 10,
+        "wins": 8,
+        "losses": 2,
+        "draws": 0,
+        "score": 0.8,
+        "mean_plies": 68.5,
+        "mean_plies_when_won": 29.38,
+        "mean_plies_when_lost": 225.0
+      },
+      "a_as_black": {
+        "games": 10,
+        "wins": 6,
+        "losses": 4,
+        "draws": 0,
+        "score": 0.6,
+        "mean_plies": 95.6,
+        "mean_plies_when_won": 88.0,
+        "mean_plies_when_lost": 107.0
+      },
+      "elapsed_sec": 113.3,
+      "timestamp": "2026-08-02T01:47:17"
+    },
+    "vs_ramp_confirm": {
+      "match": "v19_K vs fresh_start_v18_ramp",
+      "name_a": "v19_K",
+      "name_b": "fresh_start_v18_ramp",
+      "games": 40,
+      "sims": 400,
+      "seed": 20685043,
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.7,
+      "a_as_white": {
+        "games": 20,
+        "wins": 16,
+        "losses": 4,
+        "draws": 0,
+        "score": 0.8,
+        "mean_plies": 80.05,
+        "mean_plies_when_won": 53.38,
+        "mean_plies_when_lost": 186.75
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 12,
+        "losses": 8,
+        "draws": 0,
+        "score": 0.6,
+        "mean_plies": 165.2,
+        "mean_plies_when_won": 197.75,
+        "mean_plies_when_lost": 116.38
+      },
+      "elapsed_sec": 824.5,
+      "timestamp": "2026-08-02T02:01:02"
+    }
+  },
+  "seed": 20260801,
+  "timestamp": "2026-08-02T02:01:02"
+}

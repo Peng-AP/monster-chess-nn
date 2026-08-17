@@ -1,0 +1,129 @@
+{
+  "incumbent": "models/fresh_start_v21/best_value_net.pt",
+  "started": "2026-08-07T06:22:57",
+  "updated": "2026-08-07T07:15:01",
+  "arms": [
+    {
+      "name": "capture_wdl_w003_seed46",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--aux-wdl-head",
+        "--wdl-target",
+        "capture_result",
+        "--wdl-loss-weight",
+        "0.03",
+        "--seed",
+        "46"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T06:33:21",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_capture_wdl_w003_seed46_20260807_063842.json",
+        "failures": [
+          "vs_v21 aggregate 0.4625 <= 0.50"
+        ],
+        "vs_v21": {
+          "overall": 0.4625,
+          "white": 0.5,
+          "black": 0.425
+        },
+        "vs_ramp": {
+          "overall": 0.8625,
+          "white": 1.0,
+          "black": 0.725
+        },
+        "anchor": {
+          "overall": 0.875,
+          "white": 1.0,
+          "black": 0.75
+        }
+      }
+    },
+    {
+      "name": "capture_wdl_w003_seed47",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--aux-wdl-head",
+        "--wdl-target",
+        "capture_result",
+        "--wdl-loss-weight",
+        "0.03",
+        "--seed",
+        "47"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T06:48:43",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_capture_wdl_w003_seed47_20260807_065654.json",
+        "failures": [
+          "vs_v21_confirm black leg 0.3500 < 0.40"
+        ],
+        "vs_v21": {
+          "overall": 0.55,
+          "white": 0.675,
+          "black": 0.425
+        },
+        "vs_ramp": {
+          "overall": 0.8625,
+          "white": 1.0,
+          "black": 0.725
+        },
+        "anchor": {
+          "overall": 0.925,
+          "white": 1.0,
+          "black": 0.85
+        },
+        "vs_v21_confirm": {
+          "overall": 0.5625,
+          "white": 0.775,
+          "black": 0.35
+        }
+      }
+    },
+    {
+      "name": "capture_wdl_w003_seed48",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--aux-wdl-head",
+        "--wdl-target",
+        "capture_result",
+        "--wdl-loss-weight",
+        "0.03",
+        "--seed",
+        "48"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T07:06:54",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_capture_wdl_w003_seed48_20260807_071501.json",
+        "failures": [
+          "vs_v21_confirm black leg 0.3250 < 0.40",
+          "vs_v21_confirm aggregate 0.4375 <= 0.50"
+        ],
+        "vs_v21": {
+          "overall": 0.575,
+          "white": 0.625,
+          "black": 0.525
+        },
+        "vs_ramp": {
+          "overall": 0.85,
+          "white": 1.0,
+          "black": 0.7
+        },
+        "anchor": {
+          "overall": 0.85,
+          "white": 1.0,
+          "black": 0.7
+        },
+        "vs_v21_confirm": {
+          "overall": 0.4375,
+          "white": 0.55,
+          "black": 0.325
+        }
+      }
+    }
+  ]
+}

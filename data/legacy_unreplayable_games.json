@@ -1,0 +1,30 @@
+{
+  "reason": "White ends its turn with its king attacked - forbidden since the owner's ruling (tests/test_ruleset_divergences.py, divergence 2). These games were recorded under the looser playstrategy rule and can never replay against the current engine. Verified 2026-08-03: 23 of 23 replay divergences have this single cause.",
+  "policy": "E1's replay gate excludes exactly these paths. The list is fixed - a game diverging that is not listed here is a real defect and must fail the gate.",
+  "count": 23,
+  "games": [
+    "data/raw/human_games/black_2026_07/game_00000.jsonl",
+    "data/raw/human_games/black_2026_07/game_00002.jsonl",
+    "data/raw/human_games/black_2026_07/game_00003.jsonl",
+    "data/raw/human_games/black_2026_07/game_00004.jsonl",
+    "data/raw/human_games/black_2026_07/game_00007.jsonl",
+    "data/raw/human_games/black_2026_07/game_00009.jsonl",
+    "data/raw/human_games/black_2026_07/game_00011.jsonl",
+    "data/raw/human_games/black_2026_07/game_00012.jsonl",
+    "data/raw/human_games/black_2026_07/game_00014.jsonl",
+    "data/raw/human_games/black_2026_07/game_00017.jsonl",
+    "data/raw/human_games/black_2026_07/game_00018.jsonl",
+    "data/raw/human_games/black_2026_07/game_00019.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00007.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00013.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00015.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00018.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00027.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00038.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00040.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00041.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00044.jsonl",
+    "data/raw/human_games/curriculum_2026_07/game_00045.jsonl",
+    "data/raw/human_games/game_00035.jsonl"
+  ]
+}

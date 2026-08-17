@@ -1,0 +1,37 @@
+{
+ "experiment": "v23_gen0001_epoch8_binding_gate",
+ "date": "2026-08-17",
+ "candidate": "models/candidates/bootstrap_v23_gen_0001/selected_epoch_008.pt",
+ "bar": "models/fresh_start_v22/best_value_net.pt",
+ "sims": 400,
+ "book": "books/gate_mixed_v20_v21_v21b_gen7_v22_p8_20260816.json",
+ "criterion": "aggregate > 0.50 and neither colour below 0.40 (owner, 2026-08-16)",
+ "legs": [
+  {
+   "leg": "first",
+   "block": 960,
+   "games": 600,
+   "aggregate": 0.4258,
+   "white": 0.4933,
+   "black": 0.3583,
+   "elapsed_sec": 764.5
+  },
+  {
+   "leg": "confirm",
+   "block": 1260,
+   "games": 600,
+   "aggregate": 0.4375,
+   "white": 0.495,
+   "black": 0.38,
+   "elapsed_sec": 817.1
+  }
+ ],
+ "verdict": "FAIL both legs, both conditions",
+ "screen_said": {
+  "block": 840,
+  "games": 200,
+  "aggregate_delta": 0.015,
+  "implied_score": 0.515
+ },
+ "finding": "The 200-game screen scored it 0.515; two 600-game legs score 0.426 and 0.438 -- optimistic by ~3 SE. A single-block 200-game screen cannot nominate reliably."
+}

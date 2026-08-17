@@ -51,7 +51,17 @@ def _cheb(a, b):
                abs(chess.square_file(a) - chess.square_file(b)))
 
 
-def play_one(fen, white_sims, max_turns=120, verbose=False):
+def play_one(fen, white_sims, max_turns=120, verbose=False, seed=None):
+    """Play one verification game.
+
+    `seed` matters more than it looks. White is an MCTS player whose tie-breaks
+    read the global RNG, so an unseeded verifier reports a *different* pass rate
+    run to run: of the three starts recorded as failures on 2026-08-03, two
+    passed on replay. Without a seed "9/12" is a sample, not a defect count, and
+    a fix cannot be told apart from a reroll.
+    """
+    if seed is not None:
+        random.seed(seed)
     game = MonsterChessGame(fen=fen)
     white = MCTS(num_simulations=white_sims, eval_fn=evaluate,
                  root_noise=False, allow_early_stop=True)
@@ -98,7 +108,8 @@ def main():
     if args.fen:
         result, turns, final_fen = play_one(args.fen, args.white_sims,
                                             max_turns=args.max_turns,
-                                            verbose=args.verbose)
+                                            verbose=args.verbose,
+                                            seed=args.seed)
         print(f"result={result} turns={turns} final={final_fen}")
         return
 

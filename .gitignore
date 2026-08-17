@@ -212,6 +212,16 @@ __marimo__/
 # fetched PlayStrategy corpus + census (regenerate with tools/census_playstrategy.py)
 /data/playstrategy/
 /models/
+/iterations/
 
 # run stdout logs (reports capture the content)
 *.log
+
+# Native crate build artifacts
+native/*.pyd
+native/*.dll
+
+# Run logs and tuner databases are generated output, not source.
+# Keep the directory documentation tracked.
+/logs/**
+!/logs/README.md

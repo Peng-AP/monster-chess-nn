@@ -24,11 +24,14 @@ class CliSchemaSmoke(unittest.TestCase):
         code, out = _run_help("iterate.py")
         self.assertEqual(code, 0)
         self.assertIn("--generations", out)
-        self.assertIn("--gate-threshold", out)
-        self.assertIn("--arena-games", out)
-        self.assertIn("--anchor-epsilon", out)
-        self.assertIn("--blackfocus-games", out)
-        self.assertIn("--max-generation-age", out)
+        self.assertIn("--reanalysis-sample", out)
+        self.assertIn("--replay-generations", out)
+        self.assertIn("--replay-balance-alpha", out)
+        self.assertIn("--continue-after-reject", out)
+        self.assertIn("--gate-protocol", out)
+        self.assertIn("--promote-on-pass", out)
+        self.assertIn("--resume", out)
+        self.assertIn("--dry-run", out)
 
     def test_train_help_contains_wdl_flags(self):
         code, out = _run_help("train.py")
@@ -37,6 +40,7 @@ class CliSchemaSmoke(unittest.TestCase):
         self.assertIn("--wdl-loss-weight", out)
         self.assertIn("--wdl-draw-epsilon", out)
         self.assertIn("--target", out)
+        self.assertIn("--select-relative-to-resume", out)
 
     def test_data_processor_help_contains_expected_flags(self):
         code, out = _run_help("data_processor.py")

@@ -1,0 +1,50 @@
+{
+ "experiment": "gen11_seed_replicate",
+ "date": "2026-08-17",
+ "corpus": "data/processed/bootstrap_replay_main_gen_0011 (662,190 rows)",
+ "design": "identical corpus and recipe; training seed is the only variable",
+ "legs": [
+  {
+   "seed": "seed42",
+   "checkpoint": "selected_epoch_008",
+   "leg": "vs_v22",
+   "games": 800,
+   "aggregate": 0.575,
+   "white": 0.6075,
+   "black": 0.5425
+  },
+  {
+   "seed": "seed42",
+   "checkpoint": "selected_epoch_008",
+   "leg": "vs_v22_confirm",
+   "games": 800,
+   "aggregate": 0.5431,
+   "white": 0.6112,
+   "black": 0.475
+  },
+  {
+   "seed": "seed43",
+   "checkpoint": "selected_epoch_016",
+   "leg": "vs_v22",
+   "games": 800,
+   "aggregate": 0.5106,
+   "white": 0.5637,
+   "black": 0.4575
+  },
+  {
+   "seed": "seed43",
+   "checkpoint": "selected_epoch_016",
+   "leg": "vs_v22_confirm",
+   "games": 800,
+   "aggregate": 0.5081,
+   "white": 0.56,
+   "black": 0.4562
+  }
+ ],
+ "pooled_aggregate": 0.5342,
+ "seed42_mean": 0.5591,
+ "seed43_mean": 0.5094,
+ "verdict": "BOTH SEEDS PASS, BOTH CONFIRMED. 3,200 games of binding evidence.",
+ "caveat": "Margin is seed-dependent: seed 42 ~0.559, seed 43 ~0.509. Pooled ~0.534. Seed 42 is the favourable tail, not the expectation.",
+ "not_a_version": "Owner playtest and explicit numbering are still required."
+}

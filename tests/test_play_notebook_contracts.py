@@ -31,18 +31,52 @@ class PlayNotebookContracts(unittest.TestCase):
             self.assertIn(f'importlib.reload({alias})', self.setup)
 
     def test_setup_discovers_candidate_and_rejected_models(self):
-        self.assertIn(
-            'os.path.join(MODEL_DIR, \"candidates\", \"*\", '
-            '\"best_value_net.pt\")',
-            self.setup,
-        )
+        self.assertIn('os.path.join(MODEL_DIR, \"candidates\", \"*\")',
+                      self.setup)
         self.assertIn(
             'os.path.join(MODEL_DIR, \"rejected\", \"*\", '
             '\"best_value_net.pt\")',
             self.setup,
         )
-        self.assertIn('candidate/{run_name}', self.setup)
-        self.assertIn('rejected/{run_name}', self.setup)
+        self.assertIn('rejected/{run}', self.setup)
+
+    def test_candidate_picker_offers_the_gate_scored_checkpoint(self):
+        """The picker must find whatever checkpoint a gate actually scored.
+
+        Guessing it from filenames does not work. `arena_selected.pt` is one
+        such checkpoint, but in the 2026-08 chain every gated model is an epoch
+        SNAPSHOT instead -- gen11 `selected_epoch_008` through gen14
+        `selected_epoch_007` -- so a filename-driven picker showed NONE of them
+        while happily offering `best_value_net.pt`, the lowest-training-loss net
+        that no gate ever measured. Discovery therefore reads
+        `benchmarks/gate_*.json`, where the scored path is recorded explicitly.
+        """
+        self.assertIn('\"benchmarks\", \"gate_*.json\"', self.setup)
+        self.assertIn('report.get(\"model\")', self.setup)
+        self.assertIn('report.get(\"verdict\")', self.setup)
+        # Ungated nets stay reachable, but must be labelled as such.
+        self.assertIn('\"arena_selected.pt\"', self.setup)
+        self.assertIn('lowest loss, NOT gated', self.setup)
+        # Passes lead: a dropdown truncates the tail, and the failures
+        # outnumber the passes by an order of magnitude.
+        self.assertLess(self.setup.index('--- GATED: passed ---'),
+                        self.setup.index('--- gated: failed ---'))
+
+    def test_gated_picker_ranks_by_recency_not_by_score(self):
+        """Scores from different gates are not comparable.
+
+        Each gate measures its candidate against the bar in force at the time,
+        so an old 0.7750 against a long-superseded opponent is not stronger
+        than 0.5481 against the current one. Sorting the dropdown by score
+        floated ancient checkpoints above the head of the chain, which is what
+        made it unusable. Rank is (pass tier, gate report mtime).
+        """
+        self.assertIn('os.path.getmtime(path)', self.setup)
+        self.assertIn(
+            'gated_choices.sort(key=lambda item: (item[0], item[1]), '
+            'reverse=True)',
+            self.setup,
+        )
 
     def test_color_selector_is_beside_model_and_drives_standard_game(self):
         self.assertIn('_color_dropdown = widgets.Dropdown(', self.setup)
@@ -137,12 +171,32 @@ class PlayNotebookContracts(unittest.TestCase):
             self.assertNotIn('swindle', cell)
 
     def test_auto_finishes_use_their_own_simulation_budget(self):
-        """auto_engine is heuristic (sequential UCB1); SIMULATIONS is for NN play."""
+        """auto_engine stays heuristic on its own budget; SIMULATIONS is NN play.
+
+        Checks the intent rather than a literal constructor line: the engine is
+        now built through the shared factory (2026-08-16) so the notebook picks
+        up native search, tree reuse, the finisher and CUDA graphs. Pinning the
+        exact `MCTS(...)` text made this assert an implementation detail, and
+        it would have blocked the notebook from ever moving to the engine the
+        gates actually measure.
+        """
         self.assertIn('AUTO_SIMULATIONS = 400', self.setup)
-        self.assertIn(
-            'auto_engine = MCTS(num_simulations=AUTO_SIMULATIONS, eval_fn=None,',
-            self.setup,
-        )
+        self.assertIn('auto_engine', self.setup)
+        self.assertIn('AUTO_SIMULATIONS', self.setup.split('auto_engine')[1][:200])
+        # Heuristic: no model path is handed to the auto engine.
+        self.assertIn('_build_engine(None, AUTO_SIMULATIONS', self.setup)
+
+    def test_notebook_plays_the_engine_the_gates_measure(self):
+        """The owner's sessions must not silently run a different search.
+
+        Until 2026-08-16 the notebook built `MCTS` directly, so playtests ran
+        the PYTHON engine with no tree reuse, no finisher and no repetition --
+        while every measurement in the project described the native one.
+        """
+        self.assertIn('from benchmark import _build_engine', self.setup)
+        self.assertIn('engine="native"', self.setup)
+        self.assertIn('RepetitionTracker', self.setup)
+        self.assertIn('repetition.record(', self.play)
 
 
 if __name__ == '__main__':

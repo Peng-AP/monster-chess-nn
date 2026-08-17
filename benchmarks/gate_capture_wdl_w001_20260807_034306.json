@@ -1,0 +1,242 @@
+{
+  "candidate": "capture_wdl_w001",
+  "model": "models\\candidates\\capture_wdl_w001\\best_value_net.pt",
+  "protocol": "full",
+  "binding": true,
+  "verdict": "FAIL",
+  "raw_verdict": "FAIL",
+  "failures": [
+    "vs_v21_confirm aggregate 0.4500 <= 0.50"
+  ],
+  "bar": "vs_v21",
+  "bar_model": "models\\fresh_start_v21\\best_value_net.pt",
+  "sparring_model": "models\\rejected\\fresh_start_v18_ramp\\best_value_net.pt",
+  "confirmed": true,
+  "thresholds": {
+    "per_side_floor": 0.4,
+    "aggregate_min_exclusive": 0.5,
+    "aggregate_legs": [
+      "vs_v21",
+      "vs_ramp"
+    ],
+    "sims": 400
+  },
+  "per_side_totals_across_legs": {
+    "white": {
+      "points": 52.0,
+      "games": 70,
+      "score": 0.7429,
+      "se_points": 4.18
+    },
+    "black": {
+      "points": 40.0,
+      "games": 70,
+      "score": 0.5714,
+      "se_points": 4.18
+    }
+  },
+  "legs": {
+    "vs_v21": {
+      "match": "capture_wdl_w001 vs fresh_start_v21",
+      "name_a": "capture_wdl_w001",
+      "name_b": "fresh_start_v21",
+      "games": 40,
+      "sims": 400,
+      "sims_b": 400,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 20260801,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.525,
+      "a_as_white": {
+        "games": 20,
+        "wins": 9,
+        "losses": 5,
+        "draws": 6,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 6,
+        "score": 0.6,
+        "mean_plies": 106.8,
+        "mean_plies_when_won": 41.33,
+        "mean_plies_when_lost": 82.8
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 4,
+        "losses": 6,
+        "draws": 10,
+        "time_leaning_wins": 10,
+        "time_leaning_losses": 0,
+        "score": 0.45,
+        "mean_plies": 147.6,
+        "mean_plies_when_won": 118.5,
+        "mean_plies_when_lost": 38.0
+      },
+      "elapsed_sec": 197.1,
+      "timestamp": "2026-08-07T03:38:05"
+    },
+    "vs_ramp": {
+      "match": "capture_wdl_w001 vs fresh_start_v18_ramp",
+      "name_a": "capture_wdl_w001",
+      "name_b": "fresh_start_v18_ramp",
+      "games": 40,
+      "sims": 400,
+      "sims_b": 400,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 20262881,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.9,
+      "a_as_white": {
+        "games": 20,
+        "wins": 20,
+        "losses": 0,
+        "draws": 0,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 0,
+        "score": 1.0,
+        "mean_plies": 32.0,
+        "mean_plies_when_won": 32.0,
+        "mean_plies_when_lost": null
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 15,
+        "losses": 3,
+        "draws": 2,
+        "time_leaning_wins": 2,
+        "time_leaning_losses": 0,
+        "score": 0.8,
+        "mean_plies": 89.7,
+        "mean_plies_when_won": 75.8,
+        "mean_plies_when_lost": 69.0
+      },
+      "elapsed_sec": 93.4,
+      "timestamp": "2026-08-07T03:39:39"
+    },
+    "anchor": {
+      "match": "capture_wdl_w001 vs heuristic",
+      "name_a": "capture_wdl_w001",
+      "name_b": "heuristic",
+      "games": 20,
+      "sims": 400,
+      "sims_b": 400,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 20264961,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 0,
+      "workers": 8,
+      "a_score": 0.85,
+      "a_as_white": {
+        "games": 10,
+        "wins": 10,
+        "losses": 0,
+        "draws": 0,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 0,
+        "score": 1.0,
+        "mean_plies": 14.0,
+        "mean_plies_when_won": 14.0,
+        "mean_plies_when_lost": null
+      },
+      "a_as_black": {
+        "games": 10,
+        "wins": 6,
+        "losses": 2,
+        "draws": 2,
+        "time_leaning_wins": 2,
+        "time_leaning_losses": 0,
+        "score": 0.7,
+        "mean_plies": 91.6,
+        "mean_plies_when_won": 58.5,
+        "mean_plies_when_lost": 57.5
+      },
+      "elapsed_sec": 19.8,
+      "timestamp": "2026-08-07T03:39:58"
+    },
+    "vs_v21_confirm": {
+      "match": "capture_wdl_w001 vs fresh_start_v21",
+      "name_a": "capture_wdl_w001",
+      "name_b": "fresh_start_v21",
+      "games": 40,
+      "sims": 400,
+      "sims_b": 400,
+      "batch_a": null,
+      "batch_b": null,
+      "seed": 20685043,
+      "search_a": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "search_b": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.3,
+        "policy_temperature": 1.0
+      },
+      "opening_temp_plies": 16,
+      "workers": 8,
+      "a_score": 0.45,
+      "a_as_white": {
+        "games": 20,
+        "wins": 6,
+        "losses": 6,
+        "draws": 8,
+        "time_leaning_wins": 0,
+        "time_leaning_losses": 8,
+        "score": 0.5,
+        "mean_plies": 131.85,
+        "mean_plies_when_won": 37.5,
+        "mean_plies_when_lost": 102.0
+      },
+      "a_as_black": {
+        "games": 20,
+        "wins": 5,
+        "losses": 9,
+        "draws": 6,
+        "time_leaning_wins": 5,
+        "time_leaning_losses": 0,
+        "score": 0.4,
+        "mean_plies": 112.8,
+        "mean_plies_when_won": 98.4,
+        "mean_plies_when_lost": 46.0
+      },
+      "elapsed_sec": 187.4,
+      "timestamp": "2026-08-07T03:43:06"
+    }
+  },
+  "seed": 20260801,
+  "timestamp": "2026-08-07T03:43:06"
+}

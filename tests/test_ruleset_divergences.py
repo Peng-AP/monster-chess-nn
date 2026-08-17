@@ -92,3 +92,41 @@ class WhiteMayNotEndItsTurnInCheck(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CastlingIsCheckAwareEvenThoughKingStepsAreNot(unittest.TestCase):
+    """3. White may step INTO check but may not CASTLE out of or through it.
+
+    Found 2026-08-03 while extracting the rules contract for the native port
+    (DIRECTIVE E1). The engine's White move generation calls python-chess's
+    `pseudo_legal_moves`, and python-chess's castling generation is check-aware
+    even in the pseudo-legal generator. So the defining Monster Chess liberty --
+    the king may walk onto an attacked square, because the second half-move can
+    walk back off it -- silently does not extend to castling.
+
+    Nobody chose this; it fell out of the library. It is pinned here because
+    the native core must reproduce it: a from-scratch bitboard generator would
+    naturally produce the *other* answer, and that divergence would be invisible
+    in aggregate play while changing opening theory for White.
+    """
+
+    def test_castling_is_refused_while_the_king_is_attacked(self):
+        game = MonsterChessGame("4r3/8/8/8/8/8/8/R3K2R w KQ - 0 1")
+        offered = {m.uci() for m in game._white_single_moves()}
+        self.assertNotIn("e1g1", offered)
+        self.assertNotIn("e1c1", offered)
+
+    def test_but_stepping_onto_an_attacked_square_is_offered(self):
+        game = MonsterChessGame("4r3/8/8/8/8/8/8/R3K2R w KQ - 0 1")
+        offered = {m.uci() for m in game._white_single_moves()}
+        self.assertIn("e1f1", offered)
+        self.assertIn("e1d1", offered)
+
+    def test_only_the_side_whose_path_is_attacked_is_refused(self):
+        # f1 attacked: kingside passes through it and is refused; queenside
+        # passes through d1 and is allowed. The king may still walk onto f1.
+        game = MonsterChessGame("5r2/8/8/8/8/8/8/R3K2R w KQ - 0 1")
+        offered = {m.uci() for m in game._white_single_moves()}
+        self.assertNotIn("e1g1", offered)
+        self.assertIn("e1c1", offered)
+        self.assertIn("e1f1", offered)

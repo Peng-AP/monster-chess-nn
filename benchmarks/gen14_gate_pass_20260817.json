@@ -1,0 +1,36 @@
+{
+ "experiment": "gen14_epoch7_binding_gate",
+ "date": "2026-08-17",
+ "candidate": "models/candidates/bootstrap_main_gen_0014/selected_epoch_007.pt",
+ "bar_model": "models\\candidates\\bootstrap_main_gen_0013\\selected_epoch_009.pt",
+ "verdict": "PASS",
+ "confirmed": true,
+ "legs": {
+  "vs_v22": {
+   "games": 800,
+   "aggregate": 0.5481,
+   "white": 0.53,
+   "black": 0.5663
+  },
+  "vs_ramp": {
+   "games": 40,
+   "aggregate": 0.95,
+   "white": 0.975,
+   "black": 0.925
+  },
+  "anchor": {
+   "games": 20,
+   "aggregate": 0.975,
+   "white": 1.0,
+   "black": 0.95
+  },
+  "vs_v22_confirm": {
+   "games": 800,
+   "aggregate": 0.5331,
+   "white": 0.4788,
+   "black": 0.5875
+  }
+ },
+ "chain": "V22 -> gen11 -> gen12 -> gen13 -> gen14, four consecutive confirmed gates",
+ "drift_warning": "White is declining against each successive bar (0.545/0.545, 0.540/0.5025, 0.530/0.4788) while Black rises (0.501/0.500, 0.549/0.538, 0.566/0.588). gen14 confirm White 0.4788 is the first sub-0.50 colour score in a passing leg. Clears the 0.40 floor but the direction is consistent across three steps."
+}

@@ -1,0 +1,36 @@
+{
+  "components": {
+    "heuristic_evaluate": {
+      "n": 1500,
+      "python_ms": 220.4,
+      "native_ms": 4.7,
+      "speedup": 46.82
+    },
+    "search_actions": {
+      "n": 1500,
+      "python_ms": 131.5,
+      "native_ms": 5.1,
+      "speedup": 25.89
+    },
+    "white_atomic_pairs": {
+      "n": 400,
+      "python_ms": 445.9,
+      "native_ms": 21.0,
+      "speedup": 21.27
+    },
+    "clone": {
+      "n": 1500,
+      "python_ms": 19.3,
+      "native_ms": 0.2,
+      "speedup": 82.69
+    },
+    "random_playout_40_games": {
+      "n": 40,
+      "python_ms": 298.8,
+      "native_ms": 11.7,
+      "speedup": 25.55
+    }
+  },
+  "note": "per-call PyO3 crossing included; lower bound for the finished design",
+  "timestamp": "2026-08-03T21:18:54"
+}

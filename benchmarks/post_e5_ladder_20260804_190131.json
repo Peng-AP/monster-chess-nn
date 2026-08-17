@@ -1,0 +1,137 @@
+{
+  "campaign": "post_e5_data_ladder",
+  "arms": {
+    "base": {
+      "verdict": "FAIL",
+      "failures": [
+        "vs_v19_B black leg 0.2500 < 0.40",
+        "vs_v19_B aggregate 0.4750 <= 0.50"
+      ],
+      "bar": "vs_v19_B",
+      "sims": 3200,
+      "legs": {
+        "vs_v19_B": {
+          "a_score": 0.475,
+          "W": 0.7,
+          "B": 0.25
+        },
+        "vs_ramp": {
+          "a_score": 0.8375,
+          "W": 0.975,
+          "B": 0.7
+        },
+        "anchor": {
+          "a_score": 0.675,
+          "W": 0.9,
+          "B": 0.45
+        }
+      },
+      "artifact": "benchmarks/gate_post_e5_base_20260804_170648.json"
+    },
+    "e1500": {
+      "verdict": "FAIL",
+      "failures": [
+        "vs_v19_B black leg 0.1000 < 0.40",
+        "vs_v19_B aggregate 0.3875 <= 0.50"
+      ],
+      "bar": "vs_v19_B",
+      "sims": 3200,
+      "legs": {
+        "vs_v19_B": {
+          "a_score": 0.3875,
+          "W": 0.675,
+          "B": 0.1
+        },
+        "vs_ramp": {
+          "a_score": 0.7,
+          "W": 0.9,
+          "B": 0.5
+        },
+        "anchor": {
+          "a_score": 0.95,
+          "W": 0.9,
+          "B": 1.0
+        }
+      },
+      "artifact": "benchmarks/gate_post_e5_e1500_20260804_181128.json"
+    },
+    "owner41": {
+      "verdict": "FAIL",
+      "failures": [
+        "vs_v19_B white leg 0.3500 < 0.40",
+        "vs_v19_B black leg 0.0750 < 0.40",
+        "vs_ramp black leg 0.3500 < 0.40",
+        "vs_v19_B aggregate 0.2125 <= 0.50"
+      ],
+      "bar": "vs_v19_B",
+      "sims": 3200,
+      "legs": {
+        "vs_v19_B": {
+          "a_score": 0.2125,
+          "W": 0.35,
+          "B": 0.075
+        },
+        "vs_ramp": {
+          "a_score": 0.6125,
+          "W": 0.875,
+          "B": 0.35
+        },
+        "anchor": {
+          "a_score": 0.825,
+          "W": 0.8,
+          "B": 0.85
+        }
+      },
+      "artifact": "benchmarks/gate_post_e5_owner41_20260804_190130.json"
+    }
+  },
+  "gate": {
+    "engine": "native",
+    "sims": 3200,
+    "seed": 20260801,
+    "bar": "vs_v19_B"
+  },
+  "training_recipe": [
+    "--epochs",
+    "30",
+    "--patience",
+    "10",
+    "--batch-size",
+    "256",
+    "--lr",
+    "0.002",
+    "--policy-loss-weight",
+    "1.0",
+    "--weight-decay",
+    "0.0001",
+    "--grad-clip",
+    "1.0",
+    "--warmup-epochs",
+    "3",
+    "--warmup-start-factor",
+    "0.1",
+    "--seed",
+    "42",
+    "--target",
+    "game_result",
+    "--value-head",
+    "scalar",
+    "--select-metric",
+    "decisive",
+    "--stem-channels",
+    "64"
+  ],
+  "processing_recipe": [
+    "--seed",
+    "42",
+    "--value-floor",
+    "0.5",
+    "--value-horizon",
+    "60",
+    "--value-discount-mode",
+    "near_mate",
+    "--channels",
+    "15"
+  ],
+  "timestamp": "2026-08-04T19:01:31"
+}

@@ -1,0 +1,190 @@
+{
+  "incumbent": "models/fresh_start_v21/best_value_net.pt",
+  "started": "2026-08-07T01:23:40",
+  "updated": "2026-08-07T02:51:00",
+  "arms": [
+    {
+      "name": "capture_wdl_w003",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--aux-wdl-head",
+        "--wdl-target",
+        "capture_result",
+        "--wdl-loss-weight",
+        "0.03"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T01:33:16",
+      "gate": {
+        "verdict": "PASS",
+        "artifact": "gate_capture_wdl_w003_20260807_014128.json",
+        "failures": [],
+        "vs_v21": {
+          "overall": 0.5125,
+          "white": 0.6,
+          "black": 0.425
+        },
+        "vs_ramp": {
+          "overall": 0.8875,
+          "white": 1.0,
+          "black": 0.775
+        },
+        "anchor": {
+          "overall": 0.85,
+          "white": 1.0,
+          "black": 0.7
+        },
+        "vs_v21_confirm": {
+          "overall": 0.525,
+          "white": 0.6,
+          "black": 0.45
+        }
+      }
+    },
+    {
+      "name": "black_policy_w175",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--black-policy-weight",
+        "1.75"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T01:49:39",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_black_policy_w175_20260807_015457.json",
+        "failures": [
+          "vs_v21 aggregate 0.4875 <= 0.50"
+        ],
+        "vs_v21": {
+          "overall": 0.4875,
+          "white": 0.55,
+          "black": 0.425
+        },
+        "vs_ramp": {
+          "overall": 0.875,
+          "white": 1.0,
+          "black": 0.75
+        },
+        "anchor": {
+          "overall": 0.85,
+          "white": 1.0,
+          "black": 0.7
+        }
+      }
+    },
+    {
+      "name": "conversions_w1",
+      "data": "data/processed/replay_gen5_plus_conversions_w1",
+      "extra": [],
+      "train_exit": 0,
+      "finished": "2026-08-07T02:04:26",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_conversions_w1_20260807_021303.json",
+        "failures": [
+          "vs_v21_confirm black leg 0.3750 < 0.40",
+          "vs_v21_confirm aggregate 0.4750 <= 0.50"
+        ],
+        "vs_v21": {
+          "overall": 0.55,
+          "white": 0.65,
+          "black": 0.45
+        },
+        "vs_ramp": {
+          "overall": 0.925,
+          "white": 0.975,
+          "black": 0.875
+        },
+        "anchor": {
+          "overall": 0.925,
+          "white": 1.0,
+          "black": 0.85
+        },
+        "vs_v21_confirm": {
+          "overall": 0.475,
+          "white": 0.575,
+          "black": 0.375
+        }
+      }
+    },
+    {
+      "name": "conversions_w4_lowlr",
+      "data": "data/processed/replay_gen5_plus_conversions_w4",
+      "extra": [
+        "--lr",
+        "0.00003"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T02:23:54",
+      "gate": {
+        "verdict": "FAIL",
+        "artifact": "gate_conversions_w4_lowlr_20260807_023239.json",
+        "failures": [
+          "vs_v21_confirm black leg 0.3250 < 0.40",
+          "vs_v21_confirm aggregate 0.4250 <= 0.50"
+        ],
+        "vs_v21": {
+          "overall": 0.675,
+          "white": 0.75,
+          "black": 0.6
+        },
+        "vs_ramp": {
+          "overall": 0.9125,
+          "white": 1.0,
+          "black": 0.825
+        },
+        "anchor": {
+          "overall": 0.875,
+          "white": 1.0,
+          "black": 0.75
+        },
+        "vs_v21_confirm": {
+          "overall": 0.425,
+          "white": 0.525,
+          "black": 0.325
+        }
+      }
+    },
+    {
+      "name": "capture_wdl_plus_black_policy",
+      "data": "data/processed/bootstrap_replay_main_gen_0005_teacher3200_full",
+      "extra": [
+        "--aux-wdl-head",
+        "--wdl-target",
+        "capture_result",
+        "--wdl-loss-weight",
+        "0.03",
+        "--black-policy-weight",
+        "1.75"
+      ],
+      "train_exit": 0,
+      "finished": "2026-08-07T02:43:02",
+      "gate": {
+        "verdict": "PASS",
+        "artifact": "gate_capture_wdl_plus_black_policy_20260807_025100.json",
+        "failures": [],
+        "vs_v21": {
+          "overall": 0.55,
+          "white": 0.675,
+          "black": 0.425
+        },
+        "vs_ramp": {
+          "overall": 0.8625,
+          "white": 1.0,
+          "black": 0.725
+        },
+        "anchor": {
+          "overall": 0.825,
+          "white": 1.0,
+          "black": 0.65
+        },
+        "vs_v21_confirm": {
+          "overall": 0.525,
+          "white": 0.625,
+          "black": 0.425
+        }
+      }
+    }
+  ]
+}

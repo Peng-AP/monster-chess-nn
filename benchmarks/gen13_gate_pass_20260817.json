@@ -1,0 +1,38 @@
+{
+ "experiment": "gen13_epoch9_binding_gate",
+ "date": "2026-08-17",
+ "candidate": "models/candidates/bootstrap_main_gen_0013/selected_epoch_009.pt",
+ "bar_model": "models\\candidates\\bootstrap_main_gen_0012\\selected_epoch_007.pt",
+ "verdict": "PASS",
+ "confirmed": true,
+ "legs": {
+  "vs_v22": {
+   "games": 800,
+   "aggregate": 0.5444,
+   "white": 0.54,
+   "black": 0.5487
+  },
+  "vs_ramp": {
+   "games": 40,
+   "aggregate": 0.975,
+   "white": 0.975,
+   "black": 0.975
+  },
+  "anchor": {
+   "games": 20,
+   "aggregate": 1.0,
+   "white": 1.0,
+   "black": 1.0
+  },
+  "vs_v22_confirm": {
+   "games": 800,
+   "aggregate": 0.52,
+   "white": 0.5025,
+   "black": 0.5375
+  }
+ },
+ "note": "leg names print vs_v22 because BAR is a constant; real opponent is gen12 epoch 7",
+ "chain": "V22 -> gen11 -> gen12 -> gen13, three consecutive confirmed gates",
+ "black_stronger_than_white": "gen13 scores B 0.5487/0.5375 vs W 0.5400/0.5025 -- first model here stronger as Black",
+ "colour_gap_caveat": "Self-calibration gaps: V22 0.180, gen11 0.040, gen12 0.120. The gap did NOT keep closing; gen11 was a one-off, not a trend."
+}
