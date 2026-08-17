@@ -206,6 +206,9 @@ def main():
                     help="attempts per requested entry for each model. Increase "
                          "this without changing depth/distribution when shallow "
                          "walks collide (default: 1.6)")
+    ap.add_argument("--allow-short", action="store_true",
+                    help="write the book even if fewer unique positions were "
+                         "found than requested (the count is recorded)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.oversample < 1.0:
@@ -226,10 +229,18 @@ def main():
                         args.temperature, args.seed, args.workers, args.engine,
                         oversample=args.oversample)
     if len(book) < args.entries:
-        raise SystemExit(
-            f"only {len(book)} of {args.entries} unique positions found; "
-            f"deepen --plies (shallow walks collide often) or mix in another "
-            f"--model. Stats: {stats}")
+        # Discarding a nearly complete book is expensive and pointless: two
+        # builds on 2026-08-17 fell 278 and 55 entries short of their targets
+        # and wrote NOTHING, costing about an hour. A shorter book is still a
+        # usable book -- callers allocate blocks from what exists, and the
+        # manifest records the true count -- so --allow-short keeps it.
+        message = (f"only {len(book)} of {args.entries} unique positions found; "
+                   f"deepen --plies (shallow walks collide often) or mix in "
+                   f"another --model. Stats: {stats}")
+        if not args.allow_short:
+            raise SystemExit(message + "
+(pass --allow-short to keep what was found)")
+        print("WARNING: " + message, flush=True)
 
     out = args.out if os.path.isabs(args.out) else os.path.join(ROOT, args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
