@@ -234,6 +234,37 @@ def _write_teacher(output_dir, rows, model_path, simulations):
             handle.write(json.dumps(record) + "\n")
 
 
+def _publish_atomically(staging, output_dir, attempts=6, delay=3.0):
+    """Rename the staging directory into place, retrying transient locks.
+
+    `os.replace` on a DIRECTORY is not reliably atomic on Windows: a lingering
+    worker file handle or an antivirus scan of the freshly written teachers
+    raises `PermissionError` (WinError 5) even when the destination does not
+    exist. That happened on generation 13 and discarded a completed 8,000
+    position reanalysis -- about 15 minutes of 3,200-simulation GPU work -- for
+    a lock that cleared within seconds.
+
+    Retrying is safe: the staging directory is fully written and fsynced before
+    this is called, and the destination is only ever created by this rename.
+    """
+    import time as _time
+    last = None
+    for attempt in range(attempts):
+        try:
+            os.replace(staging, output_dir)
+            return
+        except OSError as exc:
+            last = exc
+            _time.sleep(delay)
+    # A move is not atomic, but losing the reanalysis is strictly worse than a
+    # non-atomic publish that the caller can still verify by file count.
+    import shutil as _shutil
+    try:
+        _shutil.move(staging, output_dir)
+    except Exception:
+        raise last
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--source-dir", required=True)
@@ -355,7 +386,7 @@ def main():
     with open(os.path.join(staging, "reanalysis_summary.json"), "w",
               encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
-    os.replace(staging, output_dir)
+    _publish_atomically(staging, output_dir)
     print(json.dumps(summary, indent=2))
 
 
