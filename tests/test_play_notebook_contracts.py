@@ -38,24 +38,45 @@ class PlayNotebookContracts(unittest.TestCase):
             '\"best_value_net.pt\")',
             self.setup,
         )
-        self.assertIn('rejected/{run_name}', self.setup)
+        self.assertIn('rejected/{run}', self.setup)
 
     def test_candidate_picker_offers_the_gate_scored_checkpoint(self):
-        """A candidate directory holds two different models.
+        """The picker must find whatever checkpoint a gate actually scored.
 
-        `arena_selected.pt` is the epoch the arena chose and what the gates
-        scored; `best_value_net.pt` is the lowest-training-loss net and was
-        never gated. The picker globbed only the latter until 2026-08-06, so
-        selecting a candidate silently loaded the ungated model -- the owner
-        would have playtested something no gate ever measured.
+        Guessing it from filenames does not work. `arena_selected.pt` is one
+        such checkpoint, but in the 2026-08 chain every gated model is an epoch
+        SNAPSHOT instead -- gen11 `selected_epoch_008` through gen14
+        `selected_epoch_007` -- so a filename-driven picker showed NONE of them
+        while happily offering `best_value_net.pt`, the lowest-training-loss net
+        that no gate ever measured. Discovery therefore reads
+        `benchmarks/gate_*.json`, where the scored path is recorded explicitly.
         """
+        self.assertIn('\"benchmarks\", \"gate_*.json\"', self.setup)
+        self.assertIn('report.get(\"model\")', self.setup)
+        self.assertIn('report.get(\"verdict\")', self.setup)
+        # Ungated nets stay reachable, but must be labelled as such.
         self.assertIn('\"arena_selected.pt\"', self.setup)
-        # Both must be reachable, and the labels must say which is which.
-        self.assertIn('candidate [GATED] {run_name}', self.setup)
-        self.assertIn('candidate [{tag}] {run_name}', self.setup)
-        # The marker leads, because a dropdown truncates the tail.
-        self.assertLess(self.setup.index('candidate [GATED]'),
-                        self.setup.index('{run_name}\", arena'))
+        self.assertIn('lowest loss, NOT gated', self.setup)
+        # Passes lead: a dropdown truncates the tail, and the failures
+        # outnumber the passes by an order of magnitude.
+        self.assertLess(self.setup.index('--- GATED: passed ---'),
+                        self.setup.index('--- gated: failed ---'))
+
+    def test_gated_picker_ranks_by_recency_not_by_score(self):
+        """Scores from different gates are not comparable.
+
+        Each gate measures its candidate against the bar in force at the time,
+        so an old 0.7750 against a long-superseded opponent is not stronger
+        than 0.5481 against the current one. Sorting the dropdown by score
+        floated ancient checkpoints above the head of the chain, which is what
+        made it unusable. Rank is (pass tier, gate report mtime).
+        """
+        self.assertIn('os.path.getmtime(path)', self.setup)
+        self.assertIn(
+            'gated_choices.sort(key=lambda item: (item[0], item[1]), '
+            'reverse=True)',
+            self.setup,
+        )
 
     def test_color_selector_is_beside_model_and_drives_standard_game(self):
         self.assertIn('_color_dropdown = widgets.Dropdown(', self.setup)
