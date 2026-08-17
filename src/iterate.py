@@ -36,7 +36,7 @@ from config import (
 ROOT = Path(PROJECT_ROOT)
 PY = sys.executable
 DEFAULT_RUN_ROOT = ROOT / "iterations"
-DEFAULT_CHAMPION = ROOT / "models" / "fresh_start_v22" / "best_value_net.pt"
+DEFAULT_CHAMPION = ROOT / "models" / "bootstrap_v23" / "best_value_net.pt"
 DEFAULT_ANCHOR_DATA = ROOT / "data" / "processed" / "combined_v19_B_r50h60_capture"
 DEFAULT_SPARRING = (
     ROOT / "models" / "rejected" / "fresh_start_v18_ramp" / "best_value_net.pt")

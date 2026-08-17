@@ -12,9 +12,9 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
-* **The bar is the strongest promoted engine on record, `v22`.** A candidate
-  must beat v22 on aggregate, clear the per-side floor on every leg, and then
-  beat v22 *again* on a fresh opening seed.
+* **The bar is the strongest promoted engine on record, `v23`.** A candidate
+  must beat v23 on aggregate, clear the per-side floor on every leg, and then
+  beat v23 *again* on a fresh opening seed.
   `fresh_start_v18_ramp` remains a floor-bearing leg -- a distinct style.
 * Per-side scores are the verdict; aggregates are reported but never decide a
   leg. Aggregates masking a per-side collapse has burned this project four
@@ -64,13 +64,20 @@ SIMS = 400
 # 2026-08-16: the owner explicitly promoted the fully gated Gen9 checkpoint as
 # v22. It also beat the prior v21b bar directly over 400 paired games. The
 # release and strength bar are aligned again; thresholds remain unchanged.
-BAR = "vs_v22"
-AGGREGATE_LEGS = ("vs_v22", "vs_ramp")
+# 2026-08-17: the owner promoted the fully gated generation-15 checkpoint as
+# v23, the first release of the BOOTSTRAP series. The version number continues
+# from v22 so the release ladder stays comparable; the directory prefix changes
+# because the lineage did. It is +130.4 Elo above v22 on a least-squares fit
+# over all 15 pairs of the chain (largest residual 0.0226, no inversions), and
+# scores 0.6567 against v22 directly over 600 games. Release and strength bar
+# are aligned; thresholds remain unchanged.
+BAR = "vs_v23"
+AGGREGATE_LEGS = ("vs_v23", "vs_ramp")
 
 NUMBERED_INCUMBENT = os.path.join(
-    ROOT, "models", "fresh_start_v22", "best_value_net.pt")
+    ROOT, "models", "bootstrap_v23", "best_value_net.pt")
 BAR_MODEL = os.path.join(
-    ROOT, "models", "fresh_start_v22", "best_value_net.pt")
+    ROOT, "models", "bootstrap_v23", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -79,7 +86,7 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v22_confirm"
+CONFIRM_LEG = "vs_v23_confirm"
 CONFIRM_SEED_OFFSET = 424242
 SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
@@ -106,12 +113,12 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # upward. The 2026-08-16 speedups are what made this affordable: 800 games at
 # 400 sims is about 8 minutes.
 FULL_LEGS = [
-    ("vs_v22", BAR_MODEL, 800),
+    ("vs_v23", BAR_MODEL, 800),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v22", BAR_MODEL, 4),
+    ("vs_v23", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]

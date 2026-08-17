@@ -200,7 +200,9 @@ side plays Black; that is a fact about the game, not about a model.
 
 | model | role |
 |---|---|
-| `models/fresh_start_v22` | **numbered release and formal bar.** Byte-identical to the Gen9 epoch-6 arena checkpoint; explicitly promoted by the owner on 2026-08-16. |
+| `models/bootstrap_v23` | **numbered release and formal bar** (owner, 2026-08-17). Byte-identical to `bootstrap_main_gen_0015/selected_epoch_016`. **First release of the BOOTSTRAP series**: the version number continues from v22 so the release ladder stays comparable, while the directory prefix changes from `fresh_start_*` because the lineage did. +130.4 Elo above v22 on a fit over all 15 pairs of the chain; 0.6567 against v22 directly over 600 games. Manifest: `models/bootstrap_v23/promotion_manifest.json`. |
+| `models/fresh_start_v22` | prior numbered release and bar, retained unchanged. Last release of the `fresh_start` series. |
+| `models/candidates/bootstrap_main_gen_0011..0014` | the rungs between v22 and v23. Each passed a confirmed 800-game gate against its predecessor; none is a release. The gated checkpoints are epoch snapshots (`selected_epoch_008/007/009/007`), never `best_value_net.pt`. |
 | `models/fresh_start_v21b` | prior unnumbered bar, retained unchanged. |
 | `models/fresh_start_v21` | prior numbered release, retained unchanged. |
 | `models/candidates/gen7_scratch/screen_nominee.pt` | passed the gate against v21b (pooled 0.5600 over 400 games, z=+2.40); the working bar inside the bootstrap loop. |
