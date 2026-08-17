@@ -238,8 +238,8 @@ def main():
                    f"deepen --plies (shallow walks collide often) or mix in "
                    f"another --model. Stats: {stats}")
         if not args.allow_short:
-            raise SystemExit(message + "
-(pass --allow-short to keep what was found)")
+            raise SystemExit(
+                message + " (pass --allow-short to keep what was found)")
         print("WARNING: " + message, flush=True)
 
     out = args.out if os.path.isabs(args.out) else os.path.join(ROOT, args.out)
