@@ -2423,5 +2423,88 @@ improvement. gen11 self-plays nearly balanced at 400 simulations. gen12 then
 scores Black **0.5012 / 0.5000** against that already-balanced bar, so this is
 not V22's Black being weak -- it is a real change in what the models play.
 
-*Updated 2026-08-17. Suite 716 passing. Predecessor reports
+## 43. Generations 13 and 14 extend the chain (2026-08-17)
+
+Each generation was produced with the previous candidate as the working bar and
+gated against it under the full high-power protocol: an 800-game binding leg, a
+confirm leg replayed on a fresh opening seed and a disjoint book block, plus
+sparring and anchor legs.
+
+| leg | games | aggregate | White | Black |
+|---|---:|---:|---:|---:|
+| gen13 vs bar (gen12 ep7) | 800 | **0.5444** | 0.5400 | 0.5487 |
+| gen13 vs_ramp | 40 | 0.9750 | 0.9750 | 0.9750 |
+| gen13 anchor | 20 | 1.0000 | 1.0000 | 1.0000 |
+| gen13 vs bar, confirm | 800 | **0.5200** | 0.5025 | 0.5375 |
+| gen14 vs bar (gen13 ep9) | 800 | **0.5481** | 0.5300 | 0.5663 |
+| gen14 vs_ramp | 40 | 0.9500 | 0.9750 | 0.9250 |
+| gen14 anchor | 20 | 0.9750 | 1.0000 | 0.9500 |
+| gen14 vs bar, confirm | 800 | **0.5331** | 0.4788 | 0.5875 |
+
+**Both PASS, both confirmed.** Every leg clears the 0.40 per-side floor and
+both binding legs clear 0.50 aggregate.
+
+**The confirm leg is consistently the lower of the two**, by 0.0244 for gen13
+and 0.0150 for gen14 (and 0.0319 for gen11, 0.0006 for gen12). The binding leg
+is run first and its book block is the earlier one, so this is not a fluke of
+ordering alone; with four instances the pattern is worth watching, but each gap
+sits inside the ~0.018 paired standard error of an 800-game leg and no single
+one is significant.
+
+**Where the gain sits moved.** gen11 gained almost entirely as White (0.6075
+against V22's colour, versus 0.5425 as Black). By gen14 it is the reverse:
+White 0.5300 / 0.4788 against gen13, Black 0.5663 / 0.5875. Read as a trend
+across three steps, White appears to fall (0.5450 -> 0.5400 -> 0.5300 on the
+binding legs, 0.5450 -> 0.5025 -> 0.4788 on the confirms) while Black rises.
+**That reading is wrong, and section 44 is why.** Each of those numbers is
+against a *different* opponent -- the bar moves every generation -- so a falling
+score against a rising bar is not a falling absolute strength.
+
+## 44. The round robin: the chain is one clean strength scale (2026-08-17)
+
+Every gate asked only "better than the model immediately before". Four such
+passes can compound while absolute strength against the *original* bar erodes,
+because each new bar is itself a product of whatever drift the previous step
+introduced. The apparent White erosion in section 43 is exactly the shape that
+failure would take.
+
+The six pairs the ladder never tested were played at 600 games each on
+`books/gate_v25_mixed_p8_20260817.json`, disjoint blocks, seeds separated far
+beyond the game count. Adjacent pairs are already measured at 800 games by the
+gates and were not repeated.
+
+| row scores vs column | v22 | gen11 | gen12 | gen13 | gen14 |
+|---|---:|---:|---:|---:|---:|
+| v22 | - | 0.4250 | 0.4183 | 0.3733 | 0.3592 |
+| gen11 | 0.5750 | - | 0.4769 | 0.4192 | 0.3750 |
+| gen12 | 0.5817 | 0.5231 | - | 0.4556 | 0.4042 |
+| gen13 | 0.6267 | 0.5808 | 0.5444 | - | 0.4519 |
+| gen14 | **0.6408** | 0.6250 | 0.5958 | 0.5481 | - |
+
+**The matrix is strictly ordered.** Every model beats every predecessor and
+loses to every successor; there is no cycle anywhere in the pool.
+
+A least-squares Elo fit over all ten pairs, with V22 pinned at zero:
+
+| model | Elo | step |
+|---|---:|---:|
+| V22 | +0.0 | - |
+| gen11 | +39.0 | +39.0 |
+| gen12 | +55.7 | +16.7 |
+| gen13 | +89.4 | +33.7 |
+| gen14 | **+119.2** | +29.8 |
+
+**The largest residual is 0.0243** (gen14 vs V22, observed 0.6408 against a
+predicted 0.6651) and seven of ten pairs fit within 0.012. A single
+one-dimensional strength scale explains the whole pool, so the earlier
+suspicion of intransitivity was an artifact of chaining pairwise *differences*
+rather than fitting them jointly.
+
+**The White erosion warning was false.** gen14 scores **0.6350 as White against
+V22**, above gen11's 0.6075 on the same colour against the same opponent.
+White did not erode; the bar rose underneath it. The lesson generalises: a
+per-colour score is only interpretable against a *named* opponent, and three
+consecutive gate legs against three different bars are not a trend line.
+
+*Updated 2026-08-17. Suite 717 passing. Predecessor reports
 retire to git history per project convention.*

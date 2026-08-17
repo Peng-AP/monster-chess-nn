@@ -54,6 +54,26 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**The bootstrap chain now runs V22 -> gen11 -> gen12 -> gen13 -> gen14, and a
+round robin proves it is a single strength scale.** Every step passed the full
+high-power protocol -- an 800-game binding leg plus a confirm leg on a fresh
+seed and a disjoint book block -- and all four are confirmed. The six pairs the
+ladder never tested were then played at 600 games each: **every model beats
+every predecessor and loses to every successor, with no cycle anywhere**. A
+least-squares Elo fit over all ten pairs puts gen11 at +39, gen12 at +56,
+gen13 at +89 and **gen14 at +119** above V22, largest residual 0.0243. The
+apparent White erosion across three consecutive gate legs was an artifact of
+comparing scores against three *different* bars: gen14 scores **0.6350 as White
+against V22**, above gen11's 0.6075 on the same colour against the same
+opponent. `REPORT.md` sections 41-44.
+
+**The models in that chain are epoch snapshots, not `best_value_net.pt`.** The
+gated checkpoints are `bootstrap_main_gen_0011/selected_epoch_008`,
+`gen_0012/selected_epoch_007`, `gen_0013/selected_epoch_009` and
+`gen_0014/selected_epoch_007`. `best_value_net.pt` in those directories is the
+lowest-training-loss net and **no gate ever measured it**. Read the scored path
+out of `benchmarks/gate_*.json`; never infer it from a filename.
+
 **The first high-power gate rejected the first v23 attempt (2026-08-17), and
 the run that produced it was starved.** The binding bar leg went 200 -> 800
 games on the owner's instruction that a pass be high power and confirmed; no
