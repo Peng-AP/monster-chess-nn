@@ -2254,5 +2254,51 @@ conversion for whoever plays Black, it does not make any model stronger than
 any other, and it is not a substitute for a better model. What it does buy is a
 cheaper, faster loop and a Black floor the incumbent can actually clear.
 
-*Updated 2026-08-16. Suite 714 passing. Predecessor reports
+## 40. The first high-power gate rejects v23 gen-1 (2026-08-17)
+
+The owner's criterion, stated 2026-08-16: a pass needs aggregate **> 0.50**
+with **neither side collapsing**, at high power and confirmed. The bar leg went
+200 -> 800 games for that reason; this run used 600 because it fitted the
+unspent blocks of the existing book, giving aggregate SE 0.013 against the
+200-game leg's 0.022.
+
+`bootstrap_v23_gen_0001/selected_epoch_008` versus V22, 600 games per leg on
+two disjoint blocks:
+
+| leg | block | aggregate | White | Black | verdict |
+|---|---:|---:|---:|---:|---|
+| first | 960 | **0.4258** | 0.4933 | 0.3583 | FAIL |
+| confirm | 1260 | **0.4375** | 0.4950 | 0.3800 | FAIL |
+
+Both legs fail both conditions, consistently. **There is no v23 candidate.**
+
+### 40.1 The screen was optimistic by three standard errors
+
+The checkpoint screen scored this same checkpoint at aggregate delta **+0.015**
+on block 840 over 200 games -- a self-match aggregate is 0.50 by construction,
+so that is a raw **0.515**. Two 600-game legs put it at **0.426** and
+**0.438**. The gap is 0.085 against a combined SE near 0.026: about **3 SE**.
+
+That is section 33.4's measurement floor deciding a real case. A single-block
+200-game screen nominated a checkpoint that a properly powered gate rejects
+outright, and under the old 200-game gate this could plausibly have produced a
+false pass -- the same failure as the three false positives at 40 games in
+section 23. **The screen must shortlist, not nominate**; at the current cycle
+speed, gating three or four candidates is affordable and the screen's own
+verdict is not worth trusting.
+
+### 40.2 What it does and does not say about the rule changes
+
+The 2026-08-16 changes measurably improved conversion (section 39): Black's
+losses held flat while draws became wins, in self-play and against v21b. They
+did not produce a model that beats V22. Those are consistent -- the finisher is
+an ENGINE feature available to both sides, so it lifts whoever plays Black
+without making any model stronger than another.
+
+Six self-play arms have now failed since Gen9 -- Gen10, its seed-43 replicate,
+teacher recovery at 1x/2x/4x/balanced, and this one. The corpus fix removed a
+real defect (the oracle's policy-1.0 labels on non-converting play) and still
+did not break the pattern.
+
+*Updated 2026-08-17. Suite 716 passing. Predecessor reports
 retire to git history per project convention.*
