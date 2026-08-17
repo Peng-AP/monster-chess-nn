@@ -93,8 +93,20 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # it. No threshold moved; only the evidence behind them. The ramp and anchor
 # legs stay small: they are floor checks that have never been the deciding
 # leg, and enlarging them would triple gate cost for nothing.
+#
+# 2026-08-16: the bar leg went 200 -> 800 games, on the owner's instruction
+# that a pass be "high power and absolutely confirmed". At 200 the aggregate
+# SE is 0.022, so a candidate truly at 0.53 sits only 1.4 SE above the 0.50
+# threshold -- barely better than a coin flip, which is why single blocks kept
+# flipping verdicts. At 800 the aggregate SE is 0.011 (2.7 SE) and the
+# per-colour SE is 0.0157, putting a true Black of 0.45 at 3.2 SE above the
+# floor. A larger leg also spans four times as many book entries, which damps
+# the block-to-block colour swing measured at 0.280-0.470 for V22 against
+# itself. NO THRESHOLD MOVED -- only the evidence behind them, and it moved
+# upward. The 2026-08-16 speedups are what made this affordable: 800 games at
+# 400 sims is about 8 minutes.
 FULL_LEGS = [
-    ("vs_v22", BAR_MODEL, 200),
+    ("vs_v22", BAR_MODEL, 800),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
@@ -154,6 +166,19 @@ def evaluate_legs(legs):
         }
     verdict = "PASS" if not failures else "FAIL"
     return verdict, failures, totals
+
+
+def leg_seed_stride(spec):
+    """Seed distance between legs, wide enough that none can replay another.
+
+    `run_match` draws per-game seeds at leg_seed + i (White) and
+    leg_seed + 1000 + i (Black), so the stride must clear both the leg's own
+    game count and that 1000 offset. Exposed rather than inlined because
+    `tests/test_match_seed_separation.py` has to check the SAME number the gate
+    uses -- it previously hardcoded 100 and silently drifted once the bar leg
+    grew, which is exactly the failure that test exists to prevent.
+    """
+    return max(100, 2 * (max(games for _n, _o, games in spec) + 1000))
 
 
 def book_leg_offsets(spec, base_offset=0):
@@ -233,7 +258,7 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
     # Today's legs are 40/40/20 and the sets are disjoint, but the margin is 81
     # -- small enough that raising a leg's game count would silently make two
     # legs replay the same openings and look like independent agreement.
-    leg_stride = max(100, 2 * (max(games for _n, _o, games in spec) + 1000))
+    leg_stride = leg_seed_stride(spec)
     for i, (name, opponent, games) in enumerate(spec):
         play(name, opponent, games, seed + leg_stride * i)
 

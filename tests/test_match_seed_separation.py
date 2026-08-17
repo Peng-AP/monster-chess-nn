@@ -63,7 +63,10 @@ class TestGateLegsAreSafe(unittest.TestCase):
     def test_every_pair_of_full_protocol_legs_is_disjoint(self):
         base = 20260801
         specs = [(name, games) for name, _opp, games in gate.FULL_LEGS]
-        seeds = [(name, base + 100 * i, games)
+        # Read the stride the gate actually uses. Hardcoding it here let this
+        # test pass while the bar leg grew past it.
+        stride = gate.leg_seed_stride(gate.FULL_LEGS)
+        seeds = [(name, base + stride * i, games)
                  for i, (name, games) in enumerate(specs)]
         seeds.append((gate.CONFIRM_LEG, base + gate.CONFIRM_SEED_OFFSET,
                       dict(specs)[gate.BAR]))

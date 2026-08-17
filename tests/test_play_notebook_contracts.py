@@ -150,12 +150,32 @@ class PlayNotebookContracts(unittest.TestCase):
             self.assertNotIn('swindle', cell)
 
     def test_auto_finishes_use_their_own_simulation_budget(self):
-        """auto_engine is heuristic (sequential UCB1); SIMULATIONS is for NN play."""
+        """auto_engine stays heuristic on its own budget; SIMULATIONS is NN play.
+
+        Checks the intent rather than a literal constructor line: the engine is
+        now built through the shared factory (2026-08-16) so the notebook picks
+        up native search, tree reuse, the finisher and CUDA graphs. Pinning the
+        exact `MCTS(...)` text made this assert an implementation detail, and
+        it would have blocked the notebook from ever moving to the engine the
+        gates actually measure.
+        """
         self.assertIn('AUTO_SIMULATIONS = 400', self.setup)
-        self.assertIn(
-            'auto_engine = MCTS(num_simulations=AUTO_SIMULATIONS, eval_fn=None,',
-            self.setup,
-        )
+        self.assertIn('auto_engine', self.setup)
+        self.assertIn('AUTO_SIMULATIONS', self.setup.split('auto_engine')[1][:200])
+        # Heuristic: no model path is handed to the auto engine.
+        self.assertIn('_build_engine(None, AUTO_SIMULATIONS', self.setup)
+
+    def test_notebook_plays_the_engine_the_gates_measure(self):
+        """The owner's sessions must not silently run a different search.
+
+        Until 2026-08-16 the notebook built `MCTS` directly, so playtests ran
+        the PYTHON engine with no tree reuse, no finisher and no repetition --
+        while every measurement in the project described the native one.
+        """
+        self.assertIn('from benchmark import _build_engine', self.setup)
+        self.assertIn('engine="native"', self.setup)
+        self.assertIn('RepetitionTracker', self.setup)
+        self.assertIn('repetition.record(', self.play)
 
 
 if __name__ == '__main__':

@@ -14,16 +14,37 @@ import checkpoint_screen as screen  # noqa: E402
 
 
 class CheckpointScreenTests(unittest.TestCase):
-    def test_ranking_maximizes_worst_color_before_aggregate(self):
+    def test_ranking_maximizes_aggregate_once_no_colour_has_collapsed(self):
+        """The screen is a SHORTLIST and must not out-rule the gate.
+
+        It previously ranked on the worst colour, which demanded improvement on
+        BOTH sides while the gate asks only for aggregate > 0.50 with neither
+        side under the 0.40 floor (owner, 2026-08-16). Since Gen9 every arm
+        trades a little White for more Black, so the old key nominated by the
+        size of the sacrifice and hid candidates the gate might pass.
+        """
         balanced = {
             "minimum_color_delta": 0.01,
             "deltas": {"white": 0.01, "black": 0.02, "aggregate": 0.015},
         }
-        white_only = {
+        stronger_aggregate = {
             "minimum_color_delta": -0.02,
             "deltas": {"white": 0.30, "black": -0.02, "aggregate": 0.14},
         }
-        self.assertGreater(screen.rank_key(balanced), screen.rank_key(white_only))
+        self.assertGreater(screen.rank_key(stronger_aggregate),
+                           screen.rank_key(balanced))
+
+    def test_a_collapsed_colour_is_ranked_below_everything_intact(self):
+        """"Neither side collapses" is the owner's other condition."""
+        collapsed = {
+            "minimum_color_delta": -0.25,
+            "deltas": {"white": 0.60, "black": -0.25, "aggregate": 0.175},
+        }
+        modest = {
+            "minimum_color_delta": -0.01,
+            "deltas": {"white": 0.02, "black": -0.01, "aggregate": 0.005},
+        }
+        self.assertGreater(screen.rank_key(modest), screen.rank_key(collapsed))
 
     def test_calibration_is_per_color(self):
         calibration = {

@@ -87,10 +87,35 @@ class BootstrapPipelineContracts(unittest.TestCase):
             command = plan[phase]["commands"][0]
             return int(command[command.index("--book-offset") + 1])
 
+        # Derived, not hardcoded: the binding gate's block width follows its
+        # leg sizes, which grew 200 -> 800 on 2026-08-16. Pinning the literals
+        # made this test assert a stale layout rather than the disjointness it
+        # exists to protect.
+        import gate as gate_mod
+        _legs, gate_entries = gate_mod.book_leg_offsets(gate_mod.FULL_LEGS, 0)
+        # iterate reserves the probe games plus the full-screen games.
+        screen_entries = (args.checkpoint_probe_games
+                          + args.checkpoint_screen_games) // 2
+
         self.assertEqual(offset("checkpoint_screen"), 0)
-        self.assertEqual(offset("binding_gate"), 120)
-        self.assertEqual(offset("high_fidelity_gate"), 340)
-        self.assertEqual(offset("self_skew"), 380)
+        self.assertEqual(offset("binding_gate"), screen_entries)
+        self.assertEqual(offset("high_fidelity_gate"),
+                         screen_entries + gate_entries)
+        self.assertEqual(offset("self_skew"),
+                         screen_entries + gate_entries
+                         + args.high_fidelity_games // 2)
+
+        # The property that actually matters: every phase occupies its own
+        # stretch of the book, in order, with no overlap.
+        bounds = [
+            (offset("checkpoint_screen"), screen_entries),
+            (offset("binding_gate"), gate_entries),
+            (offset("high_fidelity_gate"), args.high_fidelity_games // 2),
+            (offset("self_skew"), args.self_skew_games // 2),
+        ]
+        for (start_a, width_a), (start_b, _w) in zip(bounds, bounds[1:]):
+            self.assertLessEqual(start_a + width_a, start_b,
+                                 "book phases must not overlap")
 
     def test_next_generation_uses_isolated_run_directories(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -169,9 +169,35 @@ def calibrated_result(candidate: dict, calibration: dict) -> dict:
     }
 
 
+# Collapse guard, in calibrated terms. The binding gate's rule is an ABSOLUTE
+# 0.40 per-colour floor; here we only have deltas against the incumbent's
+# score on the same block, so "collapse" is read as a large calibrated drop
+# rather than a fixed level.
+COLLAPSE_DELTA = -0.10
+
+
 def rank_key(result: dict) -> tuple[float, float, float]:
+    """Rank by AGGREGATE, once neither colour has collapsed.
+
+    Ranking on `minimum_color_delta` implemented a stricter rule than the gate
+    enforces: it demanded improvement on BOTH colours, while the gate asks only
+    for aggregate > 0.50 with neither side under the 0.40 floor (owner,
+    2026-08-16: "so long as it does score >50, and neither side collapses").
+
+    That mismatch had teeth. Every arm since Gen9 trades a little White for
+    more Black, so worst-colour ranking nominated by the size of the sacrifice
+    and, worse, made `passes_both_colors` read as failure on candidates the
+    gate might well have passed -- v23 seed 42 epoch 8 was +0.090 Black,
+    -0.060 White, aggregate +0.015 and was never gated.
+
+    A screen at 200 games cannot resolve 0.05 anyway (SE about 0.064), so this
+    is a SHORTLIST, not a verdict. Rank by aggregate, drop anything that has
+    collapsed a colour, and let the 800-game gate decide.
+    """
     delta = result["deltas"]
-    return (result["minimum_color_delta"], delta["aggregate"], delta["black"])
+    collapsed = min(delta["white"], delta["black"]) <= COLLAPSE_DELTA
+    return (0.0 if collapsed else 1.0, delta["aggregate"],
+            result["minimum_color_delta"])
 
 
 def choose_finalists(results: list[dict], count: int) -> list[dict]:
