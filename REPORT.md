@@ -2506,5 +2506,33 @@ White did not erode; the bar rose underneath it. The lesson generalises: a
 per-colour score is only interpretable against a *named* opponent, and three
 consecutive gate legs against three different bars are not a trend line.
 
+## 45. Generation 15 clears the gate; the chain reaches five steps (2026-08-17)
+
+Generated from gen14's gated checkpoint as the working bar and gated against it
+under the full protocol.
+
+| leg | games | aggregate | White | Black |
+|---|---:|---:|---:|---:|
+| vs bar (gen14 ep7) | 800 | **0.5256** | 0.4925 | 0.5587 |
+| vs_ramp | 40 | 0.9625 | 1.0000 | 0.9250 |
+| anchor | 20 | 1.0000 | 1.0000 | 1.0000 |
+| vs bar, confirm | 800 | **0.5262** | 0.5350 | 0.5175 |
+
+**PASS, confirmed.** The two binding legs agree to within **0.0006**, matching
+gen12 as the tightest read in the chain, and the confirm leg is for once the
+*higher* of the two -- which is worth recording against the four-instance
+pattern noted in section 43.
+
+**The per-colour split flips between the legs** -- White 0.4925 / 0.5350, Black
+0.5587 / 0.5175 -- a swing of about 0.042 on each colour. At 400 games per
+colour the paired standard error is roughly 0.032, so this is ~1.3 SE and
+carries no signal. It is a clean illustration of why a single leg's colour
+split is not evidence: the *aggregate* reproduced to four decimal places while
+the split moved by more than the entire measured gain.
+
+Both legs clear 0.50 aggregate and every colour clears the 0.40 floor, so the
+owner's criterion -- score above 0.50 with neither side collapsing, high power
+and confirmed -- is met on both.
+
 *Updated 2026-08-17. Suite 717 passing. Predecessor reports
 retire to git history per project convention.*
