@@ -2590,5 +2590,110 @@ and they predate the 2026-08-16 rule changes, which `CONTEXT.md` records as
 breaking comparability outright. Treat +139 as indicative of scale. The +130.4
 is the measured number.
 
-*Updated 2026-08-17. Suite 723 passing. Predecessor reports
+## 47. Generation 16, and what White is actually doing (2026-08-17)
+
+gen16 was generated from v23 and gated against it. The screen shortlisted
+`selected_epoch_010`, the only one of four finalists to beat v23 on both
+colours; the offline lowest-loss epoch was 8, which the screen ranked third.
+
+| leg | games | aggregate | White | Black |
+|---|---:|---:|---:|---:|
+| vs bar (v23) | 800 | **0.5325** | **0.4562** | 0.6088 |
+| vs_ramp | 40 | 1.0000 | 1.0000 | 1.0000 |
+| anchor | 20 | 1.0000 | 1.0000 | 1.0000 |
+| vs bar, confirm | 800 | **0.5444** | **0.4575** | 0.6312 |
+
+**PASS, confirmed** -- but White is below 0.50 on both legs, agreeing to
+0.0013. Two independent 400-game samples, so against v23 specifically the
+White deficit is real and not sampling noise. §43 warned that a per-colour
+trend across *different* bars is uninterpretable; this is the other case, one
+bar measured twice, and it demanded a check rather than a reassurance.
+
+### The check: White has not eroded, it has stalled
+
+Against v22, whose White has not moved since the chain began:
+
+| gen | aggregate | White | Black |
+|---|---:|---:|---:|
+| gen11 | 0.5750 | 0.6075 | 0.5425 |
+| gen12 | 0.5817 | 0.6000 | 0.5633 |
+| gen13 | 0.6267 | 0.6533 | 0.6000 |
+| gen14 | 0.6408 | 0.6350 | 0.6467 |
+| gen15 | 0.6567 | 0.6600 | 0.6533 |
+| **gen16** | **0.6733** | **0.6667** | **0.6800** |
+
+gen16 has the *strongest* White in the chain, so nothing eroded. But White
+moved **+0.059** across six generations against **+0.138** for Black, and
+since gen13 White has moved **+0.013** in total -- under one standard error at
+300 paired games per colour. **Every bit of chain progress since gen13 is
+Black.** gen16 vs gen14 tells the same story from another angle: 0.5383
+aggregate, White 0.4900, Black 0.5867.
+
+The Elo steps agree. With 18 of 21 pairs measured, no inversions, largest
+residual 0.0249:
+
+| model | Elo | step |
+|---|---:|---:|
+| v22 | +0.0 | - |
+| gen11 | +34.9 | +34.9 |
+| gen12 | +48.4 | +13.5 |
+| gen13 | +83.5 | +35.1 |
+| gen14 | +113.2 | +29.8 |
+| gen15 (v23) | +126.5 | +13.3 |
+| **gen16** | **+139.4** | +12.9 |
+
+The last two steps are less than half the size of gen13's and gen14's, which
+is what one side carrying the chain alone looks like.
+
+### The draw anatomy, and a wrong turn worth recording
+
+White draws 35-43% of its games against v22 and that rate has not moved in six
+generations, while Black's fell 30.0% -> 13.3% and became wins. So White's
+draws were probed directly (`tools/draw_anatomy.py`, 150 shared book
+positions, gen16 and gen11 as White against v22).
+
+**The first hypothesis was wrong, and confidently so.** The reasoning was that
+White is a king plus four pawns, wins only by capturing the black king, and
+must therefore be structurally drawn once pawnless -- so the tool split draws
+on remaining pawns and labelled the pawnless ones unwinnable. The measurement
+refutes it outright:
+
+| | score | n |
+|---|---:|---:|
+| White ended pawnless | **0.6141** | 92 |
+| White kept a pawn | **0.6293** | 58 |
+
+**34 of gen16's 62 wins ended with zero pawns.** `evaluation.py` had said so
+in its docstring all along -- *"a lone king can still hunt and capture Black's
+king. White without pawns is NOT lost"* -- and the double-moving king really
+does hunt. The supposedly absent training signal was present too:
+`WHITE_PAWN_VALUE` is **0.18**, larger than `PAWN_ELIMINATION_BONUS` at 0.14,
+and a lost pawn costs White 0.32 across the two terms. This was an assumption
+written into a tool's output labels and then read back as a finding; the tool
+now prints both scores on every run and a test pins the discredited labels out.
+
+**Time is the axis that separates the outcomes** (gen16 as White, 150 games):
+
+| outcome | n | mean plies | median | White pawns | Black pieces |
+|---|---:|---:|---:|---:|---:|
+| win | 62 | **30.0** | 27 | 0.56 | 8.9 |
+| draw | 62 | **82.4** | 82 | 0.39 | 9.5 |
+| loss | 26 | 71.7 | 73 | 0.50 | 10.5 |
+
+The winning window closes: **90% of wins land by ply 50 and 95% by ply 60**,
+against a draw median of 82. Material is the same in all three buckets, and
+**every draw is a repetition** -- not one hit the ply cap, which is the
+2026-08-16 threefold rule working as intended. White captures the king early or
+it never does, and when the attack stalls it shuffles.
+
+gen11 as White on the identical positions scored 0.6100 against gen16's 0.6200
+-- a 150-game probe cannot resolve the 0.059 the 600-game matches measured, so
+that is underpower, not a null.
+
+**White's ceiling is therefore a search problem in the attack, not a material
+or data one.** The exact forced-capture solver exists but searches only Black's
+forced captures, and §37's leaf-probe null was measured on Black. A White-side
+equivalent is the untried lever.
+
+*Updated 2026-08-17. Suite 733 passing. Predecessor reports
 retire to git history per project convention.*

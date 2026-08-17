@@ -54,6 +54,18 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**White has stalled; Black is carrying the chain alone (2026-08-17).** Against
+v22, whose White never moves, the chain's White gained **+0.059** over six
+generations against Black's **+0.138**, and since gen13 White has moved
+**+0.013** -- under one standard error. The Elo steps halved to match (+35,
++30, +13, +13). White's draws are **not** material: it scores 0.6141 from
+pawnless positions against 0.6293 with pawns, and 34 of gen16's 62 wins ended
+with zero pawns, because the double-moving king hunts exactly as
+`evaluation.py` always claimed. Outcomes separate on **time** -- wins average
+30 plies with 95% landing by ply 60, draws average 82 with identical material,
+and every draw is a repetition. **White's ceiling is a search problem in the
+attack.** `REPORT.md` §47.
+
 **The bootstrap chain now runs V22 -> gen11 -> gen12 -> gen13 -> gen14, and a
 round robin proves it is a single strength scale.** Every step passed the full
 high-power protocol -- an 800-game binding leg plus a confirm leg on a fresh
