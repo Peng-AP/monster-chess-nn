@@ -2861,5 +2861,59 @@ climbs monotonically with generation -- v22 **3-5%**, gen14 16-23%, gen16 28%,
 **gen17 39%**, the first model to miss its quota. The loop was not only
 training on less data, it was generating more self-similar games.
 
+## 51. The overnight chain: the loop compounds again (2026-08-18)
+
+Run unattended from gen20 on the wider replay window, escalating the window
+rather than retrying on failure.
+
+| gen | window | verdict | bind | confirm | Elo vs its bar |
+|---|---:|---|---:|---:|---:|
+| gen20 | 8 | **FAIL** | 0.4938 | - | - |
+| gen21 | 12 | PASS confirmed | 0.5250 | 0.5200 | **+14** |
+| gen22 | 12 | PASS confirmed | 0.5637 | **0.5719** | **+50** |
+
+**gen20 failing at window 8 and gen21 passing at 12 is the escalation earning
+its place** -- rerunning gen20's recipe would have measured nothing.
+
+**"Diminishing returns" was called too early.** After gen21, window 8 -> 12
+looked spent: the same row volume as 4 -> 8 for one fifth the validation gain
+and one quarter the Elo. gen22 then took **+50 at the same window on a
+stabilised corpus**, which that account does not predict. gen21 was a small
+step, not a trend. Cumulative **+64 Elo over gen19 in two generations**, on top
+of gen19's +53 over gen17.
+
+Validation agrees -- four consecutive improvements and the first break below
+2.0, with the overfit gap tightening throughout:
+
+| gen | rows | best val | gap |
+|---|---:|---:|---:|
+| gen18 | 444,792 | 2.0507 | +0.0993 |
+| gen19 | 703,042 | 2.0293 | +0.0704 |
+| gen20 | 698,400 | 2.0127 | +0.1278 |
+| gen21 | 983,082 | 2.0087 | +0.0432 |
+| gen22 | 954,814 | **1.9956** | **+0.0391** |
+
+The corpus stabilises near 950-980k at window 12 (the window slides, it does
+not accumulate), so gen22's drop is the loop learning, not more data.
+
+**The narrowing reversed.** Book duplicate rates, compared like for like -- the
+model built last, against the fullest dedup set -- went **gen19 43%** (v29) ->
+**gen22 31%** (v30), back to gen17's level. Self-play variety recovered as the
+corpus grew, so the collapse-toward-self-similarity worry raised at gen19 does
+not survive.
+
+**White's breakout did not carry.** §50 recorded gen19 at 0.7017 controlled,
+outside the 0.60-0.67 band. gen21 and gen22 both revert to the familiar trade:
+gen22's gate reads White 0.4800 / 0.4688 against Black 0.6475 / 0.6750, and
+five of six screen finalists were White-negative. **§50's White finding is
+unconfirmed and should not be quoted until gen21/gen22 are measured on the
+controlled block.**
+
+Open, for the owner: when finalists tie on aggregate within noise, the screen's
+aggregate ranking picks arbitrarily and picked the White-negative one at gen22
+-- epoch 6 (+0.005/+0.095) was passed over for epoch 9 (-0.020/+0.150) on an
+aggregate difference of 0.015 against an SE of 0.064. A tie-break toward
+balance looks free, but it is a protocol change.
+
 *Updated 2026-08-18. Suite 733 passing. Predecessor reports
 retire to git history per project convention.*
