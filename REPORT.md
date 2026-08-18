@@ -2803,5 +2803,63 @@ Aside, unexplained: **v22 agrees with its own search more than any chain model
 does** (90.5% vs gen17's 85.2%, ~3 SE at n=400). The loop is getting stronger
 while becoming *less* policy-aligned.
 
-*Updated 2026-08-17. Suite 733 passing. Predecessor reports
+## 50. The loop was starved, not finished (2026-08-18)
+
+gen18 tied its bar **exactly** -- 327W/327L/146D, aggregate 0.5000 over 800
+games -- and failed, the first failure since gen11. The Elo steps had been
+decaying: +34.9, +13.5, +35.1, +29.8, +13.3, +12.9, then 0.
+
+**Diagnosis from the training curves, which cost nothing to read.** The corpus
+had been shrinking the whole time: **936,324** rows (Gen9) -> 530,192 (gen11)
+-> **444,792** (gen18), under half of what produced v22. Best validation loss
+was flat across seven generations (2.0589 -> 2.0507, 0.4%) while the models
+gained +139 Elo, and the network **overfits from epoch 5** (train 1.95 -> 1.55
+while val 2.05 -> 2.21). It could already memorise what it was given: short of
+data, not of capacity.
+
+**The trigger was our own optimisation.** The 2026-08-16 repetition rule cut
+mean records per game 93.3 -> 59.8, a third of the data per game. It bought
+1.85x on generation and was correct, but nothing compensated for the loss.
+
+**The A/B.** gen19 reused gen18's seed 49, bar and recipe, so generation
+replayed the same games. One variable changed, `--replay-generations 4 -> 8`:
+
+| | gen18 (window 4) | gen19 (window 8) |
+|---|---:|---:|
+| train rows | 444,792 | **703,042** |
+| best val loss | 2.0507 | **2.0293** |
+| overfit gap at best | +0.0993 | **+0.0704** |
+| gate | **0.5000 FAIL** | **0.6038 / 0.5756 PASS, confirmed** |
+
+The validation gain alone is **ten times the total movement of the previous
+seven generations**. The gate step is **+53 to +73 Elo** (quote the confirm
+leg, +53; the two legs disagree by 0.028, the widest in the chain). Cost:
+training 52 -> 94 min, screen 17 -> 28 min.
+
+### White moved for the first time
+
+Controlled -- identical 300 openings, same opponent, 600 games each:
+
+| gen | aggregate | White | Black |
+|---|---:|---:|---:|
+| gen11 | 0.5683 | 0.6383 | 0.4983 |
+| gen15 | 0.6592 | 0.6683 | 0.6500 |
+| gen17 | 0.6783 | 0.6417 | 0.7150 |
+| **gen19** | **0.7517** | **0.7017** | **0.8017** |
+
+§48 measured White at **+0.0034 (0.1 SE)** through gen17, wandering inside
+0.60-0.67 for six generations. gen19 sits at **0.7017, outside that entire
+band**, +0.0600 over gen17 (1.5 SE -- suggestive, not established). The owner
+independently reported White's opening changed at the board. So §49's
+structural account may describe a *data-starved* White rather than a
+game-theoretic ceiling; the question is open again.
+
+### Secondary evidence: the distribution was narrowing
+
+Book builds walk 8 plies at temperature 1.0 and deduplicate. Duplicate rate
+climbs monotonically with generation -- v22 **3-5%**, gen14 16-23%, gen16 28%,
+**gen17 39%**, the first model to miss its quota. The loop was not only
+training on less data, it was generating more self-similar games.
+
+*Updated 2026-08-18. Suite 733 passing. Predecessor reports
 retire to git history per project convention.*

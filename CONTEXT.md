@@ -54,7 +54,22 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
-**White never improved at all; Black is the entire chain (2026-08-17).**
+**The loop was STARVED, and widening the replay window restarted it
+(2026-08-18).** gen18 tied its bar exactly (0.5000 over 800 games) and failed.
+The cause was data: the corpus had shrunk **936,324 -> 444,792** rows while
+validation loss stayed flat and the net overfit from epoch 5 -- it could
+already memorise what it was given. The trigger was our own 2026-08-16
+repetition rule, which cut records per game 93.3 -> 59.8 with nothing added
+back. gen19 reran gen18 with **one** change, `--replay-generations 4 -> 8`,
+same seed and bar: 703,042 train rows, and **0.6038 / 0.5756 PASS confirmed**
+against gen18's 0.5000 FAIL. That is **+53 Elo** (confirm leg) after four steps
+of +30, +13, +13, 0. **White also moved for the first time** -- controlled, it
+sits at **0.7017**, outside the 0.60-0.67 band that held for six generations.
+`REPORT.md` §50. Book duplicate rates were rising too (v22 3-5%, gen17 39%), so
+the games were getting self-similar as well as fewer.
+
+**Superseded by the above, retained because the measurement was sound:** White
+never improved at all through gen17; Black was the entire chain (2026-08-17).
 Measured under control -- five generations, the identical 300 openings, the
 identical opponent, 600 games each -- **White moved +0.0034 (0.1 SE) from gen11
 to gen17 while Black moved +0.2167 (5.3 SE), monotone at every step.** White
