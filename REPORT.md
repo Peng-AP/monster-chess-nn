@@ -2777,5 +2777,31 @@ legs compared to 0.50, cross-generation scores compared across blocks, and a
 screen delta of +0.04 (0.6 SE) reported as a turning point. Either play the
 bar against itself on the same block, or do not quote a per-colour number.
 
+## 49. Three dead explanations for White (2026-08-17)
+
+§48's measurement stands: White +0.0034 (0.1 SE), Black +0.2167 (5.3 SE),
+gen11 -> gen17 on identical openings. Three explanations for it were tested and
+all three are refuted. Recorded so they are not re-run.
+
+| hypothesis | refuted by |
+|---|---|
+| White sheds its pawns | pawnless White scores **0.6141** vs **0.6293** with pawns; 34 of 62 wins end pawnless |
+| White's scores are declining | block baseline is **0.4437**, not 0.50 — gen17's gate White is at par |
+| White's distillation is broken | policy-search agreement **85.0% White vs 85.8% Black** (gen17, 400 positions @ 400 sims) |
+
+**The owner's structural account is what survives**: once Black consolidates
+White has no winning chances, so White lives on the fast attack, and "wins by
+ply 30 or never" is the game's shape rather than a defect. It explains the flat
+White without any further mechanism. A sims curve cannot test it — raising only
+White's sims raises White's strength by construction.
+
+**Consequence**: if White is at its structural ceiling the chain's remaining
+headroom is Black's alone, and the bending steps (+35, +30, +13, +13) are
+Black's saturation curve.
+
+Aside, unexplained: **v22 agrees with its own search more than any chain model
+does** (90.5% vs gen17's 85.2%, ~3 SE at n=400). The loop is getting stronger
+while becoming *less* policy-aligned.
+
 *Updated 2026-08-17. Suite 733 passing. Predecessor reports
 retire to git history per project convention.*
