@@ -2915,5 +2915,82 @@ aggregate ranking picks arbitrarily and picked the White-negative one at gen22
 aggregate difference of 0.015 against an SE of 0.064. A tie-break toward
 balance looks free, but it is a protocol change.
 
-*Updated 2026-08-18. Suite 733 passing. Predecessor reports
+## 52. gen23 placed, and what it plays against itself (2026-08-18)
+
+gen24 failed its gate on the per-side floor (White 0.3650 < 0.40, aggregate a
+healthy 0.5131), so **gen23 is the strongest model on record**. The chain
+stopped there on the owner's instruction.
+
+### The ladder, on identical openings
+
+All on v27 block 1620, 600 paired games each, so these stack with §48's table.
+
+| gen23 vs | aggregate | White | Black | Elo |
+|---|---:|---:|---:|---:|
+| v21 | 0.8750 | 0.8533 | 0.8967 | **+338** |
+| v22 | 0.8092 | 0.7567 | 0.8617 | **+251** |
+| gen17 | 0.6500 | 0.5617 | 0.7383 | **+108** |
+
+v23 is +130 over v22, so **gen23 is roughly +120 beyond the release** -- about
+the distance v22 -> v23 covered, which by precedent is a version.
+
+**Chained sums oversell more than the 15.7% measured yesterday.** The four gate
+passes sum to +148; the direct measurement is +108. Real inflation here was
+**27%**. It is not a constant, so the rule is "never quote a chained sum",
+not "quote it with a known discount".
+
+### White is confirmed to have recovered
+
+| gen | White vs v22 | Black vs v22 |
+|---|---:|---:|
+| gen11 | 0.6383 | 0.4983 |
+| gen17 | 0.6417 | 0.7150 |
+| gen19 | 0.7017 | 0.8017 |
+| **gen23** | **0.7567** | 0.8617 |
+
+**White gen17 -> gen23: +0.1150, 2.8 SE.** §48 measured +0.0034 (0.1 SE)
+through gen17 and §49 concluded White was at a structural ceiling. That
+inference was wrong: White was starved like the rest of the loop and recovered
+on the same fix. The owner's account of the *game* -- Black consolidates, White
+lives on the fast attack -- still stands and is reinforced below.
+
+### Self-play at the operating point
+
+48 games, gen23 against itself at 3,200 simulations:
+
+| | White | Black | draws |
+|---|---:|---:|---:|
+| 400 sims (24 games) | 54% | **33%** | 13% |
+| **3,200 sims (48 games)** | **66.7%** | **6.2%** | 27.1% |
+
+White takes **91.4%** of decisive games. Deeper search finds White's attack
+before Black consolidates, so the side that improved most over the chain is the
+one that nearly stops winning at the depth the owner plays at. This is the
+direct explanation for the playtest saturation: playing Black against this
+engine at 3,200 is close to a lost cause by construction.
+
+**It also means the gates measure a different regime than the owner plays.**
+Every gate runs at 400 sims, where Black wins a third of its games.
+
+### Two defects found in the measurement, both by the owner asking
+
+**The exporter was playing under superseded rules.**
+`tools/export_selfplay_replays.py` had no repetition tracking, so showcase
+games ran to the 150-turn cap -- every drawn game measured exactly 225 plies --
+instead of ending where the threefold rule ends them. Worse than long games: a
+position repeating at ply 60 could continue and resolve *decisively*, shifting
+the colour tally. Fixed and pinned by tests; the corrected run reproduced every
+checkpoint of the old one, so the numbers survived, but they need not have.
+
+**Deep search destroys opening variety.** Nine exported games contained five
+distinct openings, and outcome tracked the opening family almost perfectly --
+all three White wins from one, all three draws from another, all three Black
+wins from a third. Diversity comes from sampling root visit counts at a
+temperature; at 3,200 sims a strong net's visits are peaked enough that
+sampling returns the top move nearly always. So 48 games is closer to a handful
+of scenarios replayed, and the **direction** above is solid while the **rates**
+are soft. This also reframes §51's book duplicate rates (gen19 43%, gen22 31%)
+-- that was the same peaked-policy effect, not the loop collapsing.
+
+*Updated 2026-08-18. Suite 741 passing. Predecessor reports
 retire to git history per project convention.*

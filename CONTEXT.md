@@ -54,6 +54,35 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
+**Standing, 2026-08-18.** Release is `models/bootstrap_v23`. **The strongest
+model on record is `models/candidates/bootstrap_main_gen_0023/selected_epoch_007`**
+-- +251 against v22 where v23 is +130, so roughly **+120 beyond the release**
+and unpromoted. It is the working bar. gen24 failed on the per-side floor
+(White 0.3650) and the chain stopped there. `REPORT.md` §52.
+
+**White recovered; §49's structural-ceiling conclusion was wrong.** Controlled
+on identical openings, White went 0.6417 (gen17) -> 0.7017 (gen19) -> **0.7567
+(gen23)**, **+0.1150 = 2.8 SE**, after being flat at +0.0034 through gen17. It
+was starved like the rest of the loop and recovered on the same fix. The
+owner's account of the *game* -- Black consolidates, White has no chances after,
+so White lives on the fast attack -- stands and is reinforced by the self-play
+result below.
+
+**Self-play is White-dominated at the playing depth.** gen23 against itself:
+at 400 sims Black wins **33%**; at 3,200 sims Black wins **6.2%** and White
+takes **91.4%** of decisive games. Deeper search finds the attack before
+consolidation. This explains the playtest saturation directly, and it means
+**gates at 400 sims measure a different regime from the one the owner plays.**
+
+**Two measurement defects, both surfaced by the owner asking rather than by
+review.** `tools/export_selfplay_replays.py` played showcase games with no
+repetition rule (every draw hit the 225-ply cap exactly) -- fixed, and the
+corrected run happened to reproduce every number. And deep search destroys
+opening variety: nine games held five openings, with outcome tracking the
+opening family almost perfectly, because peaked visit counts make temperature
+sampling return the top move. Treat high-sim game counts as far fewer
+independent trials than they look.
+
 **The loop was STARVED, and widening the replay window restarted it
 (2026-08-18).** gen18 tied its bar exactly (0.5000 over 800 games) and failed.
 The cause was data: the corpus had shrunk **936,324 -> 444,792** rows while

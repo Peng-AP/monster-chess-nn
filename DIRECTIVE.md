@@ -9,10 +9,12 @@ captures-only re-baseline established v19_B as the historical bar; the
 Black-first architecture campaign produced the attention+EMA successor,
 promoted as `fresh_start_v20`.
 
-**The bar has moved twice since and is now `fresh_start_v21b`**, with
-`fresh_start_v21` holding the version number. The live work is the bootstrap
-loop, not this rewrite: see `CONTEXT.md` §2 for standing and `REPORT.md`
-§24-26 for current evidence and the two open owner decisions. The remainder of
+**The bar has moved repeatedly since. As of 2026-08-18 the release is
+`models/bootstrap_v23` and the strongest model on record is
+`bootstrap_main_gen_0023/selected_epoch_007`**, about +120 Elo beyond it. The
+live work is the bootstrap loop, not this rewrite: see `CONTEXT.md` §2 for
+standing, `REPORT.md` §§50-52 for current evidence, and `HANDOFF.md` for what
+to pick up next. The remainder of
 this document preserves the rewrite contract and E6 scope.
 
 **Owner's call: the residual problem may be compute.** Search is Python-bound

@@ -13,10 +13,17 @@ asymmetric chess variant:
   draw), applied symmetrically to both sides.
 
 The double move makes White's lone king a genuine attacking piece and gives the
-variant its character: Black is winning with correct play, but converting through
-the pawn phase requires real technique. Measuring and improving **Black's
-conversion strength** is the project's primary quality signal, which is why all
-evaluation tooling reports per-side results rather than a single aggregate.
+variant its character. Black holds far more material and wins by consolidating;
+White has no chances once that happens, so White lives on a fast attack. That
+tension is the whole game, and it is why all evaluation tooling reports per-side
+results rather than a single aggregate.
+
+**Who is actually better depends on search depth**, measured 2026-08-18 on the
+strongest model playing itself: at 400 simulations Black wins 33% of games, at
+3,200 it wins **6%** and White takes 91% of the decisive ones. Deeper search
+finds White's attack before Black can consolidate. Earlier versions of this
+README asserted "Black is winning with correct play"; that is not supported by
+anything measured here and has been removed.
 
 ## How the engine works
 
@@ -149,13 +156,18 @@ slope flags. The first exact Gen9 lift learned a real length signal but was a
 clean playing null (0.5062 over 80 paired games; 0/16 conversion moves changed),
 so it remains infrastructure rather than a successor. See `REPORT.md` §32.
 
-Current numbered release and formal strength bar:
-`models/fresh_start_v22/best_value_net.pt`. This is the former Gen9 epoch-6
-arena checkpoint, explicitly promoted by the owner on 2026-08-16 after it
-passed Gen7 twice on disjoint paired openings and beat the prior v21b bar
-directly over 400 games. The source candidate and all earlier numbered models
-remain immutable. See `CONTEXT.md` for the current ledger and `REPORT.md`
-§§24–27 for the paired evaluation evidence.
+Current numbered release: `models/bootstrap_v23/best_value_net.pt`, promoted
+by the owner on 2026-08-17 from `bootstrap_main_gen_0015/selected_epoch_016`.
+It opens the **bootstrap series** -- the version number continues from v22 so
+the release ladder stays comparable, while the directory prefix changes because
+the lineage did.
+
+**The strongest model on record is `bootstrap_main_gen_0023/selected_epoch_007`**
+(2026-08-18), which is the working bar for the next generation and is roughly
+**+120 Elo above the v23 release** (+251 against v22 directly, where v23 is
++130). It has not been promoted. `gate.BAR` still reads `vs_v23`; the working
+bar travels as `--bar-model`. All earlier numbered models remain immutable. See
+`CONTEXT.md` for the current ledger and `REPORT.md` §§50-52 for the evidence.
 
 Preview one complete bootstrap generation without writing anything:
 
@@ -217,9 +229,17 @@ generations inside host-memory limits.
 
 Pass `--book books/<pinned-book>.json` to reserve disjoint paired blocks for
 checkpoint screening, the binding gate, high-fidelity confirmation, and
-self-skew automatically. The current early-play book has 1,200 unique p8
-positions drawn equally from v20, v21, v21b, Gen7, and Gen9; its immutable
-block allocation is recorded beside it in a `.partitions.json` manifest.
+self-skew automatically. Books are pinned artifacts: changing one silently
+invalidates comparison against every score measured under the old one. The
+current generation uses 3,000-entry p8 books drawn equally from six models
+spanning v22 to the working bar (`books/gate_v30_mixed_p8_auto.json` and
+later), rebuilt automatically when a book runs low on contiguous blocks.
+
+**A per-colour score is meaningless without its block's baseline.** Block colour
+bias runs to +-0.056: a model played against *itself* -- true value 0.5000 by
+construction -- has scored White 0.4437 on one block and 0.3000 on another from
+the same book. The gate therefore plays the bar against itself on the bar leg's
+own block and reports each binding leg against that baseline (`REPORT.md` §48).
 
 Game-playing phases use the measured eight-worker default on the 5060 Ti. That
 setting delivered 7.11 decisions/s versus 5.39 at four workers; twelve workers

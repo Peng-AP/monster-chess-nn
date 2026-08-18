@@ -67,6 +67,19 @@ def _play_recorded(task: tuple[int, int, float]) -> dict:
         "label": "Start position",
     }]
     plies = 0
+    # Threefold repetition is a draw by rule (owner, 2026-08-16, on by default;
+    # MONSTER_NO_REPETITION=1 disables). Every gate, match and generation has
+    # applied it since; this exporter had not, so its games ran under
+    # superseded rules -- shuffling positions ground to the 150-turn cap (225
+    # plies, which is what every drawn game here measured to the ply) instead
+    # of being drawn where the rule ends them. Worse than long games: a
+    # position that repeats at ply 60 could continue and resolve DECISIVELY,
+    # which shifts the colour tally, not just the lengths. Showcase games must
+    # be played under the rules the engine is actually played under.
+    from repetition import RepetitionTracker
+    repetition = RepetitionTracker()
+    repetition.record(game, 0)
+    repeated = False
     while not game.is_terminal() and plies < 600:
         is_white = bool(game.is_white_turn)
         pending = bool(getattr(game, "white_half_pending", False))
@@ -89,7 +102,14 @@ def _play_recorded(task: tuple[int, int, float]) -> dict:
             "white_half": half,
             "label": f"{plies}. {actor}{detail}: {uci}",
         })
-    result = float(game.get_result())
+        if repetition.record(game, plies):
+            repeated = True
+            frames[-1]["label"] += "  -- threefold repetition, drawn"
+            break
+    # A repetition is drawn by rule, so it overrides the cap's +-0.5 lean,
+    # exactly as benchmark.play_one resolves it.
+    result = (float(repetition.draw_result) if repeated
+              else float(game.get_result()))
     category = classify_black_result(result)
     category_label = {
         "black_loss": "Black loss",
