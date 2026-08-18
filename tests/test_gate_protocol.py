@@ -339,3 +339,61 @@ class TestLegSeedIsolation(unittest.TestCase):
     def test_legs_stay_disjoint_when_game_counts_grow(self):
         big = [(name, opp, 400) for name, opp, _g in gate.FULL_LEGS]
         self._assert_disjoint(big)
+
+
+class CalibrationLeg(unittest.TestCase):
+    """The bar against itself, on the bar leg's own block.
+
+    Its true score is 0.5000 by construction, so any colour split it returns is
+    the block's bias. Added 2026-08-18 after per-colour readings misled three
+    times in one day: gen16 against itself scored White 0.4437 over 800 games
+    on one block and 0.3000 on a 40-game block of the same book, and gen17's
+    "alarming" 0.4338 was at par once read against 0.4437.
+    """
+
+    def test_the_calibration_leg_cannot_change_a_verdict(self):
+        """Diagnostic only, and that is a deliberate limit.
+
+        Calibrating a threshold could let through a candidate the unchanged
+        rule rejects. The owner's standing rule is that no threshold moves to
+        let a recipe through, so the self-match informs the reader and nothing
+        else.
+        """
+        source = (ROOT / "tools" / "gate.py").read_text(encoding="utf-8")
+        self.assertNotIn("legs[CALIBRATION_LEG]", source)
+        self.assertNotIn("CALIBRATION_LEG,", str(gate.AGGREGATE_LEGS))
+        self.assertNotIn(gate.CALIBRATION_LEG, gate.AGGREGATE_LEGS)
+        # evaluate_legs only ever sees the real legs dict.
+        self.assertNotIn("evaluate_legs(legs, calibration", source)
+
+    def test_calibration_reuses_the_bar_block_and_costs_no_entries(self):
+        """Same openings is the entire point.
+
+        A self-match on a DIFFERENT block would measure that other block's
+        bias, which is useless for reading this leg. Reusing the bar's offset
+        also means book_leg_offsets needs no extra allocation.
+        """
+        source = (ROOT / "tools" / "gate.py").read_text(encoding="utf-8")
+        self.assertIn('book_offset=book_offsets.get(BAR, 0)', source)
+        spec = [(name, opponent, games)
+                for name, opponent, games in gate.FULL_LEGS]
+        _offsets, needed = gate.book_leg_offsets(spec, 0)
+        # 400 (bar) + 20 (ramp) + 400 (confirm); the self-match adds nothing.
+        self.assertEqual(needed, 820)
+
+    def test_calibration_seed_cannot_replay_another_leg(self):
+        self.assertNotEqual(gate.CALIBRATION_SEED_OFFSET,
+                            gate.CONFIRM_SEED_OFFSET)
+        spec = [(name, opponent, games)
+                for name, opponent, games in gate.FULL_LEGS]
+        stride = gate.leg_seed_stride(spec)
+        # Must clear every ordinary leg's seed window and the confirm leg's.
+        self.assertGreater(gate.CALIBRATION_SEED_OFFSET,
+                           stride * len(spec) + 1000)
+        self.assertGreater(gate.CALIBRATION_SEED_OFFSET,
+                           gate.CONFIRM_SEED_OFFSET + 1000)
+
+    def test_quick_protocol_skips_it(self):
+        """A rehearsal must stay cheap; 800 calibration games is not cheap."""
+        source = (ROOT / "tools" / "gate.py").read_text(encoding="utf-8")
+        self.assertIn('if protocol == "full":', source)

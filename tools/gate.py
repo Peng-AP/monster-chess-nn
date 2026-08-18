@@ -88,6 +88,25 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # the bar leg on a different opening seed and must clear it twice.
 CONFIRM_LEG = "vs_v23_confirm"
 CONFIRM_SEED_OFFSET = 424242
+
+# The bar played against ITSELF on the bar leg's own book block. Its true score
+# is 0.5000 by construction, so whatever colour split it returns is the block's
+# bias and nothing else.
+#
+# Added 2026-08-18 on the owner's approval, after a per-colour reading misled
+# three times in one day. Measured then: gen16 against itself scored White
+# 0.4437 over 800 games on one block (3.6 SE from even) and White 0.3000 on a
+# 40-game block of the same book. Read against 0.4437 rather than 0.50, gen17's
+# "alarming" 0.4338 was at par. Block bias also puts the absolute 0.40 White
+# floor only 0.044 below neutral on a Black-favouring block.
+#
+# It is DIAGNOSTIC. It does not enter `legs`, the aggregate totals, or the
+# verdict: calibrating a threshold could let a candidate through that the
+# unchanged rule rejects, and no threshold moves without the owner saying so.
+# It reuses the bar leg's block deliberately -- same openings is the point --
+# so it costs no extra book entries, only time.
+CALIBRATION_LEG = "bar_selfmatch"
+CALIBRATION_SEED_OFFSET = 848484
 SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 
 # (leg name, opponent path or None for the heuristic anchor, games)
@@ -284,8 +303,41 @@ def run_gate(model, protocol="full", seed=20260801, workers=None, sims=SIMS,
         play(CONFIRM_LEG, bar_spec[0], bar_spec[1], seed + CONFIRM_SEED_OFFSET)
         verdict, failures, totals = evaluate_legs(legs)
 
+    # Calibration last: it never changes the verdict, so a candidate that is
+    # going to fail should not wait nine minutes to find out.
+    calibration = None
+    if protocol == "full":
+        bar_spec = {n: (o, g) for n, o, g in spec}[BAR]
+        print(f"[gate] leg {CALIBRATION_LEG}: {bar_spec[1]} games, bar vs "
+              f"itself on the bar leg's own block (diagnostic)", flush=True)
+        t0 = time.time()
+        calibration = run_match(
+            bar_model, bar_model, bar_spec[1], sims,
+            seed + CALIBRATION_SEED_OFFSET,
+            workers=workers, engine=engine, stall_timeout=stall_timeout,
+            book=book if BAR in book_offsets else None,
+            book_offset=book_offsets.get(BAR, 0))
+        white = calibration["a_as_white"]["score"]
+        black = calibration["a_as_black"]["score"]
+        print(f"[gate]   {CALIBRATION_LEG}: W={white} B={black} "
+              f"(true value 0.5/0.5 -- the gap is this block's bias) "
+              f"({time.time() - t0:.0f}s)", flush=True)
+        for name in (BAR, CONFIRM_LEG):
+            leg = legs.get(name)
+            if not leg:
+                continue
+            leg["calibrated"] = {
+                "white": round(leg["a_as_white"]["score"] - white, 4),
+                "black": round(leg["a_as_black"]["score"] - black, 4),
+                "baseline_white": white, "baseline_black": black,
+            }
+            print(f"[gate]   {name} vs baseline: "
+                  f"W={leg['calibrated']['white']:+.4f} "
+                  f"B={leg['calibrated']['black']:+.4f}", flush=True)
+
     binding = protocol == "full"
     return {
+        "calibration": calibration,
         "candidate": os.path.basename(os.path.dirname(model)),
         "model": os.path.relpath(model, ROOT),
         "protocol": protocol,
