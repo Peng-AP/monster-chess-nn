@@ -378,8 +378,15 @@ class CalibrationLeg(unittest.TestCase):
         spec = [(name, opponent, games)
                 for name, opponent, games in gate.FULL_LEGS]
         _offsets, needed = gate.book_leg_offsets(spec, 0)
-        # 400 (bar) + 20 (ramp) + 400 (confirm); the self-match adds nothing.
-        self.assertEqual(needed, 820)
+        # Every opponent leg's entries, plus the confirm leg's replay of the
+        # bar. The self-match adds NOTHING -- that is what this asserts. Derived
+        # rather than hardcoded so a change to the leg sizes cannot silently
+        # turn this into a test of the game counts (it was pinned at 820 when
+        # the bar leg was 800; the bar leg is now 1200).
+        expected = sum(games // 2 for _n, opponent, games in gate.FULL_LEGS
+                       if opponent)
+        expected += {n: g for n, _o, g in gate.FULL_LEGS}[gate.BAR] // 2
+        self.assertEqual(needed, expected)
 
     def test_calibration_seed_cannot_replay_another_leg(self):
         self.assertNotEqual(gate.CALIBRATION_SEED_OFFSET,

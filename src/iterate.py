@@ -298,6 +298,7 @@ def _paths_for_generation(run_root, generation):
         "lock": run_dir / "run.lock",
         "raw": run_dir / "raw",
         "selfplay": run_dir / "raw" / "selfplay",
+        "bookseed": run_dir / "raw" / "bookseed",
         "league_black": run_dir / "raw" / "league_black",
         "league_white": run_dir / "raw" / "league_white",
         "reanalysis": run_dir / "raw" / "reanalysis",
@@ -347,6 +348,24 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--seed", str(seed),
         "--output-dir", str(paths["selfplay"]),
     ]]
+    if args.book_seed_games > 0 and args.book_seed_fens:
+        # Same recipe as the self-play batch, only the starting positions
+        # differ. Lands in its own raw subdir so the process phase picks it up
+        # exactly as it does the league batches, and so its contribution stays
+        # separable in the manifest.
+        generated_commands.append([
+            "src/data_generation.py",
+            "--engine", args.engine,
+            "--num-games", str(args.book_seed_games),
+            "--simulations", str(args.sims),
+            "--workers", str(args.workers),
+            "--stall-timeout", str(args.worker_stall_timeout),
+            "--use-model", str(incumbent),
+            "--start-fen-file", str(args.book_seed_fens),
+            "--record-all-plies",
+            "--seed", str(seed + 400_000),
+            "--output-dir", str(paths["bookseed"]),
+        ])
     if args.league_games > 0:
         black_games = (args.league_games + 1) // 2
         white_games = args.league_games // 2
@@ -372,6 +391,9 @@ def _command_plan(args, generation, incumbent, architecture, paths,
                 "--output-dir", str(output),
             ])
     generated_outputs = [str(paths["selfplay"] / "generation_summary.json")]
+    if args.book_seed_games > 0 and args.book_seed_fens:
+        generated_outputs.append(
+            str(paths["bookseed"] / "generation_summary.json"))
     if args.league_games > 0:
         if (args.league_games + 1) // 2:
             generated_outputs.append(
@@ -1057,6 +1079,20 @@ def build_parser():
     ap.add_argument("--league-games", type=int, default=0,
                     help="optional champion-league games in addition to the "
                          "500-game production self-play batch")
+    # Book-seeded generation (2026-08-19). Ordinary self-play starts from the
+    # true opening and diversifies with 16 plies of temperature sampling. That
+    # distribution was measured and it narrows sharply with search: effective
+    # unique openings 0.61 at 1600 sims and 0.44 at 3200, with three openings
+    # covering 113 of 300 games. Under a book it is 1.0. So the corpus is fed
+    # by a distribution the engine itself chooses, which is exactly the set of
+    # positions it is already good at. These games start from book entries
+    # instead, widening the training distribution without replacing it -- SOME
+    # of generation, not all (owner, 2026-08-19).
+    ap.add_argument("--book-seed-games", type=int, default=0,
+                    help="games generated from --book-seed-fens starting "
+                         "positions, in addition to --games self-play")
+    ap.add_argument("--book-seed-fens", default=None,
+                    help="JSONL of start positions (tools/book_to_start_fens.py)")
     ap.add_argument("--opponent-pool-size", type=int, default=5)
     ap.add_argument("--sims", type=int, default=BOOTSTRAP_SIMS)
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)

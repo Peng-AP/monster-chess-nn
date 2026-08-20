@@ -131,8 +131,26 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # itself. NO THRESHOLD MOVED -- only the evidence behind them, and it moved
 # upward. The 2026-08-16 speedups are what made this affordable: 800 games at
 # 400 sims is about 8 minutes.
+# 2026-08-19: the bar leg went 800 -> 1200 games, on the owner's instruction,
+# after gen25 passed this gate with confirmation and then measured as NOT a
+# successor. Its two 800-game legs read 0.5456 and 0.5225 against gen23; on a
+# different book at the same 400 sims the same pairing read 0.5133, and at 1600
+# sims 0.4950. Four reads of one matchup spanning 0.0506 -- wider than the
+# 800-game SE of 0.0125 comfortably explains.
+#
+# At 800 the aggregate SE is 0.0125, so 10 Elo (0.0144 in score) sits 1.15 SE
+# from even and a generation worth 10 Elo is indistinguishable from one worth
+# nothing. At 1200 the SE is 0.0102 (1.41 SE for the same 10 Elo). That does not
+# make the gate able to resolve a small generation -- 2 SE would need ~2400
+# games -- but it is a 22% reduction in the deciding leg's error for about four
+# minutes of extra runtime, and it spans 50% more book entries, which damps the
+# block-to-block colour swing.
+#
+# NO THRESHOLD MOVED. The confirm leg inherits this count automatically
+# (bar_spec[1]), so both binding reads widen together, and the full gate now
+# needs 1220 book entries rather than 820.
 FULL_LEGS = [
-    ("vs_v23", BAR_MODEL, 800),
+    ("vs_v23", BAR_MODEL, 1200),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]

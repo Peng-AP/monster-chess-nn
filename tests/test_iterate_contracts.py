@@ -74,10 +74,29 @@ class BootstrapPipelineContracts(unittest.TestCase):
             reanalyze[reanalyze.index("--simulations") + 1], "3200")
 
     def test_book_blocks_are_disjoint_across_every_play_phase(self):
-        args = it.build_parser().parse_args([
-            "--book",
-            "books/gate_mixed_v20_v21_v21b_gen7_gen9_p8_20260816.json",
-        ])
+        # A synthetic book, not a real one. This test is about the LAYOUT of
+        # the phases inside a book, and pinning it to a checked-in file made it
+        # fail for an unrelated reason: the 2026-08-19 bar leg change (800 ->
+        # 1200) pushed a generation's reservation past the 1200 entries of the
+        # book it happened to name. Capacity is a separate contract with its
+        # own error; this one should not break when the leg sizes move.
+        with tempfile.TemporaryDirectory() as tmp:
+            book_path = os.path.join(tmp, "synthetic_book.json")
+            with open(book_path, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "schema_version": 2,
+                    "plies": 8,
+                    "entries": [
+                        {"fen": it.STARTING_FEN if hasattr(it, "STARTING_FEN")
+                         else "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+                         "half": False, "turn_count": 5}
+                        for _ in range(8000)
+                    ],
+                }, handle)
+            self._assert_book_layout_disjoint(book_path)
+
+    def _assert_book_layout_disjoint(self, book_path):
+        args = it.build_parser().parse_args(["--book", book_path])
         architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
         paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
         plan = it._command_plan(
