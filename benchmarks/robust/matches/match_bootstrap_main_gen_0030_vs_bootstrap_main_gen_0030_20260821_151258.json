@@ -1,0 +1,167 @@
+{
+  "match": "bootstrap_main_gen_0030 vs bootstrap_main_gen_0030",
+  "name_a": "bootstrap_main_gen_0030",
+  "name_b": "bootstrap_main_gen_0030",
+  "games": 1008,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 8000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 6,
+  "book": {
+    "schema_version": 2,
+    "plies": 5,
+    "book_sha256": "63ce85191c70ee33ef3034d8e2cbeebe4c78da7119199790d4c41777161927a9",
+    "path": "books/repeat_duos_r4.json",
+    "entries": 504,
+    "offset": 0,
+    "entries_used": [
+      0,
+      504
+    ],
+    "temp_plies": 6
+  },
+  "paired": {
+    "pairs": 504,
+    "pair_mean": 0.4945,
+    "se_paired": 0.0063,
+    "pairs_incomplete": 0
+  },
+  "opening_diversity": {
+    "games_observed": 1008,
+    "unique_states": 495,
+    "unique_fraction": 0.4911,
+    "unique_as_white": 305,
+    "unique_as_black": 323,
+    "effective_unique_games": 628,
+    "effective_unique_fraction": 0.623,
+    "duplicate_games": 513,
+    "max_multiplicity": 15,
+    "multiplicity_histogram": {
+      "1": 317,
+      "6": 13,
+      "2": 78,
+      "15": 1,
+      "3": 28,
+      "5": 13,
+      "7": 10,
+      "4": 20,
+      "13": 2,
+      "8": 7,
+      "10": 1,
+      "11": 3,
+      "9": 2
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "f209db3f6d4254c6b625622ffadebc0c102a1ccac77c9a7a82fd6c67c2107879",
+    "top_duplicates": [
+      {
+        "count": 15,
+        "fen": "r1bqkb1r/pppppppp/2n5/2PP1P2/8/8/8/4K3 b kq - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 13,
+        "fen": "r1bqkb1r/pPppp1pp/5n2/2P2P2/8/8/5P2/4K3 b kq - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 13,
+        "fen": "rnbqkb1r/p1pppppp/5n2/2p1PP2/8/5K2/3P4/8 b kq - 3 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 11,
+        "fen": "r1bq1bnr/pppp1kpp/2n5/2P1P3/8/8/3P4/4K3 b - - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 11,
+        "fen": "r1bqkbnr/pppp1ppp/2n5/2PPPp2/8/8/8/4K3 b kq - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 11,
+        "fen": "rnbqkb1r/pp1ppppp/5n2/3pPP2/8/5K2/2P5/8 b kq - 3 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 10,
+        "fen": "r1bqkbnr/ppppppp1/7p/2PPP3/8/8/8/4K3 b kq - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 9,
+        "fen": "r1bqkb1r/pppppppp/5n2/2P1PP2/8/8/8/4K3 b kq - 0 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 9,
+        "fen": "rnbqkb1r/pppp1ppp/5n2/3pPP2/8/5K2/2P5/8 b kq - 3 4",
+        "half": false,
+        "turn_count": 6
+      },
+      {
+        "count": 8,
+        "fen": "r1bq1bnr/pppp1kpp/n7/3PP3/8/8/2P5/4K3 b - - 0 4",
+        "half": false,
+        "turn_count": 6
+      }
+    ]
+  },
+  "workers": 12,
+  "a_score": 0.4945,
+  "a_as_white": {
+    "games": 504,
+    "wins": 322,
+    "losses": 104,
+    "draws": 78,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.7163,
+    "mean_plies": 43.27,
+    "mean_plies_when_won": 26.83,
+    "mean_plies_when_lost": 75.08
+  },
+  "a_as_black": {
+    "games": 504,
+    "wins": 92,
+    "losses": 321,
+    "draws": 91,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.2728,
+    "mean_plies": 44.01,
+    "mean_plies_when_won": 77.99,
+    "mean_plies_when_lost": 27.72
+  },
+  "elapsed_sec": 3318.1,
+  "timestamp": "2026-08-21T16:08:16"
+}
