@@ -111,7 +111,7 @@ def load_book(path):
 
 
 def build_tasks(games, seed, opening_temp_plies, entries=None, book_name="",
-                offset=0):
+                offset=0, book_temp_plies=0):
     """Return the per-game task list.
 
     Extracted from run_match so the pairing layout is testable without a GPU
@@ -142,6 +142,11 @@ def build_tasks(games, seed, opening_temp_plies, entries=None, book_name="",
             f"[{offset}, {offset + games // 2}). Play from a book is "
             f"deterministic, so reusing an entry would replay an identical "
             f"game rather than add a sample -- build a larger book instead.")
+    # book_temp_plies > 0 deliberately breaks that determinism: the same entry
+    # repeated at different slots then yields DIFFERENT games, which is the
+    # only way to put an error bar on a single line's result. Slots still get
+    # distinct seeds, so the samples are independent. Leave it at 0 for any
+    # measurement meant to be reproducible ply-for-ply (gate legs, line maps).
     # Both halves of a pair share a seed: play is deterministic at temp 0, and
     # a shared RNG stream keeps any residual tie-break randomness common to the
     # pair so it cancels along with the colour term.
@@ -151,7 +156,15 @@ def build_tasks(games, seed, opening_temp_plies, entries=None, book_name="",
     # confirmation replay is meant to be a fresh sample, and two legs at
     # different seeds but the same offset would replay identical openings and
     # agree by construction.
-    return [(i % 2 == 0, seed + i // 2, 0, entries[offset + i // 2], i // 2)
+    # At temp 0 both halves of a pair share a seed (above). Sampling voids that
+    # rationale -- the continuations diverge on the RNG no matter what -- and a
+    # shared seed then makes the two halves of a self-match replay ONE game
+    # scored twice, halving the yield for free. So split the streams when
+    # sampling, keeping them far enough apart not to overlap (see the seed
+    # separation note above).
+    split = 500000 if book_temp_plies > 0 else 0
+    return [(i % 2 == 0, seed + i // 2 + (0 if i % 2 == 0 else split),
+             book_temp_plies, entries[offset + i // 2], i // 2)
             for i in range(games)]
 
 
@@ -339,7 +352,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               moves_left_slope_a=MOVES_LEFT_SLOPE,
               moves_left_slope_b=MOVES_LEFT_SLOPE,
               stall_timeout=600.0, checkpoint_path=None, book=None,
-              book_offset=0):
+              game_log=None,
+              book_offset=0, book_temp_plies=0):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -357,11 +371,13 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         # The book IS the diversity, so opening sampling goes off. Leaving it
         # on would draw the opening from the candidate's own policy again and
         # put back exactly the candidate-dependence the book removes.
-        opening_temp_plies = 0
+        opening_temp_plies = book_temp_plies
         tasks = build_tasks(games, seed, 0, entries, book_name=book,
-                            offset=book_offset)
+                            offset=book_offset,
+                            book_temp_plies=book_temp_plies)
         book_meta = dict(book_meta, offset=book_offset,
-                         entries_used=[book_offset, book_offset + games // 2])
+                         entries_used=[book_offset, book_offset + games // 2],
+                         temp_plies=book_temp_plies)
     else:
         tasks = build_tasks(games, seed, opening_temp_plies)
 
@@ -412,6 +428,40 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
         pool.join()
 
     w, b, score = _aggregate(results)
+
+    # Optional per-line log. A match report carries aggregates only, so a book
+    # match -- which plays one deterministic game per entry -- discards exactly
+    # what an opening study needs: which LINE produced which result. `pair` is
+    # the index into the book block, so entry = book_offset + pair recovers the
+    # position. Measured 2026-08-20: the 58 root families are statistically
+    # indistinguishable from each other (sd 0.085 against a sampling SE of
+    # 0.087) while every family contains both White wins and Black wins, so the
+    # structure lives at the line level and the aggregate hides it entirely.
+    # Off by default; no existing caller changes behaviour.
+    if game_log:
+        log_path = (game_log if os.path.isabs(game_log)
+                    else os.path.join(ROOT, game_log))
+        parent = os.path.dirname(log_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        base = book_offset if entries else None
+        with open(log_path, "w", encoding="utf-8") as fh:
+            for record in results:
+                result, plies, a_is_white, pair, opening = _parts(record)
+                row = {
+                    "pair": pair,
+                    "entry": (base + pair) if base is not None else None,
+                    "a_is_white": bool(a_is_white),
+                    "result_for_a": result,
+                    "white_score": game_score(result if a_is_white
+                                              else -result),
+                    "plies": plies,
+                }
+                if opening:
+                    row["opening"] = opening
+                fh.write(json.dumps(row) + "\n")
+        print(f"  wrote per-line log: {game_log} ({len(results)} games)",
+              flush=True)
 
     name_a = os.path.basename(os.path.dirname(model_a)) or "model-a"
     name_b = (os.path.basename(os.path.dirname(model_b))
@@ -525,12 +575,23 @@ def main():
                     help="first book entry to use. Reserve a disjoint block "
                          "for any run that must not replay another's openings "
                          "-- under a book a fresh seed changes nothing.")
+    ap.add_argument("--book-temp-plies", type=int, default=0,
+                    help="sample this many plies after each book position "
+                         "instead of playing at temp 0. Makes a repeated "
+                         "entry produce different games, which is what puts "
+                         "an error bar on a single line. Any run using it is "
+                         "NOT reproducible ply-for-ply.")
     ap.add_argument("--workers", type=int, default=DEFAULT_GAME_WORKERS)
     ap.add_argument("--stall-timeout", type=float, default=600.0,
                     help="fail if no game completes for this many seconds")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "benchmarks"))
     ap.add_argument("--report-path", default=None,
                     help="write the report to this exact path")
+    ap.add_argument("--game-log", default=None,
+                    help="JSONL of per-game results. Under a book each line is "
+                         "one book entry, so this recovers which OPENING LINE "
+                         "produced which result -- the report keeps aggregates "
+                         "only.")
     args = ap.parse_args()
 
     if args.stall_timeout <= 0:
@@ -554,7 +615,9 @@ def main():
                     moves_left_slope_b=args.moves_left_slope_b,
                     stall_timeout=args.stall_timeout,
                     checkpoint_path=_artifact_path(args), book=args.book,
-                    book_offset=args.book_offset)
+                    book_offset=args.book_offset,
+                    book_temp_plies=args.book_temp_plies,
+                    game_log=args.game_log)
     path = out["_artifact_path"]
     out.pop("_artifact_path", None)
     with open(path, "w") as f:
