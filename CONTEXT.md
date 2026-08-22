@@ -54,11 +54,28 @@ only the absence of a forced capture inside that horizon, not a fortress or
 game-theoretical draw. These are unconverted wins, not fortresses. See
 `REPORT.md` §30.
 
-**Standing, 2026-08-18.** Release is `models/bootstrap_v23`. **The strongest
-model on record is `models/candidates/bootstrap_main_gen_0023/selected_epoch_007`**
--- +251 against v22 where v23 is +130, so roughly **+120 beyond the release**
-and unpromoted. It is the working bar. gen24 failed on the per-side floor
-(White 0.3650) and the chain stopped there. `REPORT.md` §52.
+**Standing, 2026-08-22.** Release and bar are `models/bootstrap_v24`
+(owner promoted generation 30). Release and strength bar are aligned. On the
+full measurement standard at 1600 sims under a book -- the instrument to trust
+-- v24 is **+191.6 Elo above v23** over 600 games (z=+18.6), +259.6 above v22,
+and +20.9 above gen26. `benchmarks/tonight/report_gen30_1600.json`,
+`models/bootstrap_v24/promotion_manifest.json`.
+
+Two live caveats. **gen31 measured 16.8 Elo AHEAD of v24** on the same
+instrument at 1.9 SE -- short of significance, ungated, and still outstanding;
+1800 games would settle it. And the owner's playtest of gen30 was never
+performed; the promotion rests on the measurements.
+
+**Free play is not strength evidence.** gen30 against ITSELF splits -0.417
+under a book and +0.698 free -- a 1.115 swing from the opening distribution
+alone (effective_unique 1.00 vs 0.41). Between near-peers free play manufactures
+a gap out of opening preference. Use the book instrument.
+
+**Per-line book results are n=1.** Book play is deterministic, so every line in
+the opening map, the Black-reply catalogue and the duo ladder came from one
+game; resampling shows 42.7% of family lines and 46.0% of duo positions get a
+different verdict. Use `tools/match.py --book-temp-plies`, quote aggregates not
+cells. `benchmarks/robust/`.
 
 **White recovered; §49's structural-ceiling conclusion was wrong.** Controlled
 on identical openings, White went 0.6417 (gen17) -> 0.7017 (gen19) -> **0.7567
