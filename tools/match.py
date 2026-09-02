@@ -364,7 +364,13 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     """
     opening_temp_plies = resolve_opening_temp_plies(model_b, opening_temp_plies)
     workers = workers or DEFAULT_GAME_WORKERS
+    # Both stay None for free play. `entries` is read again by the --game-log
+    # writer below to decide whether a row can carry a book entry index, and
+    # leaving it unbound made --game-log crash on any match played WITHOUT a
+    # book -- the combination never occurred until the round robin logged its
+    # free legs to dedup them.
     book_meta = None
+    entries = None
 
     if book:
         entries, book_meta = load_book(book)
