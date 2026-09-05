@@ -432,7 +432,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         process.append("--promotion-aware-policy")
 
     compose = ["tools/compose_processed.py"]
-    compose += ["--source", f"anchor={_absolute(args.anchor_data)}"]
+    if str(args.anchor_data).strip().lower() not in ("", "none"):
+        compose += ["--source", f"anchor={_absolute(args.anchor_data)}"]
     for old_generation, source in replay_sources:
         name = f"gen_{old_generation:04d}"
         compose += ["--source", f"{name}={source}",
@@ -858,9 +859,18 @@ def run_generation(args, generation=None):
         replay_sources = _recent_replay_sources(
             run_root, generation, max(0, args.replay_generations - 1))
 
-    anchor_data = _absolute(args.anchor_data)
+    # "none" drops the anchor entirely. It was an immutable v19-era corpus
+    # mixed into EVERY generation: 243,542 positions -- larger than a full
+    # doubled generation -- built from data/raw/combined_v19_B, which carries
+    # 1,672 games including 201 in human_blackfocus/. The 2026-09-04 round
+    # robin measured the post-gen33 cohort 135-246 free Elo above v24/gen33
+    # and far above anything v19-era, so the anchor is the single largest
+    # low-quality source in the corpus. Owner, 2026-09-05: the only source
+    # should be the gen models, human play discarded.
+    anchor_data = (None if str(args.anchor_data).strip().lower() in
+                   ("", "none") else _absolute(args.anchor_data))
     sparring = _absolute(args.sparring_model)
-    if not anchor_data.exists():
+    if anchor_data is not None and not anchor_data.exists():
         raise FileNotFoundError(f"anchor processed corpus not found: {anchor_data}")
     if not sparring.exists():
         raise FileNotFoundError(f"sparring model not found: {sparring}")
@@ -1073,7 +1083,8 @@ def build_parser():
     ap.add_argument("--incumbent", default=None,
                     help="explicit champion; otherwise champion.json then V20")
     ap.add_argument("--anchor-data", default=str(DEFAULT_ANCHOR_DATA),
-                    help="immutable processed replay anchor")
+                    help="immutable processed replay anchor; 'none' drops it "
+                         "so the corpus is generation self-play only")
     ap.add_argument("--sparring-model", default=str(DEFAULT_SPARRING))
     ap.add_argument("--games", type=int, default=BOOTSTRAP_GAMES)
     ap.add_argument("--league-games", type=int, default=0,
