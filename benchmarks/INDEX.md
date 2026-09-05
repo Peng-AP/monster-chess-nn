@@ -6,6 +6,27 @@ Files are never moved or renamed: the directive and CONTEXT cite them by exact f
 
 **304 artifacts across 37 families.**
 
+> **The generator only walks flat files** (`os.listdir`, not a recursive walk),
+> so the campaign subdirectories below are **not** covered by regenerating.
+> They hold the 2026-08/09 evidence and are indexed by hand here.
+
+## Campaign subdirectories (hand-indexed)
+
+| directory | what it holds | what it establishes |
+|---|---|---|
+| **`tournament/`** | 45 pairings × 2 instruments, 90 legs, 36,000 games, plus the fitted ladders in `tournament.json` and the v21 free anchor | **The primary ranking.** Tier split: gen36/38/40/41/42 sit 135–246 free Elo above v24/gen33/gen26 while book compresses it to 8–28. Both Elo ladders live here |
+| **`robust/`** | 3,962 games resampling the opening map under two perturbations (temperature sampling, engine panel) | Book lines are n=1: 42.7% of family lines and 46.0% of duo positions change verdict on resampling. `undetermined.json` lists the unresolved ones |
+| **`freeplay_standard/`** | free-play cells at 1600/3200 plus **self-match pars** for v24, gen33, gen38, gen41 | Free-play par is model-specific — White 0.8717 / 0.7933 / 0.5833. The collapsing White opening advantage |
+| **`anchor_depth/`** | gen38 and gen39 vs v24, v22, gen33 at 1600 and 3200, direct | Anchored comparison replacing transitive arithmetic; also the v24-vs-v22 block-control pair that measured **±24 Elo of block bias** |
+| **`depth_matched/`** | gen41 vs v24 at both depths on the **same block** | Repairs the cross-block confound in earlier depth claims. gen41's edge genuinely shrinks with depth (+44.2 → +21.4) |
+| **`tonight/`** | corpus-doubling arm (gen41/42) and the family/duo depth studies incl. `depth_2x2.json` | Depth moves a line's value more than sampling does: r ≈ 0.83–0.90 within a depth, 0.36–0.67 across |
+| **`line_map_3200/`**, **`family_map/`** | 58 opening families, 1,156 depth-3 positions, all at 3200 | The opening map. **Read with `robust/`** — its per-line cells are n=1 |
+| **`duo_ladder/`** | 126 fifth-rank pawn-duo positions at 3200/6400/12800 | The adjacency hypothesis, which its own control killed (0.5 SE) |
+| **`deep_showcase/`** | 18 deduped games at 6,400 sims behind the published artifact | gen41 as Black beat v24's White 21–4–2; deep self-play is mostly drawn |
+| **`gate_free_legs/`** | per-leg game logs from `tools/gate_free.py` | Working files for the free gate; the verdict lands in `benchmarks/gate_free_*.json` |
+| **`knob_tuning/`** | resumable one-factor PUCT sweeps | All eight configs at or below baseline; c_puct 1.0 confirmed −8.4 at 1,200 games |
+| `marathon/`, `hybrid/`, `router/`, `replays/`, `finetune/`, `deep_critical/`, `arm_anchored/`, `model_report/`, `archive/` | earlier or superseded campaigns | Kept deliberately — an overturned number is often the more interesting one |
+
 ## benchmark
 _Candidate vs heuristic anchor._
 

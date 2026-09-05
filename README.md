@@ -18,12 +18,19 @@ White has no chances once that happens, so White lives on a fast attack. That
 tension is the whole game, and it is why all evaluation tooling reports per-side
 results rather than a single aggregate.
 
-**Who is actually better depends on search depth**, measured 2026-08-18 on the
-strongest model playing itself: at 400 simulations Black wins 33% of games, at
-3,200 it wins **6%** and White takes 91% of the decisive ones. Deeper search
-finds White's attack before Black can consolidate. Earlier versions of this
-README asserted "Black is winning with correct play"; that is not supported by
-anything measured here and has been removed.
+**Who is better depends on search depth *and* on which engine is playing.**
+Measured 2026-08-18 on the then-strongest model playing itself, White dominated
+at depth: Black won 33% of games at 400 simulations and only 6% at 3,200. That
+result is era-specific and has since narrowed sharply. White's advantage comes
+largely from *choosing the opening*, and successive models have eroded it —
+under free play a model playing itself scores White 0.8717 (v24), 0.7933
+(gen33), 0.5833 (gen38). By generation 41, self-play at 6,400 simulations
+produced 13 draws to 2 White wins and 2 Black wins.
+
+Two cautions follow, and the tooling here is built around both: a per-colour
+score is meaningless without a *measured* baseline for the same conditions, and
+a result at one simulation count is a statement about that count, not about the
+game.
 
 ## How the engine works
 
@@ -315,6 +322,35 @@ times):
 python tools/match.py --model-a models/my_model/best_value_net.pt \
     --model-b models/fresh_start_v22/best_value_net.pt --games 20
 ```
+
+Matches run on one of two **instruments**, and they do not measure the same
+thing:
+
+- **Book** (`--book`) plays a fixed set of openings, identical for every
+  pairing. Transitive, tighter error bars, same positions for everyone — but it
+  forbids the opening choice that is most of White's game.
+- **Free** (no book) lets both models pick their own openings. This is the game
+  as actually played, and the instrument gates now use — but 40–76% of its games
+  are *exact replays* of one another, so results must be deduped on the opening
+  record (`--game-log` writes it) before they count as a sample.
+
+A 45-pairing round robin on both instruments (2026-09-04, 36,000 games) found
+they disagree about ordering, not merely scale: the post-gen33 cohort sits
+135–246 free Elo above its predecessors while book compresses the same gap into
+8–28 Elo. See `HANDOFF.md` §2.
+
+Two further flags matter for honest measurement. `--book-temp-plies N` samples
+N plies after each book position, so a repeated entry yields *different* games —
+without it a book line is n=1, and ~45% of single-line verdicts flip on
+resampling. Book results also carry roughly **±20 Elo of block-to-block noise**
+that the reported SE does not include, so compare models on the *same* block or
+not at all.
+
+**Gates** run on free play: `tools/gate_free.py` plays a candidate against the
+bar, deduped, stopping on unique games or a wall-clock budget, with a cached
+self-match "par" leg for the bar so the per-side check has a real baseline —
+free-play par is nowhere near 0.50. The older book gate `tools/gate.py` is
+retained unchanged for continuity with historical results.
 
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent
 comparison on identical positions — informational only; offline metrics and play

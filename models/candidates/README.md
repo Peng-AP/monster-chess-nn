@@ -1,6 +1,31 @@
 # Which model to load
 
-Current playtest ledger (2026-08-16):
+## Current, 2026-09-05
+
+| role | path |
+|---|---|
+| **numbered release (v24)** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
+| **strongest measured** | `models/candidates/bootstrap_main_gen_0042/screen_nominee.pt` — leads both Elo ladders |
+| **newest** | `models/candidates/bootstrap_main_gen_0044/best_value_net.pt` — trained 2026-09-05 |
+| prior release (v23) | `models/bootstrap_v23/best_value_net.pt` — generation 15 |
+| prior release (v22) | `models/fresh_start_v22/best_value_net.pt` |
+| fixed low anchor (v21) | `models/fresh_start_v21/best_value_net.pt` — **Elo 1000** on both ladders |
+
+**For play or evaluation, load v24** (the release) or **gen42** (the strongest
+measured). They are not the same model: the 2026-09-04 round robin puts gen42
+at 1781 free Elo against v24's 1564, but promotion is the owner's call and
+gen42 has not had a playtest.
+
+`screen_nominee.pt` is the gated artifact for a generation — an epoch snapshot
+selected by play, not `best_value_net.pt`, which is the training-loss pick.
+Where both exist, **the nominee is the one that was measured**.
+
+Elo ladders and the tier split are in `HANDOFF.md` §2; per-model evidence in
+`benchmarks/tournament/`.
+
+---
+
+## Historical ledger (2026-08-16, superseded above)
 
 | role | path |
 |---|---|

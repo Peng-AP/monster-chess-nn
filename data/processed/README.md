@@ -1,5 +1,41 @@
 # Processed data
 
+## Corpus policy changed 2026-09-05 — the anchor is gone
+
+Owner: *"The current only source should be from these gen models, anything else
+and even human play need to be discarded."*
+
+From **generation 44** onward the training corpus is **generation self-play
+only**:
+
+| | before | from gen44 |
+|---|---|---|
+| anchor | `combined_v19_B_r50h60_capture` mixed into **every** generation | **dropped** (`--anchor-data none`) |
+| replay window | 12 generations | **8**, so replay spans gen36+ only |
+| human data | present indirectly, via the anchor | **none** |
+
+**Why the anchor was cut.** It was 243,542 positions — larger than a full
+doubled generation at 148,482 — built from `data/raw/combined_v19_B`, which
+holds 1,672 games including **201 in `human_blackfocus/`**. So every generation
+since v19 trained on a fixed block of v19-era data, part of it human-derived.
+The 2026-09-04 round robin measured the post-gen33 cohort 135–246 free Elo above
+v24/gen33/gen26, and v19 sits below all of them, making the anchor the single
+largest low-quality source in the mix.
+
+The replay window was narrowed on the same principle applied to our own
+history: gen31–35 measured at or below the older tier, so replay now starts at
+**gen36**, the boundary the tournament identified.
+
+**Watch for:** gen44's validation loss rose from about epoch 15 while training
+loss fell. A smaller, more homogeneous corpus is easier to overfit, and that is
+a plausible consequence of the cut — but it is a hypothesis, and the control
+(same recipe, anchor restored) has not been run. `--anchor-data` still defaults
+to the anchor, so restoring it is one flag.
+
+---
+
+## Historical description (superseded above)
+
 The active bootstrap corpus is assembled from immutable anchors plus small
 per-generation increments:
 

@@ -1,8 +1,8 @@
-# HANDOFF — 2026-08-18
+# HANDOFF — 2026-09-05
 
-**For the next agent.** Read this, then `CONTEXT.md` §2 (durable reference,
-current standing), then `REPORT.md` §§50–52 (the last day's evidence).
-`DIRECTIVE.md` is a completed scope record, not a plan.
+**For the next agent or developer.** Read this first, then `CONTEXT.md` §2
+(durable reference) and §5 (the laws that will bite you). `REPORT.md` is the
+evidence log; `DIRECTIVE.md` is a completed scope record, not a plan.
 
 ---
 
@@ -10,130 +10,128 @@ current standing), then `REPORT.md` §§50–52 (the last day's evidence).
 
 | | |
 |---|---|
-| **Release** | `models/bootstrap_v23/best_value_net.pt` (owner promoted 2026-08-17) |
-| **Strongest on record** | `models/candidates/bootstrap_main_gen_0023/selected_epoch_007.pt` |
-| **Working bar for gen25** | gen23 (above). Pass it as `--bar-model` / `--incumbent`. |
-| **`gate.BAR`** | still `vs_v23` — the *release*. Read it, never infer it. |
-| **Replay window** | **12** (`--replay-generations 12`). Not the default 4. |
+| **Release** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
+| **Strongest measured** | `gen42` (`models/candidates/bootstrap_main_gen_0042/screen_nominee.pt`) — leads **both** Elo ladders |
+| **Newest model** | `gen44` (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`), trained 2026-09-05, gate in flight |
+| **Gate instrument** | **free play, deduped** — `tools/gate_free.py`. The book gate (`tools/gate.py`) still exists and is unchanged |
+| **`gate.BAR`** | `vs_v24`. Read it, never infer it |
+| **Replay window** | **8** (`--replay-generations 8`) so replay spans gen36+ only |
+| **Anchor corpus** | **dropped** (`--anchor-data none`) |
 | **Suite** | 741 passing |
-| **Branch** | `main`. Commits are in the owner's name with **no `Co-Authored-By` trailer**. |
+| **Branch** | `main`. Commits in the owner's name, **no `Co-Authored-By` trailer**. Never push unless asked |
 
-gen23 is roughly **+120 Elo above the v23 release** (+251 vs v22 directly,
-where v23 is +130). By the project's own precedent — v21→v22 ≈ +139, v22→v23 =
-+130 — that is a version's worth. **It has not been promoted; that is the
-owner's call and it is open.**
+Never stage `src/play.ipynb` — its outputs are session noise.
 
-## 2. What happened, in one paragraph
+---
 
-The chain flatlined at gen18 (an exact 327W/327L/146D tie). The cause was data:
-the corpus had shrunk 936k → 445k rows because the 2026-08-16 threefold-
-repetition rule cut records per game 93.3 → 59.8 and nothing compensated.
-Widening the replay window 4 → 8 → 12 restarted it. gen19 +53, gen21 +14,
-gen22 +50, gen23 +30; gen20 and gen24 failed. Validation improved six
-generations running and broke below 2.0 for the first time.
+## 2. The result that reframes everything: the 2026-09-04 round robin
 
-## 3. Open owner decisions
+Ten models, 45 pairings, 90 legs, **36,000 games**, 46 hours. Every pairing
+played **twice**: a book leg on one identical opening block, and a free leg
+deduped on opening state. Ratings by weighted least squares on the logit scale,
+verified against synthetic data before use (recovers known ratings to 0.85 Elo).
 
-1. **Promote gen23?** ~+120 over the release. If yes, follow
-   `models/bootstrap_v23/promotion_manifest.json` as the template and move
-   `gate.BAR`, `BAR_MODEL`, `NUMBERED_INCUMBENT`, `CONFIRM_LEG`, the leg names,
-   `src/config.INCUMBENT_MODEL`, `src/iterate.DEFAULT_CHAMPION`,
-   `tools/confirm_candidates.BAR`, `tools/tune_training.BAR`, and the two bar
-   pins in `tests/`.
-2. **Screen tie-breaks.** When finalists tie on aggregate within noise the
-   ranking picks arbitrarily, and at gen22 it took a White-negative candidate
-   over a balanced one on a 0.015 difference against 0.064 SE. Owner has seen
-   this and chose to leave it; revisit only if asked.
-3. **Strip the `Co-Authored-By` trailer from 45 older commits.** Owner approved
-   stripping the ten from 2026-08-17 (done). The remaining 45 reach back to
-   February and **are already in `origin/main`**, so removing them rewrites
-   published history and needs a force-push. Not done deliberately.
+Anchored so **v21 = 1000** (v21→v22 is +106 book, +88 free, both measured):
 
-## 4. What to do next — ranked
+| model | book | free |
+|---|---:|---:|
+| gen42 | **1353** | **1781** |
+| gen41 | 1342 | 1750 |
+| gen40 | 1325 | 1741 |
+| gen36 | 1333 | 1713 |
+| gen38 | 1343 | 1699 |
+| v24 | 1325 | 1564 |
+| gen33 | 1335 | 1558 |
+| gen26 | 1314 | 1535 |
+| v23 | 1141 | 1254 |
+| v22 | 1106 | 1088 |
+| v21 | 1000 | 1000 |
 
-**a. Re-run the sims-regime question properly.** Gates run at 400 simulations,
-where Black wins ~33% of self-play games. At the owner's 3,200 the same model
-wins **6.2%** as Black. Models are being *selected* under conditions materially
-different from the ones they are *played* under, and "better at 400" may not
-mean "better at 3,200". A gate leg at 3,200 would cost roughly 8× a 400-sim
-leg, so the cheap version is a one-off: take gen17, gen19 and gen23, play them
-against each other at 3,200 on a shared block, and see whether the 400-sim
-ordering survives. **If it does not, that invalidates the selection criterion,
-not just one measurement.**
+Human play is **below v21** by the owner's account, with no measured match, so
+it cannot be placed on either scale — only bounded.
 
-**b. Push the replay window further.** 4 → 8 gave +53, 8 → 12 gave +14 then
-+50. Window 16 is untried; `autochain.py` escalates to it automatically on two
-failures. The corpus stabilises near 950k at window 12 because the window
-slides rather than accumulates.
+**The tier split is the finding.** On free, gen36/38/40/41/42 sit **135–246 Elo
+above** v24/gen33/gen26 — more than 6 SE. Book compresses that same structure
+into 8–28 Elo, inside its own noise. **Five consecutive generations were
+recorded as failures by an instrument that could not see what they improved.**
 
-**c. The 17-channel encoding is built and unused.** `config.TENSOR_SHAPE` is
-`(8,8,17)` with `WHITE_PAWN_PROGRESS_LAYER` and `BLACK_PAWN_PROGRESS_LAYER`,
-but every stored position is **15** channels — the legacy layout, whose channel
-14 is a *White-only* pawn-advancement feature with no Black counterpart.
-Requires re-encoding the corpus. Designed, built, never measured.
+gen36 is the sharpest case: it **failed** its book gate at 400 sims against
+gen33, is **level** with gen33 at 3200 on a book, and beats it by **+164 Elo**
+on free.
 
-**d. Do not bother with capacity.** The network overfits from epoch 5 on the
-current corpus (train 1.95 → 1.55 while val 2.05 → 2.21). It can already
-memorise what it is given; more parameters would memorise sooner. Revisit only
-if the corpus grows and that stops being true.
+**Within a tier nothing is separated.** The top five span 20 book Elo against
+8.7 SEs. "The top five are tied" is the conclusive answer, not a failed one.
 
-## 5. Traps that cost real time today
+---
 
-**Never quote a per-colour score without its block's baseline.** Block colour
-bias runs to ±0.056. A model played against *itself* — true value 0.5000 by
-construction — scored White **0.4437** on one block and **0.3000** on another
-from the same book. Read against 0.4437 instead of 0.50, gen17's "alarming"
-0.4338 was *at par*. This misled three separate readings in one afternoon. The
-gate now plays a `bar_selfmatch` leg on the bar leg's own block and reports
-each binding leg against it (added 2026-08-18, diagnostic only — it cannot
-change a verdict). For cross-generation comparisons, put every model on the
-**identical** block; `benchmarks/ctl_*_20260818.json` uses v27 offset 1620.
+## 3. Owner decisions now in force
 
-**Never quote a chained sum of gate passes as a strength claim.** Chaining
-oversold by 15.7% on one five-step chain and **27%** on the next four-step one.
-It is not a constant. Measure the endpoints directly.
+1. **Free play decides.** Book is retained for continuity, not for verdicts.
+2. **Gates run on free play**, deduped, stopping on unique games or a time
+   budget. `tools/gate_free.py`.
+3. **Corpus is generation self-play only.** No human games, no v19-era anchor,
+   no outside data. Replay reaches back only to gen36.
+4. Promotion remains the owner's call and wants a playtest.
 
-**The screen shortlists, it never predicts.** At 200 games its calibrated delta
-has SE ≈ 0.064. It has read high (gen18, gen20, gen22) and low (gen23). A
-+0.04 or +0.08 delta is noise; treat any screen number as a shortlist and let
-the 800-game gate decide.
+---
 
-**High-sim game counts are not independent trials.** At 3,200 sims a strong
-net's visit counts are peaked enough that temperature sampling returns the top
-move nearly always, so 48 games held five distinct openings and outcome tracked
-the opening family almost perfectly. Deep search buys strength and spends
-variety.
+## 4. Measurement rules that will bite you
 
-**Verify tools obey current rules before trusting their output.**
-`tools/export_selfplay_replays.py` had no repetition tracking and was playing
-under pre-2026-08-16 rules; the tell was every drawn game measuring exactly 225
-plies. Fixed, and `tests/test_selfplay_export_rules.py` pins it. Both of the
-day's measurement defects were surfaced by the owner asking a sceptical
-question, not by review.
+These are not style preferences. Each cost real time to learn.
 
-**Operational.** Run long jobs via `tools/runs.py start`; never block a call on
-a match. **Never run concurrent worker jobs** — 3×8 workers froze this machine
-on 2026-08-16. Never commit `src/play.ipynb` outputs. Estimate from the running
-job's own progress line, never by extrapolating a rate across workloads.
+| rule | evidence |
+|---|---|
+| **Never compare a per-colour score to 0.50** | Block colour-bias is ±0.056. Read against a measured par |
+| **Free-play par is not 0.50 and is model-specific** | v24 scores White **0.8717** against itself; gen33 0.7933; gen38 0.5833 |
+| **A book match carries ~20 Elo of block noise the SE hides** | Same pairing, different blocks: 19.3 and 23.7 Elo apart |
+| **Disjoint blocks for independent samples; MATCHED blocks for comparisons** | Giving every cell its own block breaks the comparison you built the run for. Cost this project two runs |
+| **Free play must be deduped** | After the opening prefix play is deterministic; two games sharing an opening state *are* the same game. 40% dupes same-era, **68–76%** within the top cohort |
+| **One book line is n=1** | ~45% of per-line verdicts flip on resampling. Use `--book-temp-plies`; quote aggregates, not cells |
+| **Depth changes values** | Line values reproduce at r≈0.83–0.90 within a depth, r≈0.36–0.67 across. A score at one sim count is a statement about that sim count |
+| **Free play is non-transitive** | Round-robin RMS residual **73.5 Elo** free vs 12.6 book. Good tier detector, poor ordering device |
+| **Never chain Elo** | v24 and gen26 sit 55 Elo apart via v22 and are **level** head-to-head. Three anchored claims were overturned by direct play |
+| **Existence is not completion** | Killed runs leave truncated artifacts that resume logic accepted as done. Validate, don't `stat` |
 
-## 6. Scripts worth reusing
+---
 
-Driver scripts live in the session scratchpad, not the repo. The durable ones:
+## 5. Tooling added since the last handoff
 
-- `tools/gate.py --protocol full` — the binding gate, now with the calibration leg
-- `tools/checkpoint_screen.py` — shortlist 8 checkpoints to 4
-- `tools/draw_anatomy.py` — outcome × game length, with the winning-window curve
-- `tools/review_game.py` — per-move swing on a saved human game
-- `tools/selfplay_examples.py` — N games of each outcome, exported to HTML
-- `tools/make_book.py --allow-short --oversample 2.2` — books; raise oversample,
-  duplicate rates climb with generation
+| tool / flag | what it does |
+|---|---|
+| `tools/gate_free.py` | free-play gate: par leg (bar vs itself, cached), bar leg, confirmation replay. Stops on unique games or budget |
+| `tools/match.py --book-temp-plies N` | samples N plies after each book position so a repeated entry yields *different* games — the only way to error-bar a single line. Also splits the pair seed when sampling |
+| `tools/match.py --game-log` | per-game JSONL incl. the opening record, which is the exact dedup key for free play |
+| `src/iterate.py --anchor-data none` | drops the v19-era anchor so the corpus is generation self-play only |
+| `tools/model_report.py` | self/anchor × book/free × named predecessors × sim levels |
+| `tools/export_lines.py` | replays named lines to scrubbable HTML. **Two engines, one per colour** — native MCTS reuses its tree, and sharing one leaks White's tree into Black's search |
 
-An autonomous chain driver (`autochain.py`) ran gen20–gen24 unattended: ensure
-book capacity, generate + train, screen, gate, advance the bar on PASS, escalate
-the replay window on FAIL, stop after two failures at the widest. Its state file
-pattern (resume rather than repeat) is worth keeping.
+---
 
-## 7. Artifact
+## 6. Open questions
 
-Self-play showcase, nine real games at 3,200 sims with scrubbable boards:
-<https://claude.ai/code/artifact/b4c03519-b5e7-4060-9e8c-fe5ea3e5c256>
+- **gen44's gate** — in flight at time of writing. `benchmarks/gate_free_gen44.json`
+- **Does dropping the anchor cause overfitting?** gen44's val loss rose from
+  epoch ~15 while train fell. Plausible consequence of a smaller, more
+  homogeneous corpus. The control is the same recipe with the anchor restored —
+  one variable, already isolated. Not yet run
+- **Top-five ordering** unresolved and probably unresolvable at practical
+  sample sizes. Deciding among them may need a criterion other than strength
+- **The book gate's blind spot** — gen36 was rejected by it and belongs to the
+  stronger tier. Any candidate rejected by a 400-sim book gate since gen33
+  deserves re-examination
+- **`iterations/gen_0043`** is an empty stub from a killed run; `iterate.py`
+  treats directory existence as "generation taken", which is why gen43 was
+  skipped and the model is gen44
+
+---
+
+## 7. Operating rules
+
+- Long jobs via `py -3 tools/runs.py start --name X -- ...`, never blocking
+- **Never run concurrent worker jobs.** 3×8 workers froze this box; a
+  DPC_WATCHDOG_VIOLATION (0x133) hit on 2026-08-31 during a 12-worker match.
+  Match workers are now **8**
+- Never build Python scripts in bash heredocs — `\n` mangling has cost time
+  twice
+- Never weaken a gate threshold to let a recipe through
+- Estimate from the running job; never extrapolate a rate across workloads

@@ -34,7 +34,38 @@ en passant is conferred only by the **last** move of White's turn; White may
 not **end** its turn with its own king attacked (forced-blunder exception
 unchanged, in `_get_white_actions`).
 
-## 2. Where the project stands (2026-08-16)
+## 2. Where the project stands
+
+> **Current standing, 2026-09-05.** Release is `models/bootstrap_v24`
+> (generation 30, promoted 2026-08-22). Strongest measured is **gen42**, which
+> leads both Elo ladders. Newest model is **gen44**. Gates now run on **free
+> play** (`tools/gate_free.py`); the book gate is retained for continuity.
+> Corpus is **generation self-play only** — the v19-era anchor is dropped
+> (`--anchor-data none`) and replay reaches back only to gen36. Full picture in
+> `HANDOFF.md`.
+>
+> **The 2026-09-04 round robin is the reframing result.** 45 pairings, 90 legs,
+> 36,000 games, both instruments on every pairing. Anchored at v21 = 1000:
+>
+> | model | book | free | | model | book | free |
+> |---|---:|---:|---|---|---:|---:|
+> | gen42 | 1353 | **1781** | | v24 | 1325 | 1564 |
+> | gen41 | 1342 | 1750 | | gen33 | 1335 | 1558 |
+> | gen40 | 1325 | 1741 | | gen26 | 1314 | 1535 |
+> | gen36 | 1333 | 1713 | | v23 | 1141 | 1254 |
+> | gen38 | 1343 | 1699 | | v22 | 1106 | 1088 |
+>
+> On free, gen36/38/40/41/42 sit **135–246 Elo above** v24/gen33/gen26 (6+ SE);
+> book compresses that into 8–28 Elo, inside its own noise. **Five consecutive
+> generations were recorded as failures by an instrument that could not see
+> what they improved.** gen36 failed its book gate against gen33, is level with
+> it at 3200 on a book, and beats it by +164 free Elo. Within a tier nothing is
+> separated — the top five span 20 book Elo against 8.7 SEs.
+>
+> Human play is **below v21** and unmeasured, so it can be bounded but not
+> placed on either scale.
+
+### Historical assessment (2026-08-16, superseded above)
 
 **The bootstrap loop works, and its defect was never the game.** Two apparatus
 faults cost more than every recipe idea combined: fine-tuning from the champion
@@ -747,6 +778,51 @@ oracle still converts 8/8 of the E0(b) walked-past positions.
   Black-won games and played vs weak White; they compare models fairly and
   estimate nothing else.
 - Pooling matches whose seeds are closer than the game count (see §8).
+
+### 5b. Measurement laws established 2026-08-21 → 2026-09-05
+
+Each of these was learned by getting it wrong first. They are the fastest way
+for a new agent to avoid repeating a week of work.
+
+1. **A book match carries ~20 Elo of block noise the reported SE does not
+   show.** The *same* pairing on two blocks: v24 vs v22 scored 0.8125 and
+   0.7908 (23.7 Elo apart); gen41 vs v24 scored 0.5358 and 0.5633 (19.3 apart).
+   The paired SE assumes the 300 openings are interchangeable draws; across
+   blocks they are not. **Any model comparison under ~25 Elo is inside
+   book-selection noise unless both sides ran on the same block.**
+2. **Disjoint blocks are for independent samples; MATCHED blocks are for
+   comparisons.** Giving every cell its own block — the instinct — destroys the
+   comparison the run exists for. Two candidates against one anchor, or one
+   pairing at two sim counts, must share a block. This cost two runs.
+3. **Never chain Elo.** v24 and gen26 sit 55 Elo apart via v22 and are **level**
+   head-to-head. The round robin overturned three anchored claims, one of them
+   in sign. A chained ladder overstated by 15.7% at the v23 promotion.
+4. **One book line is n=1.** Book play is deterministic, so a per-line verdict
+   is a single game; ~45% flip on resampling. Use
+   `tools/match.py --book-temp-plies N` (which also splits the pair seed, so R
+   repeats give 2R samples). Quote family aggregates, not cells.
+5. **Depth changes a line's value more than sampling error does.** Values
+   reproduce at r ≈ 0.83–0.90 *within* a depth and only r ≈ 0.36–0.67 *across*
+   3200 → 12800, on two independent position sets. There is no
+   depth-independent value to catalogue.
+6. **Free play must be deduped and is not a multiplier on book.** After the
+   sampled prefix, play is deterministic, so two games sharing an opening state
+   *are* the same game — dedup on `--game-log`'s `opening` record. Duplicate
+   rates: 40% between same-era models, **68–76%** within the top cohort. And
+   free is not a fixed multiple of book: v21→v22 is +88 free against +106 book,
+   while post-gen33 models beat their predecessors by 2–3× their book margin.
+   Inflation appears only where opening repertoires diverge.
+7. **Free-play par is model-specific and nowhere near 0.50.** A model playing
+   itself scores White 0.8717 (v24), 0.7933 (gen33), 0.5833 (gen38) — the
+   collapsing White opening advantage. A per-side floor in free play must be
+   calibrated against the *bar's* self-match, cached per bar.
+8. **Free play is non-transitive.** Round-robin RMS residual 73.5 Elo free
+   against 12.6 book, individual cells off by up to 225. A free rating is a
+   good **tier** detector and a poor **ordering** device.
+9. **Existence is not completion.** A killed run leaves truncated artifacts —
+   a match report with 240 White games and 0 Black, a JSON that will not parse,
+   an empty `iterations/gen_XXXX` that makes `iterate.py` skip a number.
+   Resume logic must *validate* artifacts, not `stat` them.
 
 ## 6. The v19 campaign ledger (2026-08-01/02, all evidence in `benchmarks/`)
 
