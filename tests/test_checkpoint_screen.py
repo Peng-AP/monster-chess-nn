@@ -60,6 +60,21 @@ def test_screen_interruption_resumes_journals_and_pins_nominee(tmp_path, monkeyp
 
 
 class CheckpointScreenTests(unittest.TestCase):
+    def test_free_calibration_uses_all_games_and_caps_are_draws(self):
+        rows = [{"a_is_white": True, "result_for_a": 1},
+                {"a_is_white": True, "result_for_a": .5},
+                {"a_is_white": False, "result_for_a": -1},
+                {"a_is_white": False, "result_for_a": -.5}]
+        original = {"a_score": .5}
+        calibration = screen.actual_color_calibration(original, rows)
+        self.assertEqual(calibration["a_as_white"]["score"], .75)
+        self.assertEqual(calibration["a_as_black"]["score"], .25)
+        self.assertEqual(calibration["a_as_white"]["n"], 4)
+        self.assertEqual(calibration["a_as_black"]["n"], 4)
+        self.assertEqual(calibration["games"], 4)
+        self.assertIs(calibration["role_split_match"], original)
+        self.assertEqual(calibration["a_score"], .5)
+
     def test_free_probe_and_final_seed_blocks_are_disjoint(self):
         from match import build_tasks
         probe = {t[1] for t in build_tasks(2000, 100, 16)}

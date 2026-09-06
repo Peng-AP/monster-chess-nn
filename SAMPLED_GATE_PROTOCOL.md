@@ -90,6 +90,9 @@ runtime identity. Existing completed generation states must not silently migrate
    plus the existing Black-best and offline-best safeguards (at most four
    finalists). Reserve seed 50,000,000 for the probe and 50,100,000 for the
    full screen. The currently measured epoch 9 remains in this comparison.
+   Free-play screens also use all actual-color self-par outcomes, preserving
+   the old role-split aggregates separately. Their v3 manifest distinguishes
+   this calibration from earlier screens; the nomination ranking is unchanged.
 4. Use the existing generation-only recipe for the next controlled increment.
    Train **fresh from scratch**, inheriting only architecture from the selected
    generator; do not silently switch back to fine-tuning. Preserve 1,000 free

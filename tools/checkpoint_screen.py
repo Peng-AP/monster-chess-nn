@@ -4,8 +4,8 @@ Sample sizes raised 2026-08-07. The old defaults (8-game probes, 20-game
 finals) cannot rank checkpoints: at 20 games the standard error is 0.112, and
 on that day five finalists spanning 0.187 were ranked confidently on samples
 that could not resolve them -- while an 800-game match showed the same weights
-scoring 1.6 SE away from their screen result. Probes now play 40 games at the
-gate's own sim count and finals play 200 (SE 0.035), which is the resolution
+scoring 1.6 SE away from their screen result. Probes now play 40 games at a
+separately configurable depth and finals play 200 (worst-case SE 0.035), which is the resolution
 needed to separate checkpoints that differ by the ~40 Elo measured between
 epoch 4 and epoch 10 of a from-scratch run.
 
@@ -14,7 +14,7 @@ paired-color probe: the offline peak and its neighborhood, Black-metric peaks,
 the final epoch as an overfit control, then evenly spaced coverage. The
 strongest probe results, the offline-selected epoch, and the Black-best epoch
 advance to the normal calibrated screen. The screen only nominates a
-checkpoint: the binding and high-fidelity gates remain decisive.
+checkpoint: the selected pipeline's binding gate remains decisive.
 """
 from __future__ import annotations
 
@@ -34,7 +34,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from config import DEFAULT_GAME_WORKERS  # noqa: E402
 from match import run_match  # noqa: E402
-from match_evidence import runtime_identity  # noqa: E402
+from match_evidence import read_rows, runtime_identity  # noqa: E402
+from free_gate_stats import side_stats  # noqa: E402
 from worker_lease import exclusive_workers  # noqa: E402
 
 
@@ -156,6 +157,24 @@ def shortlist_checkpoints(checkpoints: list[dict], model_dir: Path,
             if checkpoint["weights_sha256"] in selected]
 
 
+def actual_color_calibration(match: dict, rows: list[dict]) -> dict:
+    """Use all self-games for complementary actual-color par estimates.
+
+    A/B are identical models here. Keep the original role-split match for audit,
+    but do not discard half the games for either color's estimate. The two
+    estimates share the same games and must not be counted as independent.
+    """
+    if not rows:
+        raise ValueError("self-par journal is empty")
+    white = [dict(row, result_for_a=row["result_for_a"] if row["a_is_white"]
+                  else -row["result_for_a"]) for row in rows]
+    black = [dict(row, result_for_a=-row["result_for_a"]) for row in white]
+    return {"a_score": .5, "a_as_white": side_stats(white),
+            "a_as_black": side_stats(black), "games": len(rows),
+            "color_estimates_are_complements": True,
+            "calibration_method": "all_actual_colors", "role_split_match": match}
+
+
 def calibrated_result(candidate: dict, calibration: dict) -> dict:
     deltas = {
         "white": (candidate["a_as_white"]["score"]
@@ -171,10 +190,8 @@ def calibrated_result(candidate: dict, calibration: dict) -> dict:
     }
 
 
-# Collapse guard, in calibrated terms. The binding gate's rule is an ABSOLUTE
-# 0.40 per-colour floor; here we only have deltas against the incumbent's
-# score on the same block, so "collapse" is read as a large calibrated drop
-# rather than a fixed level.
+# Exploratory collapse guard, in calibrated terms. This is intentionally only
+# a shortlist rule, not the sampled binding gate's tighter par-minus-.05 floor.
 COLLAPSE_DELTA = -0.10
 
 
@@ -192,9 +209,10 @@ def rank_key(result: dict) -> tuple[float, float, float]:
     gate might well have passed -- v23 seed 42 epoch 8 was +0.090 Black,
     -0.060 White, aggregate +0.015 and was never gated.
 
-    A screen at 200 games cannot resolve 0.05 anyway (SE about 0.064), so this
-    is a SHORTLIST, not a verdict. Rank by aggregate, drop anything that has
-    collapsed a colour, and let the 800-game gate decide.
+    These historical motivations do not define today's gate: sampled v3 uses
+    incumbent actual-color par minus .05. A 200-game screen is a SHORTLIST,
+    not a verdict. Rank by aggregate with the exploratory collapse guard,
+    then evaluate the nominee on independently reserved binding games.
     """
     delta = result["deltas"]
     collapsed = min(delta["white"], delta["black"]) <= COLLAPSE_DELTA
@@ -287,7 +305,7 @@ def main() -> None:
 
     evidence_dir = report_path.with_name(report_path.stem + "_evidence")
     manifest_path = evidence_dir / "manifest.json"
-    manifest = {"version": "checkpoint_screen_recoverable_v2",
+    manifest = {"version": "checkpoint_screen_recoverable_v3",
                 "implementation_sha256": sha256(Path(__file__)),
                 "runtime": runtime_identity(), "config": vars(args),
                 "incumbent_sha256": sha256(incumbent),
@@ -323,8 +341,8 @@ def main() -> None:
     # high-power confirmation is independent of the selection that produced the
     # finalists; replaying the probe openings would correlate the confirmation
     # with its own selection bias and reinstate exactly what the screen is for.
-    # Both calibrations use their stage's block, since the deltas are measured
-    # against them and must come from the same positions.
+    # Calibrations use their stage's RNG block. Free play does not force the
+    # different models to reach identical board positions from matched seeds.
     probe_offset = args.book_offset
     final_offset = probe_offset + args.probe_games // 2
     if args.book:
@@ -341,6 +359,9 @@ def main() -> None:
           f"@ {args.probe_sims}", flush=True)
     probe_calibration = play("probe", "par", incumbent, args.probe_games,
                              args.probe_sims, args.seed, probe_offset)
+    if not args.book:
+        probe_calibration = actual_color_calibration(
+            probe_calibration, read_rows(evidence_dir / "probe_par.jsonl"))
     probe_results = []
     for checkpoint in checkpoints:
         print(f"[checkpoint-screen] probe {checkpoint['name']}", flush=True)
@@ -370,6 +391,9 @@ def main() -> None:
           f"@ {args.sims}", flush=True)
     calibration = play("full", "par", incumbent, args.games, args.sims,
                        screen_seed, final_offset)
+    if not args.book:
+        calibration = actual_color_calibration(
+            calibration, read_rows(evidence_dir / "full_par.jsonl"))
     results = []
     checkpoint_by_name = {checkpoint["name"]: checkpoint
                           for checkpoint in checkpoints}
@@ -399,7 +423,7 @@ def main() -> None:
     payload = {
         "experiment": "bootstrap_checkpoint_arena_screen",
         "binding": False,
-        "instrument": "checkpoint_screen_recoverable_v2",
+        "instrument": "checkpoint_screen_recoverable_v3",
         "evidence_manifest": str(manifest_path),
         "evidence_hashes": {str(p): sha256(p) for p in
                             [manifest_path, *evidence_dir.glob("*.jsonl"),
