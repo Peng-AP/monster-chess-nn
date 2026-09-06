@@ -42,7 +42,10 @@ unchanged, in `_get_white_actions`).
 > play** (`tools/gate_free.py`); the book gate is retained for continuity.
 > Corpus is **generation self-play only** — the v19-era anchor is dropped
 > (`--anchor-data none`) and replay reaches back only to gen36. Full picture in
-> `HANDOFF.md`.
+> `HANDOFF.md`. September 5 implementation: `FREE_GATE_PROTOCOL.md` records the
+> corrected equal-color gate, unseen-confirmation coverage, recoverable logs,
+> and explicit generation-only pipeline defaults. Original gen44 evidence is
+> promising but undercovered; no successor promotion follows from its old PASS.
 >
 > **The 2026-09-04 round robin is the reframing result.** 45 pairings, 90 legs,
 > 36,000 games, both instruments on every pairing. Anchored at v21 = 1000:

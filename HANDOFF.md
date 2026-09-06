@@ -12,15 +12,29 @@ evidence log; `DIRECTIVE.md` is a completed scope record, not a plan.
 |---|---|
 | **Release** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
 | **Strongest measured** | `gen42` (`models/candidates/bootstrap_main_gen_0042/screen_nominee.pt`) — leads **both** Elo ladders |
-| **Newest model** | `gen44` (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`), trained 2026-09-05, gate in flight |
+| **Newest model** | `gen44` (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`); original gate finished, coverage audit inconclusive |
 | **Gate instrument** | **free play, deduped** — `tools/gate_free.py`. The book gate (`tools/gate.py`) still exists and is unchanged |
 | **`gate.BAR`** | `vs_v24`. Read it, never infer it |
 | **Replay window** | **8** (`--replay-generations 8`) so replay spans gen36+ only |
 | **Anchor corpus** | **dropped** (`--anchor-data none`) |
-| **Suite** | 741 passing |
+| **Suite** | 754 passing; final promotion/resume contracts also passed a focused rerun |
 | **Branch** | `main`. Commits in the owner's name, **no `Co-Authored-By` trailer**. Never push unless asked |
 
 Never stage `src/play.ipynb` — its outputs are session noise.
+Never stage `NEXT_STEPS_HANDOFF_20260905.md` — intentionally local handoff.
+
+Implementation update: [FREE_GATE_PROTOCOL.md](FREE_GATE_PROTOCOL.md) describes
+the repaired v2 gate, durable logs, production recipe and pipeline integration.
+Original gen44 evidence is preserved; a separate rescore gives 61.59% on the
+combined endpoint union but inadequate unseen White confirmation coverage.
+
+Live campaign: `gen44_depth3200_v2`, launched through `tools/runs.py` after the
+implementation/rehearsals. It runs gen42 par + two H2H legs (180-minute budget),
+then gen41, v24 and self-play diagnostics (50 minutes each), all sequentially
+at 3,200 simulations with eight workers. Output:
+`benchmarks/free_gate/gen44_depth3200_v2/`; log `logs/gen44_depth3200_v2.log`.
+It does not promote or start training automatically. Review its results before
+the compounding generation. No numbered release or working pointer changed.
 
 ---
 
@@ -109,17 +123,18 @@ These are not style preferences. Each cost real time to learn.
 
 ## 6. Open questions
 
-- **gen44's gate** — in flight at time of writing. `benchmarks/gate_free_gen44.json`
-- **Does dropping the anchor cause overfitting?** gen44's val loss rose from
-  epoch ~15 while train fell. Plausible consequence of a smaller, more
-  homogeneous corpus. The control is the same recipe with the anchor restored —
-  one variable, already isolated. Not yet run
+- **gen44 at playing depth** — the original 1,600-sim gate finished. Its
+  retrospective v2 coverage audit is inconclusive; 3,200-sim validation remains.
+- **Why gen44 improved** — not isolated: teacher identity, replay volume,
+  generation/teacher counts and seed changed along with anchor removal.
+  Gen42 also overfit. Restoring the old human-containing anchor violates the
+  current generation-only policy and is not the planned control.
 - **Top-five ordering** unresolved and probably unresolvable at practical
   sample sizes. Deciding among them may need a criterion other than strength
 - **The book gate's blind spot** — gen36 was rejected by it and belongs to the
   stronger tier. Any candidate rejected by a 400-sim book gate since gen33
   deserves re-examination
-- **`iterations/gen_0043`** is an empty stub from a killed run; `iterate.py`
+- **`iterations/gen_0043`** is an abandoned stub with state/lock metadata from a killed run; `iterate.py`
   treats directory existence as "generation taken", which is why gen43 was
   skipped and the model is gen44
 

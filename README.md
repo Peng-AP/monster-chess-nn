@@ -352,6 +352,13 @@ self-match "par" leg for the bar so the per-side check has a real baseline —
 free-play par is nowhere near 0.50. The older book gate `tools/gate.py` is
 retained unchanged for continuity with historical results.
 
+The current version requires per-color and unseen-confirmation coverage, saves
+finished games incrementally, and returns **INCONCLUSIVE** when its budget cannot
+supply the evidence. See [FREE_GATE_PROTOCOL.md](FREE_GATE_PROTOCOL.md) for the
+scoring contract, provenance/resume commands and production bootstrap recipe.
+`src/iterate.py` defaults to that free gate and generation-only replay; legacy
+book evaluation requires `--gate-backend legacy`.
+
 Supporting tools: `tools/model_diff.py` (cheap offline candidate-vs-incumbent
 comparison on identical positions — informational only; offline metrics and play
 strength are demonstrably decoupled in this project), `tools/heuristic_ab.py`
