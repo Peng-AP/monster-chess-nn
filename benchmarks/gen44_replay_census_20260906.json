@@ -1,0 +1,487 @@
+{
+  "data_dir": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_replay_main_gen_0044",
+  "rows": 864822,
+  "interpretation": "actual sampled row schedule and nominal loss weights; no position tensor scan",
+  "input_hashes": {
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_replay_main_gen_0044\\replay_manifest.json": "b47a1c0280b7b85b7d858a66193832708792e6dd66ddc8032dadf7d93517448c",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\iterations\\accepted_data.json": "0e2e01039e29f94312c97579a6fc6c5b86a701c75dad9f9b6e7d712fe170de42",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_replay_main_gen_0044\\splits.npz": "e955d7764ccee5e161ec6d7d402985629aa9af0ba033308234ec6e770fe8e717",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_replay_main_gen_0044\\policy_weights.npy": "f7892eb96294d14ec5d1c084ab0f5bee1b5ed5d19c753b6295b23737abd20f66",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_replay_main_gen_0044\\value_weights.npy": "8032c7351fd529c6b22c5f9c3354d20bbcd4d6a0fb9c99c382bcd0bfb51e4c38"
+  },
+  "splits": {
+    "train": {
+      "scheduled_rows": 687614,
+      "distinct_array_rows": 537141,
+      "policy_only_scheduled_rows": 76612,
+      "policy_weight_mass": 917450.0,
+      "policy_only_weight_mass": 306448.0,
+      "policy_only_weight_fraction": 0.3340214725598125,
+      "value_weight_mass": 611002.0
+    },
+    "val": {
+      "scheduled_rows": 86148,
+      "distinct_array_rows": 86148,
+      "policy_only_scheduled_rows": 8946,
+      "policy_weight_mass": 112986.0,
+      "policy_only_weight_mass": 35784.0,
+      "policy_only_weight_fraction": 0.31671180500238966,
+      "value_weight_mass": 77202.0
+    },
+    "test": {
+      "scheduled_rows": 91060,
+      "distinct_array_rows": 91060,
+      "policy_only_scheduled_rows": 9500,
+      "policy_weight_mass": 119560.0,
+      "policy_only_weight_mass": 38000.0,
+      "policy_only_weight_fraction": 0.31783205085312816,
+      "value_weight_mass": 81560.0
+    }
+  },
+  "training_balance": {
+    "enabled": true,
+    "alpha": 0.5,
+    "seed": 747569,
+    "result_source": "capture_results.npy",
+    "material_quantiles": [
+      13.0,
+      17.0
+    ],
+    "source_rows": 687614,
+    "sampled_rows": 687614,
+    "strata": [
+      {
+        "side": "black",
+        "outcome": "loss",
+        "phase": "late",
+        "source_rows": 14632,
+        "sampled_rows": 25306
+      },
+      {
+        "side": "black",
+        "outcome": "loss",
+        "phase": "middle",
+        "source_rows": 14790,
+        "sampled_rows": 25443
+      },
+      {
+        "side": "black",
+        "outcome": "loss",
+        "phase": "early",
+        "source_rows": 23250,
+        "sampled_rows": 31900
+      },
+      {
+        "side": "black",
+        "outcome": "draw",
+        "phase": "late",
+        "source_rows": 24654,
+        "sampled_rows": 32849
+      },
+      {
+        "side": "black",
+        "outcome": "draw",
+        "phase": "middle",
+        "source_rows": 7318,
+        "sampled_rows": 17897
+      },
+      {
+        "side": "black",
+        "outcome": "draw",
+        "phase": "early",
+        "source_rows": 7406,
+        "sampled_rows": 18004
+      },
+      {
+        "side": "black",
+        "outcome": "win",
+        "phase": "late",
+        "source_rows": 63598,
+        "sampled_rows": 52759
+      },
+      {
+        "side": "black",
+        "outcome": "win",
+        "phase": "middle",
+        "source_rows": 53214,
+        "sampled_rows": 48261
+      },
+      {
+        "side": "black",
+        "outcome": "win",
+        "phase": "early",
+        "source_rows": 35178,
+        "sampled_rows": 39239
+      },
+      {
+        "side": "white",
+        "outcome": "loss",
+        "phase": "late",
+        "source_rows": 106440,
+        "sampled_rows": 68254
+      },
+      {
+        "side": "white",
+        "outcome": "loss",
+        "phase": "middle",
+        "source_rows": 93828,
+        "sampled_rows": 64083
+      },
+      {
+        "side": "white",
+        "outcome": "loss",
+        "phase": "early",
+        "source_rows": 67902,
+        "sampled_rows": 54516
+      },
+      {
+        "side": "white",
+        "outcome": "draw",
+        "phase": "late",
+        "source_rows": 44918,
+        "sampled_rows": 44339
+      },
+      {
+        "side": "white",
+        "outcome": "draw",
+        "phase": "middle",
+        "source_rows": 13482,
+        "sampled_rows": 24292
+      },
+      {
+        "side": "white",
+        "outcome": "draw",
+        "phase": "early",
+        "source_rows": 14686,
+        "sampled_rows": 25353
+      },
+      {
+        "side": "white",
+        "outcome": "win",
+        "phase": "late",
+        "source_rows": 28384,
+        "sampled_rows": 35246
+      },
+      {
+        "side": "white",
+        "outcome": "win",
+        "phase": "middle",
+        "source_rows": 28210,
+        "sampled_rows": 35138
+      },
+      {
+        "side": "white",
+        "outcome": "win",
+        "phase": "early",
+        "source_rows": 45724,
+        "sampled_rows": 44735
+      }
+    ]
+  },
+  "sources": [
+    {
+      "name": "gen_0036",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0036",
+      "generation": 36,
+      "rows": 75086,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 59922,
+          "distinct_array_rows": 47045,
+          "policy_only_scheduled_rows": 6777,
+          "policy_weight_mass": 80253.0,
+          "policy_only_weight_mass": 27108.0,
+          "policy_only_weight_fraction": 0.3377817651676573,
+          "value_weight_mass": 53145.0
+        },
+        "val": {
+          "scheduled_rows": 7504,
+          "distinct_array_rows": 7504,
+          "policy_only_scheduled_rows": 756,
+          "policy_weight_mass": 9772.0,
+          "policy_only_weight_mass": 3024.0,
+          "policy_only_weight_fraction": 0.30945558739255014,
+          "value_weight_mass": 6748.0
+        },
+        "test": {
+          "scheduled_rows": 7540,
+          "distinct_array_rows": 7540,
+          "policy_only_scheduled_rows": 720,
+          "policy_weight_mass": 9700.0,
+          "policy_only_weight_mass": 2880.0,
+          "policy_only_weight_fraction": 0.29690721649484536,
+          "value_weight_mass": 6820.0
+        }
+      }
+    },
+    {
+      "name": "gen_0037",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0037",
+      "generation": 37,
+      "rows": 70390,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 56645,
+          "distinct_array_rows": 43840,
+          "policy_only_scheduled_rows": 6736,
+          "policy_weight_mass": 76853.0,
+          "policy_only_weight_mass": 26944.0,
+          "policy_only_weight_fraction": 0.35059138875515594,
+          "value_weight_mass": 49909.0
+        },
+        "val": {
+          "scheduled_rows": 7008,
+          "distinct_array_rows": 7008,
+          "policy_only_scheduled_rows": 748,
+          "policy_weight_mass": 9252.0,
+          "policy_only_weight_mass": 2992.0,
+          "policy_only_weight_fraction": 0.3233895373973195,
+          "value_weight_mass": 6260.0
+        },
+        "test": {
+          "scheduled_rows": 7318,
+          "distinct_array_rows": 7318,
+          "policy_only_scheduled_rows": 748,
+          "policy_weight_mass": 9562.0,
+          "policy_only_weight_mass": 2992.0,
+          "policy_only_weight_fraction": 0.3129052499477097,
+          "value_weight_mass": 6570.0
+        }
+      }
+    },
+    {
+      "name": "gen_0038",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0038",
+      "generation": 38,
+      "rows": 72648,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 58992,
+          "distinct_array_rows": 45283,
+          "policy_only_scheduled_rows": 6704,
+          "policy_weight_mass": 79104.0,
+          "policy_only_weight_mass": 26816.0,
+          "policy_only_weight_fraction": 0.3389967637540453,
+          "value_weight_mass": 52288.0
+        },
+        "val": {
+          "scheduled_rows": 6870,
+          "distinct_array_rows": 6870,
+          "policy_only_scheduled_rows": 704,
+          "policy_weight_mass": 8982.0,
+          "policy_only_weight_mass": 2816.0,
+          "policy_only_weight_fraction": 0.31351592073034956,
+          "value_weight_mass": 6166.0
+        },
+        "test": {
+          "scheduled_rows": 7884,
+          "distinct_array_rows": 7884,
+          "policy_only_scheduled_rows": 926,
+          "policy_weight_mass": 10662.0,
+          "policy_only_weight_mass": 3704.0,
+          "policy_only_weight_fraction": 0.3474019883699118,
+          "value_weight_mass": 6958.0
+        }
+      }
+    },
+    {
+      "name": "gen_0039",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0039",
+      "generation": 39,
+      "rows": 71246,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 55268,
+          "distinct_array_rows": 43999,
+          "policy_only_scheduled_rows": 6260,
+          "policy_weight_mass": 74048.0,
+          "policy_only_weight_mass": 25040.0,
+          "policy_only_weight_fraction": 0.3381590319792567,
+          "value_weight_mass": 49008.0
+        },
+        "val": {
+          "scheduled_rows": 7044,
+          "distinct_array_rows": 7044,
+          "policy_only_scheduled_rows": 772,
+          "policy_weight_mass": 9360.0,
+          "policy_only_weight_mass": 3088.0,
+          "policy_only_weight_fraction": 0.3299145299145299,
+          "value_weight_mass": 6272.0
+        },
+        "test": {
+          "scheduled_rows": 7650,
+          "distinct_array_rows": 7650,
+          "policy_only_scheduled_rows": 870,
+          "policy_weight_mass": 10260.0,
+          "policy_only_weight_mass": 3480.0,
+          "policy_only_weight_fraction": 0.3391812865497076,
+          "value_weight_mass": 6780.0
+        }
+      }
+    },
+    {
+      "name": "gen_0040",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0040",
+      "generation": 40,
+      "rows": 72050,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 57947,
+          "distinct_array_rows": 44619,
+          "policy_only_scheduled_rows": 6677,
+          "policy_weight_mass": 77978.0,
+          "policy_only_weight_mass": 26708.0,
+          "policy_only_weight_fraction": 0.3425068609094873,
+          "value_weight_mass": 51270.0
+        },
+        "val": {
+          "scheduled_rows": 7198,
+          "distinct_array_rows": 7198,
+          "policy_only_scheduled_rows": 794,
+          "policy_weight_mass": 9580.0,
+          "policy_only_weight_mass": 3176.0,
+          "policy_only_weight_fraction": 0.3315240083507307,
+          "value_weight_mass": 6404.0
+        },
+        "test": {
+          "scheduled_rows": 7756,
+          "distinct_array_rows": 7756,
+          "policy_only_scheduled_rows": 850,
+          "policy_weight_mass": 10306.0,
+          "policy_only_weight_mass": 3400.0,
+          "policy_only_weight_fraction": 0.3299049097613041,
+          "value_weight_mass": 6906.0
+        }
+      }
+    },
+    {
+      "name": "gen_0041",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0041",
+      "generation": 41,
+      "rows": 144580,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 114717,
+          "distinct_array_rows": 89700,
+          "policy_only_scheduled_rows": 13445,
+          "policy_weight_mass": 155052.0,
+          "policy_only_weight_mass": 53780.0,
+          "policy_only_weight_fraction": 0.3468513788922426,
+          "value_weight_mass": 101272.0
+        },
+        "val": {
+          "scheduled_rows": 14374,
+          "distinct_array_rows": 14374,
+          "policy_only_scheduled_rows": 1584,
+          "policy_weight_mass": 19126.0,
+          "policy_only_weight_mass": 6336.0,
+          "policy_only_weight_fraction": 0.3312767959845237,
+          "value_weight_mass": 12790.0
+        },
+        "test": {
+          "scheduled_rows": 14768,
+          "distinct_array_rows": 14768,
+          "policy_only_scheduled_rows": 1574,
+          "policy_weight_mass": 19490.0,
+          "policy_only_weight_mass": 6296.0,
+          "policy_only_weight_fraction": 0.32303745510518217,
+          "value_weight_mass": 13194.0
+        }
+      }
+    },
+    {
+      "name": "gen_0042",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0042",
+      "generation": 42,
+      "rows": 148482,
+      "generator": "models/candidates/bootstrap_main_gen_0033/screen_nominee.pt",
+      "generator_sha256": "ce55439cdcb0721b7d768688df455dd3b19ce6eb8abeef8e8ca1453b87fb85f2",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 117256,
+          "distinct_array_rows": 91932,
+          "policy_only_scheduled_rows": 13249,
+          "policy_weight_mass": 157003.0,
+          "policy_only_weight_mass": 52996.0,
+          "policy_only_weight_fraction": 0.33754769017152536,
+          "value_weight_mass": 104007.0
+        },
+        "val": {
+          "scheduled_rows": 14946,
+          "distinct_array_rows": 14946,
+          "policy_only_scheduled_rows": 1594,
+          "policy_weight_mass": 19728.0,
+          "policy_only_weight_mass": 6376.0,
+          "policy_only_weight_fraction": 0.32319545823195456,
+          "value_weight_mass": 13352.0
+        },
+        "test": {
+          "scheduled_rows": 15726,
+          "distinct_array_rows": 15726,
+          "policy_only_scheduled_rows": 1668,
+          "policy_weight_mass": 20730.0,
+          "policy_only_weight_mass": 6672.0,
+          "policy_only_weight_fraction": 0.3218523878437048,
+          "value_weight_mass": 14058.0
+        }
+      }
+    },
+    {
+      "name": "gen_0044",
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\data\\processed\\bootstrap_new_main_gen_0044",
+      "generation": 44,
+      "rows": 210340,
+      "generator": "models/candidates/bootstrap_main_gen_0042/screen_nominee.pt",
+      "generator_sha256": "035324932307273545e2a47545899d09a2dbb5b2965bfbab04aeaf01de86e15a",
+      "policy_only_multiplier": 4.0,
+      "split_stats": {
+        "train": {
+          "scheduled_rows": 166867,
+          "distinct_array_rows": 130723,
+          "policy_only_scheduled_rows": 16764,
+          "policy_weight_mass": 217159.0,
+          "policy_only_weight_mass": 67056.0,
+          "policy_only_weight_fraction": 0.30878757039772703,
+          "value_weight_mass": 150103.0
+        },
+        "val": {
+          "scheduled_rows": 21204,
+          "distinct_array_rows": 21204,
+          "policy_only_scheduled_rows": 1994,
+          "policy_weight_mass": 27186.0,
+          "policy_only_weight_mass": 7976.0,
+          "policy_only_weight_fraction": 0.29338630177297137,
+          "value_weight_mass": 19210.0
+        },
+        "test": {
+          "scheduled_rows": 22418,
+          "distinct_array_rows": 22418,
+          "policy_only_scheduled_rows": 2144,
+          "policy_weight_mass": 28850.0,
+          "policy_only_weight_mass": 8576.0,
+          "policy_only_weight_fraction": 0.297261698440208,
+          "value_weight_mass": 20274.0
+        }
+      }
+    }
+  ]
+}
