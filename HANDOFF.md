@@ -28,6 +28,14 @@ the repaired v2 gate, durable logs, production recipe and pipeline integration.
 Original gen44 evidence is preserved; a separate rescore gives 61.59% on the
 combined endpoint union but inadequate unseen White confirmation coverage.
 
+September 6 measurement clarification: [SAMPLED_GATE_PROTOCOL.md](SAMPLED_GATE_PROTOCOL.md)
+defines the next, separately versioned fixed-sample instrument. Duplicate opening
+draws do not by themselves establish dependence; deduplication changes the
+estimand. The active v2 campaign is preserved unchanged. Its completed gen42 H2H
+legs scored 67.39% and 67.23% sampled, with Black 64.23% and 62.43%. Supporting
+opponents/self-play are still running. New v3 tooling and held-out human-line
+diagnostics are being verified before use; no pointer has changed.
+
 Live campaign: `gen44_depth3200_v2`, launched through `tools/runs.py` after the
 implementation/rehearsals. It runs gen42 par + two H2H legs (180-minute budget),
 then gen41, v24 and self-play diagnostics (50 minutes each), all sequentially
@@ -81,8 +89,9 @@ on free.
 ## 3. Owner decisions now in force
 
 1. **Free play decides.** Book is retained for continuity, not for verdicts.
-2. **Gates run on free play**, deduped, stopping on unique games or a time
-   budget. `tools/gate_free.py`.
+2. **Gates run on free play.** Existing v2 evidence uses endpoint-uniform scoring;
+   the September 6 successor uses fixed sampled counts with dedup diagnostics.
+   Never silently mix the two instruments or rewrite old verdicts.
 3. **Corpus is generation self-play only.** No human games, no v19-era anchor,
    no outside data. Replay reaches back only to gen36.
 4. Promotion remains the owner's call and wants a playtest.
@@ -99,7 +108,7 @@ These are not style preferences. Each cost real time to learn.
 | **Free-play par is not 0.50 and is model-specific** | v24 scores White **0.8717** against itself; gen33 0.7933; gen38 0.5833 |
 | **A book match carries ~20 Elo of block noise the SE hides** | Same pairing, different blocks: 19.3 and 23.7 Elo apart |
 | **Disjoint blocks for independent samples; MATCHED blocks for comparisons** | Giving every cell its own block breaks the comparison you built the run for. Cost this project two runs |
-| **Free play must be deduped** | After the opening prefix play is deterministic; two games sharing an opening state *are* the same game. 40% dupes same-era, **68–76%** within the top cohort |
+| **Report sampling and coverage separately** | Repeated independent opening draws carry probability mass; dedup estimates a different quantity. Endpoint collisions are common, but histories can differ. V2 is endpoint-uniform; v3 is sampled |
 | **One book line is n=1** | ~45% of per-line verdicts flip on resampling. Use `--book-temp-plies`; quote aggregates, not cells |
 | **Depth changes values** | Line values reproduce at r≈0.83–0.90 within a depth, r≈0.36–0.67 across. A score at one sim count is a statement about that sim count |
 | **Free play is non-transitive** | Round-robin RMS residual **73.5 Elo** free vs 12.6 book. Good tier detector, poor ordering device |
