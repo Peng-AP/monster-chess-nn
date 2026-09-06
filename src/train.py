@@ -1428,6 +1428,10 @@ def _eval_epoch(model, loader, device, policy_weight, use_wdl_head=False,
     )
 
 
+from worker_lease import exclusive_workers
+
+
+@exclusive_workers
 def main():
     parser = argparse.ArgumentParser(description="Train Monster Chess dual-head network")
     parser.add_argument("--data-dir", type=str, default=PROCESSED_DATA_DIR)

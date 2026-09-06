@@ -265,6 +265,10 @@ def _publish_atomically(staging, output_dir, attempts=6, delay=3.0):
         raise last
 
 
+from worker_lease import exclusive_workers
+
+
+@exclusive_workers
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--source-dir", required=True)

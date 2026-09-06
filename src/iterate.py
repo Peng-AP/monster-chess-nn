@@ -516,6 +516,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--games", str(args.checkpoint_screen_games),
         "--probe-games", str(args.checkpoint_probe_games),
         "--sims", str(args.checkpoint_screen_sims),
+        "--probe-sims", str(args.checkpoint_screen_sims),
         "--workers", str(args.workers),
         "--engine", args.engine,
         "--seed", str(seed + 350_000),
@@ -570,7 +571,21 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--stall-timeout", str(args.worker_stall_timeout),
         "--report-path", str(self_skew_report),
     ]
-    if args.book:
+    if args.gate_backend == "free":
+        gate_run_dir = paths["reports"] / "free_gate"
+        binding = [
+            "tools/gate_free.py", "--model", str(paths["candidate"]),
+            "--bar-model", str(incumbent), "--sims", str(args.arena_sims),
+            "--workers", str(args.workers), "--seed", str(seed + 400_000),
+            "--target-per-side", str(args.free_gate_target_per_side),
+            "--par-per-side", str(args.free_gate_par_per_side),
+            "--budget-min", str(args.free_gate_budget_min),
+            "--batch-games", str(args.free_gate_batch_games),
+            "--report-path", str(gate_report),
+            "--resume" if gate_run_dir.exists() else "--run-dir", str(gate_run_dir),
+        ]
+        self_skew += ["--game-log", str(paths["reports"] / "self_skew.jsonl"), "--resume"]
+    if args.book and args.gate_backend == "legacy":
         book = str(_absolute(args.book))
         screen_offset = int(args.book_offset)
         screen_span = (
@@ -613,8 +628,10 @@ def _command_plan(args, generation, incumbent, architecture, paths,
                                           str(checkpoint_report)]},
         "offline_gate": {"commands": [offline], "outputs": [str(offline_report)]},
         "binding_gate": {"commands": [binding], "outputs": [str(gate_report)]},
-        "high_fidelity_gate": {"commands": [high_fidelity],
-                               "outputs": [str(high_fidelity_report)]},
+        "high_fidelity_gate": ({"commands": [], "outputs": [],
+                                "skip_reason": "free gate already confirms at arena depth"}
+                               if args.gate_backend == "free" else
+                               {"commands": [high_fidelity], "outputs": [str(high_fidelity_report)]}),
         "self_skew": {"commands": [self_skew], "outputs": [str(self_skew_report)]},
         "promote": {"commands": [], "outputs": [str(CHAMPION_POINTER)]},
     }
@@ -715,6 +732,11 @@ def _archive_incumbent(incumbent):
 
 def _promote(state, paths):
     candidate = Path(paths["candidate"])
+    if state.get("config", {}).get("gate_backend") == "free":
+        args = argparse.Namespace(**state["config"])
+        report = _load_json(Path(paths["reports"]) / "binding_gate.json", {})
+        if not _binding_passed(report, args, candidate, _absolute(state["incumbent"])):
+            raise RuntimeError("promotion requires a complete compatible free gate")
     generation = state["generation"]
     digest = _sha256(candidate)
     CHAMPIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -732,8 +754,8 @@ def _promote(state, paths):
         "predecessor": state["incumbent"],
         "run_state": state["paths"]["state"],
         "gate_report": _rel(Path(paths["reports"]) / "binding_gate.json"),
-        "high_fidelity_report": _rel(
-            Path(paths["reports"]) / "high_fidelity_gate.json"),
+        "high_fidelity_report": (None if state.get("config", {}).get("gate_backend") == "free"
+                                 else _rel(Path(paths["reports"]) / "high_fidelity_gate.json")),
         "checkpoint_screen_report": _rel(
             Path(paths["reports"]) / "checkpoint_screen.json"),
         "self_skew_report": _rel(Path(paths["reports"]) / "self_skew.json"),
@@ -804,6 +826,78 @@ def _validate_args(args):
             "--continue-after-reject")
     if args.promote_on_pass and args.gate_protocol != "full":
         raise ValueError("promotion requires --gate-protocol=full")
+    if getattr(args, "gate_backend", "legacy") == "free":
+        if args.engine != "native" or args.workers > 8:
+            raise ValueError("free gate requires native engine and at most eight workers")
+        if args.book:
+            raise ValueError("--book is a legacy evaluation option; use --gate-backend legacy explicitly")
+        for name in ("free_gate_target_per_side", "free_gate_par_per_side", "free_gate_budget_min"):
+            if getattr(args, name) <= 0:
+                raise ValueError(f"{name} must be positive")
+        if args.free_gate_batch_games <= 0 or args.free_gate_batch_games % 2 or args.free_gate_batch_games > 1000:
+            raise ValueError("free gate batch size must be even and in [2, 1000]")
+
+
+def _binding_passed(report, args, candidate, incumbent):
+    return _binding_verdict(report, args, candidate, incumbent) == "PASS"
+
+
+def _binding_verdict(report, args, candidate, incumbent):
+    if args.gate_backend == "legacy":
+        return report.get("raw_verdict", "FAIL")
+    from match_evidence import model_identity, runtime_identity, file_hash
+    sys.path.insert(0, str(ROOT / "tools"))
+    from free_gate_stats import SCORING_VERSION, verdict
+    if not (report.get("complete")
+            and report.get("confirmed") and report.get("instrument") == SCORING_VERSION):
+        return "INCONCLUSIVE"
+    config = report.get("protocol", {})
+    expected = {"sims": args.arena_sims, "target_per_side": args.free_gate_target_per_side,
+                "par_per_side": args.free_gate_par_per_side, "runtime": runtime_identity()}
+    if any(config.get(k) != v for k, v in expected.items()):
+        return "INCONCLUSIVE"
+    if report.get("model") != model_identity(candidate) or report.get("bar") != model_identity(incumbent):
+        return "INCONCLUSIVE"
+    hashes = report.get("evidence_hashes", {})
+    if not hashes or not all(Path(p).exists() and file_hash(p) == h for p, h in hashes.items()):
+        return "INCONCLUSIVE"
+    checked = verdict(report["bar_free_par"], report["legs"],
+                      args.free_gate_target_per_side, args.free_gate_par_per_side)
+    if report.get("combined_h2h", {}).get("endpoint_outcome_conflicts", 1):
+        return "INCONCLUSIVE"
+    if checked["eligible"] != report.get("eligible"):
+        return "INCONCLUSIVE"
+    return checked["verdict"]
+
+
+def _processed_hashes(directory):
+    directory = Path(directory)
+    return {p.name: _sha256(p) for p in sorted(directory.iterdir())
+            if p.is_file() and p.suffix in (".npy", ".npz", ".json")}
+
+
+def _validate_resume_evidence(state, paths, run_root):
+    if _sha256(_absolute(state["incumbent"])) != state["incumbent_sha256"]:
+        raise RuntimeError("generating checkpoint changed since the generation started")
+    registry = _load_json(_accepted_registry_path(run_root), {"entries": []})
+    entries = {int(r["generation"]): r for r in registry["entries"]}
+    expected = list(state.get("replay_sources", []))
+    if state.get("data_acceptance"):
+        expected.append(state["data_acceptance"])
+    for source in expected:
+        record = entries.get(int(source["generation"]))
+        if record is None or _absolute(record["path"]) != _absolute(source["path"]):
+            raise RuntimeError("resume source does not match the accepted-data registry")
+        original = (source if source.get("artifact_sha256") else record)
+        if not original.get("artifact_sha256"):
+            raise RuntimeError("resume source has no recorded artifact hashes")
+        for name, expected_hash in original["artifact_sha256"].items():
+            path = _absolute(source["path"]) / name
+            if not path.exists() or _sha256(path) != expected_hash:
+                raise RuntimeError(f"accepted resume source changed: {path}")
+    if state.get("composed_data_sha256"):
+        if _processed_hashes(paths["replay_processed"]) != state["composed_data_sha256"]:
+            raise RuntimeError("composed replay changed since composition completed")
 
 
 def _assert_resume_config(args, state):
@@ -847,6 +941,7 @@ def run_generation(args, generation=None):
 
     if existing:
         _assert_resume_config(args, existing)
+        _validate_resume_evidence(existing, paths, run_root)
         incumbent = _absolute(existing["incumbent"])
         architecture = existing["architecture"]
         replay_sources = [(row["generation"], _absolute(row["path"]))
@@ -872,7 +967,7 @@ def run_generation(args, generation=None):
     sparring = _absolute(args.sparring_model)
     if anchor_data is not None and not anchor_data.exists():
         raise FileNotFoundError(f"anchor processed corpus not found: {anchor_data}")
-    if not sparring.exists():
+    if args.gate_backend == "legacy" and not sparring.exists():
         raise FileNotFoundError(f"sparring model not found: {sparring}")
 
     plan = _command_plan(
@@ -918,6 +1013,10 @@ def run_generation(args, generation=None):
             if index > stop_index:
                 break
             phase_plan = plan[phase]
+            if phase_plan.get("skip_reason"):
+                state["phases"][phase] = {"status": "skipped", "reason": phase_plan["skip_reason"]}
+                _write_state(state, paths["state"])
+                continue
             previous = state["phases"].get(phase, {})
             if (previous.get("status") == "completed"
                     and _phase_outputs_exist(phase_plan)):
@@ -931,7 +1030,12 @@ def run_generation(args, generation=None):
                     _write_state(state, paths["state"])
                 if phase == "binding_gate":
                     report = _load_json(phase_plan["outputs"][0], {})
-                    gate_passed = report.get("raw_verdict") == "PASS"
+                    gate_passed = _binding_passed(report, args, paths["candidate"], incumbent)
+                    if not gate_passed:
+                        state["status"] = ("inconclusive" if _binding_verdict(report, args, paths["candidate"], incumbent) == "INCONCLUSIVE"
+                                           else "rejected")
+                        _write_state(state, paths["state"])
+                        break
                 if phase == "high_fidelity_gate":
                     report = _load_json(phase_plan["outputs"][0], {})
                     results = report.get("results", [])
@@ -984,7 +1088,8 @@ def run_generation(args, generation=None):
                         print("Fixed-incumbent checkpoint selection rejected "
                               "every epoch.")
                         break
-                    allowed_failure = phase in ("offline_gate", "binding_gate")
+                    allowed_failure = (phase == "offline_gate" or
+                                       (phase == "binding_gate" and args.gate_backend == "legacy"))
                     if any(code != 0 for code in return_codes) and not allowed_failure:
                         raise RuntimeError(
                             f"{phase} command failed with {return_codes}")
@@ -995,6 +1100,8 @@ def run_generation(args, generation=None):
                             phase_plan, args.min_generation_success_rate)
                     if phase == "process":
                         _accept_generation_data(state, paths, run_root)
+                    if phase == "compose":
+                        state["composed_data_sha256"] = _processed_hashes(paths["replay_processed"])
                     if phase == "offline_gate" and any(code != 0 for code in return_codes):
                         state["phases"][phase].update({
                             "status": "completed", "verdict": "FAIL",
@@ -1020,16 +1127,18 @@ def run_generation(args, generation=None):
                             )
                     if phase == "binding_gate":
                         report = _load_json(phase_plan["outputs"][0], {})
-                        gate_passed = report.get("raw_verdict") == "PASS"
+                        gate_passed = _binding_passed(report, args, paths["candidate"], incumbent)
                         if not gate_passed:
+                            binding_verdict = _binding_verdict(report, args, paths["candidate"], incumbent)
                             state["phases"][phase].update({
-                                "status": "completed", "verdict": "FAIL",
+                                "status": "completed", "verdict": binding_verdict,
                                 "return_codes": return_codes,
                                 "elapsed_sec": round(time.time() - started, 1),
                             })
-                            state["status"] = "rejected"
+                            state["status"] = ("inconclusive" if binding_verdict == "INCONCLUSIVE"
+                                               else "rejected")
                             _write_state(state, paths["state"])
-                            print("Binding gate rejected the candidate; self-skew skipped.")
+                            print(f"Binding gate {state['status']}; champion unchanged.")
                             break
                     if phase == "high_fidelity_gate":
                         report = _load_json(phase_plan["outputs"][0], {})
@@ -1152,6 +1261,11 @@ def build_parser():
              "successfully trained candidate reaches the binding game gate",
     )
     ap.add_argument("--gate-protocol", choices=("quick", "full"), default="full")
+    ap.add_argument("--gate-backend", choices=("free", "legacy"), default="free")
+    ap.add_argument("--free-gate-target-per-side", type=int, default=100)
+    ap.add_argument("--free-gate-par-per-side", type=int, default=100)
+    ap.add_argument("--free-gate-budget-min", type=float, default=180)
+    ap.add_argument("--free-gate-batch-games", type=int, default=32)
     ap.add_argument("--arena-sims", type=int, default=ITERATE_ARENA_SIMS)
     ap.add_argument("--checkpoint-screen-games", type=int, default=200,
                     help="same-opening games per preserved training checkpoint")
@@ -1178,6 +1292,8 @@ def build_parser():
                     help="stop after this phase, leaving a resumable run")
     ap.add_argument("--dry-run", action="store_true",
                     help="validate inputs and print the complete plan; write nothing")
+    recipe = _load_json(ROOT / "configs" / "bootstrap_generation_only.json")
+    ap.set_defaults(**recipe["defaults"])
     return ap
 
 

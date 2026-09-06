@@ -268,29 +268,51 @@ def play_one(white_engine, black_engine, start_fen=None, max_plies=600,
     repetition = RepetitionTracker()
     repeated = False
     repetition.record(game, 0)
-    opening = (_state_record(game, 0, opening_temp_plies)
+    from match_evidence import digest
+    trajectory = [_state_record(game, 0, opening_temp_plies)] if return_opening else []
+
+    def snapshot():
+        record = _state_record(game, plies, opening_temp_plies)
+        if return_opening:
+            record["history_sha256"] = digest(trajectory)
+            record["repetition_sha256"] = digest(sorted(repetition.counts.items()))
+        return record
+
+    opening = (snapshot()
                if opening_temp_plies <= 0 else None)
+    no_action = False
     while not game.is_terminal() and plies < max_plies:
         engine = white_engine if game.is_white_turn else black_engine
         temp = opening_temp if plies < opening_temp_plies else 0.0
         action, _probs, _val = engine.get_best_action(game, temperature=temp)
         if action is None:
+            no_action = True
             break
         _apply(game, action)
         decisions += 1
         plies += 1
+        if return_opening:
+            trajectory.append(dict(_state_record(game, plies, opening_temp_plies),
+                                   action=[str(m) for m in action] if isinstance(action, (tuple, list))
+                                   else [str(action)]))
         if repetition.record(game, plies):
             repeated = True
             break
         if opening is None and plies >= opening_temp_plies:
-            opening = _state_record(game, plies, opening_temp_plies)
+            opening = snapshot()
     if opening is None:
         # A terminal inside the sampled prefix is still an observed opening
         # trajectory.  Marking it incomplete keeps it visible rather than
         # silently dropping precisely the short games most likely to collide.
-        opening = _state_record(game, plies, opening_temp_plies)
+        opening = snapshot()
     # A repetition is drawn by rule, so it overrides the cap's +-0.5 lean.
     outcome = repetition.draw_result if repeated else game.get_result()
+    if return_opening:
+        reason = ("repetition" if repeated else "king_capture" if abs(outcome) == 1
+                  else "no_action" if no_action else "ply_cap" if plies >= max_plies
+                  else "turn_cap")
+        opening["game"] = {"termination": reason, "trajectory": trajectory,
+                           "trajectory_sha256": digest(trajectory)}
     result = (outcome, plies, decisions)
     return result + (opening,) if return_opening else result
 

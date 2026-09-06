@@ -65,11 +65,11 @@ class BootstrapPipelineContracts(unittest.TestCase):
         self.assertEqual(
             process[process.index("--min-nonhuman-plies") + 1], "0")
         self.assertEqual(len(plan["process"]["commands"]), 2)
-        self.assertEqual(generate[generate.index("--num-games") + 1], "500")
+        self.assertEqual(generate[generate.index("--num-games") + 1], "1000")
         self.assertEqual(generate[generate.index("--simulations") + 1], "700")
-        self.assertEqual(len(plan["generate"]["commands"]), 1)
-        self.assertEqual(reanalyze[reanalyze.index("--sample") + 1], "8000")
-        self.assertEqual(reanalyze[reanalyze.index("--keep") + 1], "4000")
+        self.assertEqual(len(plan["generate"]["commands"]), 2)
+        self.assertEqual(reanalyze[reanalyze.index("--sample") + 1], "20000")
+        self.assertEqual(reanalyze[reanalyze.index("--keep") + 1], "10000")
         self.assertEqual(
             reanalyze[reanalyze.index("--simulations") + 1], "3200")
 
@@ -96,7 +96,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
             self._assert_book_layout_disjoint(book_path)
 
     def _assert_book_layout_disjoint(self, book_path):
-        args = it.build_parser().parse_args(["--book", book_path])
+        args = it.build_parser().parse_args(["--book", book_path, "--gate-backend", "legacy"])
         architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
         paths = it._paths_for_generation(it.DEFAULT_RUN_ROOT, 99)
         plan = it._command_plan(

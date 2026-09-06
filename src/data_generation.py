@@ -724,6 +724,10 @@ def _worker(args):
     return game_id, num_simulations, records, elapsed, aborted
 
 
+from worker_lease import exclusive_workers
+
+
+@exclusive_workers
 def main():
     parser = argparse.ArgumentParser(description="Generate Monster Chess training data via MCTS self-play")
     parser.add_argument("--num-games", type=int, default=NUM_GAMES)

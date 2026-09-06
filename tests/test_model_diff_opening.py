@@ -66,3 +66,31 @@ class OpeningMaskContracts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_offline_comparison_reads_sparse_replay(tmp_path, monkeypatch):
+    import model_diff
+    from sparse_policy import Builder
+    positions = np.stack([_position(4, 16), _position(4, 16)])
+    np.save(tmp_path / "positions.npy", positions)
+    np.save(tmp_path / "game_results.npy", np.array([1., -1.]))
+    np.savez(tmp_path / "splits.npz", test=np.array([0, 1]))
+    policies = np.zeros((2, 4096), dtype=np.float32)
+    policies[0, 5] = 1
+    policies[1, 42] = 1
+    builder = Builder(4096)
+    builder.add_dense(policies)
+    builder.save(tmp_path)
+    observed = []
+
+    def evaluate(path, pos, pol, *args):
+        observed.append(pol)
+        return dict.fromkeys(("policy_ce",) + model_diff.GATED_METRICS, .5)
+
+    monkeypatch.setattr(model_diff, "evaluate_model", evaluate)
+    monkeypatch.setattr(sys, "argv", ["model_diff", "--candidate", "a", "--incumbent", "b",
+                        "--data-dir", str(tmp_path), "--report-path", str(tmp_path / "report.json")])
+    model_diff.main()
+    assert len(observed) == 2
+    np.testing.assert_array_equal(observed[0], policies)
+    assert (tmp_path / "report.json").exists()

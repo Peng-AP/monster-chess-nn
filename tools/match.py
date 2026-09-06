@@ -24,6 +24,8 @@ from config import (DEFAULT_GAME_WORKERS, C_PUCT, FPU_REDUCTION,
                     POLICY_TEMPERATURE, MOVES_LEFT_MAX_EFFECT,
                     MOVES_LEFT_THRESHOLD,
                     MOVES_LEFT_SLOPE)  # noqa: E402  (needs sys.path above)
+from match_evidence import MatchJournal, model_identity, runtime_identity, task_id
+from worker_lease import exclusive_workers
 
 _engines = {}
 
@@ -187,7 +189,25 @@ def _play(task):
             start_turn_count=start.get("turn_count", 0),
             return_opening=True)
     return ((result if a_is_white else -result), plies, a_is_white, pair,
-            opening)
+            opening, {"task_id": task_id(task), "seed": seed,
+                      "game": opening.pop("game", {})})
+
+
+def _result_row(record, book_offset=0, has_book=False):
+    result, plies, a_is_white, pair, opening = _parts(record)
+    row = {"pair": pair, "entry": book_offset + pair if has_book else None,
+           "a_is_white": bool(a_is_white), "result_for_a": result,
+           "white_score": game_score(result if a_is_white else -result),
+           "plies": plies, "opening": opening}
+    if len(record) > 5:
+        row.update(record[5])
+    return row
+
+
+def _row_result(row):
+    return (row["result_for_a"], row["plies"], row["a_is_white"], row["pair"],
+            row.get("opening"), {k: row[k] for k in ("task_id", "seed", "game")
+                                  if k in row})
 
 
 def _parts(record):
@@ -337,6 +357,7 @@ def _aggregate(results):
     return w, b, score
 
 
+@exclusive_workers
 def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               workers=None, sims_b=None, batch_a=None, batch_b=None,
               engine=None, c_puct_a=C_PUCT, c_puct_b=C_PUCT,
@@ -353,7 +374,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               moves_left_slope_b=MOVES_LEFT_SLOPE,
               stall_timeout=600.0, checkpoint_path=None, book=None,
               game_log=None,
-              book_offset=0, book_temp_plies=0):
+              book_offset=0, book_temp_plies=0, resume=False):
     """Play a match and return the result dict. The only producer of this schema.
 
     Callers that need several legs (tools/gate.py) go through here rather than
@@ -362,6 +383,9 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     *different* shape (candidate_score / white_strength / black_strength);
     confusing the two has cost a whole gate run before (HANDOFF SS10.1).
     """
+    settings = dict(locals())
+    for key in ("game_log", "checkpoint_path", "resume", "stall_timeout"):
+        settings.pop(key)
     opening_temp_plies = resolve_opening_temp_plies(model_b, opening_temp_plies)
     workers = workers or DEFAULT_GAME_WORKERS
     # Both stay None for free play. `entries` is read again by the --game-log
@@ -387,6 +411,18 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     else:
         tasks = build_tasks(games, seed, opening_temp_plies)
 
+    journal = None
+    results = []
+    if resume and not game_log:
+        raise ValueError("resume requires a durable --game-log")
+    if game_log:
+        settings.update(model_a=model_identity(model_a), model_b=model_identity(model_b),
+                        runtime=runtime_identity(), book=book_meta)
+        log_path = game_log if os.path.isabs(game_log) else os.path.join(ROOT, game_log)
+        journal = MatchJournal(log_path, settings, tasks, resume=resume)
+        results = [_row_result(row) for row in journal.rows]
+        tasks = journal.pending
+
     t0 = time.time()
     pool = mp.Pool(
         workers, initializer=_init_worker,
@@ -397,17 +433,19 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
                   moves_left_utility_b, moves_left_max_effect_a,
                   moves_left_max_effect_b, moves_left_threshold_a,
                   moves_left_threshold_b, moves_left_slope_a,
-                  moves_left_slope_b))
+                  moves_left_slope_b)) if tasks else None
     try:
-        iterator = pool.imap_unordered(_play, tasks)
-        results = []
+        iterator = pool.imap_unordered(_play, tasks) if pool else None
         # A 200-game match at 1600 sims runs for the better part of an hour and
         # used to print nothing until it was over, so "working" and "hung" were
         # indistinguishable from the log. Report periodically instead.
         step = max(1, games // 20)
         for _ in tasks:
             try:
-                results.append(iterator.next(timeout=stall_timeout))
+                record = iterator.next(timeout=stall_timeout)
+                if journal:
+                    journal.append(_result_row(record, book_offset, entries is not None))
+                results.append(record)
                 done = len(results)
                 if done % step == 0 or done == games:
                     rate = (time.time() - t0) / done
@@ -426,12 +464,14 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
                     f"match made no progress for {stall_timeout:.0f}s "
                     f"({games - len(results)} games remain)") from exc
     except BaseException:
-        pool.terminate()
-        pool.join()
+        if pool:
+            pool.terminate()
+            pool.join()
         raise
     else:
-        pool.close()
-        pool.join()
+        if pool:
+            pool.close()
+            pool.join()
 
     w, b, score = _aggregate(results)
 
@@ -445,27 +485,6 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
     # structure lives at the line level and the aggregate hides it entirely.
     # Off by default; no existing caller changes behaviour.
     if game_log:
-        log_path = (game_log if os.path.isabs(game_log)
-                    else os.path.join(ROOT, game_log))
-        parent = os.path.dirname(log_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        base = book_offset if entries else None
-        with open(log_path, "w", encoding="utf-8") as fh:
-            for record in results:
-                result, plies, a_is_white, pair, opening = _parts(record)
-                row = {
-                    "pair": pair,
-                    "entry": (base + pair) if base is not None else None,
-                    "a_is_white": bool(a_is_white),
-                    "result_for_a": result,
-                    "white_score": game_score(result if a_is_white
-                                              else -result),
-                    "plies": plies,
-                }
-                if opening:
-                    row["opening"] = opening
-                fh.write(json.dumps(row) + "\n")
         print(f"  wrote per-line log: {game_log} ({len(results)} games)",
               flush=True)
 
@@ -598,6 +617,8 @@ def main():
                          "one book entry, so this recovers which OPENING LINE "
                          "produced which result -- the report keeps aggregates "
                          "only.")
+    ap.add_argument("--resume", action="store_true",
+                    help="resume a game log after exact provenance validation")
     args = ap.parse_args()
 
     if args.stall_timeout <= 0:
@@ -623,7 +644,7 @@ def main():
                     checkpoint_path=_artifact_path(args), book=args.book,
                     book_offset=args.book_offset,
                     book_temp_plies=args.book_temp_plies,
-                    game_log=args.game_log)
+                    game_log=args.game_log, resume=args.resume)
     path = out["_artifact_path"]
     out.pop("_artifact_path", None)
     with open(path, "w") as f:

@@ -1,210 +1,252 @@
-"""Free-play gate. The candidate must clear the bar in the game as played.
+"""Recoverable free-play gate with equal-color, distinct-endpoint scoring.
 
-Owner, 2026-09-05: "from now on gates should be based on freeplay, dedup until
-a certain amount of unique games are played/time elapsed", and "run the gate,
-keep it to an hour".
-
-WHY FREE. The 2026-09-04 round robin (45 pairings, 36000 games) measured the
-post-gen33 cohort 135-246 free Elo above v24/gen33/gen26 while the book
-instrument compressed that same structure into 8-28 Elo, inside its own noise.
-Five consecutive generations were recorded as failures by an instrument that
-cannot see what they improved. gen36 is the sharpest case: it FAILED its book
-gate at 400 sims against gen33, is level with gen33 at 3200 on a book, and
-beats it by 164 Elo on free.
-
-DEDUP IS LOAD-BEARING. After the sampled opening prefix play is deterministic,
-so two games reaching the same opening state ARE the same game. Duplicate rate
-ran 40% between same-era models and 68-76% within the top cohort, so a raw game
-count is not a sample size. Legs stop on UNIQUE games or a wall-clock budget,
-whichever comes first, and the verdict is scored on distinct games only.
-
-THE PER-SIDE FLOOR CANNOT BE ABSOLUTE. Free-play par is model-specific: v24
-scores White 0.8717 against itself, gen33 0.7933, gen38 0.5833. An absolute
-floor would pass every old model and fail every new one regardless of strength.
-So each colour is judged against the BAR's own free self-match -- measured once
-per bar and cached, never per gate, and never the candidate's own. The gate
-still clears against the previous best; the self-match is only the ruler.
-
-WHAT THIS GATE CANNOT DO at an hour's budget: ~210 unique games a leg gives
-SE ~24 Elo, so it resolves about +48 Elo at 2 SE. It separates tiers, not
-neighbours. Raise --target-unique when the budget allows.
-
-Thresholds are constants here, as in tools/gate.py: a threshold is never
-weakened to let a recipe through.
+Endpoint-uniform scores are NOT naturally sampled win rates. Both are saved.
+History and continuation collisions are audited, not assumed impossible: tree
+reuse and repetition retain information outside an opening FEN. SEs are nominal
+descriptive errors, not independent-scenario confidence bounds. Confirmation's
+novel subset is conditional on avoiding first-leg keys; it supplies additional
+coverage, while the original score floors apply to the full unique confirmation.
 """
 import argparse
 import json
 import math
 import os
+from pathlib import Path
 import sys
 import time
+import uuid
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "src"))
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tools"))
 
-from match import run_match  # noqa: E402
+from match import run_match
+from match_evidence import atomic_json, digest, model_identity, read_rows, runtime_identity
+from worker_lease import exclusive_workers
+from free_gate_stats import (SCORING_VERSION, AGGREGATE_MIN, PER_SIDE_BAND,
+                             covered, leg_stats, opening_key, unique_rows, verdict)
 
-AGGREGATE_MIN = 0.50          # must be strictly beaten, both legs
-PER_SIDE_BAND = 0.05          # each colour within this of the bar's own par
-PAR_CACHE = os.path.join(ROOT, "benchmarks", "free_par_cache.json")
-BATCH = 200
 
-
-def elo(s):
-    return -400 * math.log10(1 / s - 1) if 0 < s < 1 else float("nan")
+def load_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def dedup(log_path):
-    """Distinct games keyed on (colour, opening state). Exact, not heuristic."""
-    rows = [json.loads(l) for l in open(log_path, encoding="utf-8")
-            if l.strip()]
-    seen, out = set(), []
-    for r in rows:
-        op = r.get("opening") or {}
-        key = (bool(r["a_is_white"]), op.get("fen"), op.get("half"),
-               op.get("turn_count"))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(r)
-    return out, len(rows)
+    rows = read_rows(log_path)
+    return unique_rows(rows), len(rows)
 
 
-def leg(name, model_a, model_b, sims, seed, target_unique, budget_min,
-        workers, out_dir):
-    """Play batches until target unique games or the budget expires."""
-    games, played, t0 = [], 0, time.time()
-    seen = set()
-    while len(games) < target_unique:
-        left = (time.time() - t0) / 60
-        if left > budget_min:
-            print(f"  {name}: budget {budget_min:.0f}m reached at "
-                  f"{len(games)} unique", flush=True)
-            break
-        log_path = os.path.join(out_dir, f"{name}_b{played}.lines.jsonl")
-        run_match(model_a, model_b, games=BATCH, sims=sims, sims_b=sims,
-                  workers=workers, engine="native", seed=seed + played * 7919,
-                  game_log=os.path.relpath(log_path, ROOT))
-        rows, total = dedup(log_path)
-        played += total
-        for r in rows:
-            op = r.get("opening") or {}
-            key = (bool(r["a_is_white"]), op.get("fen"), op.get("half"),
-                   op.get("turn_count"))
-            if key not in seen:
-                seen.add(key)
-                games.append(r)
-        print(f"  {name}: {played} played -> {len(games)} unique "
-              f"({1 - len(games)/max(played,1):.0%} dupes), "
-              f"{(time.time()-t0)/60:.1f}m", flush=True)
-    if not games:
-        return None
-    a = [(g["result_for_a"] + 1) / 2 for g in games]
-    w = [(g["result_for_a"] + 1) / 2 for g in games if g["a_is_white"]]
-    b = [(g["result_for_a"] + 1) / 2 for g in games if not g["a_is_white"]]
-    s = sum(a) / len(a)
-    se = math.sqrt(s * (1 - s) / len(a)) if 0 < s < 1 else 0.0
-    return {"name": name, "unique": len(a), "played": played,
-            "score": round(s, 4), "se": round(se, 4),
-            "white": round(sum(w) / len(w), 4) if w else None,
-            "black": round(sum(b) / len(b), 4) if b else None,
-            "elo": round(elo(s), 1) if 0 < s < 1 else None,
-            "minutes": round((time.time() - t0) / 60, 1)}
+def protocol(args):
+    return {"version": SCORING_VERSION, "runtime": runtime_identity(),
+            "engine": "native", "sims": args.sims, "workers": args.workers,
+            "opening_temp_plies": 16, "opening_temperature": .5,
+            "aggregate_min": AGGREGATE_MIN, "per_side_band": PER_SIDE_BAND,
+            "target_per_side": args.target_per_side, "par_per_side": args.par_per_side,
+            "batch_games": args.batch_games, "seed": args.seed,
+            "budget_min": args.budget_min,
+            "confirmation": "full_unique_score_plus_novel_endpoint_coverage",
+            "uncertainty": "nominal_draw_aware_SE; histories/overlap_may_correlate"}
 
 
-def bar_par(bar, bar_name, sims, workers, out_dir, target, budget_min):
-    """The bar against ITSELF -- the ruler for the per-side check. Cached."""
-    cache = {}
-    if os.path.exists(PAR_CACHE):
-        cache = json.load(open(PAR_CACHE, encoding="utf-8"))
-    key = f"{bar_name}@{sims}"
-    if key in cache:
-        print(f"  par: cached {key} -> W {cache[key]['white']:.4f} "
-              f"B {cache[key]['black']:.4f}", flush=True)
-        return cache[key]
-    r = leg(f"par_{bar_name}", bar, bar, sims, 5150000, target, budget_min,
-            workers, out_dir)
-    if r is None:
-        raise SystemExit("could not measure the bar's free par")
-    cache[key] = {"white": r["white"], "black": r["black"],
-                  "unique": r["unique"], "sims": sims}
-    json.dump(cache, open(PAR_CACHE, "w"), indent=1)
-    print(f"  par: {bar_name} W {r['white']:.4f} B {r['black']:.4f} "
-          f"({r['unique']} unique)", flush=True)
-    return cache[key]
+def cache_key(bar, config):
+    return digest({"bar_sha256": bar["sha256"],
+                   "protocol": {k: v for k, v in config.items() if k not in
+                                ("target_per_side", "par_per_side", "seed",
+                                 "budget_min", "batch_games")}})
+
+
+def leg(name, model_a, model_b, args, out_dir, budget_min, seed, excluded=(),
+        target=None):
+    out_dir = Path(out_dir)
+    state_path = out_dir / f"{name}.json"
+    state = load_json(state_path) if state_path.exists() else {
+        "name": name, "batches": [], "active_seconds": 0, "complete": False}
+    # Completed batches must pass the same manifest/task checks as partial
+    # ones. run_match's no-pending-task path validates without starting workers.
+    for batch in state["batches"]:
+        if batch["complete"]:
+            run_match(model_a, model_b, games=batch["games"], sims=args.sims,
+                      sims_b=args.sims, workers=args.workers, engine="native",
+                      seed=batch["seed"], opening_temp_plies=16,
+                      game_log=str(out_dir / batch["log"]), resume=True)
+    def read_all():
+        return [r for batch in state["batches"]
+                for r in read_rows(out_dir / batch["log"], allow_partial_tail=True)]
+    rows = read_all()
+    target = args.target_per_side if target is None else target
+    metric = "novel" if name.endswith("confirm") else "unique"
+    previous_seconds = state["active_seconds"]
+    start = time.monotonic()
+
+    def save():
+        state["active_seconds"] = previous_seconds + time.monotonic() - start
+        state["stats"] = leg_stats(rows, excluded)
+        atomic_json(state_path, state)
+
+    try:
+        while True:
+            stats = leg_stats(rows, excluded)
+            pending = next((b for b in state["batches"] if not b["complete"]), None)
+            if pending is None:
+                if covered(stats[metric], target):
+                    state["complete"] = True
+                    break
+                remaining = budget_min * 60 - previous_seconds - (time.monotonic() - start)
+                if remaining <= 0:
+                    state["stop_reason"] = "budget_exhausted"
+                    break
+                count = args.batch_games
+                if rows and state["active_seconds"] > 0:
+                    seconds_per_game = state["active_seconds"] / len(rows)
+                    count = min(count, max(2, int(remaining / max(seconds_per_game, .01))))
+                    count -= count % 2
+                i = len(state["batches"])
+                if i >= 10000:
+                    state["stop_reason"] = "seed_range_exhausted"
+                    break
+                pending = {"index": i, "games": count, "seed": seed + i * 100000,
+                           "log": f"{name}_b{i:05d}.jsonl", "complete": False}
+                state["batches"].append(pending)
+                save()  # persist scheduling intent BEFORE launching workers
+            run_match(model_a, model_b, games=pending["games"], sims=args.sims,
+                      sims_b=args.sims, workers=args.workers, engine="native",
+                      seed=pending["seed"], opening_temp_plies=16,
+                      game_log=str(out_dir / pending["log"]), resume=True)
+            pending["complete"] = True
+            rows = read_all()
+            save()
+            counts = state["stats"][metric]["sides"]
+            print(f"{name}: {len(rows)} sampled; {metric} W {counts['white']['n']} "
+                  f"B {counts['black']['n']}; {state['active_seconds']/60:.1f}m", flush=True)
+    finally:
+        rows = read_all()
+        save()
+    return state["stats"], rows, state
+
+
+@exclusive_workers
+def run_gate(args):
+    if args.resume:
+        out_dir = Path(args.resume).resolve()
+        manifest = load_json(out_dir / "manifest.json")
+        expected = {"model": model_identity(args.model), "bar": model_identity(args.bar_model),
+                    "protocol": protocol(args)}
+        if any(manifest[k] != v for k, v in expected.items()):
+            raise ValueError("gate resume provenance/configuration mismatch")
+    else:
+        stamp = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+        out_dir = Path(args.run_dir or ROOT / "benchmarks" / "free_gate" / stamp).resolve()
+        out_dir.mkdir(parents=True, exist_ok=False)
+        manifest = {"model": model_identity(args.model), "bar": model_identity(args.bar_model),
+                    "protocol": protocol(args), "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "run_dir": str(out_dir)}
+        atomic_json(out_dir / "manifest.json", manifest)
+    report_path = out_dir / "report.json"
+    if args.report_path:
+        destination = Path(args.report_path).resolve()
+        if destination.exists() and load_json(destination).get("run_dir") != str(out_dir):
+            raise FileExistsError(f"refusing to replace another run's report: {destination}")
+    if report_path.exists() and load_json(report_path).get("complete"):
+        out = load_json(report_path)
+        if not all(Path(p).exists() and model_identity(p)["sha256"] == h
+                   for p, h in out["evidence_hashes"].items()):
+            raise ValueError("completed gate evidence was modified")
+        if args.report_path:
+            atomic_json(destination, out)
+        return out
+    print(f"FREE GATE {SCORING_VERSION}: {out_dir}", flush=True)
+    cache = ROOT / "benchmarks" / "free_par_v2" / (cache_key(manifest["bar"], manifest["protocol"]) + ".json")
+    par = None
+    par_sources = {}
+    if cache.exists():
+        cached = load_json(cache)
+        if (cached.get("key") == cache.stem and covered(cached["stats"]["unique"], args.par_per_side)
+                and not cached["stats"]["endpoint_outcome_conflicts"]):
+            if cached.get("source_hashes") and all(
+                    Path(p).exists() and model_identity(p)["sha256"] == h
+                    for p, h in cached["source_hashes"].items()):
+                par = cached["stats"]
+                par_sources = cached["source_hashes"]
+    spent = 0
+    # Keep local par accounting even if this run has since populated the cache.
+    if (out_dir / "par.json").exists():
+        spent = load_json(out_dir / "par.json")["active_seconds"] / 60
+    if par is None:
+        par, _, par_state = leg("par", args.bar_model, args.bar_model, args, out_dir,
+                                args.budget_min * .28, args.seed + 1000000000,
+                                target=args.par_per_side)
+        spent = par_state["active_seconds"] / 60
+        par_sources = {str(out_dir / b["log"]): model_identity(out_dir / b["log"])["sha256"]
+                       for b in par_state["batches"]}
+        if covered(par["unique"], args.par_per_side) and not par["endpoint_outcome_conflicts"]:
+            atomic_json(cache, {"key": cache.stem, "stats": par,
+                "source_hashes": {str(out_dir / b["log"]): model_identity(out_dir / b["log"])["sha256"]
+                                  for b in par_state["batches"]}})
+    legs, first_rows, all_rows = {}, [], []
+    out = {**manifest, "instrument": SCORING_VERSION, "bar_free_par": par,
+           "par_cache": str(cache), "legs": legs, "complete": False,
+           "verdict": "INCONCLUSIVE", "eligible": False, "confirmed": False}
+    atomic_json(report_path, out)
+    allocation_path = out_dir / "allocation.json"
+    allocation = load_json(allocation_path) if allocation_path.exists() else {
+        "leg_budget_min": max(0, args.budget_min - spent) / 2}
+    atomic_json(allocation_path, allocation)
+    for i, name in enumerate(("vs_bar", "vs_bar_confirm")):
+        legs[name], rows, _ = leg(name, args.model, args.bar_model, args, out_dir,
+            allocation["leg_budget_min"], args.seed + i * 2000000000,
+            excluded={opening_key(r) for r in first_rows})
+        all_rows.extend(rows)
+        if i == 0:
+            first_rows = rows
+        out.update(verdict(par, legs, args.target_per_side, args.par_per_side))
+        atomic_json(report_path, out)
+    out["combined_h2h"] = leg_stats(all_rows)
+    if out["combined_h2h"]["endpoint_outcome_conflicts"]:
+        out.update(verdict="INCONCLUSIVE", raw_verdict="INCONCLUSIVE", eligible=False, confirmed=False)
+        out["inconclusive_reasons"].append("conflicting continuation outcomes across legs")
+    out["complete"] = True  # campaign ended, not necessarily sufficient evidence
+    out["evidence_hashes"] = {**par_sources, **{str(p): model_identity(p)["sha256"]
+                              for p in out_dir.glob("*.jsonl")}}
+    atomic_json(report_path, out)
+    if args.report_path:
+        atomic_json(destination, out)
+    print(f"VERDICT: {out['verdict']}; report {report_path}", flush=True)
+    return out
+
+
+def parser():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--model", required=True)
+    ap.add_argument("--bar-model", required=True)
+    ap.add_argument("--bar-name", default=None, help="display compatibility only")
+    ap.add_argument("--sims", type=int, default=3200)
+    ap.add_argument("--target-per-side", type=int, default=100)
+    ap.add_argument("--par-per-side", type=int, default=100)
+    ap.add_argument("--target-unique", type=int, help="legacy total; divided equally between colors")
+    ap.add_argument("--par-unique", type=int, help="legacy total; divided equally between colors")
+    ap.add_argument("--budget-min", type=float, default=180)
+    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--batch-games", type=int, default=32)
+    ap.add_argument("--seed", type=int, default=6200000)
+    ap.add_argument("--report-path")
+    ap.add_argument("--run-dir", help="new isolated directory (must not exist)")
+    ap.add_argument("--resume", help="existing run directory; identical arguments required")
+    return ap
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True)
-    ap.add_argument("--bar-model", required=True)
-    ap.add_argument("--bar-name", required=True)
-    ap.add_argument("--sims", type=int, default=1600)
-    ap.add_argument("--target-unique", type=int, default=200)
-    ap.add_argument("--par-unique", type=int, default=150)
-    ap.add_argument("--budget-min", type=float, default=60.0)
-    ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--seed", type=int, default=5200000)
-    ap.add_argument("--report-path", default="benchmarks/gate_free.json")
-    a = ap.parse_args()
-
-    out_dir = os.path.join(ROOT, "benchmarks", "gate_free_legs")
-    os.makedirs(out_dir, exist_ok=True)
-    model = os.path.join(ROOT, a.model)
-    bar = os.path.join(ROOT, a.bar_model)
-    t0 = time.time()
-    print(f"FREE GATE: {os.path.basename(os.path.dirname(a.model))} "
-          f"vs {a.bar_name} @ {a.sims} sims, budget {a.budget_min:.0f}m",
-          flush=True)
-
-    # Three legs share the budget: par, bar, confirm.
-    par = bar_par(bar, a.bar_name, a.sims, a.workers, out_dir,
-                  a.par_unique, a.budget_min * 0.28)
-    spent = (time.time() - t0) / 60
-    rest = max(a.budget_min - spent, 1.0)
-    legs = {}
-    for i, nm in enumerate(("vs_bar", "vs_bar_confirm")):
-        legs[nm] = leg(nm, model, bar, a.sims, a.seed + i * 848484,
-                       a.target_unique, rest / (2 - i), a.workers, out_dir)
-        spent = (time.time() - t0) / 60
-        rest = max(a.budget_min - spent, 1.0)
-
-    failures = []
-    for nm, r in legs.items():
-        if r is None:
-            failures.append(f"{nm} produced no games")
-            continue
-        if r["score"] <= AGGREGATE_MIN:
-            failures.append(f"{nm} aggregate {r['score']:.4f} "
-                            f"<= {AGGREGATE_MIN}")
-        for side, parv in (("white", par["white"]), ("black", par["black"])):
-            v = r[side]
-            if v is not None and parv is not None and v < parv - PER_SIDE_BAND:
-                failures.append(f"{nm} {side} {v:.4f} below par {parv:.4f} "
-                                f"- {PER_SIDE_BAND}")
-    verdict = "PASS" if not failures else "FAIL"
-    out = {"model": a.model, "bar": a.bar_model, "bar_name": a.bar_name,
-           "sims": a.sims, "instrument": "free_dedup",
-           "aggregate_min": AGGREGATE_MIN, "per_side_band": PER_SIDE_BAND,
-           "bar_free_par": par, "legs": legs, "failures": failures,
-           "verdict": verdict, "confirmed": legs.get("vs_bar_confirm")
-           is not None,
-           "minutes": round((time.time() - t0) / 60, 1),
-           "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    p = os.path.join(ROOT, a.report_path)
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    json.dump(out, open(p, "w"), indent=2)
-    print(f"\npar {a.bar_name}: W {par['white']:.4f} B {par['black']:.4f}",
-          flush=True)
-    for nm, r in legs.items():
-        if r:
-            print(f"{nm}: {r['score']:.4f} ({r['elo']:+.1f} Elo) "
-                  f"W {r['white']:.4f} B {r['black']:.4f} "
-                  f"{r['unique']} unique of {r['played']} "
-                  f"SE {r['se']:.4f}", flush=True)
-    print(f"VERDICT: {verdict}  {failures}", flush=True)
-    print(f"saved {a.report_path}", flush=True)
+    ap = parser()
+    args = ap.parse_args()
+    if args.target_unique is not None:
+        args.target_per_side = math.ceil(args.target_unique / 2)
+    if args.par_unique is not None:
+        args.par_per_side = math.ceil(args.par_unique / 2)
+    if any(v <= 0 for v in (args.sims, args.target_per_side, args.par_per_side,
+                            args.budget_min, args.workers, args.batch_games)):
+        ap.error("simulations, coverage, budget, workers and batch size must be positive")
+    if args.workers > 8 or args.batch_games % 2 or args.batch_games > 1000:
+        ap.error("at most eight workers; batch size must be even and <= 1000")
+    run_gate(args)
 
 
 if __name__ == "__main__":

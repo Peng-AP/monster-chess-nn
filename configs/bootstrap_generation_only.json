@@ -1,0 +1,30 @@
+{
+  "description": "Gen44 generation-only recipe; free-play evaluation v2. CLI overrides are recorded in state.json.",
+  "defaults": {
+    "anchor_data": "none",
+    "replay_generations": 8,
+    "games": 1000,
+    "book_seed_games": 400,
+    "book_seed_fens": "data/start_fens/book_v31_seed.jsonl",
+    "sims": 700,
+    "workers": 8,
+    "reanalysis_sample": 20000,
+    "reanalysis_keep": 10000,
+    "reanalysis_sims": 3200,
+    "reanalysis_black_fraction": 0.6,
+    "teacher_policy_multiplier": 4.0,
+    "replay_balance_alpha": 0.5,
+    "value_floor": 0.5,
+    "value_horizon": 60,
+    "epochs": 30,
+    "patience": 10,
+    "lr": 0.002,
+    "ema_decay": 0.999,
+    "batch_size": 256,
+    "gate_backend": "free",
+    "arena_sims": 3200,
+    "free_gate_target_per_side": 100,
+    "free_gate_par_per_side": 100,
+    "free_gate_budget_min": 180
+  }
+}

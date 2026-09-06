@@ -176,7 +176,8 @@ def main():
 
     positions = np.load(os.path.join(args.data_dir, "positions.npy"), mmap_mode="r")
     results = np.load(os.path.join(args.data_dir, "game_results.npy"))
-    policies_all = np.load(os.path.join(args.data_dir, "policies.npy"), mmap_mode="r")
+    from sparse_policy import open_policies
+    policies_all = open_policies(args.data_dir, mmap_mode="r")
     pw_path = os.path.join(args.data_dir, "policy_weights.npy")
     weights_all = (np.load(pw_path) if os.path.exists(pw_path)
                    else np.ones((len(results),), dtype=np.float32))
