@@ -182,23 +182,36 @@ Preview one complete bootstrap generation without writing anything:
 python src/iterate.py --dry-run
 ```
 
-Then run it. Promotion is deliberately explicit and is allowed only after the
-full binding gate; it advances the bootstrap champion pointer but does not
-create a numbered release or bypass the owner's release playtest.
+Then run one generation with an explicit generating model. The default does
+not promote anything; a passing candidate remains available for owner review.
 
 ```bash
-python src/iterate.py --generations 1 --promote-on-pass
+python src/iterate.py --generations 1 --incumbent models/candidates/bootstrap_main_gen_0044/best_value_net.pt --seed 3173
 ```
 
 The resumable state machine is `generate → reanalyze → process → compose →
 train → checkpoint_screen → offline_gate → binding_gate →
-high_fidelity_gate → self_skew → promote`. Every unique checkpoint preserved
-by validation receives a same-openings arena screen; the best worst-color result
-is only a nomination for the normal gates. The offline comparison is advisory
-by default: it records held-out policy/value warnings, but actual games decide
-rejection. A binding winner must also improve both calibrated colors in an
-independent 80-game, 800-simulation confirmation before promotion. The legacy
-hard offline behavior is available with `--reject-on-offline-regression`. Each generation
+high_fidelity_gate → self_skew → promote`. Up to eight representative saved
+epochs receive 40-game probes at 1,600 simulations. Two aggregate leaders,
+plus Black-best and offline-best safeguards, advance to 200-game screens at
+3,200. Ranking favors aggregate score after a calibrated color-collapse guard;
+the nominee must still pass an independent binding test. Free probes and full
+screens use disjoint RNG blocks, not prescribed board positions.
+
+The default `--gate-backend sampled` uses a fresh 400-game actual-color
+self-par, then two independent H2H legs of 200 games per candidate color at
+3,200 simulations. Repeated opening draws retain their sampled frequency;
+deduplication and novelty are reported separately. Each H2H leg must score above
+50%, with each color at least incumbent same-color par minus .05. A PASS is an
+operational point-estimate screen, not proof that both colors improved.
+Missing scheduled evidence is INCONCLUSIVE. This backend skips the redundant
+legacy high-fidelity gate. See [SAMPLED_GATE_PROTOCOL.md](SAMPLED_GATE_PROTOCOL.md).
+
+`--gate-backend free` retains the endpoint-uniform v2 instrument;
+`--gate-backend legacy` retains the older book-compatible gates. Old reports
+and completed generation states are not silently migrated between protocols.
+The offline comparison remains advisory unless
+`--reject-on-offline-regression` is supplied. Each generation
 has immutable state, command logs, and reports under `iterations/gen_NNNN/`.
 Resume an interrupted generation with the original experiment arguments plus
 `--resume`; changing a training or data argument is rejected. `--through-phase`
@@ -207,16 +220,19 @@ can stop safely after any phase.
 Self-play is augmented by ordinary-position deep search, not tactical rules:
 `tools/reanalyze.py` selects positions where deeper champion search most
 changes the policy/value and writes policy-only teachers, with 60% of the
-pipeline's teacher budget reserved for Black. Production defaults reproduce
-the successful Gen9 workload: 500 games at 700 simulations, then sample 8,000
-positions and retain 4,000 teachers searched at 3,200 simulations. Training is
-fresh with the Gen9/V20 scratch optimizer recipe; it does not resume incumbent
+pipeline's teacher budget reserved for Black. Production defaults are pinned
+in `configs/bootstrap_generation_only.json`: 1,000 free games plus 400
+book-seeded games at 700 simulations, then sample 20,000 ordinary positions
+and retain 10,000 teachers searched at 3,200 simulations. Training is
+fresh with the successful scratch optimizer recipe; it does not resume incumbent
 weights. Every processed generation must pass an exact teacher census before
 it can be registered or composed: one-row retention, mirrored row count,
 60/40 side split, policy-only value mask, and source-linked split membership.
 `tools/compose_processed.py`
-combines the exact immutable v19_B/V20 anchor, recent accepted replay, and the
-current generation while preserving validation/test membership. Processed
+combines eight accepted generation increments, including the current one,
+while preserving validation/test membership. There is no v19-era anchor,
+human-game training source, or outside corpus. Teacher policy weight multiplier
+is four, with zero teacher value weight. Processed
 self-play is registered in `accepted_data.json` before candidate training, so
 useful champion data survives a rejected model. The training split is
 deterministically smoothed across side, true outcome, and corpus-derived
@@ -232,15 +248,19 @@ rate before processing. Reanalysis and replay composition publish completed
 directories atomically, accepted replay hashes every required artifact, and a
 run-root lock prevents concurrent bootstrap loops. Large replay position and
 policy arrays are memory-mapped during pipeline training to keep later
-generations inside host-memory limits.
+generations inside host-memory limits. Sampled-backend deep reanalysis also
+keeps a durable per-position search journal outside the raw training tree.
+Matches and checkpoint screens retain provenance-checked per-game journals;
+resuming schedules only missing tasks. Completed evidence is hash-validated.
 
-Pass `--book books/<pinned-book>.json` to reserve disjoint paired blocks for
+For legacy evaluation only, pass `--gate-backend legacy --book books/<pinned-book>.json`
+to reserve disjoint paired blocks for
 checkpoint screening, the binding gate, high-fidelity confirmation, and
 self-skew automatically. Books are pinned artifacts: changing one silently
 invalidates comparison against every score measured under the old one. The
-current generation uses 3,000-entry p8 books drawn equally from six models
-spanning v22 to the working bar (`books/gate_v30_mixed_p8_auto.json` and
-later), rebuilt automatically when a book runs low on contiguous blocks.
+legacy book campaigns used 3,000-entry p8 books drawn equally from six models
+spanning v22 to the working bar. These evaluation books are distinct from
+the book-seeded subset retained in generation-only training.
 
 **A per-colour score is meaningless without its block's baseline.** Block colour
 bias runs to +-0.056: a model played against *itself* -- true value 0.5000 by
@@ -254,15 +274,14 @@ only reached 7.38 and fourteen exhausted GPU memory. Each NN worker owns a CUDA
 context, so the worker count stays explicit and bounded rather than following
 the host CPU count.
 
-Pipeline training evaluates the incumbent on the same validation rows before
-epoch one. Validation preserves checkpoints using worst-color policy and
-value-sign gains over that fixed baseline; the checkpoint arena then tests
-every preserved model and ranks by its calibrated worst color. Regression
-guards remain fixed to the incumbent rather than walking between epochs. If no
-epoch is safe, training emits `selection_rejected.json` and the generation
-becomes `rejected_training`. The moves-left head exists as an opt-in experiment
-but is off in the first pipeline generation so infrastructure and architecture
-changes are not conflated.
+Pipeline training preserves epoch snapshots and selects an offline reference
+using decisive-position validation metrics. Play-based selection then tests a
+bounded representative shortlist; it does not reject trained models solely on
+offline accuracy. The recipe uses 30 epochs, patience ten, AdamW at .002,
+three warmup epochs and EMA .999. Promotion requires explicit
+`--promote-on-pass`, advances only the working champion pointer, and never
+creates a numbered release or bypasses the owner's release playtest. The
+moves-left head remains an opt-in experiment, off in this controlled recipe.
 
 Training hyperparameters can be searched with multi-fidelity Optuna trials
 whose objective is calibrated arena play rather than validation loss. The

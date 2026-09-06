@@ -1,5 +1,5 @@
 {
-  "description": "Gen44 generation-only recipe; free-play evaluation v2. CLI overrides are recorded in state.json.",
+  "description": "Gen44 generation-only learning recipe; sampled free-play evaluation v3. CLI overrides are recorded in state.json.",
   "defaults": {
     "anchor_data": "none",
     "replay_generations": 8,
@@ -21,7 +21,13 @@
     "lr": 0.002,
     "ema_decay": 0.999,
     "batch_size": 256,
-    "gate_backend": "free",
+    "gate_backend": "sampled",
+    "sampled_gate_target_per_side": 200,
+    "sampled_gate_par_games": 400,
+    "sampled_gate_budget_min": 180,
+    "checkpoint_probe_sims": 1600,
+    "checkpoint_screen_sims": 3200,
+    "checkpoint_screen_finalists": 2,
     "arena_sims": 3200,
     "free_gate_target_per_side": 100,
     "free_gate_par_per_side": 100,

@@ -94,7 +94,7 @@ def main():
     args = ap.parse_args()
     out = snapshot(args)
     for name, leg in out["legs"].items():
-        stats = leg["stats"]["sampled"]
+        stats = leg.get("actual_color_par", leg["stats"]["sampled"])
         print(f"{name}: n={stats['n']} W={stats['sides']['white']['score']:.4f} "
               f"B={stats['sides']['black']['score']:.4f} total={stats['score']:.4f}")
 

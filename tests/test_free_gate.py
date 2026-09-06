@@ -143,7 +143,7 @@ def test_pipeline_free_recipe_and_promotion_provenance(tmp_path, monkeypatch):
     import iterate
     import match_evidence
     from free_gate_stats import SCORING_VERSION
-    args = iterate.build_parser().parse_args([])
+    args = iterate.build_parser().parse_args(["--gate-backend", "free"])
     assert args.anchor_data == "none" and args.replay_generations == 8
     assert args.book_seed_games == 400
     paths = iterate._paths_for_generation(tmp_path, 1)

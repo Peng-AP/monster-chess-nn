@@ -67,15 +67,16 @@ and runs only missing tasks. Final reports pin hashes of both journals and task
 manifests. Completed evidence is not silently extended by a resume. Source or
 configuration changes require a new separately declared run.
 
-Example (not launched until the current exclusive v2 campaign finishes):
+Example of a separate binding run (not the retrospective v2 rescore):
 
 ```powershell
 py -3 tools/runs.py start --name gen44_sampled_v3 -- py -3 tools/gate_sampled.py --model models/candidates/bootstrap_main_gen_0044/best_value_net.pt --bar-model models/candidates/bootstrap_main_gen_0042/screen_nominee.pt --target-per-side 200 --par-games 400 --sims 3200 --workers 8 --budget-min 180 --seed 40000000 --run-dir benchmarks/sampled_gate/gen44_gen42_3200_v3
 ```
 
-The legacy `gate_free.py` remains v2. Pipeline integration is a subsequent,
-explicit change, to be tested after the current campaign has released its
-runtime identity. Existing completed generation states must not silently migrate.
+The legacy `gate_free.py` remains v2. After the original campaign completed,
+the pipeline default was explicitly changed to `--gate-backend sampled`.
+The generation-only learning recipe is unchanged. Existing completed generation
+states must not silently migrate; gen44's epoch screen uses a separate output.
 
 ## Overnight work order and decision boundaries
 
@@ -102,6 +103,12 @@ runtime identity. Existing completed generation states must not silently migrate
    If the screen gives no credible reason to change it, use gen44 epoch 9.
    Keep initialization/training seed 3173, matching gen44; the generation
    index still advances the data-generation and evaluation seed namespaces.
+   Audit against gen44's recorded commit `f93ab12`: the model, optimizer,
+   processor, replay composition, native search and rule sources are unchanged.
+   Training/generation entry points gained exclusive-worker guards; reanalysis
+   gained recovery journaling. Comparing gen44's stored configuration with
+   defaults at seed 3173 found only path normalization, evaluation depth and
+   the old `through_phase=train` stop before the new v3 evaluation additions.
 5. Play-test the resulting bounded checkpoint shortlist, then run the selected
    candidate through the new fixed-sample gate against its explicit gen44
    generating checkpoint. Keep both color results visible. If that generator
@@ -110,8 +117,8 @@ runtime identity. Existing completed generation states must not silently migrate
    overnight budget. No numbered-release promotion and no push.
 
 A source audit also found that the old native-binary hash lookup can miss the
-repository-local extension before its adapter has been imported. Correct that
-lookup after the current campaign finishes and before any new binding run.
+repository-local extension before its adapter has been imported. That lookup
+was corrected after the v2 campaign finished and before new binding runs.
 The existing DLL's filesystem timestamp is August 16; that is supporting
 context, not a retroactive cryptographic attestation of the old campaign.
 
@@ -127,7 +134,7 @@ search across interruption. The journal lives outside the raw training tree;
 its manifest pins the source files, sampled tasks, model, runtime and search
 configuration. Resume schedules only missing tasks, and completed teacher
 output is hash-checked before reuse. This changes recovery, not the search or
-target formula. Pipeline use starts only after the active v2 run completes.
+target formula. New sampled-backend generations enable this cache by default.
 
 The lightweight `tools/replay_census.py` reads actual split indices and loss
 weights without loading the multi-GB position tensors. Its gen44 snapshot is

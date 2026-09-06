@@ -416,6 +416,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--seed", str(seed + 300_000),
         "--stall-timeout", str(args.worker_stall_timeout),
     ]
+    if args.gate_backend == "sampled":
+        reanalyze += ["--journal", str(paths["reports"] / "reanalysis_search.jsonl"), "--resume"]
     process = [
         "src/data_processor.py",
         "--raw-dir", str(paths["raw"]),
@@ -516,7 +518,8 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "--games", str(args.checkpoint_screen_games),
         "--probe-games", str(args.checkpoint_probe_games),
         "--sims", str(args.checkpoint_screen_sims),
-        "--probe-sims", str(args.checkpoint_screen_sims),
+        "--probe-sims", str(args.checkpoint_probe_sims or args.checkpoint_screen_sims),
+        "--finalists", str(args.checkpoint_screen_finalists),
         "--workers", str(args.workers),
         "--engine", args.engine,
         "--seed", str(seed + 350_000),
@@ -585,6 +588,24 @@ def _command_plan(args, generation, incumbent, architecture, paths,
             "--resume" if gate_run_dir.exists() else "--run-dir", str(gate_run_dir),
         ]
         self_skew += ["--game-log", str(paths["reports"] / "self_skew.jsonl"), "--resume"]
+    if args.gate_backend == "sampled":
+        # One million-seed namespace per generation, with disjoint operational
+        # stages. Keep the original training/generation seeds unchanged.
+        evaluation_seed = args.seed + generation * 1_000_000
+        checkpoint_screen[checkpoint_screen.index("--seed") + 1] = str(evaluation_seed + 300_000)
+        self_skew[self_skew.index("--seed") + 1] = str(evaluation_seed + 800_000)
+        gate_run_dir = paths["reports"] / "sampled_gate"
+        binding = [
+            "tools/gate_sampled.py", "--model", str(paths["candidate"]),
+            "--bar-model", str(incumbent), "--sims", str(args.arena_sims),
+            "--workers", str(args.workers), "--seed", str(evaluation_seed + 500_000),
+            "--target-per-side", str(args.sampled_gate_target_per_side),
+            "--par-games", str(args.sampled_gate_par_games),
+            "--budget-min", str(args.sampled_gate_budget_min),
+            "--report-path", str(gate_report),
+            "--resume" if gate_run_dir.exists() else "--run-dir", str(gate_run_dir),
+        ]
+        self_skew += ["--game-log", str(paths["reports"] / "self_skew.jsonl"), "--resume"]
     if args.book and args.gate_backend == "legacy":
         book = str(_absolute(args.book))
         screen_offset = int(args.book_offset)
@@ -630,7 +651,7 @@ def _command_plan(args, generation, incumbent, architecture, paths,
         "binding_gate": {"commands": [binding], "outputs": [str(gate_report)]},
         "high_fidelity_gate": ({"commands": [], "outputs": [],
                                 "skip_reason": "free gate already confirms at arena depth"}
-                               if args.gate_backend == "free" else
+                               if args.gate_backend in ("free", "sampled") else
                                {"commands": [high_fidelity], "outputs": [str(high_fidelity_report)]}),
         "self_skew": {"commands": [self_skew], "outputs": [str(self_skew_report)]},
         "promote": {"commands": [], "outputs": [str(CHAMPION_POINTER)]},
@@ -732,7 +753,7 @@ def _archive_incumbent(incumbent):
 
 def _promote(state, paths):
     candidate = Path(paths["candidate"])
-    if state.get("config", {}).get("gate_backend") == "free":
+    if state.get("config", {}).get("gate_backend") in ("free", "sampled"):
         args = argparse.Namespace(**state["config"])
         report = _load_json(Path(paths["reports"]) / "binding_gate.json", {})
         if not _binding_passed(report, args, candidate, _absolute(state["incumbent"])):
@@ -754,7 +775,7 @@ def _promote(state, paths):
         "predecessor": state["incumbent"],
         "run_state": state["paths"]["state"],
         "gate_report": _rel(Path(paths["reports"]) / "binding_gate.json"),
-        "high_fidelity_report": (None if state.get("config", {}).get("gate_backend") == "free"
+        "high_fidelity_report": (None if state.get("config", {}).get("gate_backend") in ("free", "sampled")
                                  else _rel(Path(paths["reports"]) / "high_fidelity_gate.json")),
         "checkpoint_screen_report": _rel(
             Path(paths["reports"]) / "checkpoint_screen.json"),
@@ -826,11 +847,21 @@ def _validate_args(args):
             "--continue-after-reject")
     if args.promote_on_pass and args.gate_protocol != "full":
         raise ValueError("promotion requires --gate-protocol=full")
-    if getattr(args, "gate_backend", "legacy") == "free":
+    if getattr(args, "checkpoint_probe_sims", None) is not None and args.checkpoint_probe_sims <= 0:
+        raise ValueError("checkpoint probe simulations must be positive")
+    if getattr(args, "checkpoint_screen_finalists", 4) <= 0:
+        raise ValueError("checkpoint screen finalists must be positive")
+    if getattr(args, "gate_backend", "legacy") in ("free", "sampled"):
         if args.engine != "native" or args.workers > 8:
             raise ValueError("free gate requires native engine and at most eight workers")
         if args.book:
             raise ValueError("--book is a legacy evaluation option; use --gate-backend legacy explicitly")
+    if getattr(args, "gate_backend", "legacy") == "sampled":
+        if min(args.sampled_gate_target_per_side, args.sampled_gate_par_games, args.sampled_gate_budget_min) <= 0:
+            raise ValueError("sampled gate counts and budget must be positive")
+        if args.sampled_gate_par_games % 2 or max(2 * args.sampled_gate_target_per_side, args.sampled_gate_par_games) > 2000:
+            raise ValueError("sampled par must be even; each leg at most 2000 games")
+    if getattr(args, "gate_backend", "legacy") == "free":
         for name in ("free_gate_target_per_side", "free_gate_par_per_side", "free_gate_budget_min"):
             if getattr(args, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -845,6 +876,14 @@ def _binding_passed(report, args, candidate, incumbent):
 def _binding_verdict(report, args, candidate, incumbent):
     if args.gate_backend == "legacy":
         return report.get("raw_verdict", "FAIL")
+    if args.gate_backend == "sampled":
+        sys.path.insert(0, str(ROOT / "tools"))
+        from gate_sampled import validate_report
+        try:
+            return validate_report(report, candidate, incumbent, args.arena_sims,
+                                   args.sampled_gate_target_per_side, args.sampled_gate_par_games)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return "INCONCLUSIVE"
     from match_evidence import model_identity, runtime_identity, file_hash
     sys.path.insert(0, str(ROOT / "tools"))
     from free_gate_stats import SCORING_VERSION, verdict
@@ -1261,7 +1300,10 @@ def build_parser():
              "successfully trained candidate reaches the binding game gate",
     )
     ap.add_argument("--gate-protocol", choices=("quick", "full"), default="full")
-    ap.add_argument("--gate-backend", choices=("free", "legacy"), default="free")
+    ap.add_argument("--gate-backend", choices=("sampled", "free", "legacy"), default="sampled")
+    ap.add_argument("--sampled-gate-target-per-side", type=int, default=200)
+    ap.add_argument("--sampled-gate-par-games", type=int, default=400)
+    ap.add_argument("--sampled-gate-budget-min", type=float, default=180)
     ap.add_argument("--free-gate-target-per-side", type=int, default=100)
     ap.add_argument("--free-gate-par-per-side", type=int, default=100)
     ap.add_argument("--free-gate-budget-min", type=float, default=180)
@@ -1272,6 +1314,10 @@ def build_parser():
     ap.add_argument("--checkpoint-probe-games", type=int, default=40,
                     help="cheap paired games per checkpoint before finalists")
     ap.add_argument("--checkpoint-screen-sims", type=int, default=400)
+    ap.add_argument("--checkpoint-probe-sims", type=int, default=None,
+                    help="probe depth; omitted uses the full checkpoint-screen depth")
+    ap.add_argument("--checkpoint-screen-finalists", type=int, default=4,
+                    help="aggregate leaders, plus Black/offline-best safeguards")
     ap.add_argument("--high-fidelity-games", type=int, default=80,
                     help="calibrated final confirmation games before promotion")
     ap.add_argument("--high-fidelity-sims", type=int, default=800)

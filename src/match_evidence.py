@@ -1,8 +1,9 @@
 """Durable, provenance-checked match journals. No engine or scoring changes."""
 import hashlib
-import importlib.util
+from importlib.machinery import PathFinder
 import json
 import os
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +38,17 @@ def runtime_identity():
     paths = list((ROOT / "src").glob("*.py"))
     paths += [ROOT / "tools" / name for name in
               ("match.py", "gate_free.py", "free_gate_stats.py")]
-    native = importlib.util.find_spec("monster_native")
+    # Mirror native_mcts's local-extension search without importing the engine.
+    # The old lookup missed native/monster_native.pyd in a fresh parent process,
+    # because only worker-side adapter imports had added native/ to sys.path.
+    if "monster_native" in sys.modules:
+        native = getattr(sys.modules["monster_native"], "__spec__", None)
+    else:
+        search_path = list(sys.path)
+        native_dir = str(ROOT / "native")
+        if native_dir not in search_path:
+            search_path.insert(0, native_dir)
+        native = PathFinder.find_spec("monster_native", search_path)
     if native and native.origin:
         paths.append(Path(native.origin))
     return {"files": {str(p.resolve()): file_hash(p) for p in paths},
