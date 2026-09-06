@@ -1,4 +1,10 @@
-# MASTER REPORT — through 2026-08-15: native engine to bootstrap successor
+# Master report
+
+Latest: September 6 gen44 playing-depth results and the new sampled evaluation
+instrument are in section 53. Older dated sections retain their historical
+conclusions; use `HANDOFF.md` for current operating state.
+
+## Historical report preface (August 15, 2026)
 
 Replaces the 2026-08-03 run report (git history holds it). Covers the owner's
 rewrite directive (`DIRECTIVE.md`, 2026-08-03) from its writing through today:
@@ -2994,3 +3000,85 @@ are soft. This also reframes §51's book duplicate rates (gen19 43%, gen22 31%)
 
 *Updated 2026-08-18. Suite 741 passing. Predecessor reports
 retire to git history per project convention.*
+
+## 53. Gen44 at playing depth, and the sampled successor instrument (2026-09-06)
+
+`gen44_depth3200_v2` completed at approximately 02:57 Eastern, with the
+original runtime unchanged throughout. Native search at 3,200 simulations,
+eight workers, free openings at temperature .5 for 16 search plies, then zero;
+only king captures count as wins. Caps count as draws.
+
+| Gen44 epoch 9 against | Games | White score | Black score | Equal-color score |
+|---|---:|---:|---:|---:|
+| Gen42 first leg | 710 | 70.56% | 64.23% | 67.39% |
+| Gen42 independent confirmation | 708 | 72.03% | 62.43% | 67.23% |
+| Gen41 supporting | 586 | 77.30% | 77.13% | 77.22% |
+| V24 supporting | 544 | 68.01% | 75.37% | 71.69% |
+
+These are frequency-weighted sampled scores, not a retroactive v3 verdict.
+The original endpoint-uniform v2 verdict remains **INCONCLUSIVE**: incumbent
+self-par and first-leg White coverage, plus unseen White confirmation coverage,
+missed the required quotas. This is missing coverage, not evidence of rejection.
+
+Gen42 self-par used 408 games: actual White score 33.09%, Black 66.91%.
+Using all outcomes, rather than an arbitrary A/B role split, makes the two
+color estimates complementary and the self-play aggregate exactly 50%.
+Against that Black baseline, gen44's pooled difference is -3.58 points,
+nominal 95% interval [-7.97, +0.81]. White improved strongly; Black improvement
+against gen42 is **not established**. Do not chain Elo through these opponents.
+
+Gen44 self-play: **562 games, 260 White captures, 188 Black captures, 114
+draws**. Actual-color scores are **56.41% White / 43.59% Black**. These are two
+complementary estimates from 562 games, not 1,124 independent observations.
+Of 278 self-games reaching a bare White king, Black later captured in 121,
+White in 77, and 80 drew. Material alone does not prove a forced conversion.
+The earlier strong conditional Black conversions against gen42 do not transfer
+unchanged to playing against gen44's stronger White side.
+
+Evidence: `benchmarks/free_gate/gen44_depth3200_v2/report.json`, its durable
+batch journals, and `benchmarks/gen44_depth3200_v2_final_audit_20260906.json`.
+The final audit is explicitly retrospective/nonbinding and leaves original
+reports unchanged.
+
+After that campaign finished, the pipeline default changed to the separately
+declared [sampled v3 protocol](SAMPLED_GATE_PROTOCOL.md): 400 fresh self-par
+games and two fixed H2H legs of 200 games per color. Repeated openings retain
+their frequency; novelty, collisions and dedup remain diagnostics. Thresholds
+are aggregate above .5 and each color at least self-par minus .05 on both legs.
+This is a point-estimate screen, not proof of per-color non-inferiority.
+
+Infrastructure: disjoint probe/final seed blocks, actual-color checkpoint
+calibration, durable match and reanalysis journals, report recomputation before
+promotion, and a corrected fresh-parent native-binary fingerprint. The old
+lookup could omit the local `.pyd`; its unchanged August 16 timestamp and
+end-of-campaign hash are supporting context, not retroactive attestation.
+No network, optimizer, rule, or search change was bundled in. Full suite:
+782 tests and 3 subtests passed, with 172 existing PyTorch warnings.
+
+Next experiment: play-test gen44's saved epochs, then generate the next replay
+increment using an explicit gen44 teacher. Train from scratch with the same
+recipe and seed 3173, and require independent play before any promotion.
+No numbered release or working champion pointer has changed.
+
+### Held-out human turn 8
+
+`benchmarks/human_line_gen42_gen44_20260906.json` records 72 probes, with both
+White half-moves, reconstructed legal history, depths 3,200/6,400 and seeds
+101/211/307. This is a fresh-tree diagnostic, not a recreation of the GUI's
+unrecorded random stream or cached tree. No human row enters training.
+
+From the owner's reported game (`black_2026_07/game_00031.jsonl`, row 14):
+
+| Model | 3,200 sims | 6,400 sims |
+|---|---|---|
+| Gen42 | Kb3–Kc2 | Kd3–c4 |
+| Gen44 epoch 9 | Kd4–Ke4 | Kd3–Ke4 |
+
+All three seeds agreed within each cell. Gen44 avoids the queenside retreat
+at both depths. After its Ke4, the sequence ...Qxf2, Kf3–Kxf2 was verified
+legal: the king can recapture the queen in its two moves. This does not prove
+White's position winning. Gen44 evaluates the root around -.182 from White's
+perspective, versus gen42's +.112 at 3,200. Values are model estimates, not
+ground-truth outcomes. Conditional Kb3 searched afresh chose Kc4 for both
+models, illustrating that reused first-half search can change the second-half
+decision; this alone is not evidence of a search bug.

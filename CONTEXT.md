@@ -36,7 +36,19 @@ unchanged, in `_get_white_actions`).
 
 ## 2. Where the project stands
 
-> **Current standing, 2026-09-05.** Release is `models/bootstrap_v24`
+> **September 6 overnight update.** Gen44 epoch 9 completed its 3,200-simulation
+> campaign: sampled H2H against gen42 was 67.39% then 67.23%, against gen41
+> 77.22%, and against v24 71.69%. Its 562 self-games scored 56.41% White /
+> 43.59% Black. Black improvement against gen42 is not established; the original
+> v2 verdict stays INCONCLUSIVE for endpoint coverage. Release remains v24,
+> with no working-pointer promotion. New generations default to the separately
+> versioned fixed-sample v3 gate, with dedup diagnostics kept separate.
+> See `REPORT.md` section 53, `SAMPLED_GATE_PROTOCOL.md`, and `HANDOFF.md`.
+> The gen44 saved-epoch screen and next controlled teacher iteration follow;
+> architecture, optimizer, training seed 3173, and generation-only learning
+> recipe remain unchanged. Suite: 782 tests plus 3 subtests passed.
+
+> **Prior standing, 2026-09-05.** Release is `models/bootstrap_v24`
 > (generation 30, promoted 2026-08-22). Strongest measured is **gen42**, which
 > leads both Elo ladders. Newest model is **gen44**. Gates now run on **free
 > play** (`tools/gate_free.py`); the book gate is retained for continuity.

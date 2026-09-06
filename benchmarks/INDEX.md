@@ -12,6 +12,13 @@ Files are never moved or renamed: the directive and CONTEXT cite them by exact f
 
 ## Campaign subdirectories (hand-indexed)
 
+September 6 additions: `free_gate/gen44_depth3200_v2/report.json` is the
+completed 3,200-sim campaign; `gen44_depth3200_v2_final_audit_20260906.json`
+is its separate sampled/actual-color audit. `human_line_gen42_gen44_20260906.json`
+records 72 held-out half-move probes, not training data. `sampled_gate/` holds
+the separately versioned v3 instrument; `rehearsal_20260906` is a tiny
+16-simulation plumbing test, **not a model-strength assessment**.
+
 | directory | what it holds | what it establishes |
 |---|---|---|
 | **`tournament/`** | 45 pairings × 2 instruments, 90 legs, 36,000 games, plus the fitted ladders in `tournament.json` and the v21 free anchor | **The primary ranking.** Tier split: gen36/38/40/41/42 sit 135–246 free Elo above v24/gen33/gen26 while book compresses it to 8–28. Both Elo ladders live here |
