@@ -34,6 +34,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from config import DEFAULT_GAME_WORKERS  # noqa: E402
 from match import run_match  # noqa: E402
+from match_evidence import runtime_identity  # noqa: E402
+from worker_lease import exclusive_workers  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -224,6 +226,15 @@ def atomic_copy(source: Path, destination: Path) -> None:
     os.replace(temporary, destination)
 
 
+def final_stage_seed(seed: int) -> int:
+    # +1 overlaps nearly every probe task when both stages use free openings.
+    # Keep RNG draws matched across checkpoints WITHIN a stage, disjoint across
+    # stages. Matching RNG seeds does not force different models to play the
+    # same free-opening board positions.
+    return seed + 100_000
+
+
+@exclusive_workers
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model-dir", required=True)
@@ -252,9 +263,10 @@ def main() -> None:
     if (args.games < 2 or args.games % 2 or args.sims <= 0
             or args.probe_games < 2 or args.probe_games % 2
             or args.probe_sims <= 0 or args.finalists <= 0
-            or args.workers <= 0 or args.book_offset < 0):
+            or not 0 < args.workers <= 8 or args.book_offset < 0
+            or max(args.games, args.probe_games) > 2000):
         parser.error("game counts must be positive and even; sims, finalists, "
-                     "and workers must be > 0")
+                     "and workers must be > 0; at most 8 workers and 2000 games per stage")
 
     model_dir = Path(args.model_dir).resolve()
     incumbent = Path(args.incumbent).resolve()
@@ -272,6 +284,40 @@ def main() -> None:
           f"{', '.join(row['name'] for row in checkpoints)}", flush=True)
     if not incumbent.is_file():
         raise FileNotFoundError(incumbent)
+
+    evidence_dir = report_path.with_name(report_path.stem + "_evidence")
+    manifest_path = evidence_dir / "manifest.json"
+    manifest = {"version": "checkpoint_screen_recoverable_v2",
+                "implementation_sha256": sha256(Path(__file__)),
+                "runtime": runtime_identity(), "config": vars(args),
+                "incumbent_sha256": sha256(incumbent),
+                "checkpoints": [{k: str(v) if isinstance(v, Path) else v
+                                 for k, v in c.items()} for c in checkpoints]}
+    if evidence_dir.exists():
+        if not manifest_path.exists() or json.loads(manifest_path.read_text(encoding="utf-8")) != manifest:
+            raise ValueError("checkpoint screen resume provenance/configuration mismatch")
+    else:
+        if report_path.exists():
+            raise FileExistsError("existing screen has no recoverable manifest; use a new report path")
+        evidence_dir.mkdir(parents=True)
+        save_json(manifest_path, manifest)
+    if report_path.exists():
+        existing = json.loads(report_path.read_text(encoding="utf-8"))
+        hashes = existing.get("evidence_hashes", {})
+        if not hashes or not all(Path(p).is_file() and sha256(Path(p)) == h for p, h in hashes.items()):
+            raise ValueError("completed checkpoint-screen evidence missing or modified")
+        selected_hash = existing.get("selected", {}).get("arena_model_sha256")
+        if not output_model.is_file() or sha256(output_model) != selected_hash:
+            raise ValueError("completed checkpoint-screen nominee missing or modified")
+        print(f"[checkpoint-screen] completed evidence validated: {report_path}", flush=True)
+        return
+
+    def play(stage, label, model, games, sims, seed, offset):
+        return run_match(str(model), str(incumbent), games, sims, seed,
+                         workers=args.workers, engine=args.engine,
+                         stall_timeout=args.stall_timeout,
+                         book=args.book, book_offset=offset,
+                         game_log=str(evidence_dir / f"{stage}_{label}.jsonl"), resume=True)
 
     # Probes and finals draw DISJOINT blocks. The two stages exist so that the
     # high-power confirmation is independent of the selection that produced the
@@ -293,21 +339,13 @@ def main() -> None:
 
     print(f"[checkpoint-screen] probe calibration: {args.probe_games} games "
           f"@ {args.probe_sims}", flush=True)
-    probe_calibration = run_match(
-        str(incumbent), str(incumbent), args.probe_games, args.probe_sims,
-        args.seed,
-        workers=args.workers, engine=args.engine,
-        stall_timeout=args.stall_timeout,
-        book=args.book, book_offset=probe_offset)
+    probe_calibration = play("probe", "par", incumbent, args.probe_games,
+                             args.probe_sims, args.seed, probe_offset)
     probe_results = []
     for checkpoint in checkpoints:
         print(f"[checkpoint-screen] probe {checkpoint['name']}", flush=True)
-        match = run_match(
-            str(checkpoint["path"]), str(incumbent), args.probe_games,
-            args.probe_sims,
-            args.seed, workers=args.workers, engine=args.engine,
-            stall_timeout=args.stall_timeout,
-            book=args.book, book_offset=probe_offset)
+        match = play("probe", checkpoint["name"], checkpoint["path"],
+                     args.probe_games, args.probe_sims, args.seed, probe_offset)
         result = calibrated_result(match, probe_calibration)
         result.update({
             "name": checkpoint["name"],
@@ -327,25 +365,19 @@ def main() -> None:
     finalist_names = {result["name"] for result in finalists}
     print(f"[checkpoint-screen] finalists: "
           f"{', '.join(result['name'] for result in finalists)}", flush=True)
-    screen_seed = args.seed + 1
+    screen_seed = final_stage_seed(args.seed)
     print(f"[checkpoint-screen] full calibration: {args.games} games "
           f"@ {args.sims}", flush=True)
-    calibration = run_match(
-        str(incumbent), str(incumbent), args.games, args.sims, screen_seed,
-        workers=args.workers, engine=args.engine,
-        stall_timeout=args.stall_timeout,
-        book=args.book, book_offset=final_offset)
+    calibration = play("full", "par", incumbent, args.games, args.sims,
+                       screen_seed, final_offset)
     results = []
     checkpoint_by_name = {checkpoint["name"]: checkpoint
                           for checkpoint in checkpoints}
     for probe in finalists:
         checkpoint = checkpoint_by_name[probe["name"]]
         print(f"[checkpoint-screen] full {checkpoint['name']}", flush=True)
-        match = run_match(
-            str(checkpoint["path"]), str(incumbent), args.games, args.sims,
-            screen_seed, workers=args.workers, engine=args.engine,
-            stall_timeout=args.stall_timeout,
-            book=args.book, book_offset=final_offset)
+        match = play("full", checkpoint["name"], checkpoint["path"],
+                     args.games, args.sims, screen_seed, final_offset)
         result = calibrated_result(match, calibration)
         result.update({
             "name": checkpoint["name"],
@@ -367,6 +399,11 @@ def main() -> None:
     payload = {
         "experiment": "bootstrap_checkpoint_arena_screen",
         "binding": False,
+        "instrument": "checkpoint_screen_recoverable_v2",
+        "evidence_manifest": str(manifest_path),
+        "evidence_hashes": {str(p): sha256(p) for p in
+                            [manifest_path, *evidence_dir.glob("*.jsonl"),
+                             *evidence_dir.glob("*.jsonl.manifest.json")]},
         "incumbent": incumbent.relative_to(ROOT).as_posix(),
         "incumbent_sha256": sha256(incumbent),
         "games": args.games,

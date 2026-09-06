@@ -13,7 +13,59 @@ sys.path.insert(0, str(ROOT / "tools"))
 import checkpoint_screen as screen  # noqa: E402
 
 
+def test_screen_interruption_resumes_journals_and_pins_nominee(tmp_path, monkeypatch):
+    import pytest
+    import worker_lease
+    from match import build_tasks
+    from match_evidence import MatchJournal, task_id
+    monkeypatch.setattr(worker_lease, "DEFAULT_PATH", tmp_path / "workers.lock")
+    monkeypatch.setattr(screen, "ROOT", tmp_path)
+    monkeypatch.setattr(screen, "runtime_identity", lambda: {"engine": "test"})
+    model_dir = tmp_path / "candidate"
+    model_dir.mkdir()
+    torch.save({"weight": torch.ones(2)}, model_dir / "best_value_net.pt")
+    incumbent = tmp_path / "bar.pt"
+    torch.save({"weight": torch.zeros(2)}, incumbent)
+    output = model_dir / "nominee.pt"
+    report = tmp_path / "screen.json"
+    monkeypatch.setattr(sys, "argv", ["checkpoint_screen", "--model-dir", str(model_dir),
+        "--incumbent", str(incumbent), "--output-model", str(output),
+        "--report-path", str(report), "--games", "4", "--probe-games", "4"])
+    calls, fail_once = [], [True]
+    def fake(a, b, games, sims, seed, **kw):
+        tasks = build_tasks(games, seed, 16)
+        journal = MatchJournal(kw["game_log"], {"a": a, "b": b, "sims": sims}, tasks, resume=True)
+        for task in journal.pending:
+            aw, game_seed = task[:2]
+            calls.append((Path(kw["game_log"]).stem, game_seed))
+            journal.append({"a_is_white": aw, "result_for_a": 0 if a == b else 1,
+                            "plies": 20, "pair": None, "seed": game_seed,
+                            "task_id": task_id(task)})
+            if len(calls) == 5 and fail_once[0]:
+                fail_once[0] = False
+                raise RuntimeError("interrupted")
+        score = .5 if a == b else 1.0
+        return {"a_score": score, "a_as_white": {"score": score}, "a_as_black": {"score": score}}
+    monkeypatch.setattr(screen, "run_match", fake)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        screen.main()
+    screen.main()
+    assert len(calls) == len(set(calls)) == 16
+    assert output.exists() and report.exists()
+    screen.main()
+    assert len(calls) == 16
+    output.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="nominee"):
+        screen.main()
+
+
 class CheckpointScreenTests(unittest.TestCase):
+    def test_free_probe_and_final_seed_blocks_are_disjoint(self):
+        from match import build_tasks
+        probe = {t[1] for t in build_tasks(2000, 100, 16)}
+        final = {t[1] for t in build_tasks(2000, screen.final_stage_seed(100), 16)}
+        self.assertFalse(probe & final)
+
     def test_ranking_maximizes_aggregate_once_no_colour_has_collapsed(self):
         """The screen is a SHORTLIST and must not out-rule the gate.
 
