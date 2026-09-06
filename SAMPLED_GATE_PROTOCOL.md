@@ -100,6 +100,8 @@ runtime identity. Existing completed generation states must not silently migrate
    20,000/10,000 deep reanalysis with 60% Black teachers. The new generator is
    an explicit experimental teacher, not an automatic champion promotion.
    If the screen gives no credible reason to change it, use gen44 epoch 9.
+   Keep initialization/training seed 3173, matching gen44; the generation
+   index still advances the data-generation and evaluation seed namespaces.
 5. Play-test the resulting bounded checkpoint shortlist, then run the selected
    candidate through the new fixed-sample gate against its explicit gen44
    generating checkpoint. Keep both color results visible. If that generator
