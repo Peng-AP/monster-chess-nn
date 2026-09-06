@@ -12,7 +12,7 @@ evidence log; `DIRECTIVE.md` is a completed scope record, not a plan.
 |---|---|
 | **Release** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
 | **Prior tournament leader** | `gen42` (`models/candidates/bootstrap_main_gen_0042/screen_nominee.pt`) — leads both September 4 ladders; gen44 now has strong direct results below |
-| **Newest model** | `gen44` epoch 9 (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`); completed 3,200-sim campaign, saved-epoch screen running |
+| **Newest model** | `gen44` epoch 9 (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`); completed 3,200-sim campaign; saved-epoch screen retained epoch 9 |
 | **Gate instrument** | **sampled free play v3** — `tools/gate_sampled.py`, fixed counts with separate dedup diagnostics. `gate_free.py` retains v2; book gate remains legacy |
 | **`gate.BAR`** | `vs_v24`. Read it, never infer it |
 | **Replay window** | **8** (`--replay-generations 8`) so replay spans gen36+ only |
@@ -55,12 +55,41 @@ probes finished: gen44 avoids the turn-8 queenside retreat, ending on e4 at
 both 3,200 and 6,400 simulations; this is diagnostic, not proof of a winning
 position. See `REPORT.md` section 53.
 
-Running: `gen44_checkpoint_3200_v3`, log `logs/gen44_checkpoint_3200_v3.log`,
+Completed at 04:29 September 6: `gen44_checkpoint_3200_v3`, log `logs/gen44_checkpoint_3200_v3.log`,
 report `benchmarks/gen44_checkpoint_3200_v3.json`, separate output
-`models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt`. Then gen45
-from scratch with the explicit gen44 teacher, unchanged learning recipe and
-seed 3173. The dry run validated replay sources 37-42 plus 44, with 45 new.
-No numbered release or working pointer changed.
+`models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt`. Epoch 9 was
+selected again: 73.5% against gen42 in its 200-game full screen, versus 71.0%
+for epoch 10 and 66.25% for epoch 11. These are selection results, not binding
+confirmation.
+
+**Gen45 launched at 11:58 Eastern September 6**, run `gen45_expanded_sampled_v3`,
+log `logs/gen45_expanded_sampled_v3.log`, state `iterations/gen_0045/state.json`.
+Owner requested more data; the launched increase is 2,000 free + 800 book-seeded
+games, and 40,000 sampled / 20,000 retained deep teachers (60% Black). Keep
+scratch training, seed 3173 and the other learning settings unchanged. Use
+explicit run overrides; global defaults remain the gen44 workload. See the
+gen45 revision in `SAMPLED_GATE_PROTOCOL.md`. The earlier dry run validated
+replay sources 37-42 plus 44, with 45 new; the expanded production dry run
+validated the same sources before launch.
+No numbered release or working pointer changed. Avoid repeated status polling.
+
+The full unattended chain is generation -> resumable deep reanalysis -> processing
+and audit -> replay composition -> scratch training -> bounded checkpoint screen
+-> advisory offline comparison -> sampled binding gate against gen44 epoch 9.
+A PASS adds 200 self-skew games at 3,200 sims and ends `passed_not_promoted`.
+A measured FAIL/INCONCLUSIVE ends normally without promotion; an execution error
+records the failed phase and stops safely, without asking the owner or silently
+changing the experiment. There is no assistant polling loop or automatic repair.
+Source files are frozen while the run is active to preserve runtime provenance.
+
+Preflight: 782 tests and 3 subtests passed (172 existing warnings). An isolated
+real rehearsal, `iterations/rehearsal_sampled_gen45_20260906/gen_0001`, completed
+generation, reanalysis, audit, composition, one-epoch training, checkpoint screen,
+offline advisory and all three sampled-gate legs in about 98 seconds. Its weak
+8-sim/one-epoch model was correctly rejected; this was a plumbing check, not a
+strength result. Production estimate is roughly 7-9 hours: about 2.5 hours for new
+data and reanalysis, 1-2 hours training, and 3-4 hours selection/gating/diagnostics.
+Training allows up to 30 epochs with patience 10; gen44 stopped after 19.
 
 ---
 

@@ -150,6 +150,54 @@ identities. Black accounts for 291,658 (42.4%) sampled rows; White has two searc
 half-moves. The census is descriptive lineage/weight accounting, not a new
 dataset-integrity certification or a claim about literal gradient percentages.
 
+## Gen45 workload revision (September 6 morning)
+
+This supersedes the original unchanged-workload plan in step 4 above. Gen45
+launched at 11:58 Eastern September 6. The completed saved-epoch screen selected gen44 epoch 9 again,
+so use `models/candidates/bootstrap_main_gen_0044/best_value_net.pt` explicitly.
+
+The owner requested more data; the launched increase doubles the new
+increment, using genuinely newly generated games rather than
+duplicating existing rows:
+
+- 2,000 free games plus 800 book-seeded games, up from 1,000 + 400.
+- Sample 40,000 ordinary positions for deep reanalysis and retain 20,000
+  policy-only teachers, up from 20,000 / 10,000.
+- Preserve 60% Black teachers: 12,000 Black and 8,000 White before mirroring.
+- Preserve 700-sim generation, 3,200-sim reanalysis, replay window eight,
+  teacher policy multiplier four, zero teacher value weight, scratch training
+  seed 3173, architecture, optimizer and evaluation protocol.
+
+Use explicit gen45 overrides `--games 2000 --book-seed-games 800
+--reanalysis-sample 40000 --reanalysis-keep 20000`; do not silently change
+global defaults or resume an old generation with different data arguments.
+Record the resulting row counts and generating-model shares after composition.
+The aim is more fresh outcomes and stronger-teacher coverage, not more epochs
+over old data. Teacher identity and data quantity now both change, so any gain
+cannot be attributed exclusively to either without a separate control.
+
+Launch (full chain, no phase stop and no promotion):
+
+```powershell
+py -3 tools/runs.py start --name gen45_expanded_sampled_v3 -- py -3 src/iterate.py --incumbent models/candidates/bootstrap_main_gen_0044/best_value_net.pt --seed 3173 --games 2000 --book-seed-games 800 --reanalysis-sample 40000 --reanalysis-keep 20000 --self-skew-games 200
+```
+
+State: `iterations/gen_0045/state.json`; log: `logs/gen45_expanded_sampled_v3.log`.
+Full replay uses generations 37-42, 44 and new 45. Training is up to 30 epochs
+with patience 10. The checkpoint shortlist is play-tested after training, not on
+every epoch. The selected candidate faces gen44 epoch 9: 400 fresh calibration
+games plus two separate 400-game H2H legs, all at 3,200 simulations. PASS chains
+into 200 self-skew games and ends without promotion. FAIL/INCONCLUSIVE ends
+normally; an execution error records the failed phase and stops safely.
+
+Before launch, the expanded dry run validated the plan and replay inputs; all
+782 tests and 3 subtests passed. A separate real tiny iteration completed through
+all binding legs and correctly recorded a measured rejection, with no handoff
+error. Its data and model are isolated under the rehearsal namespace and are not
+production replay. Allow roughly 7-9 hours overall, dependent on game lengths,
+epoch count and number of shortlisted finalists. No repeated polling or owner
+prompt is scheduled. Freeze runtime source files until this run ends.
+
 ## Held-out human line
 
 `tools/probe_human_line.py` tests positions reconstructed from a human game's
