@@ -98,9 +98,10 @@ runtime identity. Existing completed generation states must not silently migrate
    an explicit experimental teacher, not an automatic champion promotion.
    If the screen gives no credible reason to change it, use gen44 epoch 9.
 5. Play-test the resulting bounded checkpoint shortlist, then run the selected
-   candidate through the new fixed-sample gate against the measured gen44
-   baseline. Keep both color results visible. On a promising result, also
-   check gen42 directly and measure actual-color self-skew, within the loose
+   candidate through the new fixed-sample gate against its explicit gen44
+   generating checkpoint. Keep both color results visible. If that generator
+   changes from epoch 9, retain epoch 9 as an additional reference opponent.
+   On a promising result, also check gen42 directly and measure actual-color self-skew, within the loose
    overnight budget. No numbered-release promotion and no push.
 
 A source audit also found that the old native-binary hash lookup can miss the
@@ -115,6 +116,13 @@ of gen44's weakness: only 166 of its 95,170 ordinary raw rows are at nominal
 turn 120 or later. Keep this separate from the teacher/epoch experiment unless
 a direct diagnostic establishes a material target error. Do not bundle an
 unmeasured learning change into what is described as the same training recipe.
+
+Reanalysis can now use `--journal PATH --resume` to retain each completed deep
+search across interruption. The journal lives outside the raw training tree;
+its manifest pins the source files, sampled tasks, model, runtime and search
+configuration. Resume schedules only missing tasks, and completed teacher
+output is hash-checked before reuse. This changes recovery, not the search or
+target formula. Pipeline use starts only after the active v2 run completes.
 
 The lightweight `tools/replay_census.py` reads actual split indices and loss
 weights without loading the multi-GB position tensors. Its gen44 snapshot is

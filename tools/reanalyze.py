@@ -188,11 +188,8 @@ def _reanalyze_one(item):
         raise ValueError(f"deep search returned no policy for {record['fen']}")
     metrics = disagreement_score(
         record["policy"], deep_policy, record.get("mcts_value", 0.0), deep_value)
-    identity = hashlib.sha256(
-        f"{item['path']}:{item['line']}:{record['fen']}:{record.get('half', 0)}"
-        .encode("utf-8")).hexdigest()
     return {
-        "identity": identity,
+        "identity": record_identity(item),
         "source_path": item["path"],
         "source_line": item["line"],
         "fen": record["fen"],
@@ -204,6 +201,13 @@ def _reanalyze_one(item):
         "deep_value": float(deep_value),
         "metrics": metrics,
     }
+
+
+def record_identity(item):
+    record = item["record"]
+    return hashlib.sha256(
+        f"{item['path']}:{item['line']}:{record['fen']}:{record.get('half', 0)}"
+        .encode("utf-8")).hexdigest()
 
 
 def _write_teacher(output_dir, rows, model_path, simulations):
@@ -286,6 +290,8 @@ def main():
     ap.add_argument("--stall-timeout", type=float, default=600.0,
                     help="fail if no deep-search task completes for this many seconds")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--journal", help="durable search cache; must be outside --source-dir")
+    ap.add_argument("--resume", action="store_true", help="validate and resume the same --journal")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the input census and planned sample only")
     args = ap.parse_args()
@@ -298,9 +304,11 @@ def main():
         ap.error("--black-fraction must be in [0, 1]")
     if args.sample <= 0 or args.keep <= 0 or args.keep > args.sample:
         ap.error("require 0 < --keep <= --sample")
-    if args.simulations <= 0 or args.workers <= 0 or args.stall_timeout <= 0:
-        ap.error("--simulations, --workers, and --stall-timeout must be positive")
-    if os.path.exists(args.output_dir):
+    if args.simulations <= 0 or not 0 < args.workers <= 8 or args.stall_timeout <= 0:
+        ap.error("positive simulations and timeout; workers must be in [1, 8]")
+    if args.resume and not args.journal:
+        ap.error("--resume requires --journal")
+    if os.path.exists(args.output_dir) and not (args.journal and args.resume):
         ap.error(f"output directory already exists: {args.output_dir}")
 
     all_rows = list(iter_records(args.source_dir))
@@ -317,16 +325,32 @@ def main():
     print(json.dumps(census, indent=2))
     if args.dry_run:
         return
+    if not sampled:
+        ap.error("no eligible source positions for reanalysis")
+
+    journal = None
+    if args.journal:
+        from reanalysis_journal import ReanalysisJournal
+        journal = ReanalysisJournal(args.journal, args, all_rows, sampled,
+                                    record_identity, __file__, resume=args.resume)
+    if os.path.exists(args.output_dir):
+        journal.validate_output(args.output_dir, args.keep)
+        print("Completed reanalysis evidence validated; no searches repeated", flush=True)
+        return
 
     started = time.time()
-    results = []
+    results = list(journal.results) if journal else []
+    remaining = journal.pending if journal else sampled
+    initial_completed = len(results)
+    if initial_completed:
+        print(f"Resuming {initial_completed}/{len(sampled)} durable search results", flush=True)
     pool = concurrent.futures.ProcessPoolExecutor(
         max_workers=args.workers, initializer=_init_worker,
         initargs=(args.model, args.simulations, args.engine,
-                  args.batch_size))
-    futures = {pool.submit(_reanalyze_one, row) for row in sampled}
+                  args.batch_size)) if remaining else None
+    futures = {pool.submit(_reanalyze_one, row) for row in remaining}
     pending = set(futures)
-    completed = 0
+    completed = initial_completed
     try:
         while pending:
             done, pending = concurrent.futures.wait(
@@ -337,14 +361,17 @@ def main():
                     "deep-search reanalysis made no progress for "
                     f"{args.stall_timeout:.0f}s ({len(pending)} tasks remain)")
             for future in done:
-                results.append(future.result())
+                result = future.result()
+                if journal:
+                    journal.append(result)
+                results.append(result)
                 completed += 1
-                if (completed % max(1, len(futures) // 20) == 0
-                        or completed == len(futures)):
+                if (completed % max(1, len(sampled) // 20) == 0
+                        or completed == len(sampled)):
                     elapsed = time.time() - started
-                    rate = completed / elapsed if elapsed else 0.0
-                    left = (len(futures) - completed) / rate if rate else 0.0
-                    print(f"[{completed}/{len(futures)}] "
+                    rate = (completed - initial_completed) / elapsed if elapsed else 0.0
+                    left = (len(sampled) - completed) / rate if rate else 0.0
+                    print(f"[{completed}/{len(sampled)}] "
                           f"{elapsed / 60:.1f}m elapsed, "
                           f"~{left / 60:.1f}m left", flush=True)
     except BaseException:
@@ -352,10 +379,12 @@ def main():
         # context.  Use the generation pipeline's tested bounded teardown so
         # a stalled reanalysis cannot consume the rest of an unattended run.
         from data_generation import terminate_pool
-        terminate_pool(pool)
+        if pool:
+            terminate_pool(pool)
         raise
     else:
-        pool.shutdown(wait=True)
+        if pool:
+            pool.shutdown(wait=True)
 
     kept = select_top(results, min(args.keep, len(results)), args.black_fraction)
     output_dir = os.path.abspath(args.output_dir)
@@ -390,6 +419,14 @@ def main():
     with open(os.path.join(staging, "reanalysis_summary.json"), "w",
               encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
+    if journal:
+        from match_evidence import atomic_json
+        summary["search_journal"] = str(journal.path)
+        summary["resumed_results"] = initial_completed
+        summary["searched_this_execution"] = len(sampled) - initial_completed
+        atomic_json(os.path.join(staging, "reanalysis_summary.json"), summary)
+        atomic_json(os.path.join(staging, "reanalysis_evidence.json"),
+                    journal.output_manifest(staging, args.keep))
     _publish_atomically(staging, output_dir)
     print(json.dumps(summary, indent=2))
 

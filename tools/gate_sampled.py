@@ -211,6 +211,8 @@ def run_gate(args):
                     *directory.glob("*.jsonl.manifest.json")]
         report["evidence_hashes"] = {str(p): file_hash(p) for p in evidence}
         atomic_json(report_path, report)
+        validate_report(report, args.model, args.bar_model, args.sims,
+                        args.target_per_side, args.par_games)
         if destination:
             atomic_json(destination, report)
         print(f"VERDICT: {report['verdict']}; report {report_path}", flush=True)
