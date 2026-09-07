@@ -335,7 +335,13 @@ def _binding_book_span(protocol):
 
 def _command_plan(args, generation, incumbent, architecture, paths,
                   replay_sources):
-    seed = args.seed + generation * 1009
+    # Explicit data namespaces permit large increments without changing the
+    # fixed initialization seed. None preserves historical resume plans.
+    data_seed_base = getattr(args, "data_seed_base", None)
+    seed = (args.seed + generation * 1009 if data_seed_base is None
+            else data_seed_base + generation * 1_000_000)
+    if data_seed_base is not None and seed + 999_999 >= 2**32:
+        raise ValueError("generation data namespace exceeds unsigned 32-bit RNG seeds")
     generated_commands = [[
         "src/data_generation.py",
         "--engine", args.engine,
@@ -801,6 +807,12 @@ def _acquire_lock(path):
 
 
 def _validate_args(args):
+    data_seed_base = getattr(args, "data_seed_base", None)
+    if data_seed_base is not None:
+        if not 0 <= data_seed_base < 2**32:
+            raise ValueError("data seed namespace must fit unsigned 32-bit RNG seeds")
+        if max(args.games, args.book_seed_games, args.league_games) >= 100_000:
+            raise ValueError("data job counts must remain below the 100000-seed stage spacing")
     for name in ("games", "sims", "workers", "epochs", "patience",
                  "batch_size", "warmup_epochs", "value_horizon",
                  "reanalysis_sample", "reanalysis_keep", "reanalysis_sims",
@@ -1328,6 +1340,8 @@ def build_parser():
                     help="first entry reserved for this generation; later "
                          "phases receive disjoint blocks automatically")
     ap.add_argument("--seed", type=int, default=RANDOM_SEED)
+    ap.add_argument("--data-seed-base", type=int, default=None,
+                    help="separate generation RNG namespace: base + generation * 1000000; training seed unchanged")
     ap.add_argument("--promote-on-pass", action="store_true",
                     help="archive a passing candidate and advance champion.json")
     ap.add_argument("--continue-after-reject", action="store_true",
