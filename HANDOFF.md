@@ -1,4 +1,4 @@
-# HANDOFF — 2026-09-06
+# HANDOFF — 2026-09-07
 
 **For the next agent or developer.** Read this first, then `CONTEXT.md` §2
 (durable reference) and §5 (the laws that will bite you). `REPORT.md` is the
@@ -8,16 +8,30 @@ evidence log; `DIRECTIVE.md` is a completed scope record, not a plan.
 
 ## 1. Where things stand
 
+**Current run: gen46**, `gen46_expanded_sampled_v3`, full iteration with explicit
+gen45 epoch-11 teacher (`models/candidates/bootstrap_main_gen_0045/arena_selected.pt`).
+`gen46_transfer_checks` is queued behind it for nonbinding matched-start comparisons,
+direct gen42/gen44 matches, replay census, a reproducible half-data game manifest,
+and both known human-game diagnostics. See `GEN46_RUN.md` for exact commands,
+counts, seeds and boundaries. No repeated assistant polling, no automatic promotion.
+
+Gen45 finished September 6 at 19:45, `passed_not_promoted`. Its two 400-game
+gen44 legs scored 79.25% / 82.125% overall, White 92.25% / 91.75%, Black
+66.25% / 72.5%. The later 200-game gen42 match scored 79.5% overall, White
+66%, Black 93%. Self-play: 78 White wins, 29 Black wins, 93 draws (actual-color
+White score 62.25%). These sampled scores are not perfect-play measurements;
+gen44 H2H endpoint-uniform diagnostic was 58.97%, versus 80.6875% sampled.
+
 | | |
 |---|---|
 | **Release** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
 | **Prior tournament leader** | `gen42` (`models/candidates/bootstrap_main_gen_0042/screen_nominee.pt`) — leads both September 4 ladders; gen44 now has strong direct results below |
-| **Newest model** | `gen44` epoch 9 (`models/candidates/bootstrap_main_gen_0044/best_value_net.pt`); completed 3,200-sim campaign; saved-epoch screen retained epoch 9 |
+| **Newest model** | `gen45` epoch 11 (`models/candidates/bootstrap_main_gen_0045/arena_selected.pt`); passed both gen44 confirmations; gen46 generating |
 | **Gate instrument** | **sampled free play v3** — `tools/gate_sampled.py`, fixed counts with separate dedup diagnostics. `gate_free.py` retains v2; book gate remains legacy |
 | **`gate.BAR`** | `vs_v24`. Read it, never infer it |
 | **Replay window** | **8** (`--replay-generations 8`) so replay spans gen36+ only |
 | **Anchor corpus** | **dropped** (`--anchor-data none`) |
-| **Suite** | 782 passing, 3 subtests; 172 existing PyTorch deprecation warnings |
+| **Suite** | 794 passing, 3 subtests; 172 existing PyTorch deprecation warnings |
 | **Branch** | `main`. Commits in the owner's name, **no `Co-Authored-By` trailer**. Never push unless asked |
 
 Never stage `src/play.ipynb` — its outputs are session noise.
