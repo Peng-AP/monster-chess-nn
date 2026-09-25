@@ -1,6 +1,11 @@
 # Monster Chess NN — context
 
-**September 25 current:** see [HANDOFF_20260925.md](HANDOFF_20260925.md) for the
+**September 25, later: v28 promoted** (gen50 epoch14 + calibrated value head,
+owner-approved); gate bar and champion pointer moved to v28. Root reorganized:
+docs in `docs/`, finished drivers in `campaigns/`, snapshot commit `b46ce1c`.
+Next step (owner focus, shippable engine): `docs/plans/SHIPPABLE_ENGINE_PLAN.md`.
+
+**September 25 current:** see [HANDOFF_20260925.md](HANDOFF.md) for the
 consolidated state and proposed next steps. Value calibration completed
 September 17 at 09:16:27: 3,696 games, continuation nominee 58.4375%/800 vs
 unchanged gen50 epoch14 at 3,200 simulations, but 49.375%/160 at 12,800.

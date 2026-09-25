@@ -3041,7 +3041,7 @@ The final audit is explicitly retrospective/nonbinding and leaves original
 reports unchanged.
 
 After that campaign finished, the pipeline default changed to the separately
-declared [sampled v3 protocol](SAMPLED_GATE_PROTOCOL.md): 400 fresh self-par
+declared [sampled v3 protocol](../protocols/SAMPLED_GATE_PROTOCOL.md): 400 fresh self-par
 games and two fixed H2H legs of 200 games per color. Repeated openings retain
 their frequency; novelty, collisions and dedup remain diagnostics. Thresholds
 are aggregate above .5 and each color at least self-par minus .05 on both legs.

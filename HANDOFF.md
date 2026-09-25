@@ -1,1012 +1,573 @@
-# HANDOFF — chronological project record
-
-## September 25 — current consolidated handoff and cleanup
-
-Start with [HANDOFF_20260925.md](HANDOFF_20260925.md) for the current state,
-models, recipes, results, operating constraints and proposed next steps.
-The value-calibration campaign completed September 17 at 09:16:27, not still
-running: 58.4375%/800 vs unchanged epoch14 at 3,200 simulations, but
-49.375%/160 at 12,800. No promotion or follow-up queued. Public release remains
-v27; canonical gen50 remains epoch14. See
-[VALUE_CALIBRATION_RESULTS.md](VALUE_CALIBRATION_RESULTS.md).
-
-September 25 cleanup removed regenerable caches and archived completed logs,
-preserving source, models, data and evidence. See `CLEANUP_20260925.md`.
-Historical entries below describe the state at their recorded time.
-
-## September17 02:20 — value-calibration launch record (completed 09:16)
-
-Owner authorized another PIW after checkpoint recovery did not fix balance.
-`VALUE_CALIBRATION_PLAN.md`, `run_value_calibration.py`, `value_calibration.py`.
-Three arms: unchangedepoch14, frozen-backbone/policy value-head fit on replay,
-and matching fit with fresh deeper-outcome data. No architecture/search changes.
-192newparent games +384full-history cross-model continuations; roots selected
-by generic model/search disagreement, balanced Black/White-first/White-second.
-Family-linked splits and exact encoded-input leakage filtering. Strict completed
-capture outcomes, not root values as labels. Check frozen tensors and rawpolicy
-equality. Allarms get normal-play screens; independentgate is vsunchangedepoch14,
-plusgen49/v27/B2/self and deepgen49/epoch14checks. Total3,696games.
-Newroot-level scripts leave earlier source pins intact. Full rehearsal passed:
-983tests+3subtests,120games,two fits,all26receipts,resume and policy equality.
-Manual checkpoint comparison confirms only6value-head tensors changed in
-each fitted arm; every other parameter/buffer bit-identical. Production launched
-02:19Eastern as `value_calibration`,PID27800,log `logs/value_calibration.log`.
-Long completion waits and milestone checks; no source changes midrun. Evidence namespace
-`benchmarks/value_calibration_20260917`. No old files/models overwritten.
-
-## September17 01:16 — checkpoint recovery COMPLETE, no replacement
-
-See `GEN50_RECOVERY_RESULTS.md`. All3,568games+72probes completed in~6h9m.
-Screen selectedepoch15; independentgen49 gatePASS73.9375%/800games,
-White50%,Black97.875%. Whitevsv27 88.75%,vsB2 90%. At12,800vsgen49,
-White26.25%/Black99.375%: NOT a clean balanced recovery. No model overwritten
-or promoted; existinggen50arena_selected staysepoch14. No further run queued.
-All25productionreceipts/frozeninputs/nomineehash verified; conditional games
-replayed; probe hashes verified. Evidence `benchmarks/gen50_recovery_20260916`.
-
-Crossover points tovalue/search interaction in thec5 branch:epoch14rawprior
-only2.25%, full3,200search35.7%; samepolicy/gen49value reduces to4.81%.
-But gen49value also favorsc5 atdeepersearch, so no simple transplant remedy.
-Next recommended research is generic search-backed outcome VALUE calibration
-with frozen-policy controls, not move bans/architecture rewrite. Not queued.
-
-## September16 evening — gen50 complete, checkpoint recovery rehearsing
-
-Gen50 COMPLETE18:08, selectedepoch14. Independentgen49 legs76.375%/73.625%,
-combined75% (W56.75%,B93.25%). Deepgen49 54.6875%. GatePASS but White
-vsv27 84.5% andvsB2 91.5% are belowgen49's earlier samples. No promotion.
-See `GEN50_RESULTS.md` for scores, selfplay and localized White investigation.
-
-Owner authorized PIW on recommendations. `GEN50_RECOVERY_PLAN.md`,
-`run_gen50_recovery.py`, `recovery_probe.py`: fixed six-model matched-root
-study and normal screens; diagnostic gen49/epoch14 policy-value crossover;
-fixed balanced nomination rule followed by1,840fresh confirmation games.
-Total3,568games+72probes, no retraining or model overwrite. Full rehearsal
-COMPLETE:983tests+3subtests,172games/24probes, same-model native bridge parity,
-all26receipts and frozen inputs verified, clean resume passed. A measured tiny
-gateFAIL correctly continued through every confirmation branch. Production
-launched19:07Eastern as `gen50_checkpoint_recovery`,PID11228,
-log `logs/gen50_checkpoint_recovery.log`. Long waits; no source changes midrun.
-Evidence `benchmarks/gen50_recovery_20260916`. Old frozen tools/tests unchanged.
-
-## September16 — gen50 deeper-target iteration
-
-September15 corrected mainline study and extension both COMPLETE at19:51;
-1,999 games plus108probes, all12production stage receipts checked. At12,800
-gen49 scores78.4375%vsgen48 (W98.75/B58.125),99.375%vsB2; deeper vs shallow
-gen49 scores65.625%. Gen49 deep self14W/36B/110D. B2White loses64/64additional
-...d5 continuations at12,800. This is search-dependent behavior, not proof
-of perfect play or a simple first-move fault. No promotion.
-
-Owner authorized tonight's plan/implement/wait. New `GEN50_PLAN.md` and
-`run_gen50.py`: gen49teacher, same2800mainline+400fork recipe, forks and
-reanalysis doubled to12,800, unchanged scratch training and eight-gen replay.
-Full isolated rehearsal then canonicalgen50, standard3,200gate and diagnostics,
-plus12,800H2H/B2/self;2,280postselection games, all branches regardless of score.
-Rehearsal COMPLETE:982tests+3subtests,28generated games, one-epoch training,
-selection and36independent test games. All9receipts verified and rehearsal
-resume passed. Production launched00:50Eastern as `gen50_deep_targets`,
-PID8276, log `logs/gen50_deep_targets.log`; starts withgen50generation.
-Expected12–18hours; no deadline-based truncation, no automatic promotion.
-New root-level scripts/recipes leave previous tools/tests source pins intact.
-Outputs `benchmarks/gen50_20260916`; no old results deleted or overwritten.
-
-## September15 02:57 — corrected counterplay v2 launched
-
-Stopped ONLY the original `mainline_counterplay` process tree (verified PID69152)
-because equal-model conditional games shared a search object across colors,
-unlike the normal match harness. No files deleted. Original completed tasks
-remain under `benchmarks/mainline_counterplay_20260915`; marked
-`stopped_protocol_mismatch`, not a completed strength study. No original
-normal-start test blocks had begun; gen49's prior strength campaign is unaffected.
-
-Fixed separate White/Black tree ownership and added a direct equal-checkpoint
-regression test.978full tests+3subtests pass. New source/plan uses a fresh namespace
-`benchmarks/mainline_counterplay_20260915_v2`; full rehearsal completed169games/
-31probes, all10receipts and source hashes verified. An additional117-ply native
-game exactly matched the normal benchmark's moves, states and outcome at the
-same seed, confirming separate-color tree behavior. Root probes max4workers include
-four full204,800-simulation preflight tasks. All production counts/seeds/models
-unchanged; rerun cleanly, do not import/relabel the old tasks. Expected about
-one-hour delay beyond the original guide. Corrected production launched02:57
-as `mainline_counterplay_v2`, log `logs/mainline_counterplay_v2.log`. No model
-changes and no promotion. See `MAINLINE_COUNTERPLAY_PLAN.md`.
-The01:41 launch below is history, not the currently active production run.
-
-## September15 01:41 — eight-hour counterplay study launched
-
-Gen49 campaign is COMPLETE; see `GEN49_RESULTS.md` for final numbers and the
-qualified mainline interpretation. Epoch7 passed independent gen48 legs95.25%/
-92.75%, B2 overall83.75%, v27 98.25%. Gen49 self14White/136Black/50draw. No promotion.
-The owner's human playtest also feels much stronger. The gen49 status prose
-below is now historical, not an active job.
-
-Owner authorized a new roughly eight-hour plan -> implementation -> long waits.
-`MAINLINE_COUNTERPLAY_PLAN.md` freezes gen48/gen49/B2 full-history cross-play
-after e4+d4 ...e5/...d5, the dominant B2 drawing continuation, deeper root probes,
-and four normal-start search-budget checks. No gen50 training, forced-variety
-expansion, rule change, promotion, deletion, commit or push.
-Implementation: `tools/mainline_study.py`, `tools/start_mainline_study.py`.
-Evidence root: `benchmarks/mainline_counterplay_20260915`.
-Managed `mainline_counterplay`, PID69152, log `logs/mainline_counterplay.log`.
-Production launched01:41Eastern.977tests+3subtests passed; full `rehearsal_v2`
-completed169games and31root probes, including four real204,800-simulation
-probes (27-43seconds each). All10rehearsal receipts and pinned inputs checked.
-The first rehearsal also passed and is preserved; the second added four-worker
-root-probe concurrency and the full-budget memory preflight. No production error.
-Expected production:1,423games+108probes, all prescribed blocks regardless of
-outcomes, then stop. Source frozen; long process-completion waits and infrequent
-health reads. The normal free-game auditor now supports explicit unequal simulation
-budgets and does not mislabel same weights at unequal search as equal-agent selfplay.
-
-## September14 02:33 — mainline-focused gen49 launched
-
-**04:36 milestone:** all 1,200 gen48 independent normal-start games completed
-and replay-audited. H2H vsgen47: 89.25% and92.25% in200game legs, combined90.75%
-(White85.5%,Black96%). Gen47 actual-color self-par: White15.5%,Black84.5%/200.
-Held-out B2/200 each: gen48 76.25% (White59.5%,Black93%) versus gen47 39.25%
-(White3.5%,Black75%). Gen48 self/200:82Whitewins,67Blackwins,51draws,
-White score53.75%. This establishes strong normal-start transfer, superseding
-the earlier broad-strength concern drawn from BOOK-only evidence. It does not
-isolate whether variety helped/hurt training, or establish perfect-play strength.
-Evidence: `benchmarks/gen49_mainline_20260914/production/gen48_free_results.json`.
-Gen49 generation now underway,650/2800ordinary games at this check; no failure.
-Total device VRAM9,546MiB, GPU95%. Code unchanged.
-
-Owner authorized plan -> implement -> long waits, with no further forced-variety
-expansion. New frozen plan: `GEN49_PLAN.md`; launcher `tools/start_gen49.py`.
-Managed `gen49_mainline` launched; log `logs/gen49_mainline.log`.
-954 tests + 3 subtests passed. Full isolated `rehearsal_v2` completed 28 generated
-games, training/selection and 48 audited pre/post-test games; all 10 receipts
-and pinned inputs validated. First rehearsal's explicit/default simulation
-metadata mismatch was fixed; its evidence is preserved separately. No production
-failure or restart. First complete independent NORMAL-START gen48/gen47/B2/self
-research tests, then 2,800 gen48 normal-start selfplay + 400 deeper continuations,
-same architecture/training and rolling eight-generation replay. No new prefix
-or league games. Standard sampled gate plus B2/v27/self always run after selection,
-including after a measured gate FAIL. No promotion, deletion, commit or push.
-Primary evidence: `benchmarks/gen49_mainline_20260914/production`; canonical
-`iterations/gen_0049` starts after the 1,200-game gen48 research block. New
-candidate then receives 1,800 independent games after checkpoint selection.
-Long process-completion waits, infrequent health checks; no file-watcher loop.
-
-Important correction to the paragraph below: ALL 896 independent gen48 tests
-used fixed book starts. The flat B2 comparison does not establish flat transfer
-from the normal starting position. Free play remains primary by owner decision;
-books are secondary. The prior proposed more-diverse teacher/opponent mix is
-superseded by this mainline experiment. Prior results/artifacts stay unchanged.
-
-## September13 afternoon — GPU strength track resumes
-
-**FINAL September14 00:05: COMPLETE.** See `GPU48_RESULTS.md` for full evidence
-and proposed next steps. Gen48 epoch17 won both fresh256game matches vsgen47:
-54.6875% and53.125%; combined53.90625%, paired95%CI[52.1484,55.7617]%. But B2
-transfer was flat: gen48 51.9531% vsgen47 52.7344%; White37.5% for both, Black
-66.4063% vs67.9688%. Matched overall delta−0.78125pp,95%CI[−6.25,+4.6875]pp.
-Common64start selfplay: gen48 11White/33Black/20draw; gen47 13/35/16, identical
-White score32.8125%. Modest repeatable H2H gain, NOT a demonstrated broad,
-both-color upgrade. No promotion; publicv27/gen46 and referencegen47 unchanged.
-
-All896final games replay-audited, all8stage receipts and pinned provenance
-verified after completion.1,160selection games;931Python tests+3subtests.
-Managed `gpu48_campaign` exited; no jobs from this campaign or next experiment
-remain queued. Production took11h22m without failure/restart. Canonicalgen48
-intentionally remains `partial` after checkpoint_screen; research summary is
-`complete`, NOT an official binding-gate pass. Candidate epoch17:
-`models/candidates/bootstrap_main_gen_0048/arena_selected.pt`, SHA256
-`a8c074390c93390ac974b1f58076a86aa0525d9a34f7cff66e12442bb7e07722`.
-The dated checkpoints below are history, not current running jobs.
-
-Owner: "same workflow, go" after questioning CPU strength progress. Current
-plan is `GPU48_PLAN.md`, superseding the CPU follow-up recommendation below.
-CPU code/models remain intact; no new CPU strength experiment is queued.
-No deletion, promotion, commit or push. Public release v27/gen46; gen47 arena
-epoch17 remains the frozen strength baseline.
-
-**21:06 checkpoint: training completed25epochs (early stopping), checkpoint
-screen running.** Training11693seconds (~3h15); reanalysis4536.6seconds;
-processing128.8seconds; composition59.6seconds. Probing8/25checkpoints at3200:
-epochs9,10,13,14,15,16,17,25. Offline-best epoch15 is not a strength verdict;
-nomination still depends on games. No post-selection results yet. All3200games completed
-without failures; generation13563seconds. All24000deep searches finished.
-Coverage sampler used all2800original source-game families:24000roots from
-231679eligible rows, max10roots/family (cap16), exactly14400Black/4800White-first/
-4800White-second. Retained12000teachers span2783families, max10/family:
-7200Black/3225White-first/1575White-second. New processed corpus487358rows
-INCLUDING augmentation and24000augmented teacher rows; not487358independent
-positions. Generation auditPASS, all12000teacher split links checked. These
-are coverage/integrity results, NOT strength evidence. Training remains
-scratch30epochs/patience10, unchanged architecture/optimizer. Managed PID2120
-remains active, no source/recipe change or extra experiment added. VRAM was
-under10GiB in generation, ~6.5GiB during reanalysis, ~2.7GiB at first training
-epoch; do not change batch size to fill VRAM and confound this training recipe.
-
-22:11resource note: device-wide VRAM reached~13GiB after a separate graphics
-workload appeared. Windows per-process counters for the eight Python game
-workers totaled~7.2GiB (roughly0.9GiB each), within the task's12GiB target.
-Do not terminate other applications or silently reduce this run's simulations.
-Selection games looked promising, but no independent confirmation result was
-available at this checkpoint. Keep final testing unconditional.
-
-Implemented `tools/reanalyze_coverage.py` (opt-in deterministic transitive-family
-sample cap16, 60% Black, phase/family census) via `iterate_stateful.py`;
-gen48/rehearsal recipes; `tools/start_gpu48.py` automatic guarded chain with
-immutable input receipts and full game replay audits. Existing GPU architecture,
-scratch30epoch/patience10 training and bounded checkpoint selection retained.
-Fixed common-selfplay helper's capture-only accounting: +/-0.5 caps are draws.
-Read-only check of all13 JSONL logs in the September10 B2 confirmation found
-zero +/-0.5 results, so that historical comparison is NOT affected by this fix.
-
-Full-depth64game pilot finished12:29, 64/64 saved, no failures,358.05seconds.
-Per preregistered sizing rule, final production3200 games:1600free+800fresh+
-400balanced older-opponent games+400 completed forks. Ordinary1600/forks6400
-sims. Reanalysis24k sample/12k retained@6400; no B2 training opponent/teacher.
-Focused34 tests pass; both real command plans pass dry-run.402GiB disk free.
-
-At12:42 Eastern the managed `gpu48_rehearsal` completed successfully:931Python
-tests plus3subtests passed (172existingPyTorch deprecation warnings);28game tiny
-iteration ->all six post-selection branches (20 games), all replay-audited.
-The20 coverage roots represented15original families; retained10 teachers from8
-families,6Black/4White; all data-family and training/selection checks passed.
-
-At12:43 Eastern launched managed **`gpu48_campaign`, PID2120**, log
-`logs/gpu48_campaign.log`, same launcher without `--rehearsal-only`;
-matching receipts skip completed rehearsal work. It chains
-the canonical gen48 through checkpoint_screen, then896 fixed games regardless
-of score:256+256 separate H2H legs vsgen47,128/model vsB2,64/model selfplay.
-Canonical status intentionally `partial`; separate research summary `complete`
-does not mean accepted/promoted. Output `benchmarks/gpu48_20260913`.
-
-Waiting: use OS process completion, not filesystem watchers or per-game probes.
-One heavy GPU job,8workers, existing pinned-input optimization. Source/model/
-recipe changes fail closed; partial training is retained, never restarted
-automatically. An inconclusive result does not launch another parameter sweep.
-
-## September13 overnight — search-backed evaluator training
-
-**FINAL06:17: COMPLETE.** See `SEARCH_TARGETS_RESULTS.md`. All208 final real games
-and two separate16game rehearsals passed replay audits. Final managed run was
-`search_targets_recovered_v2`; no jobs remain active/queued. Ranked CPU versus
-gen47 at2s:43.75% vs unchanged39.0625%, White25% unchanged, Black62.5% vs53.125%.
-Paired+4.6875pp,95%CI[-6.25,+17.1875]pp: inconclusive, not a both-color upgrade.
-RankedvsB2:35.4167%,White16.667%,Black54.167%. Same12start selfplay@1s: ranked
-7White/3Black/2draw; gen473White/4Black/5draw. No promotion/default switch.
-Releasev27/gen46 and GPUgen47 remain unchanged. No deletions/commits/pushes.
-
-Implemented training-only native minimax targets / exact leaf lineage plus
-matched raw/backed/ranked CPU training and safe recovery. All12epochs perarm
-finished; epoch1 selected in each. An epoch already resampled the new22,742
-TRAIN states about32times because it is one728,450-row original-replay pass.
-Next recommendation: more independent actual CPU NN leaves, consistent target
-horizon, controlled new-state exposure, then fresh both-color play checks.
-The88.8% one-turn-successor mixture is a calibration hypothesis, not a proven
-cause. No follow-up experiment was launched.909Python+3subtests/26Rust passed;
-final default search snapshot parity also passed. The checkpoints below are
-chronological history, not current active jobs.
-
-Owner authorized overnight plan → implement → long waits / completion events.
-Current plan: `SEARCH_TARGETS_OVERNIGHT_PLAN.md`; output root
-`benchmarks/search_targets_20260913`. No promotion/deletion/commit/push.
-Playing architecture and CPU search remain absolute840→512→32→1, baseline.
-Three matched fine-tuning arms from CPUleafepoch3: raw targets, search-backed
-targets, and backed targets plus sibling ranking. Same data,12epochs,optimizer,
-replay anchor and validation nomination; all nominees must receive actual games.
-
-Important discovery: existing GPU PUCT does not use full CPU repetition history
-inside search and its cap labels differ. Implemented training-only full-width
-two-completed-turn `LabelTree` with exact CPU-rule cap/repetition/capture handling
-and batched gen47 GPU frontier values, rather than silently mixing those rules.
-Teacher estimates remain imperfect. Actual CPU sample paths are retained with
-optional `collect_leaf_paths`; old sampling return tuples remain compatible.
-
-Saved old native runtime/source and baseline under the new benchmark root.
-Default fixed-node parity passed.26Rust/12focusedPython tests passed. A first
-pilot safely stopped on Windows source-path spelling; its evidence is retained.
-`pilot_v2` passed24roots/66trees/586records in12.33s; no capped trees. Mean absolute
-raw/backed disagreement0.214 (not proof of correction). Full planned size is
-1024TRAIN +256VAL roots, up to2 actual CPU leaves perroot, up to8sibling states
-per teacher root, followed by exact-input dedup/opposite-split exclusions.
-
-Managed `search_targets_rehearsal` passed the complete tiny chain, including
-all16 replay-audited games. Real `search_targets_campaign` launched01:19 Eastern,
-PID62476; output `benchmarks/search_targets_20260913/campaign`, log
-`logs/search_targets_campaign.log`. Its source-identical success guard passed.
-The real chain conducts full
-generation/preparation, three12epoch training runs, a fresh randomly sampled
-mixed-gen47/B2 opening book,24games per unchanged/raw/backed/ranked arm@300ms,
-32fresh matched games per unchanged/best-trained@2s regardless of development,
-24B2games@2s and12selfgames each for trained/gen47@1s, then replay audit.
-One heavy stage / one resident match worker, <=12GiB allocated VRAM. Do not edit
-pinned native/runtime/Python dependencies once rehearsal/campaign is running.
-Use completion waits, not per-game probes. Older sections below are history.
-
-01:27 checkpoint: full generation complete1280roots/3770trees/33652records,
-5,264,384GPU frontier evaluations in338.69s; zero capped trees. Prepared
-22742TRAIN/5712VAL unique states,12890/3274 ranking pairs; four TRAIN inputs
-have repeated backed-target spans>0.25 (history/horizon ambiguity is reported).
-All three full12epoch runs completed and nominated epoch1 under the shared
-validation criterion. Native parity max<3e-7; peak allocated VRAM3.10GiB.
-Candidates: `models/candidates/search_backed_{raw,backed,ranked}_001/epoch_001.bin`.
-Opening-book/game stages are now running. Rehearsal and real full suites each
-passed905 tests plus3subtests. No strength conclusion yet.
-
-01:49 recovery: original campaign stopped during development_raw on Windows
-PermissionError replacing status.json. The observer may have triggered the
-reader-lock race. Data, all weights, frozen book and old games are preserved.
-atomic_json now retries PermissionError for at most1s; four focused tests pass,
-including a real Windows reader lock. search_targets_campaign --reuse-from
-validates prepared data, training recipes, model/book hashes and restricts source
-differences to receipt I/O and orchestration. All games restart in a new folder,
-with old interrupted-run games excluded. `search_targets_recovery_rehearsal`
-PID20056 is exercising this path. `search_targets_recovered` PID60588 is queued
-behind it and requires its source-identical successful receipt. Its new output
-is `benchmarks/search_targets_20260913/campaign_recovered`; log is
-`logs/search_targets_recovered.log`. Use process waits, not the status watcher.
-No playing changes and no discarded data/models.
-
-01:50 recovery-final checkpoint: the first recovery rehearsal safely caught a
-relative/absolute book-path lookup mismatch; normalized recorded paths. Its
-dependent queue could not pass the missing-success guard. The second recovery
-rehearsal (`recovery_rehearsal_v2`) PASSED909 tests +3subtests and16 replay-audited
-games. Current managed real run is `search_targets_recovered_v2`, PID24548,
-queued behind that completed rehearsal. Authoritative real game output will be
-`benchmarks/search_targets_20260913/campaign_recovered_v2`; log
-`logs/search_targets_recovered_v2.log`. Original data/weights/book unchanged.
-Earlier run names above are retained as failure/recovery history, not active
-strength evidence. Wait on PID24548 completion; no live status-file observer.
-
-02:35 completed milestone: all96 real development games finished in recovered_v2.
-Overall unchanged27.083%, raw20.833%, backed22.917%, ranked25.000% againstGPUgen47
-at300ms on common fresh starts. White/Black respectively: unchanged29.167/25.000,
-raw8.333/33.333, backed25.000/20.833, ranked25.000/25.000. No improvement established.
-Best trained is ranked; unchanged wins overall. As predeclared, BOTH unchanged
-and ranked still receive32 fresh common2s games, followed by rankedvsB2 and
-common selfplay. Real chain remains active; process-completion wait is cell416
-(terminal session79256, waiting on managed PID24548). No recipe/gate changes.
-
-Read-only target inspection is recorded in `SEARCH_TARGETS_DATA_DIAGNOSTIC.md`.
-Before dedup,88.8% of records are one-turn successors; source / actual NN-leaf
-roots have two-turn targets. Only8.54% are exact±1, so the data is not mostly
-trivial solved captures. Successor means shift toward the side to move by about
-0.15, unlike the two-turn root means. Mixed-horizon calibration is a hypothesis
-to test next if games fail, not a proven explanation or a mid-run recipe change.
-
-05:57 completed milestones: fresh common2s confirmation finished32games perarm.
-Unchanged11W/3D/18L39.0625%, White25%,Black53.125%; ranked10W/8D/14L43.75%,
-White25%,Black62.5%. Paired+4.6875pp,95%CI[-6.25,+17.1875]pp: inconclusive.
-White score equal but outcomes differ (unchanged3W/2D/11L vsranked1W/6D/9L),
-not the identical-White-outcomes result from the previous scaling campaign.
-RankedvsB2 completed24games:8W/1D/15L35.4167%,White16.667%,Black54.167%.
-Selfplay and final audit remain; wait on the same managed PID24548/cell416.
-No promotion, new experiment, threshold change or fresh training was launched.
-
-## September12 afternoon — CPU cost and search scaling
-
-**FINAL22:08: COMPLETE.** `SEARCH_CPU_SCALING_RESULTS.md` is the final report.
-160 real games plus14 rehearsal games passed replay audits; no proof
-contradictions. Baseline/optimized/incremental development scores42.1875% /
-39.0625% /42.1875%; baseline selected by tie rule. Fresh matchedCPU2s vsCPU8s
-againstGPUgen47fixed2s:42.1875% ->46.875%,White28.125% unchanged,Black56.25%
-->65.625%. Paired overall+4.6875pp,95%CI[-3.125,+14.0625]pp: inconclusive.
-Extension did not trigger. On first shared CPU roots, depth6.156 ->6.625turns;
-no node/depth ceilings in scaling. No queued/running jobs, promotion, training,
-deletions, commits or pushes. Next recommendation is training-only search-backed
-and move-ranking targets plus failure analysis, not another throughput-only
-campaign. The dated checkpoints below are historical.
-
-Owner: "Same process: plan -> implement -> wait." Current plan is
-`SEARCH_CPU_SCALING_PLAN.md`; outputs `benchmarks/search_cpu_scaling_20260912`.
-The earlier CPU/GPU campaign COMPLETED successfully at10:17 Eastern:
-guided46.875% versus unchanged CPU47.656% over64 common games at2s againstgen47.
-Guided White26.5625%,Black67.1875%; unchanged White31.25%,Black64.0625%.
-No established strength gain; PVS/cache fixed-depth speed gain15.7% did not yet
-receive its own pure-CPU2s confirmation. Release remainsv27/gen46.
-
-New measured cost profile: NN evaluation61.98% of instrumented search time;
-move generation6.13%. Instrumentation overhead5.36%, default fixed-node parity
-unchanged. Implemented opt-in lazy first-layer feature deltas,32-update refresh,
-relative-model direct fallback, numerical diagnostics and per-player clocks /
-CPU node ceilings.26Rust and18focused Python tests pass. Managed validation
-`cpu_scaling_validation` is active; final `validation.json` nominates an optional
-incremental arm only after drift and full-search speed checks.
-
-Next chain: complete tiny rehearsal -> baseline / existing optimized / optional
-incremental32games each against GPUgen47 at2s on336..351 -> freeze best2s arm ->
-matched32games each atCPU2s andCPU8s versusfixedGPU2s on352..367. Conditional
-extension to368..383 only if overall gain>=10pp and Black delta>=0.100M CPU
-node limits both clocks; node-bound evidence stops the chain. Final replay audit.
-Unequal-clock scaling is diagnostic, not a promotion gate. One heavy job at a time,
-one resident match worker,12GBVRAM ceiling, source hashes and heartbeat receipts.
-Do not edit pinned dependencies once rehearsal starts. No training, model
-promotion, deletions, commits or pushes in this block. Prior sections are history.
-
-UPDATE15:05: validation and complete tiny rehearsal passed.893Python+3subtests,
-26Rust. Incremental max eval error1.252e-6; fixed-depth error<=1.193e-7 with no
-changed moves on18replay roots. Incremental optimized saved6.04% elapsed versus
-existing optimized search,18.69% versus default. Six timed roots averaged depth
-6.0 at2s and6.667 at8s forbothoptimizedvariants. Three arms qualify for games:
-baseline, optimizedPVS/freshTT131k, same+incremental. Managed
-`cpu_scaling_campaign` is queued after the successful rehearsal; source/model
-hashes are frozen.14 tiny rehearsal games passed full replay audit and must not
-be interpreted as strength evidence. The real campaign is160games minimum,
-224if the matched8s extension triggers. Follow milestone receipts, not each game.
-
-UPDATE16:29: baseline development completed32games in~83minutes:12W/3D/17L,
-42.1875% overall,White9.375%,Black75%. Total outcomes were4White wins/25Black
-wins/3draws on16paired starts. No proof contradictions or node-limit hits; three
-Black decisions reached the default12turn depth ceiling. The optimized arm
-started automatically on the identical starts. Do not compare these raw color
-scores to different opening sets; paired-arm differences are the target evidence.
-
-UPDATE17:48: existing optimized search completed32games:11W/3D/18L,39.0625%,
-White9.375%,Black68.75%. Paired delta versusbaseline-3.125pp,95%bootstrapCI
-[-10.9375,+3.125]pp; White unchanged,Black-6.25pp (one win). Inconclusive, not
-established improvement or regression. No proof contradictions / node-cap hits.
-`development_incremental` started automatically; frozen2s/8s scaling follows
-the best development arm. Do not equate game-average NPS/depth on different
-reached positions with a controlled same-position performance measurement.
-
-UPDATE19:09: all96 development games completed. Incremental12W/3D/17L,
-42.1875%,White9.375%,Black75%: exactly tied baseline by color and overall.
-Paired incremental-baseline delta0pp,95%CI[-7.8125,+6.25]pp. No demonstrated
-strength gain from either optimization. Tie rule selectedBASELINE. `scaling_2s`
-has begun onfresh352..367, then the same baseline at8s versusGPUgen47fixed2s.
-The conditional extra32games perclock on368..383 remains governed by the
-predeclared>=10pp overall / nonnegative Black delta trigger. Do not promote.
-
-UPDATE20:08: fresh2s scaling control completed32games in~58.6minutes:
-13W/1D/18L,42.1875%,White28.125%,Black56.25%. No proof contradictions,
-node-limit hits or depth-ceiling completions. The matchingCPU8s run against
-fixedGPU2s has started. Its32games, conditional extension and final audit remain.
-
-## September12 overnight — CPU efficiency and GPU cooperation
-
-Owner authorized roughly eight hours from02:26 Eastern. Current concrete plan:
-`SEARCH_CPU_GPU_PLAN.md`. Previous leaf campaign AND extended campaign completed
-and passed replay audits. Leaf epoch3 scored43.75% vs GPU gen47 at2s over64games,
-original32.81% on identical starts; CPU-only leaf scored71.875% over64games at300ms.
-Self2s leaf3White/11Black/2draws, gen47 4White/9Black/3draws on common16starts.
-No engine has been promoted; v27 remains the release, gen47 the GPU reference.
-
-Implemented optional PVS, fresh-per-iteration searched bounds, bounded TT capacity,
-root policy ordering and phase/saturation telemetry in native alpha-beta. Defaults
-preserve saved fixed-node decisions/nodes.26Rust tests and focused Python tests
-pass, including PVS versus exhaustive minimax in all phases. Snapshot at
-`benchmarks/search_cpu_gpu_20260912/runtime_before`. The first shallow profile was
-~18% faster; a broader profile was~8% faster, so those are preliminary. A deeper
-final profile is running under `cpu_workload_final` before freezing nomination.
-
-`src/cpu_search_engine.py` is the reusable adapter: recurring GPU policy time is
-deducted from the per-move clock; depleted clocks return legal unvalued fallbacks.
-`tools/search_cpu_gpu_match.py` supports CPU baseline/nominee, GPU root ordering,
-GPU-White/CPU-Black routing, direct CPU duels and normal GPU PUCT. Sources/models,
-actual clocks, per-player backend/depth and outcomes are recorded.
-
-`tools/search_cpu_gpu_campaign.py` is prepared: profile receipt -> full suite ->
-tiny complete-game rehearsals and audit -> direct CPU screen ->32games/mode
-againstgen47 on288..303 -> fresh64games/control at2s on304..335 ->B2 and common
-selfplay ->replay audit. Stage heartbeat every60s, immediate child-exit checking,
-4h stage safety timeout, failure receipts. Managed launch after final profile;
-do not change pinned code/runtime once that campaign starts. No deletions,
-retraining, promotion, commits or pushes in this session.
-
-UPDATE02:43: final profile completed, selectedPVS+freshTT+131072entries. Equal-
-depth time7.8665s ->6.6346s (1.186x), but nine timed probes' average completed
-depths unchanged.26Rust/886Python+3subtests and four complete-game rehearsals
-passed. `search_cpu_gpu_campaign` is active in cpu_vs_cpu, then automatically
-chains development, fresh confirmation, B2, selfplay and replay audit. Runtime
-is now pinned; do not rebuild or edit its dependencies mid-campaign. The plan
-has the detailed results. This is measured efficiency, not yet measured strength.
-
-## September11 extended session — representation rejected, leaf audit active
-
-UPDATE: diagnostic completed successfully; detailed findings and next protocol
-are in `SEARCH_FIRST_LEAVES.md`. Actual-leaf validation compression MSE is
-0.224White/0.099Black vs0.050/0.013 at stored roots. Unseen input columns affect
-only29/15,812 absolute leaves, so they are not the leading explanation.
-Current managed run is `search_leaf_corpus` (2048TRAIN/512VAL roots); queued
-`search_leaf_campaign` requires its success receipt, then tests -> matched
-replay/leaf fine-tuning -> original/replay/leaf games -> conditional confirmation
--> matched2second games -> common selfplay -> human diagnostic. New models are
-`search_leaf_replay_001` and `search_leaf_leaf_001`; no production promotion.
-Do not edit pinned runtime/training/match scripts after campaign starts.
-
-Further UPDATE: corpus completed156,377 leaves; after input-identity dedup and
-opposite-split exclusions124,515TRAIN/30,834VAL leaves remain. Full suite875tests
-+3subtests passed. Replay nomineeepoch2, leaf nomineeepoch3; export max error
-<3e-7 and peak VRAM3.736GB. Leaf validation MSE0.1965 ->0.1075 while original
-root MSE0.0313 ->0.0371: promising compression tradeoff, not yet a strength result.
-Campaign is in development games. `search_leaf_extended` is queued after its
-success and replay audit: fresh matched64games/control at2seconds, B2, CPU-only,
-and matched2second selfplay. See SEARCH_FIRST_LEAVES.md for exact protocol.
-Both chains persist independently of this conversation; no per-game agent polling
-is necessary. Failures write failure.json and stop downstream work via receipts.
-
-Owner granted roughly eight more hours from13:18 Eastern, with low-frequency
-milestone monitoring. The frozen representation campaign is complete: absolute
-6/32 points (18.75%), king-relative5/32 (15.625%), delta-3.125pp. Neither is a
-challenger. Conditional confirmation correctly did not trigger. Keep absolute512
-as the experimental control; gen47 is still the reference and v27 the release.
-
-Optional native leaf reservoir now implemented and built (default disabled).
-It samples uncached, non-proven NN evaluations with independent RNG, preserves
-raw EP and reports raw unclipped values. Fixed-node decisions/nodes/cache hits
-match sampling-disabled search in all three phases.24Rust and18focused Python
-tests pass. Pre-change runtime saved in runtime_before_leaf under the existing
-search_first benchmark root. Active managed diagnostic: search_leaf_audit,
-output benchmarks/search_leaf_audit_20260911. It uses only original TRAIN/VAL
-roots with full recorded history; no test/human/gate positions become training.
-
-Next: inspect actual-leaf versus stored-root compression error and feature
-coverage (tools/search_feature_coverage.py), then choose a bounded training
-control if evidence warrants. Potential EP/unseen-feature mismatch is only a
-hypothesis, not an established explanation. Unlinked search_window.rs prepares
-exact PVS helpers, not yet enabled or tested. Any search optimization must pass
-fixed-depth parity and measured time-to-depth before play-testing. No runtime
-changes while a diagnostic/match is active. No promotions/deletions/commits.
-
-## September11 afternoon — king-relative control started
-
-Owner authorized the next focused evaluator experiment. Current plan and exact
-controls are in `SEARCH_FIRST_RELATIVE.md`. Overnight validation and label-control
-chains completed around04:11; no stronger engine emerged. The full completed-game
-replay audit now passes. No promotions, deletions, commits or pushes.
-
-Active job: `search_relative_campaign`, `tools/search_relative_campaign.py`.
-CPU-only baseline finished16games at50% (White62.5%,Black37.5%); same-start GPU
-baseline was37.5%. Small deployment screen, not established strength parity.
-`tools/search_value_features.py` implements the6240-input king-relative schema;
-`tools/train_search_value.py` now supports sparse input storage/dense minibatch
-training and MCSV002 export, while preserving absolute defaults. Native MCSV002
-integration is built;22Rust/20focused Python tests pass. Old128/512 predictions
-remain exactly equal on122 saved states. Runtime snapshot is preserved under
-`benchmarks/search_first_20260911/runtime_before_relative`. No runtime edits while
-the new campaign runs. Chain: full suite -> absolute512 and relative512 training
-with same sparse input path -> trained-model parity/profile ->32games/arm on64..79.
-A relative development gain>=10percentage points triggers fresh128+ gen47/B2,
-common selfplay and human diagnostics. Trigger is NOT a promotion threshold.
-Gen47 remains the reference; v27 remains the release. Do not spend usage on
-minute-by-minute conversational polling; use managed chains and milestone checks.
-
-## Earlier overnight checkpoint (historical)
-
-Owner authorized an unattended search-first / cheap-evaluation experiment,
-without a hard time limit. Detailed current plan, boundaries and evidence:
-`SEARCH_FIRST_EXPERIMENT.md`. Gen47 remains the strength reference; v27 remains
-the official release. No promotion, deletion, commit or push in this session.
-
-New opt-in native alpha-beta, small CPU value evaluator, training/export tools,
-timed match driver and history-safe search caches are implemented. Existing
-simulation-limited MCTS behavior remains unchanged; timed calls additionally
-use a parity-tested ownership-transfer reroot to reduce clock overhead.
-Model binaries are separate `search_first_*` candidates, deliberately not CNN
-notebook choices. Preserve pre-session dirty worktree changes.
-
-Current run: `search_first_validation`, `tools/search_first_validation.py`.
-Locked width512/extension0 nominee, epoch7, same gen47-distilled value family.
-Full suite853 tests+3subtests passed. Then64games gen47@300ms,16@2s,32againstB2,
-16common-start selfgames per engine, one free-play color pair. New-for-this-
-experiment indices32+ from the existing confirmation book. No runtime edits
-while this chain runs. Same-family128/512 x extension0/2 development screen
-finished:21.875%,25%,34.375%,28.125%. No arm beat gen47; no promotion claim.
-CPU evaluator scratch/dot optimization verified prediction delta<3.3e-7;
-width512 fixed-state search throughput267k->367k nodes/sec.21 Rust tests pass.
-
-Earlier results: raw outcome student0/8 at2s; distilled student1W/1D/6L at2s.
-Optimized distilled128 no-extension300ms:2W/3D/11L (White31.25%,Black12.5%).
-Small samples, not general strength estimates. More efficient search has NOT
-yet produced a gen47-beating engine. Optimized fixed-depth values matched the
-uncached implementation; initial-position300ms depth3 ->4. Exact capture scans
-matched the old implementation on10,000 random-walk states. Latest Rust tests
-cover full-turn threat extension versus exhaustive minimax. See artifacts in
-`benchmarks/search_first_20260911/` and managed logs for current progress.
-
-Next after this validation: inspect results/timings/proof consistency, known
-human-line diagnostics, then decide whether further search-first work is useful. Keep
-nominal search budgets distinct from measured elapsed time; early prototype
-MCTS overran2s to~2.2s, mostly subtree-copy overhead. Timed fast-reroot reduces
-that; full end-to-end timings are logged on every move. No scores are silently
-relabelled as strict equal-time evidence.
-
-## September10 locked challenger tests
-
-Owner requested necessary tests after simplifying to one challenger versus gen47.
-b2_challenger_confirmation runs tools/b2_challenger_test.py. Challenger is fixed:
-b2_seed9053_state_cnn/selected_epoch_008.pt; reference gen47arena_selected(epoch17).
-No training/checkpoint reselection/architecture change/promotion.8workers sequential.
-First known human games black_2026_07/game00031/32,rows0,2,..18,3200/6400,
-seed101,five-ply continuations againstgen47 (diagnostic,not new heldout truth).
-Then400unique opening states excluded from all previous B2 book files, sampled
-fromv24/v25/v26/gen44/gen47 at16plies,temp.5,700sims,seeds2060000000+;
-bounded3proposals,8x attempts,no shortened count. Exact exclusion state key
-includes FEN,White phase,and turn_count.
-2800games:800paired direct3200,400free direct3200,400paired direct6400,
-400/model common four-opponent panel,200/model one-game-per-opening selfplay.
-Direct/depth/broad subsets overlap by design; don't pool as independent trials.
-Per-color WDL and paired bootstrap intervals generated. Existing harness has no
-per-move clock; these are NOT equal-time tests. Timing is recorded,strict
-equal-time remains an explicit limitation. No speculative clock/search rewrite.
-Artifacts:benchmarks/b2_challenger_confirmation_20260910.2new exclusion tests pass.
-
-## September10 new nine-hour run
-
-b2_nine_hour_20260910 started at owner request. See B2_NINE_HOUR_RUN.md.
-Two fresh seed9053 control/state trainings on unchanged data; up to4800games:
-9model/checkpoint400game matched panels,600one-game-per-common-opening selfplay,
-600deeper6400sim games. Paired uncertainty/Black regression examples generated
-automatically at end. No promotion. No runtime edits during active chain.
-
-## September9 finalist benchmark continuation
-
-Hybrid fresh retrain completed18epochs,best8; all-arm smoke passed. The initial
-2800-game screen finished. Finalist book creation then stopped:96/100 unique
-positions at the default1.6x attempt budget, so no finalist book was published.
-Owner requested continuation. b2_benchmark_resume runs tools/b2_resume_benchmark.py:
-validates original runtime/models/driver, records a separate recovery manifest,
-builds the missing100-position book with4x attempts and unchanged seed1990000000,
-models v24/v25/v26,depth16,temp.5,700sims. Rejects short/duplicate books. Then runs
-the unchanged driver; original screen journals skip completed games. No old
-manifest, model or screen protocol modified.6 targeted recovery/ranking tests pass.
-Remaining:3200 finalist games (6candidate checkpoints plus2references,400each)
-then600self-games (one selected checkpoint/arm). No automatic promotion.
-Recovery evidence:benchmarks/b2_001_comparison_20260909/opening_recovery_20260909.json.
-
-## September9 reboot recovery: hybrid retrain and all-arm benchmarks
-
-Windows Update triggered a planned restart03:29–03:32. All12k generation games,
-80k reanalysis/40k retained, and913,960-row15/24-channel preparations completed.
-Control/state-CNN both finished22epochs,best12, receipts verified. Hybrid was
-interrupted after18 saved epochs; there was no completed hybrid receipt.
-
-Owner requested deleting interrupted hybrid and retraining then benchmarking.
-Permanent deletion was blocked by execution policy. Instead preserved all19.pt
-files in models/archive/b2_001_hybrid_interrupted_20260909 (recoverable), leaving
-the candidate destination empty. No other models/data changed.
-b2_hybrid_retrain runs tools/b2_retrain_hybrid.py: validates original runtime,
-all processed artifacts and completed-arm hashes; reconstructs exact original
-command from control receipt changing only input24/attention2/hybrid directory.
-Fresh seed3173, no weight/optimizer resume. Writes hybrid receipt, training-complete
-receipt and runs all-arm inference smoke. Source runtime frozen during work.
-
-b2_001_benchmark queued behind it, requires successful hash-matching smoke.
-tools/b2_benchmark.py: up to4 epoch checkpoints/arm (thirds/last/best epoch,
-deduplicated),200games each againstv24..27, split24free/26matched per opponent;
-top2/arm400games on fresh starts; selected1/arm200self-games. v27/gen47epoch17
-also receive matched panels as references. Maximum6600games,8workers,3200sims.
-Exact integer W/D/L fractions drive rankings (3new benchmark tests passed).
-These are selection tests, NOT equal-time/second-seed/untouched confirmation;
-no automatic promotion. Benchmark output benchmarks/b2_001_comparison_20260909.
-
-Teacher screen rounding bug remains documented: actual Wscore epoch11=epoch17
-=.63;B.78 versus.815. Floating averages incorrectly chose11. Existing data
-uses11 and is preserved; new benchmark code fixes counting without rewriting
-historical receipts or switching the teacher halfway through the experiment.
-
-## September8 B2 implementation update
-
-See B2_IMPLEMENTATION.md for the current implementation and exact evidence.
-24-channel Python/Rust state input and two-block hybrid implemented; old models
-preserved. All three arms completed a tiny generation/reanalysis/training/CUDA/
-native-search rehearsal. Full suite825passed; latest B2 targeted16passed.
-Streaming sparse preparation avoids allocating a whole dense policy corpus.
-b2_teacher_screen is active, selecting among fixed gen47 checkpoints against four
-opponents before production. Do not edit src/native runtime while it is running.
-Production generation/training entry:tools/b2_campaign.py. Later full B2 strength
-screens/second-seed/confirmation remain separate work, not completed by rehearsal.
-b2_production is queued behind b2_teacher_screen; b2_production_smoke follows.
-Both require successful predecessor receipts. No automatic strength promotion.
-Pinned-input full-game validation finished:11.6%generation and10.6%resident-match
-time reduction at3200sims with exact record parity. Campaign opts in; global off.
-Native prior DLL preserved at native/monster_native.pre_b2_20260908.pyd; old loaded
-notebook kernels need restart to see expanded encoding. No user process killed.
-
-## September8 Bootstrap-2 optimization-first work
-
-Owner retained ALL THREE architecture arms and directed production profiling and
-measured optimization before architecture trials. Full plan: B2_EXPERIMENT_PLAN.md.
-Do not substitute a two-arm plan. Candidate naming b2_001_*; public next releasev28.
-
-No old campaigns remained active at profiling start. Added fixed-state profiler
-tools/profile_search_workload.py, graph-cache ABBA whole-game validator, CUDA
-bridge tracer and isolated pinned/packed-transfer benchmarks. Eight workers max,
-sequential worker lease. Graph-cache, CUDA trace, transfer microbenchmarks and
-pinned-input whole-game validation completed. Follow-up b2_profile_pinned ->
-b2_profile_single runs sequentially. These are finite experiments, not an
-assistant polling loop. Details and benchmark paths: OPTIMIZATION_B2.md.
-
-Initial evidence: benchmarks/b2_profile_baseline_8.json versus
-b2_profile_graphcache_8.json:96 fixed-state decisions, exact actions/policies/values;
-wall13.96s ->12.07s. Capture count368 ->119. This is NOT a full-game speedup.
-CPU callback time includes GPU waits and synchronization, not pure CPU overhead.
-GPU snapshot ~10.7GiB,91% utilization.
-
-src/native_mcts.py has opt-in MONSTER_CUDA_GRAPH_CACHE=1 evaluator-owned graph
-reuse, model/storage/signature invalidation and locks through output copies.
-DEFAULT IS OFF: whole-game ABBA measured only0.9% speedup, insufficient. No precision,
-batch shape, sims, search tree or rules change.28 targeted tests passed.
-Match workers already retain engines, so this candidate principally targets
-generation's repeated engine construction; don't claim it accelerates long gates.
-MONSTER_PINNED_INPUT=1 is a second opt-in production candidate. Its128-game ABBA
-passed exact full-record parity and reduced wall time10.1% (73.982s ->66.537s).
-All96 fixed-state700/3200 actions/policies/values also matched baseline exactly.
-It remains off pending resident-engine/deeper throughput validation. Single-worker
-profile -> full pytest tests are queued as b2_profile_single -> b2_suite.
-Output packing produced no useful microbenchmark benefit and was not adopted.
-No architecture training/data generation or release promotion has started.
-
-## September 8 morning extension
-
-Owner requested queued useful work through roughly 11am Eastern. Run
-`gen47_morning_checks` waits for `gen47_stateful_mixed_v3`, requires its transfer
-state complete, then runs `tools/gen47_morning_checks.py` until
-2026-09-08T11:00:00-04:00. First: 200 gen47 self-games at6400. Then fresh
-60-opening matched baseline(v27)/candidate(gen47) comparisons, rotating
-gen42/v25, gen44, gen45/v26 at alternating3200/6400, plus120 free games each
-round. Eight workers, one sequential job. Starts a new round only before11am;
-finishes already-started rounds (can extend past11). No training/promotion,
-threshold change, data ingestion or assistant polling. Errors stop safely.
-Reports: `benchmarks/generalization/gen47_morning_20260908/`. Resume hashes
-protect completed stages. Round-plan test passed.
-
-Gen47 binding confirmed PASS: first400 93.75% (W92.25 B95.25); confirm400
-91.625% (W87.5 B95.75). Self200:21 White captures,150 Black captures,29 draws,
-actual White score17.75%. Existing transfer checks began September8 at01:52.
-
-## September 7 release / gen47 update (supersedes current-run rows below)
-
-Later owner cleanup: 36 retired candidate directories archived recoverably to
-`models/archive/cleanup_gen47_20260907/candidates` (3.12 GiB; no deletion).
-Active gen42/44/45/46/47 and the gen47 rehearsal remain. See the archive README
-and `benchmarks/cleanup_candidates_gen47_20260907.json` for restore instructions.
-The notebook now has a permanent **Latest candidate** button: rerun Setup once,
-then click it to refresh discovery and load the newest `arena_selected.pt`.
-No generation-specific path is baked into the button. Twenty notebook/catalog
-tests passed. Notebook outputs preserved; never stage the notebook. Active
-gen47 search/runtime sources and data were not changed by this cleanup.
-
-Owner authorized three releases: **gen42 -> v25, gen45 -> v26, gen46 -> v27**.
-Immutable release copies and manifests are under `models/bootstrap_v25..v27`.
-The bootstrap champion pointer and legacy gate bar now select v27. Historical
-generation states/verdicts are untouched. Gen46's nonbinding transfer checks
-are still running; do not change `src/*.py` or their pinned tools mid-run.
-
-**Gen47 revised recipe and queue:** [GEN47_RUN.md](GEN47_RUN.md).
-Run name `gen47_stateful_mixed_v3`, queued after `gen46_transfer_checks`:
-full tests with the lease free -> real 28-game end-to-end rehearsal -> gen47
-production -> nonbinding transfer checks. An execution error stops the chain.
-No automatic release promotion. No assistant polling loop.
-
-5,600 new games: 2,080 free, 1,600 fresh mixed-teacher prefixes, 1,120 league
-(560 each teacher color), 800 full-state deep continuations (60% Black starts).
-Full-state reanalysis and transitive source-family splitting are opt-in tools
-adapters, leaving the active gen46 runtime unchanged. Training stays scratch
-seed3173, 30/patience10, replay8, 80k sampled/40k retained deep targets.
-Use `tools/start_gen47.py` for the queue chain and resume; do not bypass the
-adapter by invoking plain `src/iterate.py` to resume gen47.
-
-`src/config.py` and `src/iterate.py` retain their v24 fallback strings while
-gen46's runtime is frozen. Actual gen47 uses explicit v27; bootstrap default
-resolution uses the v27 champion pointer. Update legacy CLI fallbacks only
-at a safe boundary. Never stage the notebook or the local next-steps handoff.
-
-**For the next agent or developer.** Read this first, then `CONTEXT.md` §2
-(durable reference) and §5 (the laws that will bite you). `REPORT.md` is the
-evidence log; `DIRECTIVE.md` is a completed scope record, not a plan.
-
----
-
-## 1. Where things stand
-
-**Current run: gen46**, `gen46_expanded_sampled_v3`, full iteration with explicit
-gen45 epoch-11 teacher (`models/candidates/bootstrap_main_gen_0045/arena_selected.pt`).
-`gen46_transfer_checks` is queued behind it for nonbinding matched-start comparisons,
-direct gen42/gen44 matches, replay census, a reproducible half-data game manifest,
-and both known human-game diagnostics. See `GEN46_RUN.md` for exact commands,
-counts, seeds and boundaries. No repeated assistant polling, no automatic promotion.
-
-Gen45 finished September 6 at 19:45, `passed_not_promoted`. Its two 400-game
-gen44 legs scored 79.25% / 82.125% overall, White 92.25% / 91.75%, Black
-66.25% / 72.5%. The later 200-game gen42 match scored 79.5% overall, White
-66%, Black 93%. Self-play: 78 White wins, 29 Black wins, 93 draws (actual-color
-White score 62.25%). These sampled scores are not perfect-play measurements;
-gen44 H2H endpoint-uniform diagnostic was 58.97%, versus 80.6875% sampled.
-
-| | |
+# Monster Chess NN — consolidated handoff, September 25, 2026
+
+This is the current entry point for another developer or agent. It consolidates
+the inspected working tree, saved evidence, and the owner's requirements.
+Research last completed September 17; September 25 work was cleanup,
+verification, documentation and the v28 promotion, **not another training run**.
+The chronological log is `docs/history/HANDOFF_LOG.md`; it and `CONTEXT.md`
+remain useful, but their old “running,” “next,” and “current release”
+statements are not current status.
+
+**Later on September 25:**
+
+- **v28 promoted** (owner: “promote a new v from either 49 or 50”; chose
+  gen50 + calibrated value). `models/bootstrap_v28/best_value_net.pt`, SHA256
+  `b651e740…e35a` = the calibration continuation candidate below. Pointer
+  `models/bootstrap/champion.json` and `tools/gate.py` `BAR` now name v28;
+  previous pointer saved as `champion_before_v28_20260925.json`. Promotion
+  tool `tools/promote_v28.py`; manifest records evidence hashes and caveats.
+  The notebook catalog now lists the hash-verified champion first.
+- **Snapshot commit `b46ce1c`** captured all September source, tests, native
+  code, docs, books and small benchmark evidence (no weights, arrays, per-game
+  task records or JSONL journals). **Root reorganized** afterwards: plans and
+  results in `docs/experiments/<campaign>/`, protocols in `docs/protocols/`,
+  old ledgers in `docs/history/`, finished root drivers in `campaigns/`
+  (frozen; resume via a worktree at `b46ce1c`). Two superseded docs deleted
+  (`NEXT_STEPS_HANDOFF_20260905.md`, `BOOTSTRAP_FOLLOWUPS.md`); see `docs/README.md`.
+- Next-step plan (owner focus: a shippable engine):
+  `docs/plans/SHIPPABLE_ENGINE_PLAN.md`.
+
+## 1. Executive state
+
+- **Public release: v28** (September 25), gen50 epoch14 with the calibrated
+  value head. v27 (gen46 epoch 7, September 7) is the previous release; v25
+  came from gen42 and v26 from gen45. Other generation numbers are research
+  candidates, not numbered releases.
+- **Canonical gen50 checkpoint: epoch 14**, still at
+  `models/candidates/bootstrap_main_gen_0050/arena_selected.pt`.
+- **Latest experiment: frozen-policy value calibration, complete.** Its
+  continuation-trained value head scores **58.4375% over 800 games against
+  unchanged gen50 epoch14 at 3,200 simulations**, but **49.375% over 160 games
+  at 12,800 simulations**. This is an ordinary-budget improvement, not an
+  established general or all-budget upgrade. Nothing was promoted.
+- Gen50 epoch15 was a previous checkpoint-recovery nominee, not a replacement
+  for epoch14: strong Black results concealed a serious deeper-search White
+  regression.
+- No active managed training/benchmark job or queued follow-up was found on
+  September 25. The two running Python processes were a VS Code notebook kernel
+  and its interrupt helper; they were left alone. Do not infer an active run
+  from historical PIDs, lock-file existence, or old status prose.
+- Last commit is `9aca5ee` from September 7. Substantial later source, tests,
+  plans, and evidence are **untracked or modified**. They are not backed up merely
+  because this is a git repository. Existing book deletions predate this cleanup.
+  No commit, push, promotion, or model/data deletion was performed today.
+
+The immediate objective remains a reliably stronger engine on **both colors**,
+with particular attention to Black conversion, not simply beating a predecessor
+under one test instrument. The long-term objective is a self-improving training
+loop and eventually a downloadable/website-usable engine.
+
+## 2. Owner requirements and working style
+
+- “PIW” means **plan → implement → wait**. Put a bounded plan and fixed test
+  schedule in writing; rehearse the complete chain before an overnight run.
+- Time budgets such as 8–10 hours have been guides, not permission to truncate
+  required tests. Use long completion waits and milestone checks, not continual
+  assistant polling. A background log watcher is not an assistant that can
+  independently diagnose and edit code.
+- Do not run heavy workloads while the owner is playing. Keep one heavy GPU
+  stage at a time, normally at most eight workers, targeting at most about
+  12 GiB of the 16 GiB GPU. Do not alter unrelated applications under contention.
+- Do not hard-code opening bans, pawn-capture bonuses, or simple tactical
+  “givens” to patch a particular human game. Prefer general search/data/value
+  changes supported by controlled evidence.
+- Normal-start model-chosen openings are the primary playing instrument.
+  Different RNG seeds do not guarantee different strategic structures.
+  Do not force variety or deduplicate the primary score to manufacture novelty.
+  Repertoire concentration does not establish that other openings are unsound.
+- All candidate arms must receive some play-testing. Offline accuracy/MSE is
+  advisory; it is not sufficient for rejection or promotion. Conversely, testing
+  every saved epoch exhaustively is unnecessary: bounded probes and screens
+  precede independent confirmation.
+- Never weaken gate thresholds after seeing results. A measured FAIL should
+  not prevent the other predeclared diagnostic matches; an execution error
+  should stop the chain safely.
+- A public version needs automated evidence **and the owner's playtest/approval**.
+  Passing a gate does not authorize automatic promotion or a new generation.
+- Preserve interrupted training rather than silently restarting over its output.
+  Preserve valid earlier work when repairing a chain; use a new namespace when
+  semantics or pinned inputs change.
+- Commit/push only when requested. Historical commit preference is the owner's
+  identity (`Peng-AP`), one-line messages, no co-author trailer; verify local
+  configuration rather than inventing an identity. This request did not ask for
+  commits or a push.
+
+## 3. Rules, perspectives, and engine invariants
+
+White starts with a king and c2–f2 pawns and makes two primitive moves per turn.
+Black has the standard army and makes one. A **king capture ends the game
+unconditionally**; ordinary chess checkmate is not the terminal rule. Capturing
+the enemy king wins even if the capturing side's king would otherwise be attacked.
+White's first half-move may traverse check; the completed turn follows the
+engine's king-safety legality contract, including its established forced-blunder
+exception. White has no castling. En passant after White is granted only by the
+last move of its turn. See `src/monster_chess.py` and the rules tests for exact
+semantics rather than substituting standard-chess assumptions.
+
+White's two search plies belong to the **same player**: do not negate a value
+between them. Network and native search values are side-to-move values. A White
+outcome remains the same sign for both White halves and flips for Black.
+State reconstruction requires FEN **plus** `white_half_pending`, turn count,
+clocks and history; FEN alone is not a complete experimental starting state.
+
+In current match evidence, king captures are wins/losses and repetition or
+turn-limit endings are draws. Legacy generation may use shaped cap labels;
+never silently carry those into captures-only match scores. A long draw is not
+proof of a fortress or of perfect play. The September calibration specifically
+uses strict completed capture outcomes, not the older distance-tempered labels.
+
+Search uses factorized White half-moves, policy-guided batched PUCT, and native
+Rust move generation/tree operations with GPU neural evaluation. The Python
+engine remains a reference and fallback, not disposable legacy code. Existing
+king-safety overrides, finisher, tree reuse, and selected-child value reporting
+are part of the measured engine. Pure root probes sometimes disable early stop
+and finisher and use fresh trees; their results are not identical to played games.
+
+Important recent correction: the original September 15 conditional study shared
+a search tree across colors when the models were equal. It was stopped and
+preserved as invalid for comparison. The corrected `mainline_study.py` uses
+separate per-color engines even for selfplay, with full driver-history replay.
+Do not pool `mainline_counterplay_20260915` with the corrected `_v2` results.
+Native recent-history limitations were not silently changed by these studies.
+
+## 4. Repository map and environment
+
+| Area | Purpose / important entry points |
 |---|---|
-| **Release** | `models/bootstrap_v24/best_value_net.pt` — generation 30, promoted 2026-08-22 |
-| **Prior tournament leader** | `gen42` (`models/candidates/bootstrap_main_gen_0042/screen_nominee.pt`) — leads both September 4 ladders; gen44 now has strong direct results below |
-| **Newest model** | `gen45` epoch 11 (`models/candidates/bootstrap_main_gen_0045/arena_selected.pt`); passed both gen44 confirmations; gen46 generating |
-| **Gate instrument** | **sampled free play v3** — `tools/gate_sampled.py`, fixed counts with separate dedup diagnostics. `gate_free.py` retains v2; book gate remains legacy |
-| **`gate.BAR`** | `vs_v24`. Read it, never infer it |
-| **Replay window** | **8** (`--replay-generations 8`) so replay spans gen36+ only |
-| **Anchor corpus** | **dropped** (`--anchor-data none`) |
-| **Suite** | 794 passing, 3 subtests; 172 existing PyTorch deprecation warnings |
-| **Branch** | `main`. Commits in the owner's name, **no `Co-Authored-By` trailer**. Never push unless asked |
+| `src/monster_chess.py`, `encoding.py` | Python rules and position encoding |
+| `src/mcts.py`, `native_mcts.py`, `evaluation.py` | Reference search, Rust bridge, GPU evaluation |
+| `native/src/` | Rust rules, MCTS, optional tactical/CPU search experiments |
+| `src/train.py`, `data_generation.py`, `data_processor.py` | Main network training and data conversion |
+| `src/iterate.py`, `tools/iterate_stateful.py` | Resumable iteration and stateful data adapter |
+| `tools/stateful_generation.py`, `reanalyze_coverage.py` | Parent-linked continuations and deep teacher coverage |
+| `tools/match.py`, `gate.py`, `src/match_evidence.py` | Playing evidence, gates, runtime/hash provenance |
+| `tools/mainline_study.py` | Audited conditional games and probes with restored histories |
+| `tools/runs.py` | Start/status/tail/archive managed jobs |
+| `src/model_catalog.py`, `src/play.ipynb` | Model discovery and notebook play |
+| `campaigns/` | Finished Sept 15–17 drivers (gen50, recovery, mainline extension, value calibration); frozen records, see its README |
+| `campaigns/value_calibration/value_calibration.py`, `campaigns/gen50_recovery/recovery_probe.py` | Frozen-head fitting and diagnostic policy/value crossover |
+| `tests/` | Contract tests (`py -3 -m pytest tests`); campaign tests stay with their frozen drivers |
+| `data/raw/`, `data/processed/` | Recorded games, immutable increments and composed replay tensors |
+| `iterations/` | Generation state, manifests, journals and selected-checkpoint reports |
+| `models/` | Releases, candidates, retained research weights; gitignored |
+| `benchmarks/` | Evidence **and some actual trained checkpoints**, not disposable reports |
+| `logs/archive/<date>/` | Completed run logs and metadata, retained after cleanup |
+| `books/`, `data/start_fens/` | Historical/stress openings; not the current primary test instrument |
 
-Never stage `src/play.ipynb` — its outputs are session noise.
-Never stage `NEXT_STEPS_HANDOFF_20260905.md` — intentionally local handoff.
+The working machine is Windows/PowerShell, Ryzen 5700X, RTX 5060 Ti 16 GB,
+32 GiB RAM. Python is installed at
+`C:\Users\perfp\AppData\Local\Programs\Python\Python313\python.exe`.
+The normal launcher is `py -3`. The September 25 restricted sandbox reported
+“No installed Python found!” although the installation works outside that
+sandbox. A launcher/permission failure is not evidence Python was uninstalled.
+Request the appropriate execution permission rather than reinstalling packages.
 
-Implementation update: [FREE_GATE_PROTOCOL.md](FREE_GATE_PROTOCOL.md) describes
-the repaired v2 gate, durable logs, production recipe and pipeline integration.
-Original gen44 evidence is preserved; a separate rescore gives 61.59% on the
-combined endpoint union but inadequate unseen White confirmation coverage.
+Runtime dependencies are in `requirements.txt`; notebook dependencies are listed
+there too. Pytest is used by the newer campaign suites even though not listed as
+a core runtime dependency. Preserve the working local environment and identify
+versions before upgrading it, because runtime files are provenance-pinned.
 
-September 6 measurement clarification: [SAMPLED_GATE_PROTOCOL.md](SAMPLED_GATE_PROTOCOL.md)
-defines the new, separately versioned fixed-sample instrument. Duplicate opening
-draws do not by themselves establish dependence; deduplication changes the
-estimand. The completed v2 campaign is preserved unchanged. Its gen42 H2H
-legs scored 67.39% and 67.23% sampled, with Black 64.23% and 62.43%. Gen41:
-77.22% overall (77.30% White / 77.13% Black), 586 games. V24: 71.69% overall
-(68.01% White / 75.37% Black), 544 games. Self-play: 260 White wins, 188 Black
-wins, 114 draws; actual-color scores 56.41% / 43.59%, 562 games.
+Native build/install, when actually needed:
 
-The original binding verdict stays INCONCLUSIVE because v2 endpoint quotas
-were not met. This is not a model rejection. Against gen42's actual Black
-self-par of 66.91%, pooled gen44 Black is 3.58 points lower, nominal 95% delta
-interval [-7.97, +0.81] points. Overall/White strength is clear; Black improvement
-against gen42 is not established. No pointer has changed.
+```powershell
+powershell -File tools/build_native.ps1
+```
 
-Completed campaign: `gen44_depth3200_v2`, launched through `tools/runs.py` after the
-implementation/rehearsals. It runs gen42 par + two H2H legs (180-minute budget),
-then gen41, v24 and self-play diagnostics (50 minutes each), all sequentially
-at 3,200 simulations with eight workers. Output:
-`benchmarks/free_gate/gen44_depth3200_v2/`; log `logs/gen44_depth3200_v2.log`.
-It finished around 02:57 Eastern September 6 and did not promote anything.
-The final retrospective audit is `benchmarks/gen44_depth3200_v2_final_audit_20260906.json`.
-Real-tool rehearsals and completed-work resumes passed. The 72 held-out human
-probes finished: gen44 avoids the turn-8 queenside retreat, ending on e4 at
-both 3,200 and 6,400 simulations; this is diagnostic, not proof of a winning
-position. See `REPORT.md` section 53.
+This requires the existing MSVC Build Tools/Rust toolchain, builds the release
+DLL and copies it to `native/monster_native.pyd`. Do not rebuild just to inspect
+a completed run: replacing the binary changes runtime identity. The installed
+`.pyd` and historical rollback `.pyd` files were preserved during cleanup.
 
-Completed at 04:29 September 6: `gen44_checkpoint_3200_v3`, log `logs/gen44_checkpoint_3200_v3.log`,
-report `benchmarks/gen44_checkpoint_3200_v3.json`, separate output
-`models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt`. Epoch 9 was
-selected again: 73.5% against gen42 in its 200-game full screen, versus 71.0%
-for epoch 10 and 66.25% for epoch 11. These are selection results, not binding
-confirmation.
+## 5. Models and identities
 
-**Gen45 launched at 11:58 Eastern September 6**, run `gen45_expanded_sampled_v3`,
-log `logs/gen45_expanded_sampled_v3.log`, state `iterations/gen_0045/state.json`.
-Owner requested more data; the launched increase is 2,000 free + 800 book-seeded
-games, and 40,000 sampled / 20,000 retained deep teachers (60% Black). Keep
-scratch training, seed 3173 and the other learning settings unchanged. Use
-explicit run overrides; global defaults remain the gen44 workload. See the
-gen45 revision in `SAMPLED_GATE_PROTOCOL.md`. The earlier dry run validated
-replay sources 37-42 plus 44, with 45 new; the expanded production dry run
-validated the same sources before launch.
-No numbered release or working pointer changed. Avoid repeated status polling.
+Paths below are relative to the repository. An `arena_selected.pt` identity is
+more meaningful than `best_value_net.pt`; selection can choose a different epoch
+from the offline-best checkpoint.
 
-The full unattended chain is generation -> resumable deep reanalysis -> processing
-and audit -> replay composition -> scratch training -> bounded checkpoint screen
--> advisory offline comparison -> sampled binding gate against gen44 epoch 9.
-A PASS adds 200 self-skew games at 3,200 sims and ends `passed_not_promoted`.
-A measured FAIL/INCONCLUSIVE ends normally without promotion; an execution error
-records the failed phase and stops safely, without asking the owner or silently
-changing the experiment. There is no assistant polling loop or automatic repair.
-Source files are frozen while the run is active to preserve runtime provenance.
+| Model | Exact path | Role |
+|---|---|---|
+| **Public v28** / gen50 epoch14 + calibrated value | `models/bootstrap_v28/best_value_net.pt` | Current release and gate bar (Sept 25) |
+| Previous v27 / gen46 epoch7 | `models/bootstrap_v27/best_value_net.pt` | Previous release |
+| B2 CNN epoch8 | `models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt` | Older diagnostic opponent; extensively studied, no longer blind |
+| Gen48 epoch17 | `models/candidates/bootstrap_main_gen_0048/arena_selected.pt` | Previous GPU mainline candidate |
+| Gen49 epoch7 | `models/candidates/bootstrap_main_gen_0049/arena_selected.pt` | Gen50 teacher/reference |
+| Gen50 epoch14 | `models/candidates/bootstrap_main_gen_0050/arena_selected.pt` | Retained canonical gen50 selection |
+| Gen50 epoch15 | `models/candidates/bootstrap_main_gen_0050/selected_epoch_015.pt` | Recovery nominee; no promotion |
+| Calibration continuation | `benchmarks/value_calibration_20260917/production/fits/continuation/candidate.pt` | Latest ordinary-budget research improvement |
+| Calibration replay control | `benchmarks/value_calibration_20260917/production/fits/replay/candidate.pt` | Failed nomination control, retained |
 
-Preflight: 782 tests and 3 subtests passed (172 existing warnings). An isolated
-real rehearsal, `iterations/rehearsal_sampled_gen45_20260906/gen_0001`, completed
-generation, reanalysis, audit, composition, one-epoch training, checkpoint screen,
-offline advisory and all three sampled-gate legs in about 98 seconds. Its weak
-8-sim/one-epoch model was correctly rejected; this was a plumbing check, not a
-strength result. Production estimate is roughly 7-9 hours: about 2.5 hours for new
-data and reanalysis, 1-2 hours training, and 3-4 hours selection/gating/diagnostics.
-Training allows up to 30 epochs with patience 10; gen44 stopped after 19.
+SHA256 identities:
 
----
+```text
+v27             976294daf7e3d6f0c51c358dd602f11997c7fdf2dc4b255b810b588c253e5459
+B2              fc23076a9f5c7f237785f27cb1a665c10588ea8e8916cd743016d19a96999d15
+gen48           a8c074390c93390ac974b1f58076a86aa0525d9a34f7cff66e12442bb7e07722
+gen49           4bcc68a0219acf8c3dc53326d738789e6bd767fccba88fd4f471345567b4a647
+gen50 epoch14   51b5ddb01db51ae9023eaaf8ccbd896b48a805a52b2707633dc1d7e3f8067f25
+gen50 epoch15   85e5d01132f3c69ccd10b381b293476ef7b9fad56034fdedc57312c849f1803c
+continuation    b651e7405afe4e5672676c6fb13bb5bc6e1f5ea0071fd5ce4f4d5318e229e35a
+replay control  98a68b982a0a30f1dc928fdb40944e6d4b799bba9f3dce2024fefe6dab6f916b
+native .pyd     8b3b72e1bdde1c3cb0ab5454bfbb81a6db19bf1a450acb2776ad1bb081dc3099
+```
 
-## 2. The result that reframes everything: the 2026-09-04 round robin
+Notebook discovery scans the model catalog, not arbitrary benchmark directories.
+The calibration checkpoint is therefore not automatically a dropdown entry.
+It is an ordinary compatible checkpoint usable by an explicit model path; its
+absence from the dropdown does not mean it was not trained. Do not silently
+copy it over `arena_selected.pt` or the public release to make it selectable.
 
-Ten models, 45 pairings, 90 legs, **36,000 games**, 46 hours. Every pairing
-played **twice**: a book leg on one identical opening block, and a free leg
-deduped on opening state. Ratings by weighted least squares on the logit scale,
-verified against synthetic data before use (recovers known ratings to 0.85 Elo).
+## 6. Latest base-generation recipe
 
-Anchored so **v21 = 1000** (v21→v22 is +106 book, +88 free, both measured):
+The current gen49/gen50 family is the existing **15-plane** CNN: stem64,
+two 64-channel blocks then six 128-channel blocks, attention-policy width64,
+scalar global-average-pooled value head. Gen50 does not use WDL, moves-left,
+or SE additions. Generic README defaults and the optional B2 architectures
+are not a description of this checkpoint.
 
-| model | book | free |
-|---|---:|---:|
-| gen42 | **1353** | **1781** |
-| gen41 | 1342 | 1750 |
-| gen40 | 1325 | 1741 |
-| gen36 | 1333 | 1713 |
-| gen38 | 1343 | 1699 |
-| v24 | 1325 | 1564 |
-| gen33 | 1335 | 1558 |
-| gen26 | 1314 | 1535 |
-| v23 | 1141 | 1254 |
-| v22 | 1106 | 1088 |
-| v21 | 1000 | 1000 |
+Gen50 (`campaigns/gen50/gen50_recipe.json`, `docs/experiments/gen50/GEN50_PLAN.md`) used:
 
-Human play is **below v21** by the owner's account, with no measured match, so
-it cannot be placed on either scale — only bounded.
+- Frozen gen49 epoch7 teacher; 2,800 normal-start games at 1,600 simulations.
+- 400 parent-linked completed continuations at 12,800 simulations, raised
+  from gen49's 6,400. No forced prefix pool or league opponents in the new
+  increment. All game outcomes retained.
+- Reanalysis: 24,000 sampled positions, 12,000 retained, 12,800 simulations,
+  60% retained Black, family limits/coverage retained. Policy teachers get
+  multiplier four and zero teacher value weight; a search value is not an
+  observed outcome.
+- Eight-generation rolling replay, no external/human anchor. Historical replay
+  still contains older mixed recipes: “mainline-only” describes the new increment,
+  not every old training row.
+- Scratch training, seed3173, AdamW LR0.002, weight decay0.0001, batch256,
+  EMA0.999, warmup3, maximum30 epochs/patience10. Value floor0.5/horizon60.
+  Gen50 actually trained23 epochs; saved-epoch play selection chose epoch14.
+- Training exploration remains noisy/sampled; removing externally prescribed
+  openings did not turn generation into a deterministic single line.
+- Parent, fork, and reanalysis descendants share the same family split.
+  Do not split descendants independently or split mirror copies across holdouts.
 
-**The tier split is the finding.** On free, gen36/38/40/41/42 sit **135–246 Elo
-above** v24/gen33/gen26 — more than 6 SE. Book compresses that same structure
-into 8–28 Elo, inside its own noise. **Five consecutive generations were
-recorded as failures by an instrument that could not see what they improved.**
+Important files: `data/processed/bootstrap_replay_main_gen_0050`,
+`iterations/gen_0050/state.json`, and
+`benchmarks/gen50_20260916/production/summary.json`.
+The iteration state deliberately stops after checkpoint selection and can say
+`partial`; the external research gate chain completed separately. Do not
+restart a completed generation merely because that canonical state is partial.
+`configs/bootstrap_generation_only.json` contains older fallback defaults;
+the campaign's pinned recipe and recorded CLI overrides define gen50.
 
-gen36 is the sharpest case: it **failed** its book gate at 400 sims against
-gen33, is **level** with gen33 at 3200 on a book, and beats it by **+164 Elo**
-on free.
+## 7. Results and what they mean
 
-**Within a tier nothing is separated.** The top five span 20 book Elo against
-8.7 SEs. "The top five are tied" is the conclusive answer, not a failed one.
+Scores below count a draw as half a point. “White” and “Black” are the candidate's
+scores in that color, not a percentage of decisive games. Primary normal-start
+matches sample temperature0.5 for the first16 primitive plies, then choose
+temperature0; no opening book. Results at different search budgets answer
+different questions. Different seeds/samples are not matched causal deltas.
 
----
+### Progress before calibration
 
-## 3. Owner decisions now in force
+| Candidate / opponent | Sims each | H2H games | Overall | White | Black |
+|---|---:|---:|---:|---:|---:|
+| Gen49 / gen48 |3,200|800|94.00%|94.75%|93.25%|
+| Gen49 / B2 |3,200|200|83.75%|96.00%|71.50%|
+| Gen49 / v27 |3,200|200|98.25%|96.50%|100.00%|
+| Gen49 / gen48 |12,800|160|78.4375%|98.75%|58.125%|
+| Gen50 epoch14 / gen49 |3,200|800|75.00%|56.75%|93.25%|
+| Gen50 epoch14 / gen49 |12,800|160|54.6875%|46.875%|62.50%|
+| Gen50 epoch14 / B2 |3,200|200|82.00%|91.50%|72.50%|
+| Gen50 epoch14 / v27 |3,200|200|92.25%|84.50%|100.00%|
+| Gen50 epoch15 / gen49 |3,200|800|73.9375%|50.00%|97.875%|
+| Gen50 epoch15 / gen49 |12,800|160|62.8125%|26.25%|99.375%|
 
-1. **Free play decides.** Book is retained for continuity, not for verdicts.
-2. **Gates run on free play.** Existing v2 evidence uses endpoint-uniform scoring;
-   the September 6 successor uses fixed sampled counts with dedup diagnostics.
-   Never silently mix the two instruments or rewrite old verdicts.
-3. **Corpus is generation self-play only.** No human games, no v19-era anchor,
-   no outside data. Replay reaches back only to gen36.
-4. Promotion remains the owner's call and wants a playtest.
+Gen50 improved ordinary-budget H2H chiefly through Black. Epoch15's higher
+deep aggregate is misleading if considered without its White collapse.
+Gen50 epoch14 also scored99.375% against B2 at12,800: cross-opponent behavior
+is strongly search-budget dependent. Never chain these matchup scores into a
+single implied Elo ladder or an estimate of distance from perfect play.
 
----
+The earlier book-based gen48 results did not establish normal-start failure.
+The subsequent gen49 campaign independently tested gen48 from the normal start:
+90.75% against gen47, 76.25% against B2. Keep book/stress and normal-start
+instruments distinct when reading `docs/experiments/gpu48/GPU48_RESULTS.md` and later corrections.
 
-## 4. Measurement rules that will bite you
+### Latest calibration results
 
-These are not style preferences. Each cost real time to learn.
+Completed September17,02:19:51–09:16:27, about6h57m. Total3,696 production
+games:576 for new data,960 all-arm screening,2,160 independent confirmation
+(the last count includes400 incumbent self-calibration games). A separate
+120-game rehearsal verified the chain.
 
-| rule | evidence |
-|---|---|
-| **Never compare a per-colour score to 0.50** | Block colour-bias is ±0.056. Read against a measured par |
-| **Free-play par is not 0.50 and is model-specific** | v24 scores White **0.8717** against itself; gen33 0.7933; gen38 0.5833 |
-| **A book match carries ~20 Elo of block noise the SE hides** | Same pairing, different blocks: 19.3 and 23.7 Elo apart |
-| **Disjoint blocks for independent samples; MATCHED blocks for comparisons** | Giving every cell its own block breaks the comparison you built the run for. Cost this project two runs |
-| **Report sampling and coverage separately** | Repeated independent opening draws carry probability mass; dedup estimates a different quantity. Endpoint collisions are common, but histories can differ. V2 is endpoint-uniform; v3 is sampled |
-| **One book line is n=1** | ~45% of per-line verdicts flip on resampling. Use `--book-temp-plies`; quote aggregates, not cells |
-| **Depth changes values** | Line values reproduce at r≈0.83–0.90 within a depth, r≈0.36–0.67 across. A score at one sim count is a statement about that sim count |
-| **Free play is non-transitive** | Round-robin RMS residual **73.5 Elo** free vs 12.6 book. Good tier detector, poor ordering device |
-| **Never chain Elo** | v24 and gen26 sit 55 Elo apart via v22 and are **level** head-to-head. Three anchored claims were overturned by direct play |
-| **Existence is not completion** | Killed runs leave truncated artifacts that resume logic accepted as done. Validate, don't `stat` |
+| Continuation candidate / opponent | Sims each | H2H games | Overall | White | Black |
+|---|---:|---:|---:|---:|---:|
+| Unchanged epoch14, first leg |3,200|400|56.50%|42.75%|70.25%|
+| Unchanged epoch14, confirmation |3,200|400|60.375%|49.50%|71.25%|
+| Unchanged epoch14, combined |3,200|800|58.4375%|46.125%|70.75%|
+| Unchanged epoch14 |12,800|160|49.375%|41.25%|57.50%|
+| Gen49 |3,200|160|83.125%|70.00%|96.25%|
+| Gen49 |12,800|160|56.875%|48.75%|65.00%|
+| Public v27 |3,200|160|90.9375%|81.875%|100.00%|
+| B2 |3,200|160|73.75%|83.75%|63.75%|
 
----
+Actual-color selfplay, not arbitrary model-A score:
 
-## 5. Tooling added since the last handoff
+| Model / sims | Games | White wins | Black wins | Draws | White score |
+|---|---:|---:|---:|---:|---:|
+| Gen49 /3,200 |200|14|136|50|19.50%|
+| Gen49 /12,800 |160|14|36|110|43.125%|
+| Gen50 epoch14 /3,200 |200|33|97|70|34.00%|
+| Gen50 epoch14 /12,800 |160|13|57|90|36.25%|
+| Gen50 epoch15 /3,200 |160|7|68|85|30.9375%|
+| Calibration continuation /3,200 |160|37|73|50|38.75%|
 
-| tool / flag | what it does |
-|---|---|
-| `tools/gate_free.py` | free-play gate: par leg (bar vs itself, cached), bar leg, confirmation replay. Stops on unique games or budget |
-| `tools/match.py --book-temp-plies N` | samples N plies after each book position so a repeated entry yields *different* games — the only way to error-bar a single line. Also splits the pair seed when sampling |
-| `tools/match.py --game-log` | per-game JSONL incl. the opening record, which is the exact dedup key for free play |
-| `src/iterate.py --anchor-data none` | drops the v19-era anchor so the corpus is generation self-play only |
-| `tools/model_report.py` | self/anchor × book/free × named predecessors × sim levels |
-| `tools/export_lines.py` | replays named lines to scrubbable HTML. **Two engines, one per colour** — native MCTS reuses its tree, and sharing one leaks White's tree into Black's search |
+The continuation candidate passed its predeclared ordinary sampled gate.
+The deeper epoch14 comparison is essentially even; older-opponent results do
+not establish improved general strength. Lower value MSE and one favorable
+H2H matchup are not a release decision. **Retain it as a research candidate;
+do not promote or overwrite epoch14.** Full details: `docs/experiments/value_calibration/VALUE_CALIBRATION_RESULTS.md`.
+*Superseded September 25: the owner promoted this candidate as v28 (a copy; epoch14 is untouched).*
 
----
+## 8. Why value calibration was tried, and its limitations
 
-## 6. Open questions
+Human-game investigation found problematic White continuations after
+`e4+d4 ...d5`. Gen50's `c4+c5` branch scored4W/4D/59L across its two gen49
+legs, and1W/1D/6L against v27. These are correlated conditional samples, not
+solved lines. Other White losses against B2 involved increased alternative
+first turns rather than failure of the dominant `e4+d4` line.
 
-- **gen44 checkpoint choice** — the 3,200-sim epoch-9 campaign is complete;
-  independent gen44 saved-epoch nomination is next. The v2 coverage verdict
-  remains inconclusive; do not rewrite it as a binding sampled PASS.
-- **Why gen44 improved** — not isolated: teacher identity, replay volume,
-  generation/teacher counts and seed changed along with anchor removal.
-  Gen42 also overfit. Restoring the old human-containing anchor violates the
-  current generation-only policy and is not the planned control.
-- **Top-five ordering** unresolved and probably unresolvable at practical
-  sample sizes. Deciding among them may need a criterion other than strength
-- **The book gate's blind spot** — gen36 was rejected by it and belongs to the
-  stronger tier. Any candidate rejected by a 400-sim book gate since gen33
-  deserves re-examination
-- **`iterations/gen_0043`** is an abandoned stub with state/lock metadata from a killed run; `iterate.py`
-  treats directory existence as "generation taken", which is why gen43 was
-  skipped and the model is gen44
+Checkpoint recovery compared gen49 and gen50 epochs10,13,14,15,23 with fixed
+conditional roots, normal-start screens, and diagnostic policy/value crossover.
+After `e4+d4 ...d5 c4`, epoch14's raw c5 prior was2.25%, but pure3,200-simulation
+search assigned35.70% to c5. Keeping epoch14 policy and substituting gen49 value
+reduced that to4.81%; gen49 policy with epoch14 value raised it to54.52%.
+However, at51,200 simulations the preferences changed again. This implicated
+value/search interaction, **not a globally correct transplanted value head**.
 
----
+The next experiment froze epoch14's backbone, policy and all non-value buffers.
+Only six existing `value_head.*` tensors changed; the architecture and engine
+were unchanged. Three arms were tested:
 
-## 7. Operating rules
+1. Unchanged epoch14 baseline.
+2. Replay-only value-head fit.
+3. Identical fit mixing half replay and half fresh deeper-continuation outcomes.
 
-- Long jobs via `py -3 tools/runs.py start --name X -- ...`, never blocking
-- **Never run concurrent worker jobs.** 3×8 workers froze this box; a
-  DPC_WATCHDOG_VIOLATION (0x133) hit on 2026-08-31 during a 12-worker match.
-  Match workers are now **8**
-- Never build Python scripts in bash heredocs — `\n` mangling has cost time
-  twice
-- Never weaken a gate threshold to let a recipe through
-- Estimate from the running job; never extrapolate a rate across workloads
+Fresh data:192 normal-start epoch14 selfplay parents at3,200; choose one root
+per family by generic model/search value disagreement, assigned96 Black,
+48 White-first,48 White-second. No move-name or win/loss-based selection.
+Each root gets two completed6,400-simulation continuations, swapping gen49 and
+epoch14 colors. Family split144train/24validation/24test. At most eight sampled
+positions per phase per game; labels are strict capture outcomes in STM
+perspective, with repetitions/caps0, never raw teacher evaluations.
+
+Old replay sampling:32,768train and4,096validation positive-value-weight rows
+from the original gen50 split. Both fitted arms use `capture_results.npy`,
+not the old distance-tempered target, so this label change is shared by the
+controls. A gain over baseline cannot be attributed solely to new continuations.
+
+Exact encoded-input leakage filtering gives precedence to newtest, newval,
+oldval, then train. Same-input conflicting outcomes are averaged within each
+pool. Final unique rows: **newtrain1,833**, newval511, newtest1,069,
+oldtrain27,995, oldval3,844. Of9,872 sampled new-training rows,6,424 were
+excluded for held-out overlap before remaining duplicates were collapsed.
+Thus576 games do not equal576 independent structures or a large new training
+set. The pretrained network may previously have seen these encodings; the
+split protects the incremental fit, not historical pretraining exposure.
+
+Training: cached128-wide frozen GAP features with full-forward parity checked;
+AdamW LR1e-4/weight decay1e-4, seed26017,12epochs×128updates, batch512,
+50%Black/25%each White half; continuation batches256old+256new. Loss is outcome
+MSE plus0.1MSE anchoring to the original prediction. Best mean of six
+phase/source validation MSEs selects the checkpoint; all arms still play games.
+Replay selectedepoch10, continuationepoch12. New held-out MSE was about0.1812
+and0.1621 respectively versus original predictions0.2435, but play transfer was
+not uniformly better. These are imperfect players' outcome labels, not
+perfect-play ground truth.
+
+Selection screening was3arms×4opponents×80games at3,200. Continuation alone
+met the fixed nomination rule; its initial epoch14 screen score was only51.25%.
+The independent800-game result confirmed an ordinary-budget gain. B2/v27 were
+used in this screen and therefore were not blind opponents; later seed blocks
+are independently sampled confirmation, not a previously unseen opponent set.
+
+## 9. Evaluation contracts and failure modes
+
+Read `docs/protocols/SAMPLED_GATE_PROTOCOL.md` for the current sampled protocol. The usual
+binding budget is400 incumbent actual-color selfplay games plus two400-game
+H2H legs (200 candidate games per color per leg), at3,200 simulations. Each
+leg must exceed50% overall and each color must remain at least incumbent
+same-color self-par minus five percentage points. This is an operational
+point-estimate gate, not a proof that both colors improved.
+
+- Old fixed0.40-color-floor/book gate descriptions refer to older instruments;
+  do not mix them with sampled gates or silently change a saved report's meaning.
+- Keep saved-epoch selection data separate from independent confirmation.
+- Preserve repeated openings at their sampled frequency. Report endpoint
+  concentration/unique coverage separately; nominal game-level error bars can
+  overstate strategic independence.
+- For selfplay combine both model roles into actual White/Black wins and draws.
+  Model-A's score is not color skew even when A and B have identical weights.
+- Record both search budgets, initial position/history, seeds, checkpoint hashes,
+  native binary and engine settings. A null `sims_b` can mean inherited A budget;
+  strict identity checks should record the intended effective budget explicitly.
+- Restore full histories in conditional tests and audit legal replay/outcomes.
+  The move-count limit and repetition history affect continuation outcomes.
+- A reused-tree game, fresh-tree root probe, and pure no-finisher search are
+  different instruments. Never compare them as if only the network changed.
+- Do not infer that a model is “near perfect” from beating older models, or that
+  search is solved because a brute-force/tactical solver exhausts its budget.
+
+## 10. Running, resuming, and verification
+
+Use these to inspect without launching training:
+
+```powershell
+py -3 -B tools/runs.py status
+py -3 -B tools/runs.py tail --name value_calibration --lines 30
+Get-Content benchmarks/value_calibration_20260917/production/status.json
+```
+
+After cleanup `status` can say “no runs recorded” because completed root records
+were archived. `tail` searches archives; old logs remain in dated directories.
+Status is liveness, not proof of successful completion: verify final summary,
+stage receipts, output hashes and required game counts.
+
+The latest driver's normal invocation was `py -3 run_value_calibration.py` from the root of snapshot `b46ce1c` (it now lives, frozen, in `campaigns/value_calibration/`);
+`--rehearsal-only` exercises the rehearsal namespace. **Do not launch it now
+just to see status.** It is a frozen completed campaign, not a generic next-gen
+launcher. Exact resume verifies inputs and reuses completed receipts; changing
+the recipe requires a new campaign, not editing an old manifest.
+
+Provenance hazard: the calibration identity hashes **all `tools/*.py` and
+`tests/*.py`**, its root scripts/test/plan, runtime files/native binary, four
+models, and gen50 replay files. Even adding an unrelated Python file directly
+to those pinned directories changes identity. Several earlier campaigns have
+similar broad pins. Keep old inputs unchanged for exact resume; new opt-in root
+drivers were used to avoid gratuitously invalidating older runs. This is a
+maintenance limitation to address explicitly in future tooling, not permission
+to weaken old checks retroactively.
+
+Production evidence layout:
+
+```text
+benchmarks/value_calibration_20260917/production/
+  manifest.json, status.json, summary.json
+  parents/, continuations/         audited completed game tasks
+  roots.json                      selected states, full prefixes, provenance
+  data/                           split feature/label arrays and family IDs
+  fits/replay/, fits/continuation/ trained checkpoint and complete.json
+  screen/play/, screen/receipts/   all-arm matches and output hashes
+  nominee.json                    fixed selection result
+  confirmation/play/vs_initial/   self-par, two H2H legs, gate report
+  confirmation/play/              gen49/v27/B2/self/deep matches and journals
+  confirmation/receipts/, receipts/
+```
+
+Recorded September17 prelaunch validation:983tests +3subtests, complete
+120-game rehearsal/two fits,26 rehearsal receipts, resume test and frozen-policy
+checks. Do not present those as a fresh full-suite run on September25.
+
+September25 evidence audit rehashed25 production receipts/82 referenced outputs,
+four frozen models,32 runtime files,286 implementation files and three smaller
+replay inputs: **zero missing files or mismatches**. It intentionally did not
+rehash the15,169,843,328-byte replay `positions.npy`, replay every game, or
+independently tensor-compare the heads again. Saved hash-verified fit artifacts
+record exact non-value tensor/buffer and raw-policy equality.
+
+Focused current verification and the exact cleanup inventory are recorded in
+`docs/history/CLEANUP_20260925.md`. No GPU benchmark was restarted for this documentation task.
+
+## 11. Cleanup performed and what remains
+
+Removed regenerable `native/target` and Python/pytest caches. The installed
+native extension was preserved and its SHA256 checked. Cargo intermediates can
+be rebuilt; Python/test caches regenerate. Archived174 completed run records
+(348 metadata/log files) plus the old March root log without deleting their
+content or overwriting archive destinations. See `docs/history/CLEANUP_20260925.md`.
+
+Kept all model weights, training data, iteration journals, benchmarks, rehearsal
+evidence, scripts and plans. “Untracked,” “old,” or “rejected” does not imply
+disposable. In particular, the newest candidate lives under `benchmarks/`.
+Historical native binary backups were retained. Existing tracked book deletions
+and other dirty source changes were neither reset nor attributed to this pass.
+
+Most disk space is not cache: approximately285GiB of data,15.2GiB iterations,
+14.6GiB models at audit time. Further bulk reclamation needs a separate inventory
+of immutable raw/increment inputs, replay composition manifests, active pins and
+reproducibility requirements. Old composed replay tensors may be regeneration
+candidates, but were not deleted speculatively. There is no blanket promise that
+git contains these large artifacts or even all the current source.
+
+## 12. Concrete next research plan — proposed, not queued
+
+The latest experiment isolates a useful value-side direction but does not
+justify another architecture rewrite, promotion, or a move-specific patch.
+Before spending another full generation:
+
+1. **Audit the information content of the new targets.** Quantify family/input
+   concentration, conflicting outcomes and phase coverage after leakage removal.
+   Explain the1,833-row effective training set and avoid mistaking more duplicate
+   trajectories for more supervision. Use existing artifacts first; do not
+   recycle held-out gate games as training data.
+2. **Specify one small conservative value-update experiment.** Keep the ordinary
+   checkpoint format, policy/backbone frozen and unchanged epoch14 control.
+   Candidate hypotheses include stronger anchoring/smaller updates and repeated
+   independent continuations to estimate target variability. Select a bounded
+   set of arms and label controls before generating data; the exact recipe is
+   not approved or implemented by this handoff.
+3. **Preserve causal controls.** If outcome target representation changes,
+   include an old-data-only control with the same labels. Keep family-linked
+   splits and exact-input exclusions, report effective unique counts, and never
+   treat imperfect search outcomes as perfect-play labels.
+4. **Predeclare multi-budget playing criteria.** Screen every arm, then freeze
+   one nominee and run two independent3,200-simulation legs versus its actual
+   initialization. Include12,800 comparison to that initialization, gen49,
+   older-opponent diagnostics, and actual-color selfplay. Independent RNG blocks
+   remain frequency-weighted normal starts. Both-color transfer matters; do not
+   let a larger Black score conceal a new White collapse.
+5. **Rehearse and chain everything before the overnight.** New immutable output
+   namespace, source/model/data identities, no interrupted-fit overwrite,
+   all post-selection diagnostics even after measured gateFAIL, one heavy job,
+   <=12GiB target, infrequent health checks. No automatic promotion or next run.
+6. **Only then consider a larger new generation.** Advance a frozen teacher and
+   data recipe because multi-opponent/multi-budget evidence supports it, not just
+   because the newest candidate beats its predecessor. Return to CPU/architecture
+   work only with a concrete hypothesis that the present GPU evidence cannot
+   address economically.
+
+No time estimate here is a promise: the completed calibration took about7hours;
+gen50's broader deep-target generation/training chain took substantially longer.
+More repeated deep continuations directly increase game-generation cost.
+
+## 13. Reading order and historical map
+
+Paths are relative to the repository root; `docs/README.md` indexes everything.
+
+1. This file, then `docs/plans/SHIPPABLE_ENGINE_PLAN.md` (the next step).
+2. `docs/experiments/value_calibration/` (source of v28), then
+   `docs/experiments/gen50/` for gen50, its regressions, checkpoint
+   alternatives and the policy/value crossover.
+3. `docs/experiments/gen49/` and `docs/experiments/mainline_counterplay/` for
+   normal-start/mainline and depth evidence.
+4. `docs/protocols/SAMPLED_GATE_PROTOCOL.md` for the primary measurement;
+   `docs/protocols/FREE_GATE_PROTOCOL.md` for the older endpoint-uniform
+   instrument, not current score weighting.
+5. `CONTEXT.md` for durable rules, laws and hazards;
+   `docs/history/HANDOFF_LOG.md` for the chronological operational log;
+   `docs/history/REPORT.md` for the August experiment ledger. Date-check every
+   “current” statement in them.
+6. `docs/experiments/gpu48/` and `docs/experiments/search_targets/`: GPU return
+   and search-backed training work. Later normal-start evidence can supersede
+   early book-only conclusions without erasing those measurements.
+7. `docs/experiments/search_first/` and `docs/experiments/search_cpu/`: retained
+   cheap-eval/alpha-beta/CPU-GPU research. It improved efficiency without
+   establishing a clean both-color replacement. Paused, not production default,
+   but directly relevant to a CPU-only shippable engine.
+8. `docs/experiments/b2/`: architecture arms and bridge performance work; do not
+   infer the gen50 architecture from these experimental variants.
+9. `docs/experiments/gen46/`, `docs/experiments/gen47/`: earlier
+   bootstrap/data/selection development.
+10. `docs/history/DIRECTIVE.md` is the **completed August native-rewrite scope
+    record**, not an active directive. `README.md` is the broad entry guide;
+    this handoff supersedes its historical defaults for latest runs.
+
+When claims conflict, prefer the relevant immutable manifest, exact checkpoint
+hash, completed game journal and final report for that protocol/date. Preserve
+uncertainty rather than silently “reconciling” different experiments into one
+strength claim.

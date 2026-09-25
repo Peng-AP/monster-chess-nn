@@ -1,9 +1,10 @@
 # Monster Chess NN
 
 Current project state, model identities, latest results and next steps:
-[September 25 consolidated handoff](HANDOFF_20260925.md). The latest research
-completed September 17; public release is still v27. Later generation numbers
-and the value-calibration candidate are research models, not promoted releases.
+[consolidated handoff](HANDOFF.md). **Current release: v28**
+(`models/bootstrap_v28`, gen50 epoch14 with the September 17 calibrated value
+head, promoted September 25). Plans and results for every campaign are indexed
+in [docs/README.md](docs/README.md).
 
 A neural-network + Monte-Carlo-tree-search engine for **Monster Chess**, an
 asymmetric chess variant:
@@ -40,7 +41,7 @@ game.
 ## How the engine works
 
 An experimental, opt-in CPU value network plus native alpha-beta search is
-described in [SEARCH_FIRST_EXPERIMENT.md](SEARCH_FIRST_EXPERIMENT.md). It does
+described in [SEARCH_FIRST_EXPERIMENT.md](docs/experiments/search_first/SEARCH_FIRST_EXPERIMENT.md). It does
 not replace the standard engine or release models; strength validation is ongoing.
 
 **Rules layer** (`src/monster_chess.py`) wraps `python-chess` and exposes two
@@ -180,7 +181,7 @@ release has a source hash and evidence manifest; older models are preserved.
 `gate.BAR` is `vs_v27`, and the bootstrap champion pointer selects v27.
 
 Gen47's revised stateful/league recipe and queued end-to-end preflight are in
-[GEN47_RUN.md](GEN47_RUN.md). Use its adapter entry point to run/resume gen47,
+[GEN47_RUN.md](docs/experiments/gen47/GEN47_RUN.md). Use its adapter entry point to run/resume gen47,
 not the historical plain-iterate example below. During gen46's ongoing checks,
 legacy CLI config fallbacks remain v24 to preserve runtime identity; pass the
 v27 model path explicitly for CLI play. See `HANDOFF.md` for current operations.
@@ -214,7 +215,7 @@ deduplication and novelty are reported separately. Each H2H leg must score above
 50%, with each color at least incumbent same-color par minus .05. A PASS is an
 operational point-estimate screen, not proof that both colors improved.
 Missing scheduled evidence is INCONCLUSIVE. This backend skips the redundant
-legacy high-fidelity gate. See [SAMPLED_GATE_PROTOCOL.md](SAMPLED_GATE_PROTOCOL.md).
+legacy high-fidelity gate. See [SAMPLED_GATE_PROTOCOL.md](docs/protocols/SAMPLED_GATE_PROTOCOL.md).
 
 `--gate-backend free` retains the endpoint-uniform v2 instrument;
 `--gate-backend legacy` retains the older book-compatible gates. Old reports
@@ -382,7 +383,7 @@ retained unchanged for continuity with historical results.
 
 The current version requires per-color and unseen-confirmation coverage, saves
 finished games incrementally, and returns **INCONCLUSIVE** when its budget cannot
-supply the evidence. See [FREE_GATE_PROTOCOL.md](FREE_GATE_PROTOCOL.md) for the
+supply the evidence. See [FREE_GATE_PROTOCOL.md](docs/protocols/FREE_GATE_PROTOCOL.md) for the
 scoring contract, provenance/resume commands and production bootstrap recipe.
 `src/iterate.py` defaults to that free gate and generation-only replay; legacy
 book evaluation requires `--gate-backend legacy`.
@@ -432,6 +433,8 @@ tools/                 # gate, matches, probes, corpus and deck builders
   compose_processed.py # immutable processed-corpus replay composition
   phase3_driver.py     # train+gate a set of corpus arms unattended
 tests/                 # contract tests
+campaigns/             # finished root campaign drivers, frozen (see its README)
+docs/                  # protocols, per-campaign plans/results, history ledgers
 benchmarks/            # benchmark and match JSON history
 data/                  # raw games, processed tensors, start-position decks
 models/                # checkpoints (gitignored)
@@ -439,10 +442,12 @@ models/                # checkpoints (gitignored)
 
 Retain experiment drivers, plans and reports required by saved provenance.
 Several campaigns hash all `tools/*.py` and `tests/*.py`; moving or removing
-those files can invalidate exact resume. Much September research is untracked,
-so git history is not a complete backup. `benchmarks/` can also contain trained
+those files invalidates exact resume, so resume a finished campaign from a git
+worktree at the commit it ran on (September work: `b46ce1c`). Git holds source,
+docs and small evidence summaries; weights, arrays, per-game task records and
+JSONL journals stay on disk only. `benchmarks/` can also contain trained
 checkpoints. Only regenerable caches were deleted in the September 25 cleanup;
-completed logs were archived, not discarded. See [CLEANUP_20260925.md](CLEANUP_20260925.md).
+completed logs were archived, not discarded. See [CLEANUP_20260925.md](docs/history/CLEANUP_20260925.md).
 
 ## Tests
 
