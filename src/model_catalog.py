@@ -85,6 +85,15 @@ def discover_model_choices(project_root, model_dir=None):
             choices.append((label, str(path)))
             seen.add(path)
 
+    # The promoted release named by the champion pointer leads the list, but
+    # only while the file still matches the pointer's recorded hash.
+    pointer = _load(models / "bootstrap" / "champion.json")
+    champion = _path(root, pointer.get("checkpoint")) if isinstance(pointer, dict) else None
+    if champion is not None and champion.is_file():
+        expected = pointer.get("checkpoint_sha256")
+        if not expected or hashlib.sha256(champion.read_bytes()).hexdigest() == expected:
+            add(f"current release {champion.parent.name} (champion)", champion)
+
     ordered = sorted(gated.items(), key=lambda item: (item[1][0], _generation(item[0]), item[1][1]), reverse=True)
     for path, (rank, _, label) in ordered:
         if rank:

@@ -57,12 +57,13 @@ class TestThresholds(unittest.TestCase):
         # generation-30 checkpoint was promoted as v24, +191.6 Elo above v23
         # over 600 book games at 1600 sims (z=+18.6). This assertion exists
         # to make the bar move only by deliberate edit, never by drift.
-        # Owner 2026-09-07: gen42 -> v25, gen45 -> v26, gen46 -> v27.
-        self.assertEqual(gate.BAR, "vs_v27")
+        # Owner 2026-09-07: gen42 -> v25, gen45 -> v26, gen46 -> v27;
+        # 2026-09-25: gen50 + calibrated value -> v28.
+        self.assertEqual(gate.BAR, "vs_v28")
         self.assertIn(gate.BAR, gate.AGGREGATE_LEGS)
-        self.assertIn("bootstrap_v27", gate.BAR_MODEL)
+        self.assertIn("bootstrap_v28", gate.BAR_MODEL)
         self.assertEqual(gate.BAR_MODEL, gate.NUMBERED_INCUMBENT)
-        self.assertIn("bootstrap_v27", gate.NUMBERED_INCUMBENT)
+        self.assertIn("bootstrap_v28", gate.NUMBERED_INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):

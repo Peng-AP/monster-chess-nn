@@ -54,3 +54,16 @@ def test_legacy_gate_and_inconclusive_label(tmp_path):
     assert value == str(path) and "INCONCLUSIVE" in label and "60.00%" in label
     (report.parent / "gate_broken.json").write_text("{")
     assert len(discover_model_choices(tmp_path)) == 2
+
+
+def test_champion_pointer_leads_only_while_hash_matches(tmp_path):
+    release = checkpoint(tmp_path, "bootstrap_v28/best_value_net.pt")
+    checkpoint(tmp_path, "candidates/bootstrap_main_gen_0050/arena_selected.pt")
+    pointer = tmp_path / "models/bootstrap/champion.json"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text(json.dumps({"checkpoint": "models/bootstrap_v28/best_value_net.pt",
+                                   "checkpoint_sha256": hashlib.sha256(b"network").hexdigest()}))
+    label, value = discover_model_choices(tmp_path)[1]
+    assert value == str(release) and label.startswith("current release bootstrap_v28")
+    release.write_bytes(b"swapped weights")
+    assert not any(l.startswith("current release") for l, _ in discover_model_choices(tmp_path))
