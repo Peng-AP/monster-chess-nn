@@ -1,6 +1,6 @@
 # Better play after v28 — proposed September 25, 2026
 
-Status: **approved September 25; Stage 0 and Stage 1 in progress** (see §7).
+Status: **approved September 25. Stages 0–1 complete (Stage 1 null); gen51 (Stages 2–3) launching** (see §7).
 Owner direction the same day: work toward better play now; shipping (see
 `SHIPPABLE_ENGINE_PLAN.md`, deferred) comes later. Each stage is a separate
 plan → implement → wait cycle with its own rehearsal. Stages 2–3 still need
@@ -199,6 +199,49 @@ The owner approved §8 items 1–4 on September 25 ("Yes, to those. begin").
   2,960,000,000 and up.
 - **Stage 0 item 3** (the 12,800 selection probe) is implemented with the
   Stage 3 driver, where saved-epoch selection lives.
+- **Stage 0 audit done:** `docs/experiments/gen51/DIVERSITY_AUDIT.md`. The
+  narrowing is concentrated and accelerating (value rows per distinct
+  position: 2.23 at gen42 → 3.77 at gen50). The duplicate-weighting third arm
+  was not triggered (top 1,000 positions hold 13.9% of the replay's value
+  rows, not "most").
+- **Exploration lever approved by the owner (September 25)** for gen51,
+  shared by both arms: self-play temperature 1.0 for the first **30**
+  primitive plies instead of 15, via recipe key `temperature_plies` in
+  `tools/stateful_generation.py`. Tasks without the key keep their historical
+  digests, so old receipts stay valid. Disagreement continuations keep the
+  historical 15 (they are labels, not coverage).
+- **Stage 1 done: null.** No arm reached the nomination bar; defaults
+  unchanged. `docs/experiments/gen51/SEARCH_CONSTANTS_RESULTS.md`.
+- **Stages 2–3 driver:** `tools/gen51_campaign.py` (tests
+  `tests/test_gen51_campaign.py`), with `tools/disagreement_continuations.py`
+  and `tools/process_linked_extra.py`. Details fixed before launch:
+  - Incumbent par: Stage 1's v28 par, reused only if gate v4 accepts it for
+    the current runtime; otherwise measured.
+  - Control arm: canonical `iterate_stateful` gen51, the gen50 command with
+    only recipe, incumbent, generation number and `--through-phase train`
+    changed; the recipe changes only teacher, seed and `temperature_plies`.
+  - Disagreement roots: the calibration's score form, |v_ref − v_player| +
+    |v_player − q_search|, with player v28 and reference gen50 epoch14 (v28's
+    own initialization, differing only in the value head). Phases rotate
+    black, black, white_first, white_second; plies 4–120; single-move policies
+    (forced or finisher) excluded; one root per parent.
+  - Deep-value increment: continuation games take their parent's recorded
+    gen51 split. Labels are strict captures-only (`capture_results`), value
+    weight 4, **policy weight 0** so the arm isolates value targets. The deep
+    replay is the control's compose command plus this one source.
+  - Selection (both arms, matched seeds): `checkpoint_screen.py` with gen50's
+    arguments against v28, then 80-game 12,800 probes of the top three epochs
+    by the screen's own `rank_key` (filled from probe results if fewer than
+    three reached the full screen). **Nominee:** the best-ranked epoch whose
+    probe passes the guard rule (≥ 47.5%, each colour ≥ v28 deep par − 10 pp);
+    if none passes, the best deep-probe score, which still goes to the gate so
+    every branch runs. Nominees are copied to each arm's `arena_selected.pt`.
+  - Evaluation per nominee: gate v4 vs v28 (matched seeds across arms);
+    diagnostics vs gen49, v27 and B2 (160 each at 3,200), self-play (200 at
+    3,200, 160 at 12,800). If both pass: deep vs control, 400 at 3,200 plus
+    160 at 12,800.
+  - Seeds: production 2,910,000,000–2,941,999,999; rehearsal 2,970,000,000
+    and up.
 
 ## 8. Owner decisions needed
 
