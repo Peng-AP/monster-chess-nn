@@ -99,7 +99,10 @@ def play_task(task):
             action = _finisher_move(game, depth, nodes)
             proven = action is not None
         if action is None:
-            temperature = TEMPERATURE_HIGH if len(moves) < TEMPERATURE_MOVES else TEMPERATURE_LOW
+            # Recipes may lengthen the exploratory opening (gen51: 30 plies);
+            # tasks without the key keep the historical config value.
+            plies = task.get('temperature_plies', TEMPERATURE_MOVES)
+            temperature = TEMPERATURE_HIGH if len(moves) < plies else TEMPERATURE_LOW
             action, policy, value = chosen_engine.get_best_action(game, temperature=temperature)
         else:
             from evaluation import evaluate
@@ -131,6 +134,20 @@ def play_task(task):
     return records
 
 
+def with_exploration(task, config):
+    """Copy an explicit recipe exploration length into the task.
+
+    Only when the recipe declares it, so every pre-existing task digest (and
+    therefore every completed generation receipt) is unchanged.
+    """
+    if 'temperature_plies' in config:
+        plies = config['temperature_plies']
+        if not isinstance(plies, int) or not 0 <= plies <= 200:
+            raise ValueError('temperature_plies must be an integer in 0..200')
+        task['temperature_plies'] = plies
+    return task
+
+
 def split_count(count, groups):
     return [count // groups + int(i < count % groups) for i in range(groups)]
 
@@ -148,6 +165,7 @@ def ordinary_batches(config):
                 task['other'] = other
             if side:
                 task['train_side'] = side
+            with_exploration(task, config)
             tasks.append(task)
             serial += 1
         if tasks:
@@ -187,9 +205,9 @@ def fork_tasks(config, raw):
             i, row = rng.choice(eligible)
         quotas[row['current_player']] -= 1
         index = len(tasks)
-        tasks.append(dict(id=f'fork/game_{index:05d}', kind='fork', model=config['model'],
+        tasks.append(with_exploration(dict(id=f'fork/game_{index:05d}', kind='fork', model=config['model'],
                           sims=config['fork_sims'], seed=config['seed'] + 600000 + index,
-                          state=row['state'], source_record=dict(path=path.relative_to(raw).as_posix(), line=i+1)))
+                          state=row['state'], source_record=dict(path=path.relative_to(raw).as_posix(), line=i+1)), config))
         if len(tasks) == requested:
             break
     if len(tasks) != requested:

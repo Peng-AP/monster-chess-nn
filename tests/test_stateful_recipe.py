@@ -169,3 +169,18 @@ def test_stateful_reanalysis_uses_history_and_clears_reuse(monkeypatch):
     result = reanalyze_stateful.reanalyze_one(dict(path='parent.jsonl', line=4, record=record))
     assert result['source_path'] == 'parent.jsonl'
     assert result['plies_to_end'] == 4
+
+
+def test_exploration_length_is_opt_in_and_leaves_old_task_digests_unchanged():
+    import stateful_generation as sg
+    from match_evidence import digest
+    base = dict(model='m.pt', sims=8, seed=100, free_games=2, fresh_games=0, league_games=0,
+                prefix_models=[], opponents=[])
+    old = sg.ordinary_batches(base)[0]
+    assert all('temperature_plies' not in t for t in old)
+    assert digest(old[0]) == digest(dict(id='selfplay/game_00000', kind='selfplay', model='m.pt', sims=8, seed=100))
+    explored = sg.ordinary_batches(dict(base, temperature_plies=30))[0]
+    assert [t['temperature_plies'] for t in explored] == [30, 30]
+    import pytest
+    with pytest.raises(ValueError):
+        sg.ordinary_batches(dict(base, temperature_plies=-1))
