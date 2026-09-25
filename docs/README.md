@@ -9,7 +9,8 @@ campaign drivers are frozen in `campaigns/`.
 
 | Document | Status |
 |---|---|
-| [plans/SHIPPABLE_ENGINE_PLAN.md](plans/SHIPPABLE_ENGINE_PLAN.md) | Proposed September 25; not started |
+| [plans/GEN51_STRENGTH_PLAN.md](plans/GEN51_STRENGTH_PLAN.md) | **Current.** Proposed September 25; not started |
+| [plans/SHIPPABLE_ENGINE_PLAN.md](plans/SHIPPABLE_ENGINE_PLAN.md) | Deferred September 25 (hosted-server route preferred when resumed) |
 
 ## Protocols
 

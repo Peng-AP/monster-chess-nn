@@ -1,6 +1,16 @@
 # Shippable engine plan — proposed September 25, 2026
 
-Status: **proposed, not started.** Owner focus after promoting v28: turn the
+Status: **deferred (owner, September 25): strength work comes first.** See
+`GEN51_STRENGTH_PLAN.md`. When this resumes, the owner's preferred first
+surface is **hosting the engine on the GPU box** and having a personal website
+request moves from it. Measured the same day: the native v28 engine at 3,200
+simulations took a median 0.09 s per half-move and 0.26 s per White turn
+(slowest 0.41 s) over one 75-ply game, so a stateless move API (the client
+sends the move list, the server replays and validates it, then answers the
+whole engine turn), exposed through a tunnel, comes before the browser/WASM
+phases below.
+
+Original status: proposed, not started. Owner focus after promoting v28: turn the
 research engine into something other people can play, on a website and as a
 download. This plan covers what to build, in what order, how each step is
 verified, and which decisions belong to the owner. It does not queue any job.

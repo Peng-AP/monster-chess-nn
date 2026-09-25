@@ -24,8 +24,14 @@ statements are not current status.
   old ledgers in `docs/history/`, finished root drivers in `campaigns/`
   (frozen; resume via a worktree at `b46ce1c`). Two superseded docs deleted
   (`NEXT_STEPS_HANDOFF_20260905.md`, `BOOTSTRAP_FOLLOWUPS.md`); see `docs/README.md`.
-- Next-step plan (owner focus: a shippable engine):
-  `docs/plans/SHIPPABLE_ENGINE_PLAN.md`.
+- **Next step: better play.** `docs/plans/GEN51_STRENGTH_PLAN.md` (proposed,
+  not queued): audit and gate v4 with a binding 12,800 guard, a v28
+  search-constant check, then gen51 with teacher v28 and a shared two-arm data
+  pool testing deep disagreement-continuation value targets. The shippable
+  engine plan is deferred; when it resumes, the owner prefers hosting on this
+  box behind a move API.
+- Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
+  (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
 ## 1. Executive state
 
