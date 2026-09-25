@@ -1,0 +1,397 @@
+{
+  "complete": true,
+  "arms": {
+    "confirmation_b2": {
+      "games": 32,
+      "score": 0.484375,
+      "endings": {
+        "white_capture": 9,
+        "black_capture": 20,
+        "repetition": 3,
+        "turn_cap": 0
+      },
+      "games_hash": "f81519e9586dd55db47f6bf6dbca87127ea4f4d6b49be41eb8d3da2fa24ea95b",
+      "manifest_hash": "a92a67f90b0fe04398884972ef35f8691969f06e45af616b9f42144b8cf90837",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\confirmation_b2",
+        "mode": "guided",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 304,
+        "seconds": 2.0,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "confirmation_baseline": {
+      "games": 64,
+      "score": 0.4765625,
+      "endings": {
+        "white_capture": 18,
+        "black_capture": 39,
+        "repetition": 5,
+        "turn_cap": 2
+      },
+      "games_hash": "0433a9b081602533aa977ed086f74a37ffe49a01455ed36722aaf92d3e2cca99",
+      "manifest_hash": "cd757bb5db898deee2faa23e4a846eb3f06d8b9ceb262bded1e43c6b24d5b75e",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\confirmation_baseline",
+        "mode": "baseline",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 32,
+        "offset": 304,
+        "seconds": 2.0,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "confirmation_nominee": {
+      "games": 64,
+      "score": 0.46875,
+      "endings": {
+        "white_capture": 16,
+        "black_capture": 42,
+        "repetition": 6,
+        "turn_cap": 0
+      },
+      "games_hash": "45f12ce0b650002d695d296a690e03eaa808c5a3254307583004892997fba307",
+      "manifest_hash": "8c84653a995f81dacf2e559011f49befcbe954ed4d95c51489a73dbdc7d084fa",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\confirmation_nominee",
+        "mode": "guided",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 32,
+        "offset": 304,
+        "seconds": 2.0,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "cpu_vs_cpu": {
+      "games": 32,
+      "score": 0.515625,
+      "endings": {
+        "white_capture": 16,
+        "black_capture": 15,
+        "repetition": 0,
+        "turn_cap": 1
+      },
+      "games_hash": "4f5dde30455be437808e71273dd179b727f29579afe22734ed2d89963f35e37b",
+      "manifest_hash": "2ea95aead9e57ff45538e98a1e09cb6020c444f9ac7b5cb5d6b4fa01064b9500",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\cpu_vs_cpu",
+        "mode": "cpu",
+        "opponent": "baseline",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 288,
+        "seconds": 0.3,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "development_baseline": {
+      "games": 32,
+      "score": 0.3125,
+      "endings": {
+        "white_capture": 13,
+        "black_capture": 11,
+        "repetition": 6,
+        "turn_cap": 2
+      },
+      "games_hash": "b7bb6f96cb70c25e5531779d88b907e09d3096e6881532d7cdf89e64a8fe2f2d",
+      "manifest_hash": "f18cf30a6aae34913a0255b25bdd01f0dd47c155a2c16bb29dbb392a3ebffd51",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\development_baseline",
+        "mode": "baseline",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 288,
+        "seconds": 0.3,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "development_cpu": {
+      "games": 32,
+      "score": 0.359375,
+      "endings": {
+        "white_capture": 10,
+        "black_capture": 11,
+        "repetition": 7,
+        "turn_cap": 4
+      },
+      "games_hash": "6a98af6ac792d79c6b26a2d1fcdc0a6ed3597ebffba13a32711de5d43b6de4a6",
+      "manifest_hash": "f37f38eb9a920b845c4b5a2d0d0dc3acd0b3cfadabeb67e1b36b5a0c73f3080a",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\development_cpu",
+        "mode": "cpu",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 288,
+        "seconds": 0.3,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "development_guided": {
+      "games": 32,
+      "score": 0.375,
+      "endings": {
+        "white_capture": 11,
+        "black_capture": 11,
+        "repetition": 8,
+        "turn_cap": 2
+      },
+      "games_hash": "c24cc69b2a1900f716cecc2cc669b5357810ef7f2317a3e12cb268221db235c8",
+      "manifest_hash": "ae5e19ef3bac486960dabfc0b916a4da5ff774f12194c5e10b76c4b12bf0f0ea",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\development_guided",
+        "mode": "guided",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 288,
+        "seconds": 0.3,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "development_split": {
+      "games": 32,
+      "score": 0.34375,
+      "endings": {
+        "white_capture": 8,
+        "black_capture": 12,
+        "repetition": 7,
+        "turn_cap": 5
+      },
+      "games_hash": "60a6f515543331040ff8956b5f23860e99cfdc353033c58141ea43f35302f9f0",
+      "manifest_hash": "79899ff85a1256dedd4563f6f63cd8240d992e010ad8af03918fe56a299df51b",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\development_split",
+        "mode": "split",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 288,
+        "seconds": 0.3,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "rehearsal_cpu": {
+      "games": 2,
+      "score": 0.75,
+      "endings": {
+        "white_capture": 1,
+        "black_capture": 0,
+        "repetition": 1,
+        "turn_cap": 0
+      },
+      "games_hash": "9277d3a5d105ea9c4807b387ff2c8fbdb1d6d2a39cdc5b3721706d05d9c92b86",
+      "manifest_hash": "47a07bc65fa376a4883009f2b5fab2c6207ee6640f394e63404fc523fe219a19",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\rehearsal_cpu",
+        "mode": "cpu",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 1,
+        "offset": 288,
+        "seconds": 0.015,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "rehearsal_cpu_duel": {
+      "games": 2,
+      "score": 0.5,
+      "endings": {
+        "white_capture": 2,
+        "black_capture": 0,
+        "repetition": 0,
+        "turn_cap": 0
+      },
+      "games_hash": "745887f5c360e0caec55f58948c19d14f3b159d7396a5f0edbbbd30451ff5b67",
+      "manifest_hash": "4f6cc0ad648f708e0788217acaa58455cac38b83b6c49dee02661fc75c2d82b2",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\rehearsal_cpu_duel",
+        "mode": "cpu",
+        "opponent": "baseline",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 1,
+        "offset": 288,
+        "seconds": 0.015,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "rehearsal_guided": {
+      "games": 2,
+      "score": 0.75,
+      "endings": {
+        "white_capture": 0,
+        "black_capture": 1,
+        "repetition": 1,
+        "turn_cap": 0
+      },
+      "games_hash": "7958fd893143c29752b410fbff3d6623647ff9b26b58606314ac1dbf517ba98c",
+      "manifest_hash": "1d61148ef33afc0cc6a0c260ad0a4271e77d0d4541bde0e10095ee5b718185ec",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\rehearsal_guided",
+        "mode": "guided",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 1,
+        "offset": 288,
+        "seconds": 0.015,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "rehearsal_split": {
+      "games": 2,
+      "score": 0.5,
+      "endings": {
+        "white_capture": 0,
+        "black_capture": 0,
+        "repetition": 2,
+        "turn_cap": 0
+      },
+      "games_hash": "2a42a62cca6aad1ac5a26bb75e3077999c5f2e700b59392ab15c8afc60051237",
+      "manifest_hash": "8279494dc8ce1610472fa34bee9fa25598dd907056bcd58ef28c0051a0b80005",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\rehearsal_split",
+        "mode": "split",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 1,
+        "offset": 288,
+        "seconds": 0.015,
+        "seed": 9373,
+        "selfplay": false
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "self_gen47": {
+      "games": 16,
+      "score": 0.3125,
+      "endings": {
+        "white_capture": 3,
+        "black_capture": 9,
+        "repetition": 4,
+        "turn_cap": 0
+      },
+      "games_hash": "841bbed6ac481d9418dd6ccc9cafde8b235c59920da28383e8e0b79c6b85d493",
+      "manifest_hash": "34a5c471c6e353fadeb18d01d6b2885b48c5dc80111c3626a1915b89c192c70d",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\self_gen47",
+        "mode": "puct",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 304,
+        "seconds": 2.0,
+        "seed": 9373,
+        "selfplay": true
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    },
+    "self_nominee": {
+      "games": 16,
+      "score": 0.4375,
+      "endings": {
+        "white_capture": 7,
+        "black_capture": 9,
+        "repetition": 0,
+        "turn_cap": 0
+      },
+      "games_hash": "983d32bfd7aee33fec05f9938ffe8ea833b751dd74d66ae54fd8fed1ed988600",
+      "manifest_hash": "ed05f8df7951e752a032bd50fd81caa650b395e7c8ef5bed4ad38b6a7b215a65",
+      "arguments": {
+        "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\campaign\\self_nominee",
+        "mode": "guided",
+        "opponent": "puct",
+        "options": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_cpu_gpu_20260912\\workload_final.json",
+        "value": "models/candidates/search_leaf_leaf_001/epoch_003.bin",
+        "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+        "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+        "pairs": 16,
+        "offset": 304,
+        "seconds": 2.0,
+        "seed": 9373,
+        "selfplay": true
+      },
+      "runtime": "efb01f58461dee6b0c532b80d3042f38a940a1277b76589295bf8767bfa33fb8",
+      "note": "cap draw is an operational result, not a proof of a game-theoretic draw"
+    }
+  }
+}

@@ -4,6 +4,7 @@ from importlib.machinery import PathFinder
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,16 @@ def atomic_json(path, value):
         json.dump(value, stream, indent=2, allow_nan=False)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(tmp, path)
+    # Windows readers / antivirus can briefly deny delete-sharing. Preserve
+    # atomicity and the old receipt; permanent errors still fail after one second.
+    for attempt in range(21):
+        try:
+            os.replace(tmp, path)
+            break
+        except PermissionError:
+            if attempt == 20:
+                raise
+            time.sleep(.05)
 
 
 def runtime_identity():

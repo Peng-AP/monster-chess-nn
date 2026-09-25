@@ -1,0 +1,254 @@
+{
+  "complete": true,
+  "rehearsal": false,
+  "candidate": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0048\\arena_selected.pt",
+  "candidate_sha256": "a8c074390c93390ac974b1f58076a86aa0525d9a34f7cff66e12442bb7e07722",
+  "baseline": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+  "holdout": "models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt",
+  "comparisons": {
+    "h2h": {
+      "overall": {
+        "games": 256,
+        "wins": 110,
+        "draws": 60,
+        "losses": 86,
+        "score": 0.546875
+      },
+      "white": {
+        "games": 128,
+        "wins": 36,
+        "draws": 39,
+        "losses": 53,
+        "score": 0.43359375
+      },
+      "black": {
+        "games": 128,
+        "wins": 74,
+        "draws": 21,
+        "losses": 33,
+        "score": 0.66015625
+      },
+      "endings": {
+        "black_capture": 127,
+        "repetition": 60,
+        "white_capture": 69
+      },
+      "games_sha256": "6ef6fb9b829efa963c7996e53e9281e6f372b75f06a2c1cee68fa47465caea5e",
+      "replay_audited": true
+    },
+    "confirmation": {
+      "overall": {
+        "games": 256,
+        "wins": 112,
+        "draws": 48,
+        "losses": 96,
+        "score": 0.53125
+      },
+      "white": {
+        "games": 128,
+        "wins": 30,
+        "draws": 31,
+        "losses": 67,
+        "score": 0.35546875
+      },
+      "black": {
+        "games": 128,
+        "wins": 82,
+        "draws": 17,
+        "losses": 29,
+        "score": 0.70703125
+      },
+      "endings": {
+        "white_capture": 59,
+        "black_capture": 149,
+        "repetition": 48
+      },
+      "games_sha256": "baf4c4a28470aeac9c1ab90388eac004f98d4d801dc3eacedfa95e96bd320f04",
+      "replay_audited": true
+    },
+    "holdout_candidate": {
+      "overall": {
+        "games": 128,
+        "wins": 50,
+        "draws": 33,
+        "losses": 45,
+        "score": 0.51953125
+      },
+      "white": {
+        "games": 64,
+        "wins": 15,
+        "draws": 18,
+        "losses": 31,
+        "score": 0.375
+      },
+      "black": {
+        "games": 64,
+        "wins": 35,
+        "draws": 15,
+        "losses": 14,
+        "score": 0.6640625
+      },
+      "endings": {
+        "white_capture": 29,
+        "black_capture": 66,
+        "repetition": 33
+      },
+      "games_sha256": "2b56671b0f0db2ca2fe39ff522f6f57cd412f0866e286d58fbfd07b3e4e6cc0c",
+      "replay_audited": true
+    },
+    "holdout_baseline": {
+      "overall": {
+        "games": 128,
+        "wins": 49,
+        "draws": 37,
+        "losses": 42,
+        "score": 0.52734375
+      },
+      "white": {
+        "games": 64,
+        "wins": 15,
+        "draws": 18,
+        "losses": 31,
+        "score": 0.375
+      },
+      "black": {
+        "games": 64,
+        "wins": 34,
+        "draws": 19,
+        "losses": 11,
+        "score": 0.6796875
+      },
+      "endings": {
+        "white_capture": 26,
+        "black_capture": 65,
+        "repetition": 37
+      },
+      "games_sha256": "35333fb3a2e14c8d01d56f27450570581b7c94b2291328f04547ddd27f516514",
+      "replay_audited": true
+    }
+  },
+  "selfplay": {
+    "candidate": {
+      "overall": {
+        "games": 64,
+        "wins": 11,
+        "draws": 20,
+        "losses": 33,
+        "score": 0.328125
+      },
+      "white": {
+        "games": 64,
+        "wins": 11,
+        "draws": 20,
+        "losses": 33,
+        "score": 0.328125
+      },
+      "black": null,
+      "endings": {
+        "white_capture": 11,
+        "repetition": 20,
+        "black_capture": 33
+      },
+      "games_sha256": "cca5a8572db606be2dbde77ee98222ce8049a04bd6a1c5cfae9554c15b19aa91",
+      "replay_audited": true
+    },
+    "baseline": {
+      "overall": {
+        "games": 64,
+        "wins": 13,
+        "draws": 16,
+        "losses": 35,
+        "score": 0.328125
+      },
+      "white": {
+        "games": 64,
+        "wins": 13,
+        "draws": 16,
+        "losses": 35,
+        "score": 0.328125
+      },
+      "black": null,
+      "endings": {
+        "white_capture": 13,
+        "repetition": 16,
+        "black_capture": 35
+      },
+      "games_sha256": "a2985221cce42bbf55be2df8a45179d7b6346288c71f30496d1bfb6877e6e531",
+      "replay_audited": true
+    }
+  },
+  "uncertainty": {
+    "holdout_candidate_minus_baseline": {
+      "white": {
+        "difference": 0.0,
+        "lower95": -0.0625,
+        "upper95": 0.0625
+      },
+      "black": {
+        "difference": -0.015625,
+        "lower95": -0.1015625,
+        "upper95": 0.0703125
+      },
+      "overall": {
+        "difference": -0.0078125,
+        "lower95": -0.0625,
+        "upper95": 0.046875
+      }
+    },
+    "h2h_minus_50percent": {
+      "white": {
+        "difference": -0.06640625,
+        "lower95": -0.13671875,
+        "upper95": 0.00390625
+      },
+      "black": {
+        "difference": 0.16015625,
+        "lower95": 0.0859375,
+        "upper95": 0.23046875
+      },
+      "overall": {
+        "difference": 0.046875,
+        "lower95": 0.021484375,
+        "upper95": 0.07421875
+      }
+    },
+    "confirmation_minus_50percent": {
+      "white": {
+        "difference": -0.14453125,
+        "lower95": -0.21484375,
+        "upper95": -0.07421875
+      },
+      "black": {
+        "difference": 0.20703125,
+        "lower95": 0.1328125,
+        "upper95": 0.27734375
+      },
+      "overall": {
+        "difference": 0.03125,
+        "lower95": 0.0078125,
+        "upper95": 0.0546875
+      }
+    }
+  },
+  "post_selection_games": 896,
+  "manifest_sha256": "ddc2d1f6fe3b5aa207a6b87bdbb4d9846ed5b607bcca877ce28ec45fbce899de",
+  "book_sha256": "48388ed50fcd87b2f3074f11de2dbf67ef6cd3dafdb00163db42466f3520ff79",
+  "timing": {
+    "book": 149.64452860003803,
+    "confirmation": 1179.1858043000102,
+    "h2h": 1174.8539790000068,
+    "holdout_baseline": 631.685925400001,
+    "holdout_candidate": 635.4535552000161,
+    "iteration": 36564.4956962,
+    "self_baseline": 279.5920980999945,
+    "self_candidate": 304.93677669996396
+  },
+  "notes": [
+    "Fixed simulations, not strict equal wall time.",
+    "Cap draws are operational outcomes, not solved fortresses.",
+    "B2 transfer and selfplay share starts; do not pool as independent tests.",
+    "Book states start fresh driver history; generation/reanalysis retain full source history.",
+    "Exploratory paired-opening intervals, not multiplicity-adjusted promotion tests.",
+    "All prescribed branches ran regardless of earlier scores. No promotion."
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "arguments": {
+    "value": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\search_first_distilled_w512_001\\epoch_007.bin",
+    "reference": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+    "book": "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+    "out": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\search_first_20260911\\search_sweep\\w512_q0",
+    "pairs": 8,
+    "offset": 0,
+    "seconds": 0.3,
+    "seed": 9173,
+    "free": false,
+    "selfplay": false,
+    "extensions": 0,
+    "require_report": null
+  },
+  "hashes": {
+    "native/monster_native.pyd": "e62698b8842ad406bd0d217d75a225230de2d7c41dd143a5dd25f131b33d2040",
+    "native/src/alphabeta.rs": "0fe8a80cbbe98488685c7b8572bfb65e1a3072b8a612c867ce8ff4f7656f922a",
+    "native/src/cheap_value.rs": "75fb47cedc3d77d972388f1f8d0525a2a0be48247fba575f4a2a0fe474ca14cd",
+    "native/src/mcts.rs": "f5ac6c73d34ebf252a4db57cf33059d2324cab670eb9f9e92794664a8ee90531",
+    "src/native_mcts.py": "666658312a48027682fedb0b36dfad64cb78aac09a217f22a2616b01898fce00",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\search_first_match.py": "864f511c059b4ae3dcadcc3c5f320e98081a989e20e8df37fa9fcdcaeae3faac",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\search_first_distilled_w512_001\\epoch_007.bin": "25838983b6a828cc0e44adf87ea70e290cf3877b8aa505062594c9c8aa2b0265",
+    "models/candidates/bootstrap_main_gen_0047/arena_selected.pt": "810297fe98807eb56cfe4184c3210048fed7dc93110c47dfb18c0564fb3865fb",
+    "benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json": "3ccf12b2e7e7dc553647802ba31e4bd50e806ef88e5248cac69dafca9f93b826",
+    "native/src/search_order.rs": "31e504c692a232cc5ab2fc0353de4efc8c65ce680d9462a5c52eec5242569cd8",
+    "native/src/search_cache.rs": "6d20114fa1edd3fb8a7a4a4f3e004248be8c10c60c39d28fc4aedc7fefe303bb",
+    "native/src/search_bounds.rs": "85bfae5cf430deb67c3ca0f62358b9171e963938ce5db3692f5932722fd1c572",
+    "native/src/game.rs": "16cc8257f12538f219f63c17f389adebfbffde5ece47f443afc0d3bf9dcae9db",
+    "native/src/tactical.rs": "b7ed158dc180d3e0add0625d16196466e3c39ac4d7efa0677a6877c17a7746cb"
+  },
+  "budget_unit": "per half-move",
+  "incumbent_finisher": false,
+  "cap": "capture-only draw",
+  "repetition": "threefold settled positions",
+  "caveat": "PUCT checks time between batches; actual overrun recorded; reused diagnostic book"
+}

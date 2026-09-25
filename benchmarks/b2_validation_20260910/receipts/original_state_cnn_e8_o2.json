@@ -1,0 +1,32 @@
+{
+  "command": [
+    "tools/match.py",
+    "--model-a",
+    "models/candidates/b2_001_state_cnn/selected_epoch_008.pt",
+    "--model-b",
+    "models/bootstrap_v26/best_value_net.pt",
+    "--games",
+    "100",
+    "--sims",
+    "3200",
+    "--engine",
+    "native",
+    "--workers",
+    "8",
+    "--seed",
+    "2045020000",
+    "--book",
+    "benchmarks\\b2_validation_20260910\\panel_book.json",
+    "--book-offset",
+    "100",
+    "--report-path",
+    "benchmarks\\b2_validation_20260910\\original_state_cnn_e8_o2.json",
+    "--game-log",
+    "benchmarks\\b2_validation_20260910\\original_state_cnn_e8_o2.jsonl",
+    "--resume"
+  ],
+  "artifacts": {
+    "benchmarks\\b2_validation_20260910\\original_state_cnn_e8_o2.json": "122014a1ef6e6f205c6aca404e603884c417851995ac4ca3a6a5835dcf5fb73f",
+    "benchmarks\\b2_validation_20260910\\original_state_cnn_e8_o2.jsonl": "bc7ec66678ab83b532615bade92f80805b0978d26ba28a8f482f9bbc764f07a1"
+  }
+}

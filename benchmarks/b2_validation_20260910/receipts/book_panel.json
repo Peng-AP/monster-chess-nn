@@ -1,0 +1,34 @@
+{
+  "command": [
+    "tools/make_book.py",
+    "--model",
+    "models/bootstrap_v24/best_value_net.pt",
+    "--model",
+    "models/bootstrap_v25/best_value_net.pt",
+    "--model",
+    "models/bootstrap_v26/best_value_net.pt",
+    "--model",
+    "models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt",
+    "--model",
+    "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+    "--entries",
+    "200",
+    "--plies",
+    "16",
+    "--sims",
+    "700",
+    "--temperature",
+    ".5",
+    "--seed",
+    "2040000000",
+    "--workers",
+    "8",
+    "--oversample",
+    "8",
+    "--out",
+    "benchmarks\\b2_validation_20260910\\panel_book.json"
+  ],
+  "artifacts": {
+    "benchmarks\\b2_validation_20260910\\panel_book.json": "6ff339df9612ddea426ca6dfe9a71b6f726d8250e85274edffef246d3172cf64"
+  }
+}

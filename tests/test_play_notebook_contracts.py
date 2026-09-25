@@ -1,10 +1,12 @@
 import json
 import re
 import unittest
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 NOTEBOOK = ROOT / 'src' / 'play.ipynb'
 
 
@@ -30,58 +32,103 @@ class PlayNotebookContracts(unittest.TestCase):
         ):
             self.assertIn(f'importlib.reload({alias})', self.setup)
 
-    def test_setup_discovers_candidate_and_rejected_models(self):
-        self.assertIn('os.path.join(MODEL_DIR, \"candidates\", \"*\")',
-                      self.setup)
-        self.assertIn(
-            'os.path.join(MODEL_DIR, \"rejected\", \"*\", '
-            '\"best_value_net.pt\")',
-            self.setup,
-        )
-        self.assertIn('rejected/{run}', self.setup)
+    def test_setup_uses_refreshable_model_catalog(self):
+        self.assertIn('importlib.reload(model_catalog)', self.setup)
+        self.assertIn('model_catalog.discover_model_choices(PROJECT_ROOT, MODEL_DIR)', self.setup)
+        self.assertIn('_refresh_button.on_click(_refresh_models)', self.setup)
+
+    def test_refresh_preserves_loaded_selection_without_reloading_engine(self):
+        import ast
+        import ipywidgets as widgets
+        callback = next(node for node in ast.parse(self.setup).body
+                        if isinstance(node, ast.FunctionDef) and node.name == '_refresh_models')
+        dropdown = widgets.Dropdown(options=[('Heuristic', None), ('Old', '/old.pt')], value='/old.pt')
+        loads = []
+        loader = lambda change=None: loads.append(dropdown.value)
+        dropdown.observe(loader, names='value')
+        choices = [('Heuristic', None), ('New', '/new.pt'), ('Old', '/old.pt')]
+        scope = {'_eval_dropdown': dropdown, '_load_evaluator': loader,
+                 '_discover_model_choices': lambda: choices}
+        exec(compile(ast.Module(body=[callback], type_ignores=[]), '<refresh>', 'exec'), scope)
+        scope['_refresh_models']()
+        self.assertEqual(dropdown.value, '/old.pt')
+        self.assertEqual(loads, [])
+        self.assertIn('/new.pt', scope['_model_paths'])
+        choices.pop()
+        scope['_refresh_models']()
+        self.assertIsNone(dropdown.value)
+        self.assertEqual(loads, [None])
+
+    def test_latest_candidate_discovers_new_generations_at_click_time(self):
+        import ast
+        import ipywidgets as widgets
+        callback = next(node for node in ast.parse(self.setup).body
+                        if isinstance(node, ast.FunctionDef) and node.name == '_load_latest_candidate')
+        old = '/models/candidates/bootstrap_main_gen_0047/arena_selected.pt'
+        new = '/models/candidates/bootstrap_main_gen_0048/arena_selected.pt'
+        training = '/models/candidates/bootstrap_main_gen_0049/best_value_net.pt'
+        dropdown = widgets.Dropdown(options=[('Heuristic', None), ('old', old)], value=None)
+        loads = []
+        loader = lambda change=None: loads.append(dropdown.value)
+        dropdown.observe(loader, names='value')
+        scope = {'_eval_dropdown': dropdown, '_load_evaluator': loader,
+                 '_status_label': widgets.HTML()}
+        def refresh():
+            dropdown.options = [('Heuristic', None), ('old', old), ('new', new), ('training', training)]
+            scope['_model_paths'] = [old, new, training]
+        scope['_refresh_models'] = refresh
+        exec(compile(ast.Module(body=[callback], type_ignores=[]), '<latest>', 'exec'), scope)
+        scope['_load_latest_candidate']()
+        self.assertEqual(dropdown.value, new)
+        self.assertEqual(loads, [new])
+        scope['_load_latest_candidate']()
+        self.assertEqual(loads, [new, new])
+        self.assertIn('_latest_candidate_button.on_click(_load_latest_candidate)', self.setup)
 
     def test_candidate_picker_offers_the_gate_scored_checkpoint(self):
-        """The picker must find whatever checkpoint a gate actually scored.
-
-        Guessing it from filenames does not work. `arena_selected.pt` is one
-        such checkpoint, but in the 2026-08 chain every gated model is an epoch
-        SNAPSHOT instead -- gen11 `selected_epoch_008` through gen14
-        `selected_epoch_007` -- so a filename-driven picker showed NONE of them
-        while happily offering `best_value_net.pt`, the lowest-training-loss net
-        that no gate ever measured. Discovery therefore reads
-        `benchmarks/gate_*.json`, where the scored path is recorded explicitly.
-        """
-        self.assertIn('\"benchmarks\", \"gate_*.json\"', self.setup)
-        self.assertIn('report.get(\"model\")', self.setup)
-        self.assertIn('report.get(\"verdict\")', self.setup)
-        # Ungated nets stay reachable, but must be labelled as such.
-        self.assertIn('\"arena_selected.pt\"', self.setup)
-        self.assertIn('lowest loss, NOT gated', self.setup)
-        # Passes lead: a dropdown truncates the tail, and the failures
-        # outnumber the passes by an order of magnitude.
-        self.assertLess(self.setup.index('--- GATED: passed ---'),
-                        self.setup.index('--- gated: failed ---'))
+        from model_catalog import discover_model_choices
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / 'models/candidates/test_run'
+            candidate.mkdir(parents=True)
+            scored = candidate / 'selected_epoch_007.pt'
+            scored.write_bytes(b'network')
+            (candidate / 'best_value_net.pt').write_bytes(b'other')
+            reports = root / 'benchmarks'
+            reports.mkdir()
+            (reports / 'gate_test.json').write_text(json.dumps({
+                'model': str(scored), 'verdict': 'PASS', 'confirmed': True,
+                'bar': 'vs_v24', 'legs': {'vs_v24': {'a_score': .6}}}))
+            choices = discover_model_choices(root)
+            self.assertEqual(choices[1][1], str(scored))
+            self.assertIn('PASS+confirmed', choices[1][0])
+            self.assertTrue(any('not necessarily gated' in label for label, _ in choices))
 
     def test_gated_picker_ranks_by_recency_not_by_score(self):
-        """Scores from different gates are not comparable.
-
-        Each gate measures its candidate against the bar in force at the time,
-        so an old 0.7750 against a long-superseded opponent is not stronger
-        than 0.5481 against the current one. Sorting the dropdown by score
-        floated ancient checkpoints above the head of the chain, which is what
-        made it unusable. Rank is (pass tier, gate report mtime).
-        """
-        self.assertIn('os.path.getmtime(path)', self.setup)
-        self.assertIn(
-            'gated_choices.sort(key=lambda item: (item[0], item[1]), '
-            'reverse=True)',
-            self.setup,
-        )
+        from model_catalog import discover_model_choices
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / 'models/candidates/test_run'
+            candidate.mkdir(parents=True)
+            reports = root / 'benchmarks'
+            reports.mkdir()
+            for index, score in ((1, .9), (2, .6)):
+                checkpoint = candidate / f'epoch_{index}.pt'
+                checkpoint.write_bytes(b'network')
+                report = reports / f'gate_{index}.json'
+                report.write_text(json.dumps({
+                    'model': str(checkpoint), 'verdict': 'PASS',
+                    'bar': 'vs_v24', 'legs': {'vs_v24': {'a_score': score}}}))
+                os.utime(report, (100 + index, 100 + index))
+            self.assertTrue(discover_model_choices(root)[1][1].endswith('epoch_2.pt'))
 
     def test_color_selector_is_beside_model_and_drives_standard_game(self):
         self.assertIn('_color_dropdown = widgets.Dropdown(', self.setup)
         self.assertIn(
-            'widgets.HBox([_eval_dropdown, _color_dropdown])',
+            'widgets.HBox([_eval_dropdown, _color_dropdown, _refresh_button])',
             self.setup,
         )
         self.assertIn('_selected_color = _color_dropdown.value', self.play)

@@ -1,0 +1,136 @@
+{
+  "games": 24,
+  "log_sha256": "99f27936b0e28e839d5f836124695c35dc598f4b83999d5b3d6908f91d70c3d1",
+  "complete": true,
+  "budget_seconds": 0.3,
+  "selfplay": false,
+  "scores": {
+    "white": {
+      "wins": 1,
+      "draws": 5,
+      "losses": 6,
+      "score": 0.2916666666666667
+    },
+    "black": {
+      "wins": 2,
+      "draws": 2,
+      "losses": 8,
+      "score": 0.25
+    },
+    "overall": {
+      "wins": 3,
+      "draws": 7,
+      "losses": 14,
+      "score": 0.2708333333333333
+    }
+  },
+  "timing": {
+    "alphabeta": {
+      "decisions": 863,
+      "seconds_total": 237.67517700017197,
+      "median": 0.30313870002282783,
+      "p95": 0.30666718002757987,
+      "maximum": 0.31628020002972335,
+      "white": {
+        "depth_mean": 5.503448275862069,
+        "nodes_per_second": 415734.9398761207,
+        "extension_nodes": 0,
+        "max_ply_mean": 9.248275862068965,
+        "incomplete_first_iteration": 0
+      },
+      "black": {
+        "depth_mean": 4.904593639575972,
+        "nodes_per_second": 400746.634147171,
+        "extension_nodes": 0,
+        "max_ply_mean": 8.328621908127209,
+        "incomplete_first_iteration": 0
+      }
+    },
+    "puct": {
+      "decisions": 864,
+      "seconds_total": 270.13283449952723,
+      "median": 0.31243809999432415,
+      "p95": 0.3207241300260648,
+      "maximum": 0.32928619999438524
+    }
+  },
+  "proof_contradictions": [],
+  "unique_start_states": 12,
+  "unique_played_games": 24,
+  "paired_start_bootstrap_ci95": [
+    0.14583333333333334,
+    0.3958333333333333
+  ],
+  "paired_start_count": 12,
+  "opponent_budget_seconds": 0.3,
+  "players": {
+    "candidate": {
+      "white": {
+        "decisions": 580,
+        "seconds": 161.60884630004875,
+        "median_seconds": 0.30289864997030236,
+        "p95_seconds": 0.30644820996094496,
+        "cpu_decisions": 580,
+        "depth_mean": 5.503448275862069,
+        "node_limit_interruptions": 0,
+        "depth_limit_completions": 5,
+        "maximum_nodes": 495458,
+        "nodes_per_second": 415734.9398761207,
+        "policy_seconds": 0.0,
+        "backends": {
+          "cpu": 580
+        }
+      },
+      "black": {
+        "decisions": 283,
+        "seconds": 76.06633070012322,
+        "median_seconds": 0.3038115999661386,
+        "p95_seconds": 0.307075939985225,
+        "cpu_decisions": 283,
+        "depth_mean": 4.904593639575972,
+        "node_limit_interruptions": 0,
+        "depth_limit_completions": 2,
+        "maximum_nodes": 1235152,
+        "nodes_per_second": 400746.634147171,
+        "policy_seconds": 0.0,
+        "backends": {
+          "cpu": 283
+        }
+      }
+    },
+    "reference": {
+      "white": {
+        "decisions": 570,
+        "seconds": 178.05901060038013,
+        "median_seconds": 0.3119799999985844,
+        "p95_seconds": 0.3207856049964903,
+        "cpu_decisions": 0,
+        "depth_mean": null,
+        "node_limit_interruptions": 0,
+        "depth_limit_completions": 0,
+        "maximum_nodes": 0,
+        "nodes_per_second": null,
+        "policy_seconds": 0,
+        "backends": {
+          "gpu_puct": 570
+        }
+      },
+      "black": {
+        "decisions": 294,
+        "seconds": 92.0738238991471,
+        "median_seconds": 0.31328914998448454,
+        "p95_seconds": 0.3200442800269229,
+        "cpu_decisions": 0,
+        "depth_mean": null,
+        "node_limit_interruptions": 0,
+        "depth_limit_completions": 0,
+        "maximum_nodes": 0,
+        "nodes_per_second": null,
+        "policy_seconds": 0,
+        "backends": {
+          "gpu_puct": 294
+        }
+      }
+    }
+  }
+}

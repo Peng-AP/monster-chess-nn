@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "settings": {
+    "model_a": {
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\b2_001_hybrid\\selected_epoch_006.pt",
+      "sha256": "c7a7e5cc824b27ccfb969895c50cc9e4a1a2cf96682f488beba9d97f605f48ed"
+    },
+    "model_b": {
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v27\\best_value_net.pt",
+      "sha256": "976294daf7e3d6f0c51c358dd602f11997c7fdf2dc4b255b810b588c253e5459"
+    },
+    "games": 26,
+    "sims": 3200,
+    "seed": 1980040000,
+    "opening_temp_plies": null,
+    "workers": 8,
+    "sims_b": null,
+    "batch_a": null,
+    "batch_b": null,
+    "engine": "native",
+    "c_puct_a": 1.5,
+    "c_puct_b": 1.5,
+    "fpu_reduction_a": 0.3,
+    "fpu_reduction_b": 0.3,
+    "policy_temperature_a": 1.0,
+    "policy_temperature_b": 1.0,
+    "moves_left_utility_a": false,
+    "moves_left_utility_b": false,
+    "moves_left_max_effect_a": 0.03,
+    "moves_left_max_effect_b": 0.03,
+    "moves_left_threshold_a": 0.8,
+    "moves_left_threshold_b": 0.8,
+    "moves_left_slope_a": 0.1,
+    "moves_left_slope_b": 0.1,
+    "book": {
+      "schema_version": 2,
+      "model": "models/bootstrap_v24/best_value_net.pt, models/bootstrap_v25/best_value_net.pt, models/bootstrap_v26/best_value_net.pt",
+      "model_sha256": "9c0128c43670e46d0d4fffbd5fe065b930361f5b484400423e0127b2f6ecbc24, 035324932307273545e2a47545899d09a2dbb5b2965bfbab04aeaf01de86e15a, 8ed079aea313ffea79d4f2dd9879d62692d5a49915245dbc5dd86ce8f68a3c86",
+      "plies": 16,
+      "sims": 700,
+      "temperature": 0.5,
+      "search_policy_temperature": 1.0,
+      "seed": 1980000000,
+      "oversample": 1.6,
+      "created": "2026-09-09T09:42:07",
+      "stats": {
+        "per_model": [
+          {
+            "model": "models/bootstrap_v24/best_value_net.pt",
+            "contributed": 18,
+            "attempts_requested": 28,
+            "attempts_completed": 23,
+            "dropped_terminal": 0,
+            "dropped_duplicate": 5,
+            "minutes": 0.18
+          },
+          {
+            "model": "models/bootstrap_v25/best_value_net.pt",
+            "contributed": 18,
+            "attempts_requested": 28,
+            "attempts_completed": 26,
+            "dropped_terminal": 0,
+            "dropped_duplicate": 8,
+            "minutes": 0.18
+          },
+          {
+            "model": "models/bootstrap_v26/best_value_net.pt",
+            "contributed": 18,
+            "attempts_requested": 28,
+            "attempts_completed": 20,
+            "dropped_terminal": 0,
+            "dropped_duplicate": 2,
+            "minutes": 0.15
+          }
+        ],
+        "unique": 54,
+        "shuffle_seed": 1980009176,
+        "build_minutes": 0.51
+      },
+      "book_sha256": "7c884f3da5646722a05ee54cce72cd91e1d2b1a25e339a0a7a8d0204a948daa2",
+      "path": "benchmarks/b2_001_comparison_20260909/screen_book.json",
+      "entries": 52,
+      "offset": 39,
+      "entries_used": [
+        39,
+        52
+      ],
+      "temp_plies": 0
+    },
+    "book_offset": 39,
+    "book_temp_plies": 0,
+    "runtime": {
+      "files": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\b2_attention.py": "6639d43e462fbb464658b6770b7a7d9ac716f55f7a5b36f04670021cf990ecf1",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\benchmark.py": "028217c5c618ada355af3fe3db4f182b76b47909d0fc21184ba5719ed52d9159",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\config.py": "786a91b9212df6eb0e5e5402cc4368b6353c03c6082ce9cda8938bddad649ff3",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\curriculum.py": "87ecbd330bbf8d8064a77e32af89e139d024a928643497f2c20b8b73c4ee9e52",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_generation.py": "805a599bef2a559ba61bdef108a8aab2290aeeb34fb73ec96dcf9ffba51d8e3e",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_processor.py": "ab88819e5d77b8763c46144152e79efb9c38369f42d06c6dd7fe7c15aa965d62",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\encoding.py": "e80a10beb12a033659f450636c34f8f0799c35bf43d952a954b946d3cf9cd043",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\evaluation.py": "84a586e45f5dd4f9b715123eb4027e1e0e7c0fd949434db5ade1886832c10240",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\forced_capture.py": "6ad1900c319d522809abb1f86f72c85ba7c64066cd738bfd8be1b62614523b0f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\inference_server.py": "96e6df87e6b17a86d9b798b1cb6f2107b529af1741dbfb487735cf802ad31c3c",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\iterate.py": "b5c6bf62ca31e120b318c30b6953b29eaa2bb490d38c2df34076c5cc30d34662",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\make_blackfocus_starts.py": "b57ad0b9b60ebf56a693ab9a87cf143a8b51ed931005df4e24e6c7cbea89de15",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\match_evidence.py": "3e2f50954ba979c658a567d8fc78de637745f8bbfc8656ed363e664816c03d9d",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\mcts.py": "95ed2f36068dd66ff2bd64139fcf9e6f37988dec6f5f0311dde4e88370d9dcfb",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\model_catalog.py": "4d13f4ff495802fa9f64426f442c6e887526cc0677231eaec4a4f129c17988b0",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\monster_chess.py": "4a3823d788e5deaf63e7efb0dcfa01dd0e5383e6e6d8fd1f03eec3fbda508787",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\native_mcts.py": "de8ecab550f0fb883d2f71b6cdccdd998e36e47161e311bf73896866b762ebae",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\play.py": "bd8f1867c133460afc0b74a6831882f9eb9446e62a85cf82dc517078255f0674",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_data.py": "6d5b4fccce9349a1c6c3d8b33a94957e06e30d4d37dad00adc6d9ff53b304cd4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_probe.py": "ba6f5d7b78348f2bf5a03dd3b3f518b253229af9da5dcf25b10eb9697f2d0861",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\repetition.py": "1f9f3ba4ea33e45945dec63505cae8436e7e486068e2bc094f033c53db01cb8d",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\scripted_mate.py": "9b5045edf70f0e56386b1cc7bce422549c9422da316831e28cfe07360eaadd9f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\sparse_policy.py": "1170153aa751f910b8f03ba43d69ae402c81e2a7730841b372ea171eeced28e2",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\train.py": "4aa1c13a29218bfa01acd3d539af444a2a53046531cfe56318f8f061b3e6dd8e",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\verify_scripted_mate.py": "b90118e83e5b0c72bdb9af5e52421dcf246dae9a3551a9c8842fd64160525e0a",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\worker_lease.py": "bdaebf8461b4592524a0461a7439faf4e2e63d1495ef52cd19c502b385fad69b",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\match.py": "69e239456a421dc2dc16141e3764471f40264fff8b399b05bb0ce7a8aea933ff",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\gate_free.py": "94563384e0a15472aacd5e9b634665c24122556dec7d7b302a0fc92ae3d41679",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\free_gate_stats.py": "5e192d8766cfde5dc182bcf0987b5600b5d044a94f1105dfc9006418b86285c4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\monster_native.pyd": "12e4a3d0e55b02e5a8370b392a7b2c1cf127eb0a9fa98c4f0e3441c8f999be42"
+      },
+      "environment": {
+        "MONSTER_PINNED_INPUT": "1"
+      }
+    }
+  },
+  "tasks": [
+    "4cf7bd7a9dab60a8ea955f24cf6c4fa3e4a850279d7a101bb916b1e16d76b758",
+    "60200c0664d9299a2271331d9e29352cf21125f3a3f415927b771c0747b77b28",
+    "1593139f7159b97033677c3d4a36bceaeebc4a145836c97154195db1224cd87f",
+    "6472ab5ebbc747b85071a106013b87110e84fd3349f76d6ebd266f8ea200886e",
+    "25bfe7b316d84500934c6b5c93f942caac02c5b9877c2c9a45285743e3de9066",
+    "57e29eefbdb724b2076b3552ae6c0ae4010f1cc648e859aaea0320685861a0c2",
+    "fc866957a0c49ad1d375ffc2097f71f21ce5db94de24b96f26ab88ecef544473",
+    "36c7767df09cc9e43e3ac967e7ccc8910c7848fc0dc5b431fb140cd43c5633e8",
+    "115a41f0b033f48ad1ce6a5fe94affb13be8b7225b9076becb02d7fa5a0053ea",
+    "cb8897bf92dd63d32a181f82aae766d0f10af22bdf9d3ac4d16464573428f8c1",
+    "e71b758f34d32d8fb9c02d67f4695ba77f053cd9255dd43cd565144466292c70",
+    "56c6b94930dc0407e400bf8f812a4a62c7f11657fc82a2d33b578f0d6bd43ca6",
+    "81bee14a8f822cac73bb332fcddb7bd9ac356a359382ac50430e42d911878f5b",
+    "3e86a7c380fbed85f8eb674b315aa567a1ebcf29023a6ef343cce9392df23c16",
+    "b4e708217b31dfe00a22b94ed9656ad74c7d38203918913d362a9748730c65e9",
+    "4e3f34987e638b5055ef8c3a462bcf834290c485107f1faf5e3401ba5b50bb19",
+    "c5c43d2227eb47c2b1db0d2e752115b08809188fa1f94d4d4d3ffa2600deefb6",
+    "ef585bdf4a737806bce0064c7dc244e0f87193f2791f8372e4a39fb2442a5a75",
+    "6ba4305866fa71bd269103655500cf28691b5014c37b097416d708af0f971741",
+    "1e0cbbbe1614bfd26aebae7a566a420b669dc781f395a9cf9dd344ca22c10281",
+    "c04adecc081ce3abdf687b902af95759bf91df984930d2f3aba0173cbcadca49",
+    "2c6ea6f5c1e4a6cda7e9700e06ad779dc65a4cf2ab7b3327536e8414fb82db22",
+    "bab03ad03a680f7b8dd9ea4e7267eec8ec84248c4d41805eedebc36231042c4f",
+    "acc6eadd73deb76a0cdac12d3cd5e51192e6570619b6dbc2644fc39198be7124",
+    "f215b014116032aab6424bfd4a81e64499e0c2d01f4d9c2349cb04999842a804",
+    "4c2c403c60e2b9c67fcfdaf1681a74aa7e37100a12cc66dbcf5e29b31e222c11"
+  ]
+}

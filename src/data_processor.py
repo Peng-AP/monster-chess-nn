@@ -440,7 +440,8 @@ def _convert_games_to_arrays(games, augment, value_horizon=VALUE_TARGET_HORIZON,
             half_pending = bool(rec.get("half"))
             tensor = fen_to_tensor(rec["fen"], is_white_turn=is_white,
                                    half_pending=half_pending,
-                                   input_channels=input_channels)
+                                   input_channels=input_channels,
+                                   turn_count=rec.get('state', {}).get('turn_count'))
             # mcts_value from data_generation is already from the
             # side-to-move perspective for both White and Black.
             # gr comes pre-discounted from _discounted_results.

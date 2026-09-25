@@ -1,0 +1,239 @@
+{
+  "manifest": {
+    "config": {
+      "candidate": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+      "baseline": "models/bootstrap_v27/best_value_net.pt",
+      "opponent": [
+        "models/bootstrap_v26/best_value_net.pt"
+      ],
+      "book_teacher": [
+        "models/bootstrap_v24/best_value_net.pt",
+        "models/bootstrap_v25/best_value_net.pt",
+        "models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt"
+      ],
+      "human_game": [],
+      "iteration_state": "iterations/gen_0047/state.json",
+      "raw_generation_dir": null,
+      "replay_data_dir": null,
+      "run_dir": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08",
+      "seed": 280000000,
+      "book_entries": 60,
+      "book_sims": 700,
+      "sims": 3200,
+      "free_games": 120,
+      "workers": 8
+    },
+    "models": [
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0047\\arena_selected.pt",
+        "sha256": "810297fe98807eb56cfe4184c3210048fed7dc93110c47dfb18c0564fb3865fb"
+      },
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v27\\best_value_net.pt",
+        "sha256": "976294daf7e3d6f0c51c358dd602f11997c7fdf2dc4b255b810b588c253e5459"
+      },
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v26\\best_value_net.pt",
+        "sha256": "8ed079aea313ffea79d4f2dd9879d62692d5a49915245dbc5dd86ce8f68a3c86"
+      },
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v24\\best_value_net.pt",
+        "sha256": "9c0128c43670e46d0d4fffbd5fe065b930361f5b484400423e0127b2f6ecbc24"
+      },
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v25\\best_value_net.pt",
+        "sha256": "035324932307273545e2a47545899d09a2dbb5b2965bfbab04aeaf01de86e15a"
+      },
+      {
+        "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0044\\screen_nominee_v3.pt",
+        "sha256": "4128933f7865dea06c32f7b343348859dd47a8bc75fe49e4223941156935efa1"
+      }
+    ],
+    "humans": [],
+    "runtime": {
+      "files": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\benchmark.py": "028217c5c618ada355af3fe3db4f182b76b47909d0fc21184ba5719ed52d9159",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\config.py": "786a91b9212df6eb0e5e5402cc4368b6353c03c6082ce9cda8938bddad649ff3",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\curriculum.py": "87ecbd330bbf8d8064a77e32af89e139d024a928643497f2c20b8b73c4ee9e52",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_generation.py": "805a599bef2a559ba61bdef108a8aab2290aeeb34fb73ec96dcf9ffba51d8e3e",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_processor.py": "c4ac28faeb777c2175b56af293eb2f3e4f3e6f12070cd86ebf913c6ce91a2fef",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\encoding.py": "f5fc7d65ccbd1b226bb3bbade1c2b5082bb43902e472db1a4bf173d732caf2c6",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\evaluation.py": "06cdef47a3d5399e17dbf2e669856dd97f2d6dcc8ce26d51335b508f43c6de4c",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\forced_capture.py": "6ad1900c319d522809abb1f86f72c85ba7c64066cd738bfd8be1b62614523b0f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\inference_server.py": "96e6df87e6b17a86d9b798b1cb6f2107b529af1741dbfb487735cf802ad31c3c",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\iterate.py": "b5c6bf62ca31e120b318c30b6953b29eaa2bb490d38c2df34076c5cc30d34662",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\make_blackfocus_starts.py": "b57ad0b9b60ebf56a693ab9a87cf143a8b51ed931005df4e24e6c7cbea89de15",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\match_evidence.py": "3e2f50954ba979c658a567d8fc78de637745f8bbfc8656ed363e664816c03d9d",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\mcts.py": "95ed2f36068dd66ff2bd64139fcf9e6f37988dec6f5f0311dde4e88370d9dcfb",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\model_catalog.py": "4d13f4ff495802fa9f64426f442c6e887526cc0677231eaec4a4f129c17988b0",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\monster_chess.py": "4a3823d788e5deaf63e7efb0dcfa01dd0e5383e6e6d8fd1f03eec3fbda508787",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\native_mcts.py": "d21aa6de298060f0451dc3215b2aee82bc3e858ec0435d7a3ece17b00185d8f7",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\play.py": "bd8f1867c133460afc0b74a6831882f9eb9446e62a85cf82dc517078255f0674",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_data.py": "6d5b4fccce9349a1c6c3d8b33a94957e06e30d4d37dad00adc6d9ff53b304cd4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_probe.py": "ba6f5d7b78348f2bf5a03dd3b3f518b253229af9da5dcf25b10eb9697f2d0861",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\repetition.py": "1f9f3ba4ea33e45945dec63505cae8436e7e486068e2bc094f033c53db01cb8d",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\scripted_mate.py": "9b5045edf70f0e56386b1cc7bce422549c9422da316831e28cfe07360eaadd9f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\sparse_policy.py": "1170153aa751f910b8f03ba43d69ae402c81e2a7730841b372ea171eeced28e2",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\train.py": "e0219024fb536f897fcde3b7e0f3b2b6872fd48f86a3140c081344febb3f4aad",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\verify_scripted_mate.py": "b90118e83e5b0c72bdb9af5e52421dcf246dae9a3551a9c8842fd64160525e0a",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\worker_lease.py": "bdaebf8461b4592524a0461a7439faf4e2e63d1495ef52cd19c502b385fad69b",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\match.py": "69e239456a421dc2dc16141e3764471f40264fff8b399b05bb0ce7a8aea933ff",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\gate_free.py": "94563384e0a15472aacd5e9b634665c24122556dec7d7b302a0fc92ae3d41679",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\free_gate_stats.py": "5e192d8766cfde5dc182bcf0987b5600b5d044a94f1105dfc9006418b86285c4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\monster_native.pyd": "b990dee8e6e0e009625b293a259cd4c43538963bfcc681a2dfad04db5a2d2270"
+      },
+      "environment": {}
+    },
+    "implementation": "5a2d54e079f5b6e369683d8b3d5044e54f1d3bf1f295dc8f4412cf9a9e359a2f",
+    "tools": {
+      "tools/make_book.py": "78f996d920ac0696a92c0ced3005eff0fb6b9af54f5247c22cbf2bdd9c12fba1",
+      "tools/probe_human_line.py": "5d3b2e599544db0e27d20e56ce39f9ce6404a70c5324a5860c0c1baf74cd3b3f",
+      "tools/generation_data_snapshot.py": "e2134ca61ff7b790a49aaac44001f5462e7d1368e725a8500f6064874bc79884",
+      "tools/replay_census.py": "6710349034d8a87f49cfd00d143da61c7fc116f0ceec1fe4a42faa96c3076f93"
+    },
+    "plan": [
+      [
+        "starts",
+        [
+          "tools/make_book.py",
+          "--model",
+          "models/bootstrap_v24/best_value_net.pt",
+          "--model",
+          "models/bootstrap_v25/best_value_net.pt",
+          "--model",
+          "models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt",
+          "--entries",
+          "60",
+          "--plies",
+          "8",
+          "--sims",
+          "700",
+          "--temperature",
+          "1.0",
+          "--seed",
+          "280000000",
+          "--workers",
+          "8",
+          "--engine",
+          "native",
+          "--oversample",
+          "12",
+          "--out",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\independent_starts.json"
+        ],
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\independent_starts.json"
+      ],
+      [
+        "matched_baseline_opponent_0",
+        [
+          "tools/match.py",
+          "--model-a",
+          "models/bootstrap_v27/best_value_net.pt",
+          "--model-b",
+          "models/bootstrap_v26/best_value_net.pt",
+          "--games",
+          "120",
+          "--sims",
+          "3200",
+          "--workers",
+          "8",
+          "--engine",
+          "native",
+          "--seed",
+          "284000000",
+          "--book",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\independent_starts.json",
+          "--book-offset",
+          "0",
+          "--report-path",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_baseline_opponent_0.json",
+          "--game-log",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_baseline_opponent_0.jsonl",
+          "--resume"
+        ],
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_baseline_opponent_0.json"
+      ],
+      [
+        "matched_candidate_opponent_0",
+        [
+          "tools/match.py",
+          "--model-a",
+          "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+          "--model-b",
+          "models/bootstrap_v26/best_value_net.pt",
+          "--games",
+          "120",
+          "--sims",
+          "3200",
+          "--workers",
+          "8",
+          "--engine",
+          "native",
+          "--seed",
+          "284000000",
+          "--book",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\independent_starts.json",
+          "--book-offset",
+          "0",
+          "--report-path",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_candidate_opponent_0.json",
+          "--game-log",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_candidate_opponent_0.jsonl",
+          "--resume"
+        ],
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\matched_candidate_opponent_0.json"
+      ],
+      [
+        "free_candidate_opponent_0",
+        [
+          "tools/match.py",
+          "--model-a",
+          "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+          "--model-b",
+          "models/bootstrap_v26/best_value_net.pt",
+          "--games",
+          "120",
+          "--sims",
+          "3200",
+          "--workers",
+          "8",
+          "--engine",
+          "native",
+          "--seed",
+          "287000000",
+          "--report-path",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\free_candidate_opponent_0.json",
+          "--game-log",
+          "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\free_candidate_opponent_0.jsonl",
+          "--resume"
+        ],
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\generalization\\gen47_morning_20260908\\round_08\\free_candidate_opponent_0.json"
+      ]
+    ]
+  },
+  "stages": {
+    "starts": {
+      "status": "complete",
+      "started": "2026-09-08T10:07:28",
+      "sha256": "f9cb4720f4414b4dd462e6208e216bd86e8db9ec1aace405b2dc872bcc9fbcaa"
+    },
+    "matched_baseline_opponent_0": {
+      "status": "complete",
+      "started": "2026-09-08T10:07:51",
+      "sha256": "1c2f87155d2c646410465bb51ac80694bbd28d981db4313593e2b2d24d1e54d3"
+    },
+    "matched_candidate_opponent_0": {
+      "status": "complete",
+      "started": "2026-09-08T10:18:12",
+      "sha256": "17b57fda31cd502062b025b4aa606e7a81d1efb577039b3c424aad0166c5f7c7"
+    },
+    "free_candidate_opponent_0": {
+      "status": "complete",
+      "started": "2026-09-08T10:28:41",
+      "sha256": "6f9980a2c0fdfcbf331128f9126f63424a8b25db10085dcbf8e54f625af21869"
+    }
+  },
+  "status": "complete",
+  "binding": false
+}

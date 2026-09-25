@@ -1,0 +1,1963 @@
+{
+  "smoke": false,
+  "models": {
+    "gen49": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+    "e10": "models/candidates/bootstrap_main_gen_0050/selected_epoch_010.pt",
+    "e13": "models/candidates/bootstrap_main_gen_0050/selected_epoch_013.pt",
+    "e14": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+    "e15": "models/candidates/bootstrap_main_gen_0050/selected_epoch_015.pt",
+    "e23": "models/candidates/bootstrap_main_gen_0050/selected_epoch_023.pt"
+  },
+  "cases": [
+    {
+      "id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    },
+    {
+      "id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    },
+    {
+      "id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    },
+    {
+      "id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    },
+    {
+      "id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    },
+    {
+      "id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "source": "predeclared inspected regression prefix, not blind"
+    }
+  ],
+  "tasks": [
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000000,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000001,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000002,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000003,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000004,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000005,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000100,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000101,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000102,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000103,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000104,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000105,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000200,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000201,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000202,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000203,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000204,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000205,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000000,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000001,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000002,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000003,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000004,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000005,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000100,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000101,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000102,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000103,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000104,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000105,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000200,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000201,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000202,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000203,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000204,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000205,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000000,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000001,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000002,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000003,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000004,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000005,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000100,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000101,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000102,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000103,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000104,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000105,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000200,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000201,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000202,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000203,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000204,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000205,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000000,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000001,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000002,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000003,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000004,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 3200,
+      "black_sims": 3200,
+      "seed": 2430000005,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000100,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000101,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000102,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000103,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000104,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 12800,
+      "black_sims": 12800,
+      "seed": 2430000105,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_0",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/3PP3/8/2P2P2/4K3 w kq - 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "7103a52c1cf1dfd4498fd8c6494c366a4272215018658265b27b4dc81faeaa1a",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000200,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_1",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4"
+        ],
+        "fen": "rnbqkbnr/ppp1pppp/8/3p4/2PPP3/8/5P2/4K3 w kq - 0 2",
+        "half": true,
+        "turn_count": 2
+      },
+      "case_sha256": "2e49a9ecdda8753427e74725e5170f190fefbd0f6aa7f2bead84ed8dfd531a7d",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000201,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_2",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "c2c4",
+          "c4c5",
+          "g8f6"
+        ],
+        "fen": "rnbqkb1r/ppp1pppp/5n2/2Pp4/3PP3/8/5P2/4K3 w kq - 1 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "5bfd4b44142c48436cdb81a508139ba06337f5c3ef4191834912434ddef74b88",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000202,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_3",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "c2c4",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/2PP4/8/5P2/4K3 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "a59e573ec170e21678645f6c8bea7b9c16462a49026cb7a7286c8f17557dd9df",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000203,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_4",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "e2e4",
+          "d2d4",
+          "d7d5",
+          "e4e5",
+          "e1e2",
+          "f7f6"
+        ],
+        "fen": "rnbqkbnr/ppp1p1pp/5p2/3pP3/3P4/8/2P1KP2/8 w kq - 0 3",
+        "half": false,
+        "turn_count": 4
+      },
+      "case_sha256": "c75fe2018416616acc206a4e3a6ac919009ba0397d53966d39f41f81744f20ed",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000204,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    },
+    {
+      "case_id": "root_5",
+      "state": {
+        "initial_fen": "rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1",
+        "moves": [
+          "d2d4",
+          "d4d5",
+          "c7c5"
+        ],
+        "fen": "rnbqkbnr/pp1ppppp/8/2pP4/8/8/2P1PP2/4K3 w kq c6 0 2",
+        "half": false,
+        "turn_count": 2
+      },
+      "case_sha256": "426e92b5286d0b16d1efb51ceeb061ae358d772e87c0c19918f713557ed5178b",
+      "white_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "black_model": "models/candidates/bootstrap_main_gen_0050/selected_epoch_014.pt",
+      "white_sims": 51200,
+      "black_sims": 51200,
+      "seed": 2430000205,
+      "sample_index": 0,
+      "kind": "probe",
+      "deadline_seconds": 3600,
+      "value_model": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt"
+    }
+  ]
+}

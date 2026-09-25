@@ -1,11 +1,98 @@
 # Monster Chess NN — context
 
-**The single durable reference: rules, vocabulary, laws, state, data, and
-operational knowledge.** The live campaign and next steps are `DIRECTIVE.md`;
-how to run things is `README.md`. Retired documents (`HANDOFF.md`,
-`OVERNIGHT_REPORT.md`, `PHASE0_REPORT.md`, concluded directives and drivers)
-live in git history, and every measured claim below is backed by a JSON
-artifact in `benchmarks/`.
+**September 25 current:** see [HANDOFF_20260925.md](HANDOFF_20260925.md) for the
+consolidated state and proposed next steps. Value calibration completed
+September 17 at 09:16:27: 3,696 games, continuation nominee 58.4375%/800 vs
+unchanged gen50 epoch14 at 3,200 simulations, but 49.375%/160 at 12,800.
+Ordinary-budget gain, not a demonstrated general/all-budget upgrade. No promotion;
+public v27 and gen50's epoch14 selection remain unchanged. No active managed
+campaign or queued follow-up found on September 25. See
+`VALUE_CALIBRATION_RESULTS.md`. Cleanup preserved models/data/evidence and
+archived completed logs; `CLEANUP_20260925.md` records the exact scope.
+
+**September17 01:16:** checkpoint recovery COMPLETE3,568games+72probes.
+Epoch15nominee passesgen49 gate73.9375%,Black97.875%,White50%; at12,800
+White26.25%,Black99.375%. No balanced recovery, no overwrite/promotion.
+See `GEN50_RECOVERY_RESULTS.md`; currentgen50selected remainsepoch14.
+Value/search crossover explains ordinary-budgetc5 attraction better than root
+policy, but no global value-head transplant is justified. No further run queued.
+
+**September16 evening:** gen50epoch14 completed, gatePASS/75%vsgen49 over800,
+especiallyBlack93.25%; White regressions vsv27/B2 prevent an unqualified broad
+upgrade claim. See `GEN50_RESULTS.md`. Owner authorized checkpoint recovery:
+`GEN50_RECOVERY_PLAN.md`, `run_gen50_recovery.py`, rehearsal complete983tests+
+3subtests,172games/24probes,26receipts/resume verified. Production launched19:07
+as `gen50_checkpoint_recovery`;
+six-model matched-root/screens plus isolatedpolicy/value crossover and fresh
+confirmation. No new training, search-default changes, overwrite or promotion.
+
+**September16:** corrected counterplay study plus extension completed1,999games/
+108probes. Deeper gen49 vsgen48:78.4375%, vsB2:99.375%; deep gen49 self
+14White/36Black/110draw. See latest HANDOFF. Owner authorized gen50 next:
+same mainline recipe with gen49teacher,12,800fork/reanalysis targets, unchanged
+architecture/training. `GEN50_PLAN.md`, `run_gen50.py`; full rehearsal passed
+982tests+3subtests and complete tiny generation/training/36game checks.
+Production launched00:50 as `gen50_deep_targets`;2,280independent postselection
+games across3,200/12,800 are chained after selection. No promotion.
+Older dated active-run claims below are historical.
+
+**September15 02:57 correction:** original counterplay study stopped/preserved:
+equal-model conditional games shared one tree across colors. Corrected to match
+the normal harness's separate per-color trees; added regression coverage. New
+fully rehearsed run will use `benchmarks/mainline_counterplay_20260915_v2` and
+managed `mainline_counterplay_v2`. Corrected production launched02:57 after978tests+
+3subtests,169-game/31-probe rehearsal, and exact117-ply parity against the normal
+benchmark. No gen49 weights or ordinary match engine changed; prior gen49 results stand.
+Original study evidence is not pooled into v2. See the latest HANDOFF entry.
+
+**September15 01:41 current work:** launched the authorized eight-hour mainline
+counterplay study, `MAINLINE_COUNTERPLAY_PLAN.md`. Gen49 has finished: epoch7
+scored94%/800games vsgen48,83.75%vsB2,98.25%vsv27; self14White/136Black/50draw.
+See `GEN49_RESULTS.md`: large measured improvement, concentrated opening
+advantages; B2 Black-score decline is mainly a defense-selection shift, not
+established conversion deterioration. Owner human playtest is positive.
+New work freezes all weights and studies actual ...e5/...d5 counterplay, the
+dominant drawing line and search scaling. No gen50, architecture/rule change,
+promotion or destructive operation. Managed `mainline_counterplay`, log
+`logs/mainline_counterplay.log`; evidence `benchmarks/mainline_counterplay_20260915`.
+977tests+3subtests and169-game/31-probe rehearsal passed, including four full
+204,800-simulation probes. Production1,423games+108probes chained, no score-based
+stopping; maximum8game workers/4root-probe workers, one heavy stage at a time.
+Earlier dated status below is history where it conflicts with this paragraph.
+
+**September14 02:33 current work:** launched `GEN49_PLAN.md` / `tools/start_gen49.py`:
+independent normal-start gen48 tests first, then a mainline-only new gen49 data
+increment (2,800 selfplay + 400 deep continuations), unchanged CNN/training,
+and independent free-play gates/held-out tests. Managed `gen49_mainline`, log
+`logs/gen49_mainline.log`. 954 tests + 3 subtests and full 28-game/48-test-game
+rehearsal passed; all branches continue after measured failure. Public v27
+is unchanged. No forced-prefix expansion, automatic promotion or deletion.
+**Evaluation correction:** the gen48 H2H/B2/self measurements below were ALL
+book-based. Flat B2 book transfer is not evidence of flat normal-start transfer.
+The standing owner policy makes normal-start free play primary.
+
+**04:36 measured correction:** gen48 independent normal-start H2H vsgen47
+89.25%/92.25%, combined90.75%; held-out B2 76.25% vsgen47's39.25%, with gains
+on BOTH colors. Gen48 selfplay82White/67Black/51draw, White score53.75%.
+All1,200games audited; `production/gen48_free_results.json` under the gen49
+research directory contains evidence. Gen49 generation is underway. The
+following old book-only result is historical, not the current strength verdict.
+
+**Current result (September14):** gen48 GPU data-recipe experiment completed.
+Fresh H2H vsgen47 scored54.69% and53.13%, but held-out B2 transfer was flat and
+selfplay White score unchanged. No demonstrated broad both-color upgrade or
+promotion. See `GPU48_RESULTS.md` and the top of `HANDOFF.md`; no follow-up is
+queued. CPU strength work remains paused, not deleted. Public release remains
+v27/gen46; gen47 is the frozen comparison bar.
+The older directive/status prose below is historical where dates conflict.
+
+**Durable rules, vocabulary, laws, and historical operational knowledge.**
+Current state and next steps are consolidated in `HANDOFF_20260925.md`;
+`HANDOFF.md` remains the chronological operational record. `DIRECTIVE.md` is
+the completed August rewrite scope, not a live campaign. `README.md` describes
+general usage. September research includes untracked source and evidence: do
+not assume concluded drivers/reports are backed up in git history. Date-check
+historical claims below against the relevant artifacts in `benchmarks/`.
 
 ---
 
@@ -35,6 +122,23 @@ not **end** its turn with its own king attacked (forced-blunder exception
 unchanged, in `_get_white_actions`).
 
 ## 2. Where the project stands
+
+> **September 12 CPU-search experiment completed.** The optional incremental
+> evaluator saved another6.04% fixed-depth elapsed time beyond existing search
+> optimizations, but timed development tied baseline. Fresh CPU2s /CPU8s versus
+> fixedGPUgen47@2s scored42.19% /46.88% (32games each); White28.13% unchanged,
+> Black56.25% /65.63%. The paired gain is inconclusive.160 real games passed
+> replay audit; no release promotion or new model training. No jobs remain
+> queued. Details and the recommended next block: `SEARCH_CPU_SCALING_RESULTS.md`.
+
+> **September 7 release update.** Owner authorized three milestone releases:
+> gen42 = **v25**, gen45 = **v26**, gen46 = **v27**. Checkpoints are immutable
+> copies with promotion manifests; v27 is selected by the bootstrap pointer
+> and the legacy gate bar. Gen46 passed both sampled confirmations against
+> gen45; broader diagnostics remain separate. Gen47 is queued with stateful
+> continuation/reanalysis, family-isolated splits, and 20% older-opponent
+> games. See `GEN47_RUN.md` and the top of `HANDOFF.md`; older dated standings
+> below are historical, not current. No thresholds or old verdicts changed.
 
 > **September 6 overnight update.** Gen44 epoch 9 completed its 3,200-simulation
 > campaign: sampled H2H against gen42 was 67.39% then 67.23%, against gen41

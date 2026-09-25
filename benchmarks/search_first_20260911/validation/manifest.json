@@ -1,0 +1,86 @@
+{
+  "hashes": {
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\alphabeta.rs": "48269d3f949dbfe32ba4e4f5a92166170f1c30c85494cb549198bc801f9316c5",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\bitboard.rs": "79ea2bc75d7e51aaee247db543830df2c77924b1ca42e94a41984eea376c9dae",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\cheap_value.rs": "3dc609113c17fd83b1f56b00bf3c2f6a33a0bbf6b9bb9affcf9c0ccb84c404aa",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\encoding.rs": "ec1af77601f2240fa5425895aee93f97835f8ba85542257c55c5ee8f2ac6fbf9",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\eval.rs": "771956157a6322d300eea97cdc489d4892160a8c0cafb457b8ff42f54f4c13fb",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\float_dot.rs": "d6fadb85200162e218c148ee8c9fe5d914eaf2aaf130b1a39fcb3979a47c2024",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\game.rs": "16cc8257f12538f219f63c17f389adebfbffde5ece47f443afc0d3bf9dcae9db",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\lib.rs": "28a078a84e576e4628e41ac1cf1b7f82a8e7cae5a7705a80bafb6bc1236aa816",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\mcts.rs": "f5ac6c73d34ebf252a4db57cf33059d2324cab670eb9f9e92794664a8ee90531",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\monster.rs": "9a294942a4f50376ccff77148742b0c88ddc0224f590b48e7fc1bb244e490b12",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\search_bounds.rs": "85bfae5cf430deb67c3ca0f62358b9171e963938ce5db3692f5932722fd1c572",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\search_cache.rs": "6d20114fa1edd3fb8a7a4a4f3e004248be8c10c60c39d28fc4aedc7fefe303bb",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\search_order.rs": "31e504c692a232cc5ab2fc0353de4efc8c65ce680d9462a5c52eec5242569cd8",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\solver.rs": "e6d90b77f26b613dfc8a92d99d4d68db0c97ad1ce3b145fe3a82ca4032f7b035",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\src\\tactical.rs": "b7ed158dc180d3e0add0625d16196466e3c39ac4d7efa0677a6877c17a7746cb",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\monster_native.pyd": "db90f6f147fa40bb40cf166adf88cc469d32bb602c5ce1915309dadd87789f69",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\native_mcts.py": "666658312a48027682fedb0b36dfad64cb78aac09a217f22a2616b01898fce00",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\evaluation.py": "84a586e45f5dd4f9b715123eb4027e1e0e7c0fd949434db5ade1886832c10240",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\monster_chess.py": "4a3823d788e5deaf63e7efb0dcfa01dd0e5383e6e6d8fd1f03eec3fbda508787",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\repetition.py": "1f9f3ba4ea33e45945dec63505cae8436e7e486068e2bc094f033c53db01cb8d",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\search_first_match.py": "da809381da79a44e83edc8a9ad4c02a3351136aff26c9151905397c6ab3d974c",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\analyze_search_first.py": "694048fe733bae9423e95182b18bfa6f226fe17c810795c9645221d96a6deb32",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\search_first_validation.py": "959bdf3147efe34adbcdd7a5063dcfad3d248f7a8aa5646b7d61d7009b32e9c0",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\search_first_distilled_w512_001\\epoch_007.bin": "25838983b6a828cc0e44adf87ea70e290cf3877b8aa505062594c9c8aa2b0265",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0047\\arena_selected.pt": "810297fe98807eb56cfe4184c3210048fed7dc93110c47dfb18c0564fb3865fb",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\b2_seed9053_state_cnn\\selected_epoch_008.pt": "fc23076a9f5c7f237785f27cb1a665c10588ea8e8916cd743016d19a96999d15",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\b2_challenger_confirmation_20260910\\confirmation_book.json": "3ccf12b2e7e7dc553647802ba31e4bd50e806ef88e5248cac69dafca9f93b826"
+  },
+  "stages": [
+    [
+      "gen47_300ms",
+      32,
+      32,
+      0.3,
+      []
+    ],
+    [
+      "gen47_2s",
+      8,
+      32,
+      2.0,
+      []
+    ],
+    [
+      "b2_300ms",
+      16,
+      48,
+      0.3,
+      [
+        "--reference",
+        "models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt"
+      ]
+    ],
+    [
+      "self_ab_300ms",
+      16,
+      32,
+      0.3,
+      [
+        "--selfplay"
+      ]
+    ],
+    [
+      "self_gen47_300ms",
+      16,
+      32,
+      0.3,
+      [
+        "--reference-selfplay"
+      ]
+    ],
+    [
+      "free_2s",
+      1,
+      0,
+      2.0,
+      [
+        "--free"
+      ]
+    ]
+  ],
+  "nominee": "width512, extension0 selected on first8 reused diagnostic starts",
+  "policy": "no runtime edits/reselection during chain; failed tests/proofs stop chain"
+}

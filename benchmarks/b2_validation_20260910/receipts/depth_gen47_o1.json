@@ -1,0 +1,32 @@
+{
+  "command": [
+    "tools/match.py",
+    "--model-a",
+    "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+    "--model-b",
+    "models/bootstrap_v25/best_value_net.pt",
+    "--games",
+    "50",
+    "--sims",
+    "6400",
+    "--engine",
+    "native",
+    "--workers",
+    "8",
+    "--seed",
+    "2045010000",
+    "--book",
+    "benchmarks\\b2_validation_20260910\\depth_book.json",
+    "--book-offset",
+    "25",
+    "--report-path",
+    "benchmarks\\b2_validation_20260910\\depth_gen47_o1.json",
+    "--game-log",
+    "benchmarks\\b2_validation_20260910\\depth_gen47_o1.jsonl",
+    "--resume"
+  ],
+  "artifacts": {
+    "benchmarks\\b2_validation_20260910\\depth_gen47_o1.json": "34e16cb66cc5ef5056c551278536d0ec75c31cbbc8b348e014bf7808d71df372",
+    "benchmarks\\b2_validation_20260910\\depth_gen47_o1.jsonl": "b9798589c444ef7d7905d0e583eacb68e307b19bf3cf25708b6c4245c4a489a4"
+  }
+}

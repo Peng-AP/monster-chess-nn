@@ -31,7 +31,7 @@ PIECE_TO_LAYER = {
 
 
 def fen_to_tensor(fen, is_white_turn=True, half_pending=False,
-                  input_channels=None):
+                  input_channels=None, turn_count=None):
     """Convert a FEN string to the requested checkpoint encoding.
 
     Current 17-channel layers:
@@ -42,14 +42,21 @@ def fen_to_tensor(fen, is_white_turn=True, half_pending=False,
       15:   White-pawn progress toward rank 8
       16:   Black-pawn progress toward rank 1
 
+    B2 24-channel layout keeps those17 and adds:17 signed file coordinate;
+    18..21 cleaned K/Q/k/q castling rights;22 raw en-passant square;
+    23 remaining turn budget / MAX_GAME_TURNS. It requires explicit turn_count.
+    Repetition history is not encoded. Mirror augmentation is unsupported.
+
     Legacy 15-channel checkpoints retain their original White-only channel 14.
     Selecting by channel count prevents an incompatible encoding from loading
     silently while keeping v16/v17 available for matches and human play.
     """
     board = chess.Board(fen)
     channels = TENSOR_SHAPE[2] if input_channels is None else int(input_channels)
-    if channels not in (LEGACY_TENSOR_CHANNELS, TENSOR_SHAPE[2]):
+    if channels not in (LEGACY_TENSOR_CHANNELS, TENSOR_SHAPE[2], 24):
         raise ValueError(f"Unsupported position encoding with {channels} channels")
+    if channels == 24 and (turn_count is None or int(turn_count) != turn_count or turn_count < 0):
+        raise ValueError('B2 encoding requires a nonnegative integer turn_count')
     tensor = np.zeros((8, 8, channels), dtype=np.float32)
 
     for square in chess.SQUARES:
@@ -93,6 +100,15 @@ def fen_to_tensor(fen, is_white_turn=True, half_pending=False,
         tensor[rank, file, BLACK_PAWN_PROGRESS_LAYER] = np.clip(
             (6 - rank) / 6.0, 0.0, 1.0)
 
+    if channels == 24:
+        from config import MAX_GAME_TURNS
+        tensor[:, :, 17] = np.asarray([(f - 3.5) / 3.5 for f in range(8)], dtype=np.float32)
+        rights = board.clean_castling_rights()
+        for channel, square in enumerate((chess.H1, chess.A1, chess.H8, chess.A8), 18):
+            tensor[:, :, channel] = float(bool(rights & chess.BB_SQUARES[square]))
+        if board.ep_square is not None:
+            tensor[chess.square_rank(board.ep_square), chess.square_file(board.ep_square), 22] = 1.0
+        tensor[:, :, 23] = max(0.0, (MAX_GAME_TURNS - turn_count) / MAX_GAME_TURNS)
     return tensor
 
 
@@ -103,6 +119,8 @@ def mirror_tensor(tensor):
     produces an equally valid position with the same evaluation.
     This doubles training data for free.
     """
+    if tensor.shape[-1] == 24:
+        raise ValueError('B2 state encoding does not support mirror augmentation')
     # Flip along the file axis (axis 1): file 0<->7, 1<->6, etc.
     return tensor[:, ::-1, :].copy()
 

@@ -433,6 +433,7 @@ class NNEvaluator:
         tensor = self.fen_to_tensor(
             game_state.fen(),
             is_white_turn=game_state.is_white_turn,
+            **({'turn_count': game_state.turn_count} if self.input_channels == 24 else {}),
             half_pending=getattr(game_state, "white_half_pending", False),
             input_channels=self.input_channels,
         )
@@ -470,6 +471,7 @@ class NNEvaluator:
         tensor = self.fen_to_tensor(
             game_state.fen(),
             is_white_turn=game_state.is_white_turn,
+            **({'turn_count': game_state.turn_count} if self.input_channels == 24 else {}),
             half_pending=getattr(game_state, "white_half_pending", False),
             input_channels=self.input_channels,
         )
@@ -511,6 +513,7 @@ class NNEvaluator:
             return []
         tensors = [self.fen_to_tensor(
             gs.fen(), is_white_turn=gs.is_white_turn,
+            **({'turn_count': gs.turn_count} if self.input_channels == 24 else {}),
             half_pending=getattr(gs, "white_half_pending", False),
             input_channels=self.input_channels,
         ) for gs in game_states]
@@ -561,6 +564,7 @@ class NNEvaluator:
                 sides.append(gs.is_white_turn)
                 tensors.append(self.fen_to_tensor(
                     gs.fen(), is_white_turn=gs.is_white_turn,
+                    **({'turn_count': gs.turn_count} if self.input_channels == 24 else {}),
                     half_pending=getattr(gs, "white_half_pending", False),
                     input_channels=self.input_channels,
                 ))

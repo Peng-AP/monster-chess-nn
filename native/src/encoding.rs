@@ -56,8 +56,16 @@ pub fn encode(
     half_pending: bool,
     channels: usize,
 ) -> Result<Vec<f32>, String> {
-    if channels != LEGACY_TENSOR_CHANNELS && channels != CURRENT_TENSOR_CHANNELS {
+    encode_with_turn(board, is_white_turn, half_pending, channels, None)
+}
+
+pub fn encode_with_turn(board: &Board, is_white_turn: bool, half_pending: bool,
+                        channels: usize, turn_count: Option<u32>) -> Result<Vec<f32>, String> {
+    if channels != LEGACY_TENSOR_CHANNELS && channels != CURRENT_TENSOR_CHANNELS && channels != 24 {
         return Err(format!("Unsupported position encoding with {channels} channels"));
+    }
+    if channels == 24 && turn_count.is_none() {
+        return Err("B2 encoding requires turn_count".to_string());
     }
     let mut tensor = vec![0.0f32; 8 * 8 * channels];
     let at = |rank: usize, file: usize, layer: usize| rank * 8 * channels + file * channels + layer;
@@ -117,19 +125,37 @@ pub fn encode(
             tensor[at(rank, file, BLACK_PAWN_PROGRESS_LAYER)] = v as f32;
         }
     }
+    if channels == 24 {
+        let rights = board.clean_castling();
+        let remaining = (crate::game::MAX_GAME_TURNS.saturating_sub(turn_count.unwrap()) as f64
+            / crate::game::MAX_GAME_TURNS as f64) as f32;
+        for rank in 0..8 {
+            for file in 0..8 {
+                tensor[at(rank, file, 17)] = ((file as f64 - 3.5) / 3.5) as f32;
+                for (offset, square) in [7, 0, 63, 56].iter().enumerate() {
+                    tensor[at(rank, file, 18 + offset)] = if rights & (1u64 << square) != 0 { 1.0 } else { 0.0 };
+                }
+                tensor[at(rank, file, 23)] = remaining;
+            }
+        }
+        if let Some(square) = board.ep_square {
+            tensor[at((square / 8) as usize, (square % 8) as usize, 22)] = 1.0;
+        }
+    }
     Ok(tensor)
 }
 
 #[pyfunction]
-#[pyo3(signature = (fen, is_white_turn=true, half_pending=false, channels=17))]
+#[pyo3(signature = (fen, is_white_turn=true, half_pending=false, channels=17, turn_count=None))]
 fn encode_fen(
     fen: &str,
     is_white_turn: bool,
     half_pending: bool,
     channels: usize,
+    turn_count: Option<u32>,
 ) -> PyResult<Vec<f32>> {
     let board = parse_fen(fen).map_err(PyValueError::new_err)?;
-    encode(&board, is_white_turn, half_pending, channels).map_err(PyValueError::new_err)
+    encode_with_turn(&board, is_white_turn, half_pending, channels, turn_count).map_err(PyValueError::new_err)
 }
 
 pub const LEGACY_POLICY_SIZE: usize = 4096;

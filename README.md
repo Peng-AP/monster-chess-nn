@@ -1,5 +1,10 @@
 # Monster Chess NN
 
+Current project state, model identities, latest results and next steps:
+[September 25 consolidated handoff](HANDOFF_20260925.md). The latest research
+completed September 17; public release is still v27. Later generation numbers
+and the value-calibration candidate are research models, not promoted releases.
+
 A neural-network + Monte-Carlo-tree-search engine for **Monster Chess**, an
 asymmetric chess variant:
 
@@ -33,6 +38,10 @@ a result at one simulation count is a statement about that count, not about the
 game.
 
 ## How the engine works
+
+An experimental, opt-in CPU value network plus native alpha-beta search is
+described in [SEARCH_FIRST_EXPERIMENT.md](SEARCH_FIRST_EXPERIMENT.md). It does
+not replace the standard engine or release models; strength validation is ongoing.
 
 **Rules layer** (`src/monster_chess.py`) wraps `python-chess` and exposes two
 action APIs: an atomic `(m1, m2)` pair API used for game play and strict move
@@ -128,9 +137,10 @@ Sanity-check a merged corpus before spending a training run on it:
 python tools/pretrain_check.py data/raw/my_run --reference data/raw/previous_run
 ```
 
-`data/processed/` intentionally retains only the active v19_B-derived corpus;
-see `data/processed/README.md` and the cleanup manifest under `logs/archive/`
-before regenerating concluded experiment datasets.
+`data/processed/` contains historical corpora, immutable generation increments,
+and composed replay snapshots through gen50. Some are pinned inputs to completed
+experiments; do not delete them merely because their generation is old. See the
+current handoff before retiring or regenerating datasets.
 
 Train:
 
@@ -163,18 +173,17 @@ slope flags. The first exact Gen9 lift learned a real length signal but was a
 clean playing null (0.5062 over 80 paired games; 0/16 conversion moves changed),
 so it remains infrastructure rather than a successor. See `REPORT.md` §32.
 
-Current numbered release: `models/bootstrap_v23/best_value_net.pt`, promoted
-by the owner on 2026-08-17 from `bootstrap_main_gen_0015/selected_epoch_016`.
-It opens the **bootstrap series** -- the version number continues from v22 so
-the release ladder stays comparable, while the directory prefix changes because
-the lineage did.
+Current numbered release: **`models/bootstrap_v27/best_value_net.pt`**, promoted
+with owner authorization on 2026-09-07 from gen46's selected epoch7 checkpoint.
+The same milestone promotion created v25 from gen42 and v26 from gen45. Each
+release has a source hash and evidence manifest; older models are preserved.
+`gate.BAR` is `vs_v27`, and the bootstrap champion pointer selects v27.
 
-**The strongest model on record is `bootstrap_main_gen_0023/selected_epoch_007`**
-(2026-08-18), which is the working bar for the next generation and is roughly
-**+120 Elo above the v23 release** (+251 against v22 directly, where v23 is
-+130). It has not been promoted. `gate.BAR` still reads `vs_v23`; the working
-bar travels as `--bar-model`. All earlier numbered models remain immutable. See
-`CONTEXT.md` for the current ledger and `REPORT.md` §§50-52 for the evidence.
+Gen47's revised stateful/league recipe and queued end-to-end preflight are in
+[GEN47_RUN.md](GEN47_RUN.md). Use its adapter entry point to run/resume gen47,
+not the historical plain-iterate example below. During gen46's ongoing checks,
+legacy CLI config fallbacks remain v24 to preserve runtime identity; pass the
+v27 model path explicitly for CLI play. See `HANDOFF.md` for current operations.
 
 Preview one complete bootstrap generation without writing anything:
 
@@ -428,8 +437,12 @@ data/                  # raw games, processed tensors, start-position decks
 models/                # checkpoints (gitignored)
 ```
 
-Finished experiment drivers and reports are removed from the tree when a run
-concludes; git history is the archive (`git log --diff-filter=D --name-only`).
+Retain experiment drivers, plans and reports required by saved provenance.
+Several campaigns hash all `tools/*.py` and `tests/*.py`; moving or removing
+those files can invalidate exact resume. Much September research is untracked,
+so git history is not a complete backup. `benchmarks/` can also contain trained
+checkpoints. Only regenerable caches were deleted in the September 25 cleanup;
+completed logs were archived, not discarded. See [CLEANUP_20260925.md](CLEANUP_20260925.md).
 
 ## Tests
 
@@ -437,7 +450,7 @@ concludes; git history is the archive (`git log --diff-filter=D --name-only`).
 python -m unittest discover -s tests
 ```
 
-498 contract tests cover the rules (including the unconditional-king-capture edge
+Contract tests cover the rules (including the unconditional-king-capture edge
 cases), search invariants, encoding round-trips, data-pipeline contracts, the
 training CLI schema, the corpus gates, the promotion protocol's thresholds, and
 several hazards that have produced wrong numbers here before (ramp labels are

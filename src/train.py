@@ -191,11 +191,19 @@ class DualHeadNet(nn.Module):
         value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
         use_moves_left_head=USE_MOVES_LEFT_HEAD,
         moves_left_head_channels=MOVES_LEFT_HEAD_CHANNELS,
+        attention_blocks=0,
     ):
         super().__init__()
         self.spatial_value_head = bool(spatial_value_head)
         self.value_head_conv_channels = int(value_head_conv_channels)
         self.input_channels = int(input_channels)
+        self.attention_blocks = int(attention_blocks)
+        if self.attention_blocks not in (0, 2):
+            raise ValueError('B2 attention_blocks must be 0 or 2')
+        if self.attention_blocks and self.input_channels != 24:
+            raise ValueError('B2 hybrid requires the 24-channel state encoding')
+        if self.input_channels == 24:
+            self.register_buffer('_b2_schema', torch.tensor([1, 24, self.attention_blocks], dtype=torch.int64))
         self.policy_head_channels = int(policy_head_channels)
         self.policy_head_type = str(policy_head_type)
         self.policy_attention_channels = int(policy_attention_channels)
@@ -257,6 +265,9 @@ class DualHeadNet(nn.Module):
             in_ch = out_ch
         self.residual_block_count = len(self.residual_block_channels)
         self.backbone_out_channels = in_ch
+        if self.attention_blocks:
+            from b2_attention import SquareAttention
+            self.square_attention = nn.Sequential(*[SquareAttention(in_ch) for _ in range(self.attention_blocks)])
 
         # Value head(s)
         self.value_head = self._make_value_head()
@@ -420,6 +431,8 @@ class DualHeadNet(nn.Module):
         x = self.stem(x)
         for i in range(1, self.residual_block_count + 1):
             x = getattr(self, f"res{i}")(x)
+        if self.attention_blocks:
+            x = self.square_attention(x)
         return x, side_turn
 
     def _compute_heads(self, backbone, side_turn):
@@ -586,8 +599,10 @@ def build_model(
     value_head_conv_channels=VALUE_HEAD_CONV_CHANNELS,
     use_moves_left_head=USE_MOVES_LEFT_HEAD,
     moves_left_head_channels=MOVES_LEFT_HEAD_CHANNELS,
+    attention_blocks=0,
 ):
     return DualHeadNet(
+        attention_blocks=attention_blocks,
         input_channels=input_channels,
         policy_head_channels=policy_head_channels,
         policy_head_type=policy_head_type,
@@ -611,6 +626,14 @@ def load_model_for_inference(checkpoint_path, device):
     """Load model with architecture inferred from checkpoint."""
     state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
     input_channels = infer_input_channels(state_dict)
+    schema = state_dict.get('_b2_schema')
+    attention_blocks = 0
+    if input_channels == 24:
+        if schema is None or schema.tolist() not in ([1, 24, 0], [1, 24, 2]):
+            raise ValueError('Missing or unsupported B2 encoding/architecture schema')
+        attention_blocks = int(schema[2])
+    elif schema is not None:
+        raise ValueError('B2 schema conflicts with input channels')
     policy_head_type, pol_ch, attention_ch = infer_policy_head_config(state_dict)
     side_policy_adapters = infer_side_policy_adapters(state_dict)
     promotion_policy = infer_promotion_policy(state_dict)
@@ -621,6 +644,7 @@ def load_model_for_inference(checkpoint_path, device):
     use_moves_left_head, moves_left_ch = infer_moves_left_head_config(state_dict)
     model = build_model(
         input_channels=input_channels,
+        attention_blocks=attention_blocks,
         policy_head_channels=pol_ch,
         policy_head_type=policy_head_type,
         policy_attention_channels=attention_ch,
@@ -1472,6 +1496,7 @@ def main():
     parser.add_argument("--warmup-start-factor", type=float, default=WARMUP_START_FACTOR)
     parser.add_argument("--resume-from", type=str, default=None)
     parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument('--attention-blocks', type=int, choices=(0, 2), default=0)
     parser.add_argument("--use-se-blocks", action=argparse.BooleanOptionalAction, default=USE_SE_BLOCKS,
                         help=f"Enable SE modules in residual blocks (default: {USE_SE_BLOCKS})")
     parser.add_argument("--se-reduction", type=int, default=SE_REDUCTION,
@@ -1708,6 +1733,7 @@ def main():
                     if args.res_channels else RESIDUAL_BLOCK_CHANNELS)
     model = build_model(
         input_channels=data_channels,
+        attention_blocks=args.attention_blocks,
         policy_head_type=args.policy_head,
         policy_attention_channels=args.policy_attention_channels,
         side_policy_adapters=args.side_policy_adapters,

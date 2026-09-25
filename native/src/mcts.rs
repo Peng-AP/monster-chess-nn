@@ -651,11 +651,12 @@ impl Arena {
     /// (C, 8, 8) encoding of a node's state, appended to `buf`.
     fn encode_into(&self, node: usize, channels: usize, buf: &mut Vec<f32>) {
         let state = &self.nodes[node].state;
-        let hwc = crate::encoding::encode(
+        let hwc = crate::encoding::encode_with_turn(
             state.board_ref(),
             state.is_white_turn,
             state.white_half_pending,
             channels,
+            Some(state.turn_count),
         )
         .unwrap_or_else(|_| vec![0.0; 8 * 8 * channels]);
         // (8, 8, C) -> (C, 8, 8): the bridge wants channels-first for torch.
@@ -899,6 +900,39 @@ impl Arena {
         }
         self.nodes = fresh;
     }
+
+    /// Same BFS ordering, frames, and statistics as reroot; transfer ownership
+    /// rather than cloning every retained Game/action/children allocation.
+    /// Opt-in while timed-baseline parity/performance is validated.
+    pub fn reroot_fast(&mut self, child: usize) {
+        if self.nodes[0].state.is_white_turn != self.nodes[child].state.is_white_turn {
+            self.nodes[child].total_value = -self.nodes[child].total_value;
+        }
+        let mut order=vec![child];
+        let mut i=0;
+        while i<order.len() {
+            order.extend(self.nodes[order[i]].children.iter().copied());
+            i+=1;
+        }
+        let mut mapping=vec![usize::MAX;self.nodes.len()];
+        for (new,&old) in order.iter().enumerate() { mapping[old]=new; }
+        let mut old:Vec<Option<Node>>=std::mem::take(&mut self.nodes).into_iter().map(Some).collect();
+        let mut fresh=Vec::with_capacity(order.len());
+        for index in order {
+            let mut node=old[index].take().expect("each tree node visited once");
+            if index==child { node.parent=None; node.action=None; }
+            else { node.parent=node.parent.and_then(|p| {
+                let mapped=mapping[p];
+                if mapped==usize::MAX {None} else {Some(mapped)}
+            }); }
+            for c in &mut node.children {
+                *c=mapping[*c];
+                debug_assert_ne!(*c,usize::MAX);
+            }
+            fresh.push(node);
+        }
+        self.nodes=fresh;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1120,7 +1154,8 @@ impl PyTree {
                         heuristic_values=false, solver=false,
                         moves_left_max_effect=0.0, moves_left_threshold=0.80,
                         moves_left_slope=0.10, solver_probe_depth=0,
-                        solver_probe_nodes=200_000, solver_probe_limit=0))]
+                        solver_probe_nodes=200_000, solver_probe_limit=0,
+                        seconds=None))]
     fn run_batched_puct(
         &mut self,
         py: Python<'_>,
@@ -1158,7 +1193,18 @@ impl PyTree {
         // Hard cap on probes per search, because a probe is orders of
         // magnitude dearer than a network evaluation.
         solver_probe_limit: usize,
+        seconds: Option<f64>,
     ) -> PyResult<()> {
+        // Optional wall-clock budget, checked between complete batches so no
+        // virtual losses or unbackpropagated leaves survive a timed stop.
+        // None preserves the original simulation-limited execution exactly.
+        let deadline = match seconds {
+            Some(s) if s.is_finite() && s > 0.0 && s <= 86400.0 =>
+                Some(std::time::Instant::now() + std::time::Duration::from_secs_f64(s)),
+            Some(_) => return Err(pyo3::exceptions::PyValueError::new_err(
+                "seconds must be finite and in (0, 86400]")),
+            None => None,
+        };
         if !moves_left_max_effect.is_finite() || !(0.0..=1.0).contains(&moves_left_max_effect) {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "moves_left_max_effect must be finite and in [0, 1]"));
@@ -1253,6 +1299,7 @@ impl PyTree {
         self.probe_hits = 0;
 
         while sims_done < simulations {
+            if deadline.is_some_and(|d| std::time::Instant::now() >= d) { break; }
             if allow_early_stop && self.arena.should_stop_early(0, sims_done, simulations) {
                 break;
             }
@@ -1581,7 +1628,8 @@ impl PyTree {
 
     /// Reuse the subtree under `action` as the new root. False when that child
     /// does not exist. Only valid across White's first -> second half-move.
-    fn reroot(&mut self, action: &str) -> bool {
+    #[pyo3(signature = (action, fast=false))]
+    fn reroot(&mut self, action: &str, fast: bool) -> bool {
         let target = self.arena.nodes[0]
             .children
             .iter()
@@ -1589,7 +1637,8 @@ impl PyTree {
             .find(|&c| self.arena.nodes[c].action.as_deref() == Some(action));
         match target {
             Some(child) => {
-                self.arena.reroot(child);
+                if fast { self.arena.reroot_fast(child); }
+                else { self.arena.reroot(child); }
                 true
             }
             None => false,

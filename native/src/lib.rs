@@ -14,6 +14,18 @@ mod game;
 mod mcts;
 mod monster;
 mod solver;
+mod alphabeta;
+mod label_tree;
+mod search_profile;
+mod cheap_value;
+mod search_order;
+mod search_cache;
+mod search_bounds;
+mod tactical;
+mod float_dot;
+mod relative_features;
+mod leaf_recorder;
+mod search_window;
 
 /// Build identity, so the Python side can assert it loaded the crate it built.
 #[pyfunction]
@@ -31,6 +43,9 @@ fn monster_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     encoding::register(m)?;
     mcts::register(m)?;
     solver::register(m)?;
+    alphabeta::register(m)?;
+    label_tree::register(m)?;
+    cheap_value::register(m)?;
     Ok(())
 }
 
@@ -89,5 +104,26 @@ mod tests {
         assert!(!game.is_white_turn);
         assert!(!game.white_half_pending);
         assert_eq!(game.turn_count, 1);
+    }
+
+    #[test]
+    fn generated_move_fast_path_changes_only_optional_history() {
+        let mut a=Game::from_fen(START).unwrap();
+        let mut b=a.clone();
+        for _ in 0..12 {
+            if a.is_terminal_rust() { break; }
+            let actions=if !a.is_white_turn { crate::monster::black_actions(a.board_ref(),true) }
+                else if a.white_half_pending { crate::monster::white_second_half_moves(a.board_ref()) }
+                else { crate::monster::white_single_moves(a.board_ref()) };
+            let mv=actions[0];
+            a.apply_half(&mv.uci()).unwrap();
+            b.apply_half_move(&mv,false);
+            assert_eq!(a.fen_string(),b.fen_string());
+            assert_eq!(a.is_white_turn,b.is_white_turn);
+            assert_eq!(a.white_half_pending,b.white_half_pending);
+            assert_eq!(a.turn_count,b.turn_count);
+            assert!(b.history.is_empty());
+        }
+        assert!(!a.history.is_empty());
     }
 }

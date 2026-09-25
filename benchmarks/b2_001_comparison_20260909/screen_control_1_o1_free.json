@@ -1,0 +1,104 @@
+{
+  "match": "b2_001_control vs bootstrap_v25",
+  "name_a": "b2_001_control",
+  "name_b": "bootstrap_v25",
+  "games": 24,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 1980020000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 24,
+    "unique_states": 16,
+    "unique_fraction": 0.6667,
+    "unique_as_white": 7,
+    "unique_as_black": 9,
+    "effective_unique_games": 16,
+    "effective_unique_fraction": 0.6667,
+    "duplicate_games": 8,
+    "max_multiplicity": 4,
+    "multiplicity_histogram": {
+      "2": 2,
+      "4": 2,
+      "1": 12
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "a5079b5f56e06f860472e290d9a825502c7da424f1d14dbc5d32e75a051e2c7d",
+    "top_duplicates": [
+      {
+        "count": 4,
+        "fen": "r1b1kbnr/pp2p1pp/nq1pPK2/2pP4/5P2/8/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "rnb1kbnr/pp2p1pp/2p2P2/3qP3/8/4K3/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bk1bnr/p1pp2pp/n1p5/4p3/8/8/3K1P2/8 w - - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "rnbq1b1r/ppp2kpp/4p3/3P4/8/4K3/5P2/8 w - - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.9792,
+  "a_as_white": {
+    "games": 12,
+    "wins": 11,
+    "losses": 0,
+    "draws": 1,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.9583,
+    "mean_plies": 36.25,
+    "mean_plies_when_won": 32.0,
+    "mean_plies_when_lost": null
+  },
+  "a_as_black": {
+    "games": 12,
+    "wins": 12,
+    "losses": 0,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 1.0,
+    "mean_plies": 81.5,
+    "mean_plies_when_won": 81.5,
+    "mean_plies_when_lost": null
+  },
+  "elapsed_sec": 0.1,
+  "timestamp": "2026-09-09T18:53:36"
+}

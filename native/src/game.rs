@@ -202,9 +202,17 @@ impl Game {
 
     pub fn apply_half(&mut self, uci: &str) -> Result<(), String> {
         let mv = parse_uci(uci).ok_or_else(|| "bad uci".to_string())?;
-        self.record_history(&mv);
+        self.apply_half_move(&mv, true);
+        Ok(())
+    }
+
+    /// Generated-move fast path. Existing APIs always retain history. The
+    /// opt-in alpha-beta engine does not use the oscillation heuristic, so it
+    /// can omit this otherwise-unused allocation without changing game rules.
+    pub fn apply_half_move(&mut self, mv: &Move, keep_history: bool) {
+        if keep_history { self.record_history(mv); }
         if self.is_white_turn && !self.white_half_pending {
-            self.board.push(&mv);
+            self.board.push(mv);
             // Only restore White's turn if the Black king survived; a
             // king-capturing first half leaves the flip in place.
             if self.board.king_square(BLACK).is_some() {
@@ -213,16 +221,15 @@ impl Game {
             self.white_half_pending = true;
         } else if self.is_white_turn {
             self.board.turn = true;
-            self.board.push(&mv);
+            self.board.push(mv);
             self.white_half_pending = false;
             self.is_white_turn = false;
             self.turn_count += 1;
         } else {
-            self.board.push(&mv);
+            self.board.push(mv);
             self.is_white_turn = true;
             self.turn_count += 1;
         }
-        Ok(())
     }
 }
 

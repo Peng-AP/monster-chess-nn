@@ -1,0 +1,215 @@
+{
+  "match": "bootstrap_main_gen_0047 vs bootstrap_v26",
+  "name_a": "bootstrap_main_gen_0047",
+  "name_b": "bootstrap_v26",
+  "games": 100,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 2090000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 0,
+  "book": {
+    "schema_version": 2,
+    "model": "models/bootstrap_v24/best_value_net.pt, models/bootstrap_v25/best_value_net.pt, models/bootstrap_v26/best_value_net.pt, models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt, models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+    "model_sha256": "9c0128c43670e46d0d4fffbd5fe065b930361f5b484400423e0127b2f6ecbc24, 035324932307273545e2a47545899d09a2dbb5b2965bfbab04aeaf01de86e15a, 8ed079aea313ffea79d4f2dd9879d62692d5a49915245dbc5dd86ce8f68a3c86, 4128933f7865dea06c32f7b343348859dd47a8bc75fe49e4223941156935efa1, 810297fe98807eb56cfe4184c3210048fed7dc93110c47dfb18c0564fb3865fb",
+    "plies": 16,
+    "sims": 700,
+    "temperature": 0.5,
+    "search_policy_temperature": 1.0,
+    "seed": 2060000000,
+    "oversample": 8.0,
+    "created": "2026-09-10T14:11:48",
+    "stats": {
+      "per_model": [
+        {
+          "model": "models/bootstrap_v24/best_value_net.pt",
+          "contributed": 80,
+          "attempts_requested": 640,
+          "attempts_completed": 114,
+          "dropped_terminal": 0,
+          "dropped_duplicate": 34,
+          "minutes": 0.49
+        },
+        {
+          "model": "models/bootstrap_v25/best_value_net.pt",
+          "contributed": 80,
+          "attempts_requested": 640,
+          "attempts_completed": 204,
+          "dropped_terminal": 0,
+          "dropped_duplicate": 124,
+          "minutes": 0.79
+        },
+        {
+          "model": "models/bootstrap_v26/best_value_net.pt",
+          "contributed": 80,
+          "attempts_requested": 640,
+          "attempts_completed": 143,
+          "dropped_terminal": 0,
+          "dropped_duplicate": 63,
+          "minutes": 0.56
+        },
+        {
+          "model": "models/candidates/bootstrap_main_gen_0044/screen_nominee_v3.pt",
+          "contributed": 80,
+          "attempts_requested": 640,
+          "attempts_completed": 207,
+          "dropped_terminal": 0,
+          "dropped_duplicate": 127,
+          "minutes": 0.8
+        },
+        {
+          "model": "models/candidates/bootstrap_main_gen_0047/arena_selected.pt",
+          "contributed": 80,
+          "attempts_requested": 640,
+          "attempts_completed": 348,
+          "dropped_terminal": 0,
+          "dropped_duplicate": 268,
+          "minutes": 1.09
+        }
+      ],
+      "unique": 400,
+      "shuffle_seed": 2060009176,
+      "build_minutes": 3.73
+    },
+    "book_sha256": "3ccf12b2e7e7dc553647802ba31e4bd50e806ef88e5248cac69dafca9f93b826",
+    "path": "C:/Users/perfp/Desktop/monster-chess-nn/benchmarks/b2_challenger_confirmation_20260910/confirmation_book.json",
+    "entries": 400,
+    "offset": 100,
+    "entries_used": [
+      100,
+      150
+    ],
+    "temp_plies": 0
+  },
+  "paired": {
+    "pairs": 50,
+    "pair_mean": 0.525,
+    "se_paired": 0.025,
+    "pairs_incomplete": 0
+  },
+  "opening_diversity": {
+    "games_observed": 100,
+    "unique_states": 50,
+    "unique_fraction": 0.5,
+    "unique_as_white": 50,
+    "unique_as_black": 50,
+    "effective_unique_games": 100,
+    "effective_unique_fraction": 1.0,
+    "duplicate_games": 50,
+    "max_multiplicity": 2,
+    "multiplicity_histogram": {
+      "2": 50
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "60c20e30660d1895df02444d57ef6a3116a48e2d1e408ad97a169e64077ddc5b",
+    "top_duplicates": [
+      {
+        "count": 2,
+        "fen": "1nbqkb1r/1p1ppppp/r1P2n2/p2pPP2/8/5K2/8/8 w k - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1b1kbnr/pp2p1pp/nq1p1p2/3PP3/2K2P2/2P5/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1b1kbnr/ppP1p1pp/n7/4p3/8/8/3K1P2/8 w kq - 2 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bq1bnr/pp1ppkpp/2n5/2Pp4/5P2/5K2/8/8 w - - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqk2r/ppp1p1bp/2n2P1n/2Pp4/3P4/8/3K4/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/pp1p2pp/2n1p2K/2pPPp2/2P2P2/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/pp2p1pp/n2p1n2/2pP1PK1/8/5P2/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/pp2p1pp/n2p1p1n/2pPK3/4P3/2P2P2/8/8 w kq - 5 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/ppp1p1pp/n2pp3/3P1K2/2P2Pn1/8/8/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/pppp1ppp/7n/2nPPp2/2P5/4K3/8/8 w kq - 3 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.525,
+  "a_as_white": {
+    "games": 50,
+    "wins": 15,
+    "losses": 31,
+    "draws": 4,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.34,
+    "mean_plies": 59.9,
+    "mean_plies_when_won": 19.4,
+    "mean_plies_when_lost": 79.9
+  },
+  "a_as_black": {
+    "games": 50,
+    "wins": 32,
+    "losses": 11,
+    "draws": 7,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.71,
+    "mean_plies": 57.0,
+    "mean_plies_when_won": 68.75,
+    "mean_plies_when_lost": 17.09
+  },
+  "elapsed_sec": 424.2,
+  "timestamp": "2026-09-10T17:21:55"
+}

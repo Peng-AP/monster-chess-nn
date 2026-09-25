@@ -72,6 +72,8 @@ def _uses_heuristic_values(evaluator):
 # batch-16 request and its 256 KB reply through an mp.Queue costs 0.62 ms, more
 # than a graphed forward takes in total.
 GRAPH_ENV = "MONSTER_CUDA_GRAPH"
+GRAPH_CACHE_ENV = "MONSTER_CUDA_GRAPH_CACHE"
+PINNED_INPUT_ENV = "MONSTER_PINNED_INPUT"
 
 
 def _graph_enabled():
@@ -102,6 +104,8 @@ class _GraphedForward:
         self.width, self.channels, self.half = width, channels, half
         self.include_moves_left = bool(include_moves_left)
         self._graphs = {}
+        import threading
+        self.lock = threading.RLock()
 
     def _capture(self, n):
         torch = self.torch
@@ -137,6 +141,30 @@ class _GraphedForward:
         return out_v, out_p, out_ml
 
 
+def _graphed_forward_for(evaluator, width, channels, half, include_moves_left):
+    """Reuse immutable-inference graph storage, never search trees or outputs.
+
+    Ownership stays with the evaluator, so independent workers/models never
+    share device buffers. One signature is retained; replacing model storage or
+    changing shape/precision invalidates it. The callback holds the graph lock
+    through CPU output copies, making shared static buffers safe across callers.
+    Off by default until real workload/parity validation is complete.
+    """
+    model = evaluator.model
+    enabled = os.environ.get(GRAPH_CACHE_ENV, '0').lower() in ('1', 'true', 'yes', 'on')
+    signature = (id(model), str(evaluator.device), width, channels, half, include_moves_left,
+                 bool(model.training),
+                 tuple((id(p), p.data_ptr()) for p in list(model.parameters()) + list(model.buffers())))
+    cached = getattr(evaluator, '_native_graph_cache', None)
+    if enabled and not model.training and cached and cached[0] == signature:
+        return cached[1]
+    graph = _GraphedForward(evaluator.torch, model, evaluator.device, width, channels, half,
+                            include_moves_left=include_moves_left)
+    if enabled and not model.training:
+        evaluator._native_graph_cache = (signature, graph)
+    return graph
+
+
 def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
                 graph_width=None, include_moves_left=False):
     """(eval_fn, input_channels) for `Tree.run_batched_puct`.
@@ -158,9 +186,8 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
     graphed = None
     if graph_width and device.type == "cuda" and _graph_enabled():
         try:
-            graphed = _GraphedForward(torch, nn_evaluator.model, device,
-                                      int(graph_width), channels, half,
-                                      include_moves_left=include_moves_left)
+            graphed = _graphed_forward_for(nn_evaluator, int(graph_width), channels,
+                                           half, include_moves_left)
         except Exception as exc:
             # Capture can fail on driver/allocator quirks. Falling back to the
             # eager path is a slowdown, never a wrong answer.
@@ -168,9 +195,26 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
                   f"using eager forwards", flush=True)
             graphed = None
 
-    def eval_fn(buf, n, chans):
+    pinned_input = (graphed is not None and os.environ.get(PINNED_INPUT_ENV, '0').lower()
+                    in ('1', 'true', 'yes', 'on'))
+    input_buffers = {}
+
+    def evaluate_batch(buf, n, chans):
         array = np.frombuffer(buf, dtype=np.float32).reshape(n, chans, 8, 8)
-        tensor = torch.from_numpy(array.copy()).to(device)
+        if pinned_input and n <= graphed.width:
+            # Keep the same float32 H2D -> optional GPU half conversion as the
+            # reference. Pinned storage removes a blocking allocation/copy on
+            # every callback. The graph lock covers buffer use through the
+            # synchronizing output copies, so the next call cannot overwrite it.
+            if n not in input_buffers:
+                host = torch.empty((n, chans, 8, 8), dtype=torch.float32, pin_memory=True)
+                gpu = torch.empty_like(host, device=device)
+                input_buffers[n] = host, host.numpy(), gpu
+            host, view, tensor = input_buffers[n]
+            np.copyto(view, array)
+            tensor.copy_(host, non_blocking=True)
+        else:
+            tensor = torch.from_numpy(array.copy()).to(device)
         if half:
             tensor = tensor.half()
         if graphed is not None and n <= graphed.width:
@@ -193,6 +237,12 @@ def make_bridge(nn_evaluator, policy_temperature=POLICY_TEMPERATURE,
                         .astype(np.float32).tobytes())
             return result + (ml_bytes,)
         return result
+
+    def eval_fn(buf, n, chans):
+        if graphed is not None:
+            with graphed.lock:
+                return evaluate_batch(buf, n, chans)
+        return evaluate_batch(buf, n, chans)
 
     return eval_fn, channels
 
@@ -325,7 +375,7 @@ class NativeMCTS:
                        int(getattr(state, "turn_count", 0)),
                        self._history(state))
 
-    def _remember(self, state, tree, selected_uci):
+    def _remember(self, state, tree, selected_uci, fast=False):
         """Keep the played subtree so the next search continues this tree.
 
         `reuse_across_moves=False` restores the Python engine's scope -- only
@@ -344,7 +394,7 @@ class NativeMCTS:
                 self._reuse_tree = None
                 self._reuse_key = None
                 return
-        if tree.reroot(selected_uci):
+        if tree.reroot(selected_uci, **({'fast': True} if fast else {})):
             self._reuse_tree = tree
             self._reuse_key = (tree.fen(0), tree.is_white_turn(0),
                                tree.white_half_pending(0))
@@ -353,7 +403,18 @@ class NativeMCTS:
             self._reuse_key = None
 
     # ------------------------------------------------------------------
-    def get_best_action(self, root_state, temperature=1.0):
+    def get_best_action(self, root_state, temperature=1.0, seconds=None):
+        # Timing diagnostics are opt-in along with the clock. No extra native
+        # statistics calls or return-format changes on the ordinary path.
+        if seconds is not None:
+            import time
+            method_start = time.perf_counter()
+        if seconds is not None:
+            import math
+            if not math.isfinite(seconds) or not 0 < seconds <= 86400:
+                raise ValueError('seconds must be finite and in (0, 86400]')
+            if self._bridge is None:
+                raise ValueError('timed execution currently requires a neural evaluator')
         tree = self._tree_for(root_state)
         if self.seed is None:
             # Follow the global RNG, like MCTS. Per-game re-seeding reaches us.
@@ -362,6 +423,10 @@ class NativeMCTS:
         else:
             decision_seed = self.seed + self._decisions
         self._decisions += 1
+
+        if seconds is not None:
+            before_visits = tree.visit_count(0)
+            search_start = time.perf_counter()
 
         if self._bridge is not None:
             tree.run_batched_puct(
@@ -374,12 +439,19 @@ class NativeMCTS:
                 moves_left_max_effect=(self.moves_left_max_effect
                                        if self.moves_left_utility else 0.0),
                 moves_left_threshold=self.moves_left_threshold,
-                moves_left_slope=self.moves_left_slope)
+                moves_left_slope=self.moves_left_slope,
+                **({'seconds': seconds} if seconds is not None else {}))
         else:
             tree.run_sequential(self.num_simulations,
                                 allow_early_stop=self.allow_early_stop,
                                 seed=decision_seed)
 
+        if seconds is not None:
+            search_end = time.perf_counter()
+            timing = dict(prefix_seconds=search_start-method_start,
+                          search_seconds=search_end-search_start,
+                          new_visits=tree.visit_count(0)-before_visits,
+                          arena_nodes=tree.node_count())
         selected_uci, probs, value = tree.best_action(temperature=temperature,
                                                       seed=decision_seed)
         if selected_uci is None:
@@ -387,6 +459,8 @@ class NativeMCTS:
             self._reuse_key = None
             return None, {}, 0.0
 
+        if seconds is not None:
+            selection_end = time.perf_counter()
         legal = root_state.get_search_actions()
         move = next((m for m in legal if m.uci() == selected_uci), None)
         if move is None:
@@ -397,5 +471,16 @@ class NativeMCTS:
                 f"{root_state.fen()} (pending="
                 f"{getattr(root_state, 'white_half_pending', False)})")
 
-        self._remember(root_state, tree, selected_uci)
-        return move, dict(probs), value
+        if seconds is not None:
+            validation_end = time.perf_counter()
+        self._remember(root_state, tree, selected_uci, fast=seconds is not None)
+        result = move, dict(probs), value
+        if seconds is not None:
+            del tree
+            end = time.perf_counter()
+            timing.update(selection_seconds=selection_end-search_end,
+                          validation_seconds=validation_end-selection_end,
+                          remember_seconds=end-validation_end,
+                          total_seconds=end-method_start)
+            self.last_search_timing = timing
+        return result

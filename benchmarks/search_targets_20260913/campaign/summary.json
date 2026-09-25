@@ -1,0 +1,142 @@
+{
+  "complete": false,
+  "rehearsal": false,
+  "stages": {
+    "development_unchanged": {
+      "games": 24,
+      "log_sha256": "9e2b32fcad30ce3966aa2f74af7420c9a8af7a3d200656df4ac3130fdbb2ee87",
+      "complete": true,
+      "budget_seconds": 0.3,
+      "selfplay": false,
+      "scores": {
+        "white": {
+          "wins": 1,
+          "draws": 5,
+          "losses": 6,
+          "score": 0.2916666666666667
+        },
+        "black": {
+          "wins": 2,
+          "draws": 2,
+          "losses": 8,
+          "score": 0.25
+        },
+        "overall": {
+          "wins": 3,
+          "draws": 7,
+          "losses": 14,
+          "score": 0.2708333333333333
+        }
+      },
+      "timing": {
+        "alphabeta": {
+          "decisions": 911,
+          "seconds_total": 252.32300130056683,
+          "median": 0.30346550000831485,
+          "p95": 0.3069302499934565,
+          "maximum": 0.31837649998487905,
+          "white": {
+            "depth_mean": 5.481034482758621,
+            "nodes_per_second": 411722.6671303914,
+            "extension_nodes": 0,
+            "max_ply_mean": 9.213793103448277,
+            "incomplete_first_iteration": 0
+          },
+          "black": {
+            "depth_mean": 4.960725075528701,
+            "nodes_per_second": 397450.49995721295,
+            "extension_nodes": 0,
+            "max_ply_mean": 8.265861027190333,
+            "incomplete_first_iteration": 0
+          }
+        },
+        "puct": {
+          "decisions": 960,
+          "seconds_total": 302.1810782997636,
+          "median": 0.3145628000202123,
+          "p95": 0.32351536004280207,
+          "maximum": 0.3340104999952018
+        }
+      },
+      "proof_contradictions": [],
+      "unique_start_states": 12,
+      "unique_played_games": 24,
+      "paired_start_bootstrap_ci95": [
+        0.14583333333333334,
+        0.3958333333333333
+      ],
+      "paired_start_count": 12,
+      "opponent_budget_seconds": 0.3,
+      "players": {
+        "candidate": {
+          "white": {
+            "decisions": 580,
+            "seconds": 162.41387550038053,
+            "median_seconds": 0.3033524999918882,
+            "p95_seconds": 0.30683990497200286,
+            "cpu_decisions": 580,
+            "depth_mean": 5.481034482758621,
+            "node_limit_interruptions": 0,
+            "depth_limit_completions": 5,
+            "maximum_nodes": 481465,
+            "nodes_per_second": 411722.6671303914,
+            "policy_seconds": 0.0,
+            "backends": {
+              "cpu": 580
+            }
+          },
+          "black": {
+            "decisions": 331,
+            "seconds": 89.9091258001863,
+            "median_seconds": 0.3038855000049807,
+            "p95_seconds": 0.30722420001984574,
+            "cpu_decisions": 331,
+            "depth_mean": 4.960725075528701,
+            "node_limit_interruptions": 0,
+            "depth_limit_completions": 5,
+            "maximum_nodes": 1093297,
+            "nodes_per_second": 397450.49995721295,
+            "policy_seconds": 0.0,
+            "backends": {
+              "cpu": 331
+            }
+          }
+        },
+        "reference": {
+          "white": {
+            "decisions": 666,
+            "seconds": 209.5055947995279,
+            "median_seconds": 0.31424915001844056,
+            "p95_seconds": 0.3236441499902867,
+            "cpu_decisions": 0,
+            "depth_mean": null,
+            "node_limit_interruptions": 0,
+            "depth_limit_completions": 0,
+            "maximum_nodes": 0,
+            "nodes_per_second": null,
+            "policy_seconds": 0,
+            "backends": {
+              "gpu_puct": 666
+            }
+          },
+          "black": {
+            "decisions": 294,
+            "seconds": 92.67548350023571,
+            "median_seconds": 0.3155147999932524,
+            "p95_seconds": 0.32333637500123585,
+            "cpu_decisions": 0,
+            "depth_mean": null,
+            "node_limit_interruptions": 0,
+            "depth_limit_completions": 0,
+            "maximum_nodes": 0,
+            "nodes_per_second": null,
+            "policy_seconds": 0,
+            "backends": {
+              "gpu_puct": 294
+            }
+          }
+        }
+      }
+    }
+  }
+}

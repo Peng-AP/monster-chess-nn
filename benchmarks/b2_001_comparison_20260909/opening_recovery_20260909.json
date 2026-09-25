@@ -1,0 +1,37 @@
+{
+  "original_manifest_sha256": "7f7a4a9d76a013a53a0c7b68f07b37e37a371c55c24c9585f47542c9fcc51511",
+  "completed_screen_sha256": "eb82b9b883d7d9da5d944b56c668367d52918bcfdc45eac0864029a4f372b7f9",
+  "implementation": "48f7d80d6a0d207b04bc47ba9121462e81bee86457a77cba28529cbf8d699735",
+  "change": "Increase opening attempt budget1.6 ->4.0; same seed/models/depth/temperature/sims/count",
+  "commands": [
+    [
+      "C:\\Users\\perfp\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "-u",
+      "tools/make_book.py",
+      "--model",
+      "models/bootstrap_v24/best_value_net.pt",
+      "--model",
+      "models/bootstrap_v25/best_value_net.pt",
+      "--model",
+      "models/bootstrap_v26/best_value_net.pt",
+      "--entries",
+      "100",
+      "--plies",
+      "16",
+      "--sims",
+      "700",
+      "--temperature",
+      "0.5",
+      "--seed",
+      "1990000000",
+      "--workers",
+      "8",
+      "--oversample",
+      "4",
+      "--out",
+      "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\b2_001_comparison_20260909\\finalist_book.json"
+    ]
+  ],
+  "completed": true,
+  "book_sha256": "896bbd1c1a8032bd5c8e92d93931e69e4e47c3ca671463798b5f0532f4a0067b"
+}

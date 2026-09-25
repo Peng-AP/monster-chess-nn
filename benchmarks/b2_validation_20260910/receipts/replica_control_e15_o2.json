@@ -1,0 +1,32 @@
+{
+  "command": [
+    "tools/match.py",
+    "--model-a",
+    "models/candidates/b2_seed9053_control/selected_epoch_015.pt",
+    "--model-b",
+    "models/bootstrap_v26/best_value_net.pt",
+    "--games",
+    "100",
+    "--sims",
+    "3200",
+    "--engine",
+    "native",
+    "--workers",
+    "8",
+    "--seed",
+    "2045020000",
+    "--book",
+    "benchmarks\\b2_validation_20260910\\panel_book.json",
+    "--book-offset",
+    "100",
+    "--report-path",
+    "benchmarks\\b2_validation_20260910\\replica_control_e15_o2.json",
+    "--game-log",
+    "benchmarks\\b2_validation_20260910\\replica_control_e15_o2.jsonl",
+    "--resume"
+  ],
+  "artifacts": {
+    "benchmarks\\b2_validation_20260910\\replica_control_e15_o2.json": "29efce224366ea4c2056aea27fb4103877de13152ed2c1b1fe0eb13262b3ea33",
+    "benchmarks\\b2_validation_20260910\\replica_control_e15_o2.jsonl": "c75977118c4fe6bec61adb1c4b1dbfff5314104aaf24041ba9015b8bff9aaabe"
+  }
+}
