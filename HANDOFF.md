@@ -33,6 +33,31 @@ statements are not current status.
 - Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
   (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
+**Evening of September 25: gen51 production RUNNING** (managed run
+`gen51_production`, launched 18:20:40 Eastern; log `logs/gen51_production.log`;
+evidence `benchmarks/gen51_program/gen51_20260925/production/`).
+
+- Before it: Stage 0 done (gate v4 `tools/gate_depth.py`; diversity audit
+  `docs/experiments/gen51/DIVERSITY_AUDIT.md`: narrowing concentrated and
+  accelerating). Stage 1 done, **null** (no c_puct/FPU variant beat the
+  defaults; `docs/experiments/gen51/SEARCH_CONSTANTS_RESULTS.md`). Owner
+  approved gen51 self-play exploration of 30 plies. Full rehearsal passed in
+  4.1 minutes, including zero parent/continuation split mismatches.
+- The chain (`tools/gen51_campaign.py`; details in the plan's §7):
+  1. canonical gen51 iteration through `train` (control arm);
+  2. 768 disagreement roots × 2 continuations at 6,400;
+  3. strict-label value-only increment (weight 4) and deep-value training;
+  4. selection for both arms, with 12,800 probes of the top three epochs;
+  5. gate v4 and diagnostics per arm, and an arm-vs-arm match if both pass.
+  Guide: roughly 30–40 hours. Nothing is promoted automatically.
+- **Pausing:** `py -3 -B tools/runs.py stop --name gen51_production`, then
+  relaunch the same command later (`py -3 tools/gen51_campaign.py` via
+  `tools/runs.py start`). Completed stages are receipt-checked and skipped. An
+  interrupted *training* stage is retained and refused rather than silently
+  restarted: inspect it before resuming. **Do not edit** any file in
+  `tools/gen51_campaign.py`'s `PINNED` list or any `src/*.py` while it runs;
+  the identity check between stages will stop the chain.
+
 ## 1. Executive state
 
 - **Public release: v28** (September 25), gen50 epoch14 with the calibrated
