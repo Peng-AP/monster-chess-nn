@@ -1,9 +1,10 @@
 # Better play after v28 — proposed September 25, 2026
 
-Status: **proposed, not started.** Owner direction on September 25: work toward
-better play now; shipping (see `SHIPPABLE_ENGINE_PLAN.md`, deferred) comes
-later. Nothing here is queued. Each stage below is a separate
-plan → implement → wait cycle with its own rehearsal and owner go-ahead.
+Status: **approved September 25; Stage 0 and Stage 1 in progress** (see §7).
+Owner direction the same day: work toward better play now; shipping (see
+`SHIPPABLE_ENGINE_PLAN.md`, deferred) comes later. Each stage is a separate
+plan → implement → wait cycle with its own rehearsal. Stages 2–3 still need
+their drivers built and rehearsed before launch.
 
 ## 1. Goal and success criteria
 
@@ -174,7 +175,32 @@ instead of polling, and results written to `docs/experiments/gen51/`. New
 drivers live under `tools/` in a new namespace. Old campaigns resume only
 from their snapshot commit.
 
-## 7. Owner decisions needed
+## 7. Implementation record
+
+The owner approved §8 items 1–4 on September 25 ("Yes, to those. begin").
+
+- **Gate v4** is `tools/gate_depth.py` (`free_sampled_depth_guard_v4`),
+  tested by `tests/test_gate_depth.py`. The v3 tool is unchanged. A candidate
+  is a checkpoint plus its c_puct/FPU, so the same instrument judges search
+  changes. `--par-only` measures an incumbent's two self-par legs once;
+  `--par-dir` reuses them after checking the bar, runtime, implementation,
+  depths and counts all match. Verdicts are recomputed from hash-pinned
+  journals, with full legal replay of every game. Smoke-tested on real games
+  at 8/16 simulations, including a tampered-journal rejection.
+- **Stage 1 driver** is `tools/search_constants_campaign.py`. It runs a full
+  rehearsal (tests plus every stage at 8/16 simulations) before production.
+  **Confirmation uses the full gate v4** (two fresh 400-game legs plus the
+  guard) rather than the single fresh leg first written in §4. That is
+  stricter, never looser. Campaign identity pins specific files, not all of
+  `tools/` and `tests/`, so unrelated new files don't break exact resume.
+- **Seeds:** this program reserves 2,900,000,000–2,999,999,999. Stage 1
+  production uses 2,900,000,000 (par), 2,901,000,000–2,904,999,999 (screen
+  arms, 1,000,000 apart) and 2,905,000,000 (confirmation); rehearsal uses
+  2,960,000,000 and up.
+- **Stage 0 item 3** (the 12,800 selection probe) is implemented with the
+  Stage 3 driver, where saved-epoch selection lives.
+
+## 8. Owner decisions needed
 
 1. Go ahead with Stage 0 (no GPU apart from the par games) and Stage 1.
 2. Make the 12,800 guard binding for new gates (gate v4). It does not apply
