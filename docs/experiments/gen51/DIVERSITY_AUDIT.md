@@ -77,3 +77,24 @@ Reanalysis improves targets, not coverage.
   (e.g. temperature for more moves, or a larger share of noisy decisions). It
   would not touch evaluation instruments or add forced openings, and would be
   measured by this same audit on the gen51 increment.
+
+## Follow-up: gen51 with 30-ply exploration (September 26)
+
+Same tool on the gen51 increment (teacher v28; self-play temperature 1.0 for
+30 primitive plies instead of 15; otherwise the gen50 recipe). Report:
+`benchmarks/gen51_program/diversity_audit_gen51_20260926/report.json`.
+
+| | gen50 | gen51 |
+|---|---:|---:|
+| Value rows | 456,932 | 474,954 |
+| Distinct positions | 121,075 | **171,464** (+41.6%) |
+| Value rows per distinct position (2.0 = no repeats) | 3.77 | **2.77** |
+| Top-100 share | 20.4% | **11.4%** |
+| Top-1000 share | 35.2% | **18.5%** |
+| Top-100 share, 11–7 pieces (middlegame) | 23.6% | **3.1%** |
+| Top-100 share, 17–12 pieces | 19.3% | **4.0%** |
+| Top-100 share, 21–18 pieces (opening) | 52.5% | 42.3% |
+
+The narrowing is reversed: middlegame repetition is below even gen49's 4.7%.
+This measures data coverage only; teacher and exploration changed together,
+so whether gen51 *plays* better is for the gate v4 results.
