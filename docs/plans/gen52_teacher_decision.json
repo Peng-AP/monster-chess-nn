@@ -1,0 +1,23 @@
+{
+  "teacher": "models/candidates/bootstrap_main_gen_0051_deepvalue/arena_selected.pt",
+  "teacher_sha256": "dbf26b9eff47009b25b63929be33bbf534f364599af87b233ed3a4ed313e84e2",
+  "teacher_description": "gen51 deep-value arm nominee (selected_epoch_009); passed gate v4 vs v28; not promoted",
+  "deep_value": true,
+  "reference": "models/bootstrap_v28/best_value_net.pt",
+  "prior_extra_sources": [
+    {
+      "name": "gen_0051_deepvalue",
+      "path": "data/processed/bootstrap_extra_main_gen_0051_disagreement"
+    }
+  ],
+  "rule": "Teacher = gen51 nominee with the higher mean 3,200 score vs gen49, v27 and B2, unless the other nominee wins the gen51 arm-vs-arm match at 3,200 with >= 55%. Deep-value source kept iff the deep-value nominee is the teacher. Declared before the arm-vs-arm result (docs/plans/GEN52_PLAN.md).",
+  "evidence": {
+    "outside_mean": {
+      "deep_value": 0.8698,
+      "control": 0.774
+    },
+    "arm_vs_arm_3200_deep_value_score": 0.50125,
+    "arm_vs_arm_report": "benchmarks/gen51_program/gen51_20260925/production/play/deep_vs_control.json"
+  },
+  "decided": "2026-09-27T02:17 (overnight authority)"
+}
