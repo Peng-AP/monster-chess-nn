@@ -1,0 +1,281 @@
+{
+  "complete": true,
+  "rehearsal": false,
+  "default": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3
+  },
+  "par": {
+    "par": 400,
+    "per_side": 200,
+    "deep_par": 160,
+    "deep": 160
+  },
+  "par_stats": {
+    "par": {
+      "n": 400,
+      "score": 0.5,
+      "sides": {
+        "white": {
+          "n": 400,
+          "wins": 63,
+          "draws": 128,
+          "losses": 209,
+          "score": 0.3175,
+          "se": 0.01850920992723152
+        },
+        "black": {
+          "n": 400,
+          "wins": 209,
+          "draws": 128,
+          "losses": 63,
+          "score": 0.6825,
+          "se": 0.01850920992723152
+        }
+      },
+      "color_estimates_are_complements": true
+    },
+    "deep_par": {
+      "n": 160,
+      "score": 0.5,
+      "sides": {
+        "white": {
+          "n": 160,
+          "wins": 14,
+          "draws": 118,
+          "losses": 28,
+          "score": 0.45625,
+          "se": 0.020017435403312436
+        },
+        "black": {
+          "n": 160,
+          "wins": 28,
+          "draws": 118,
+          "losses": 14,
+          "score": 0.54375,
+          "se": 0.020017435403312436
+        }
+      },
+      "color_estimates_are_complements": true
+    }
+  },
+  "screen": {
+    "A_cpuct_1.0": {
+      "search": {
+        "c_puct": 1.0,
+        "fpu_reduction": 0.3
+      },
+      "score": 0.495,
+      "par_comparisons": {
+        "white": {
+          "delta_from_par": 0.020000000000000018,
+          "nominal_se": 0.03328869679849883,
+          "nominal_95_interval": [
+            -0.04524584572505769,
+            0.08524584572505772
+          ]
+        },
+        "black": {
+          "delta_from_par": -0.030000000000000027,
+          "nominal_se": 0.03314876848587781,
+          "nominal_95_interval": [
+            -0.09497158623232053,
+            0.03497158623232048
+          ]
+        }
+      },
+      "evidence": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\A_cpuct_1.0.jsonl": "31b613361db5868408acdc7b1472f8e62ed4b2a238f8c140a0c2e5a3ea1f04ee",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\A_cpuct_1.0.jsonl.manifest.json": "124df0b2d34daf30aeb339fed93a36a15ac79213aaa6ffe8d6ea73d4f25676d7"
+      },
+      "sides": {
+        "white": {
+          "n": 200,
+          "wins": 39,
+          "draws": 57,
+          "losses": 104,
+          "score": 0.3375,
+          "se": 0.027668510664870638
+        },
+        "black": {
+          "n": 200,
+          "wins": 100,
+          "draws": 61,
+          "losses": 39,
+          "score": 0.6525,
+          "se": 0.0275
+        }
+      },
+      "endings": {
+        "king_capture": 282,
+        "repetition": 118
+      },
+      "unique_score": 0.5
+    },
+    "B_cpuct_2.0": {
+      "search": {
+        "c_puct": 2.0,
+        "fpu_reduction": 0.3
+      },
+      "score": 0.45999999999999996,
+      "par_comparisons": {
+        "white": {
+          "delta_from_par": -0.027500000000000024,
+          "nominal_se": 0.031628781147144194,
+          "nominal_95_interval": [
+            -0.08949241104840264,
+            0.034492411048402595
+          ]
+        },
+        "black": {
+          "delta_from_par": -0.05249999999999999,
+          "nominal_se": 0.033533571236434384,
+          "nominal_95_interval": [
+            -0.11822579962341138,
+            0.013225799623411402
+          ]
+        }
+      },
+      "evidence": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\B_cpuct_2.0.jsonl": "96bcbc5e4227855fea5db6b12171358ae9d53aa433381fbb0fe1ed63ab584c43",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\B_cpuct_2.0.jsonl.manifest.json": "4d8c4729eb960d48c2b5f1cbad513ca0e1ba2da06f4170fac4bd9980d7d305af"
+      },
+      "sides": {
+        "white": {
+          "n": 200,
+          "wins": 28,
+          "draws": 60,
+          "losses": 112,
+          "score": 0.29,
+          "se": 0.025647396451172547
+        },
+        "black": {
+          "n": 200,
+          "wins": 95,
+          "draws": 62,
+          "losses": 43,
+          "score": 0.63,
+          "se": 0.027962645578319185
+        }
+      },
+      "endings": {
+        "king_capture": 278,
+        "repetition": 122
+      },
+      "unique_score": 0.4509090909090909
+    },
+    "C_fpu_0.20": {
+      "search": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.2
+      },
+      "score": 0.47125,
+      "par_comparisons": {
+        "white": {
+          "delta_from_par": 0.0050000000000000044,
+          "nominal_se": 0.032710034848170325,
+          "nominal_95_interval": [
+            -0.059111668302413836,
+            0.06911166830241385
+          ]
+        },
+        "black": {
+          "delta_from_par": -0.0625,
+          "nominal_se": 0.03315682089296734,
+          "nominal_95_interval": [
+            -0.127487368950216,
+            0.002487368950215993
+          ]
+        }
+      },
+      "evidence": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\C_fpu_0.20.jsonl": "55c315a5709cc9b8cbc5db9b623642a13e2c772d31fb8ad321f27f00e04d6604",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\C_fpu_0.20.jsonl.manifest.json": "4df8d1f77921df71f7996736827687137325a49b2d0850b6eacc7843f08a0621"
+      },
+      "sides": {
+        "white": {
+          "n": 200,
+          "wins": 35,
+          "draws": 59,
+          "losses": 106,
+          "score": 0.3225,
+          "se": 0.0269695296147002
+        },
+        "black": {
+          "n": 200,
+          "wins": 90,
+          "draws": 68,
+          "losses": 42,
+          "score": 0.62,
+          "se": 0.027509705916239635
+        }
+      },
+      "endings": {
+        "king_capture": 273,
+        "repetition": 127
+      },
+      "unique_score": 0.48846960167714887
+    },
+    "D_fpu_0.40": {
+      "search": {
+        "c_puct": 1.5,
+        "fpu_reduction": 0.4
+      },
+      "score": 0.48375,
+      "par_comparisons": {
+        "white": {
+          "delta_from_par": 0.010000000000000009,
+          "nominal_se": 0.031873598467477816,
+          "nominal_95_interval": [
+            -0.05247225299625651,
+            0.07247225299625654
+          ]
+        },
+        "black": {
+          "delta_from_par": -0.04249999999999998,
+          "nominal_se": 0.034805675876728115,
+          "nominal_95_interval": [
+            -0.11071912471838709,
+            0.025719124718387124
+          ]
+        }
+      },
+      "evidence": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\D_fpu_0.40.jsonl": "8fdaf387dc586f495459aaac28bab47b862e0f732a1f66b8d3f74182ec28ac25",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen51_program\\search_constants_20260925\\production\\screen\\D_fpu_0.40.jsonl.manifest.json": "e98500947b0ccf855e1954111df9a3bf1e2caf783d5a28e2a470816eb23479de"
+      },
+      "sides": {
+        "white": {
+          "n": 200,
+          "wins": 31,
+          "draws": 69,
+          "losses": 100,
+          "score": 0.3275,
+          "se": 0.025948707619757837
+        },
+        "black": {
+          "n": 200,
+          "wins": 105,
+          "draws": 46,
+          "losses": 49,
+          "score": 0.64,
+          "se": 0.029476163609016823
+        }
+      },
+      "endings": {
+        "king_capture": 285,
+        "repetition": 115
+      },
+      "unique_score": 0.516904761904762
+    }
+  },
+  "nominee": null,
+  "eligible": [],
+  "confirmation": null,
+  "manifest_sha256": "675440e22f17c933baf6702a4dbd6a24a3b6e57a9e5b14dafff03f164cef8d26",
+  "notes": [
+    "Same v28 network on both sides; only the candidate's search constants differ.",
+    "A confirmed nominee is not applied to config.py automatically.",
+    "Screen results nominate; only the fresh confirmation legs are evidence of a change."
+  ]
+}
