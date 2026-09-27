@@ -33,7 +33,34 @@ statements are not current status.
 - Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
   (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
-**Evening of September 25: gen51 production RUNNING** (managed run
+**September 27, 03:08: gen52 production RUNNING** (managed run
+`gen52_production`; log `logs/gen52_production.log`; evidence
+`benchmarks/gen52_program/gen52_20260927/production/`; plan
+`docs/plans/GEN52_PLAN.md`).
+
+- **gen51 finished 03:01 (32.7 h): both arms passed gate v4 against v28.**
+  See `docs/experiments/gen51/GEN51_RESULTS.md`.
+  - Control arm: 79.3% at 3,200, 95.6% at 12,800.
+  - Deep-value arm: 74.9% at 3,200, 85.0% at 12,800.
+  - Both about 99% against the held-out B2, where v28 scored 73.75%.
+  - The control arm has a White hole (e4+d4 …d5 c4+Ke2) that gen49 exploits:
+    47.2% vs gen49, against v28's 83.1%.
+  - The deep-value arm holds that line (75.6% vs gen49) and beat the control
+    67.8% at 12,800 (50.1% at 3,200).
+  - **Nothing promoted.** Both nominees are playtest candidates:
+    `models/candidates/bootstrap_main_gen_0051{,_deepvalue}/arena_selected.pt`.
+- **gen52 (overnight authority from the owner):**
+  - Teacher = gen51's deep-value nominee, by the rule declared before the
+    arm-vs-arm result (`docs/plans/gen52_teacher_decision.json`).
+  - Shared generation with 30-ply exploration and the deep-value source.
+  - **Arm B adds 1,200 games against the owner's pool (v28, gen49, gen48,
+    v26); B2 and v27 are held out.**
+  - Full rehearsal passed in 4.9 minutes.
+  - Guide: about 35 hours (gen51 took 32.7). Pause and resume exactly as for
+    gen51 below, with name `gen52_production` and `tools/gen52_campaign.py`.
+
+**Evening of September 25: gen51 production RUNNING** *(historical; completed
+September 27 03:01)* (managed run
 `gen51_production`, launched 18:20:40 Eastern; log `logs/gen51_production.log`;
 evidence `benchmarks/gen51_program/gen51_20260925/production/`).
 
