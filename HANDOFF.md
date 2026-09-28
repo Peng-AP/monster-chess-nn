@@ -33,7 +33,28 @@ statements are not current status.
 - Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
   (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
-**September 27, 03:08: gen52 production RUNNING** (managed run
+**September 28, 18:03: gen52 COMPLETE, no gen53 launched. Nothing running.**
+See `docs/experiments/gen52/GEN52_RESULTS.md`.
+
+- **Neither gen52 arm passed gate v4** against its teacher (gen51
+  deep-value). Both got weaker as White (Arm A −26 pp, Arm B −13 pp).
+- Held-out means (B2, v27): Arm A 80.9%, Arm B (pool) 91.4%, teacher 92.7%.
+  The pool helped on held-out opponents but did not beat the teacher.
+- Arm A drew most games against B2 (65.9%). Hypothesis, untested: the
+  deep-value share of value training nearly doubled (13% → 22%) because
+  gen51's source rolled forward next to gen52's.
+- By the pre-declared rule 1 in `docs/plans/GEN53_PLAN.md`, **gen53 was not
+  launched**. The driver `tools/gen53_campaign.py` is ready; the teacher
+  decision is unwritten.
+- **Best model on the evidence: gen51 deep-value nominee**
+  (`models/candidates/bootstrap_main_gen_0051_deepvalue/arena_selected.pt`),
+  unpromoted and awaiting the owner's playtest.
+- Owner options in GEN52_RESULTS.md: (1) cheap retrain of Arm B with the
+  deep-value share capped, about 10–11 h; (2) gen53 with lessons applied,
+  about 36 h; (3) release decision on gen51 deep-value first.
+
+**September 27, 03:08: gen52 production RUNNING** *(historical; completed
+September 28 18:03)* (managed run
 `gen52_production`; log `logs/gen52_production.log`; evidence
 `benchmarks/gen52_program/gen52_20260927/production/`; plan
 `docs/plans/GEN52_PLAN.md`).
