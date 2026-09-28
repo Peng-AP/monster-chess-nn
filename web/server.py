@@ -1,0 +1,322 @@
+"""Play Monster Chess against the engine in a browser: static page + JSON move API.
+
+Standard library only (no new dependencies). Binds 127.0.0.1; public access
+goes through a tunnel (see web/README.md). The browser keeps the game as a
+list of UCI half-moves and sends it with every request; the server replays it
+with the project's rules code, so illegal or tampered games are rejected and
+restarts never lose a game in progress.
+
+Endpoints:
+  GET  /                      the game page (web/static/*)
+  GET  /api/engines           engines a player may choose
+  POST /api/state             {moves}                     -> position, legal half-moves, status
+  POST /api/engine-move       {moves, engine, game_id}    -> the engine's whole turn, then state
+  POST /api/record            {moves, engine, game_id, human_color, reason?} -> store an unfinished game
+
+Finished games are stored once per game_id under data/raw/web_games/<date>/
+(moves, result, engine identity, settings; no IP addresses).
+"""
+import argparse
+from collections import defaultdict, deque
+import datetime as dt
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import threading
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT / "src"), str(ROOT / "tools")]
+
+STATIC = Path(__file__).resolve().parent / "static"
+STATIC_FILES = {"/": ("index.html", "text/html; charset=utf-8"),
+                "/index.html": ("index.html", "text/html; charset=utf-8"),
+                "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/style.css": ("style.css", "text/css; charset=utf-8")}
+GAMES = ROOT / "data/raw/web_games"
+MOVE_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
+MAX_PLIES = 800
+MAX_BODY = 64 * 1024
+OPENING_TEMP_PLIES = 16     # the gate's sampler: some variety early, then best play
+OPENING_TEMPERATURE = 0.5
+ENGINE_MOVES_PER_MINUTE = 60  # per client
+MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
+
+ENGINES = {
+    "v28": dict(label="v28 (current release)", path="models/bootstrap_v28/best_value_net.pt",
+                sims=3200, default=True),
+    "gen51": dict(label="gen51 deep-value (experimental)",
+                  path="models/candidates/bootstrap_main_gen_0051_deepvalue/arena_selected.pt",
+                  sims=3200, default=False),
+}
+
+
+class BadRequest(Exception):
+    pass
+
+
+# ----------------------------------------------------------------------------
+# Rules layer: pure functions, testable without a GPU.
+
+def replay(moves):
+    """Rebuild a game from UCI half-moves, rejecting anything illegal."""
+    import chess
+    from monster_chess import MonsterChessGame
+    from repetition import RepetitionTracker
+    if not isinstance(moves, list) or len(moves) > MAX_PLIES:
+        raise BadRequest("moves must be a list of at most %d half-moves" % MAX_PLIES)
+    game, tracker = MonsterChessGame(), RepetitionTracker()
+    tracker.record(game, 0)
+    repeated = False
+    for i, uci in enumerate(moves):
+        if not isinstance(uci, str) or not MOVE_RE.match(uci):
+            raise BadRequest(f"move {i + 1} is not a UCI move: {uci!r}")
+        if repeated or game.is_terminal():
+            raise BadRequest(f"move {i + 1} was played after the game ended")
+        move = chess.Move.from_uci(uci)
+        if move not in game.get_search_actions():
+            raise BadRequest(f"move {i + 1} ({uci}) is illegal in this position")
+        game.apply_search_action(move)
+        repeated = tracker.record(game, i + 1)
+    return game, repeated
+
+
+def status(game, repeated):
+    if repeated:
+        return dict(over=True, result="draw", reason="repetition")
+    if not game.is_terminal():
+        return dict(over=False)
+    result = game.get_result()
+    if result >= 1:
+        return dict(over=True, result="white", reason="king captured")
+    if result <= -1:
+        return dict(over=True, result="black", reason="king captured")
+    return dict(over=True, result="draw", reason="turn limit")
+
+
+def state_payload(moves):
+    game, repeated = replay(moves)
+    st = status(game, repeated)
+    return dict(fen=game.fen(), turn="white" if game.is_white_turn else "black",
+                half=2 if game.white_half_pending else 1, plies=len(moves),
+                full_turn=game.turn_count // 2 + 1, status=st,
+                legal=[] if st["over"] else sorted(m.uci() for m in game.get_search_actions()))
+
+
+# ----------------------------------------------------------------------------
+# Engine layer: one GPU evaluator per model, searches serialized by one lock.
+
+class EnginePool:
+    def __init__(self, names):
+        from evaluation import NNEvaluator
+        from match_evidence import file_hash
+        self.models, self.lock, self.waiting = {}, threading.Lock(), 0
+        self.count_lock = threading.Lock()
+        for name in names:
+            spec = ENGINES[name]
+            self.models[name] = dict(spec, evaluator=NNEvaluator(str(ROOT / spec["path"])),
+                                     sha256=file_hash(ROOT / spec["path"]))
+            print(f"loaded {name}: {spec['path']}", flush=True)
+
+    def search(self, name, moves):
+        """Play the engine's whole turn (both halves when it is White)."""
+        from benchmark import _FinisherEngine
+        from native_mcts import NativeMCTS
+        spec = self.models.get(name)
+        if spec is None:
+            raise BadRequest(f"unknown engine {name!r}")
+        game, repeated = replay(moves)
+        if status(game, repeated)["over"]:
+            raise BadRequest("the game is already over")
+        with self._slot():
+            engine = _FinisherEngine(NativeMCTS(num_simulations=spec["sims"], eval_fn=spec["evaluator"],
+                                                root_noise=False, allow_early_stop=True,
+                                                reuse_across_moves=True))
+            played, side = [], game.is_white_turn
+            while game.is_white_turn == side and not game.is_terminal():
+                ply = len(moves) + len(played)
+                temperature = OPENING_TEMPERATURE if ply < OPENING_TEMP_PLIES else 0.0
+                move = engine.get_best_action(game, temperature=temperature)[0]
+                if move is None:
+                    raise RuntimeError("engine returned no move in a live position")
+                game.apply_search_action(move)
+                played.append(move.uci())
+                if side is False:
+                    break  # Black moves once
+        return played
+
+    def _slot(self):
+        pool = self
+
+        class Slot:
+            def __enter__(self):
+                with pool.count_lock:
+                    if pool.waiting >= MAX_WAITING:
+                        raise Busy()
+                    pool.waiting += 1
+                pool.lock.acquire()
+
+            def __exit__(self, *exc):
+                pool.lock.release()
+                with pool.count_lock:
+                    pool.waiting -= 1
+        return Slot()
+
+
+class Busy(Exception):
+    pass
+
+
+# ----------------------------------------------------------------------------
+# Game records.
+
+_recorded = set()
+_record_lock = threading.Lock()
+
+
+def record_game(game_id, moves, engine, human_color, st, sha256, sims, reason=None):
+    if not isinstance(game_id, str) or not re.fullmatch(r"[0-9a-f]{32}", game_id):
+        return False
+    with _record_lock:
+        if game_id in _recorded:
+            return False
+        day = dt.date.today().isoformat()
+        path = GAMES / day / f"{game_id}.json"
+        if path.exists():
+            _recorded.add(game_id)
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(
+            game_id=game_id, finished=dt.datetime.now().isoformat(timespec="seconds"),
+            moves=moves, human_color=human_color, engine=engine, engine_sha256=sha256, sims=sims,
+            status=st, end=reason or ("finished" if st.get("over") else "abandoned"),
+            opening_temperature=[OPENING_TEMPERATURE, OPENING_TEMP_PLIES]), indent=1), encoding="utf-8")
+        _recorded.add(game_id)
+        return True
+
+
+# ----------------------------------------------------------------------------
+# HTTP.
+
+_rate = defaultdict(deque)
+_rate_lock = threading.Lock()
+
+
+def allowed(client):
+    now = time.monotonic()
+    with _rate_lock:
+        q = _rate[client]
+        while q and now - q[0] > 60:
+            q.popleft()
+        if len(q) >= ENGINE_MOVES_PER_MINUTE:
+            return False
+        q.append(now)
+        return True
+
+
+class Handler(BaseHTTPRequestHandler):
+    pool = None
+    server_version = "MonsterChess/1"
+
+    def log_message(self, fmt, *args):  # no client addresses in logs
+        sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args if "%" in fmt else fmt))
+
+    def client(self):
+        # Behind cloudflared the peer is always localhost; use Cloudflare's header then.
+        if self.client_address[0] in ("127.0.0.1", "::1"):
+            return self.headers.get("CF-Connecting-IP", "local")
+        return self.client_address[0]
+
+    def send_json(self, code, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/api/engines":
+            return self.send_json(200, [dict(id=k, label=v["label"], sims=v["sims"], default=v["default"])
+                                        for k, v in ENGINES.items() if k in self.pool.models])
+        if path not in STATIC_FILES:
+            return self.send_json(404, dict(error="not found"))
+        name, ctype = STATIC_FILES[path]
+        body = (STATIC / name).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= MAX_BODY:
+                raise BadRequest("missing or oversized body")
+            data = json.loads(self.rfile.read(length))
+            if not isinstance(data, dict):
+                raise BadRequest("body must be a JSON object")
+            moves = data.get("moves", [])
+            if self.path == "/api/state":
+                return self.send_json(200, state_payload(moves))
+            if self.path == "/api/engine-move":
+                if not allowed(self.client()):
+                    return self.send_json(429, dict(error="too many requests; slow down a little"))
+                name = data.get("engine", "v28")
+                played = self.pool.search(name, moves)
+                state = state_payload(moves + played)
+                if state["status"]["over"]:
+                    spec = self.pool.models[name]
+                    record_game(data.get("game_id"), moves + played, name, data.get("human_color"),
+                                state["status"], spec["sha256"], spec["sims"])
+                return self.send_json(200, dict(engine_moves=played, state=state))
+            if self.path == "/api/record":
+                name = data.get("engine", "v28")
+                spec = self.pool.models.get(name)
+                if spec is None:
+                    raise BadRequest(f"unknown engine {name!r}")
+                state = state_payload(moves)
+                reason = data.get("reason") if data.get("reason") in ("resigned", "new game", "finished") else None
+                return self.send_json(200, dict(recorded=record_game(
+                    data.get("game_id"), moves, name, data.get("human_color"), state["status"],
+                    spec["sha256"], spec["sims"], reason)))
+            return self.send_json(404, dict(error="not found"))
+        except BadRequest as exc:
+            return self.send_json(400, dict(error=str(exc)))
+        except Busy:
+            return self.send_json(503, dict(error="the engine is busy; try again in a moment"))
+        except (ValueError, json.JSONDecodeError):
+            return self.send_json(400, dict(error="malformed request"))
+        except Exception as exc:  # never leak internals to visitors
+            sys.stderr.write(f"internal error: {exc!r}\n")
+            return self.send_json(500, dict(error="internal error"))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--engines", default="v28,gen51", help="comma-separated engine ids")
+    args = ap.parse_args()
+    os.chdir(ROOT)
+    names = [n for n in args.engines.split(",") if n]
+    unknown = [n for n in names if n not in ENGINES]
+    if unknown:
+        ap.error(f"unknown engines: {unknown}")
+    Handler.pool = EnginePool(names)
+    # Warm up once so the first visitor does not pay for CUDA graph capture.
+    for name in names:
+        Handler.pool.search(name, [])
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    print(f"serving on http://127.0.0.1:{args.port}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

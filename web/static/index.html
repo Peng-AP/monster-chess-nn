@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monster Chess</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Monster Chess</h1>
+    <p class="rules">White has a king and four pawns but moves <strong>twice</strong> per turn.
+      Black has the full army and moves once. You win by <strong>capturing the king</strong>;
+      repetition or the 150-turn limit is a draw.</p>
+  </header>
+
+  <section class="controls" aria-label="New game">
+    <label>Engine <select id="engine"></select></label>
+    <label>You play
+      <select id="color">
+        <option value="black">Black (full army)</option>
+        <option value="white">White (king + pawns, two moves)</option>
+      </select>
+    </label>
+    <button id="new-game" type="button">New game</button>
+  </section>
+
+  <section class="play">
+    <div class="board-wrap">
+      <div id="board" role="grid" aria-label="Board"></div>
+      <div id="promotion" class="promotion" hidden></div>
+    </div>
+    <aside>
+      <div id="status" class="status" aria-live="polite">Choose an engine and a colour, then start a new game.</div>
+      <ol id="moves" class="moves"></ol>
+      <div class="actions">
+        <button id="resign" type="button" disabled>Resign</button>
+        <button id="copy" type="button" disabled>Copy moves</button>
+      </div>
+    </aside>
+  </section>
+
+  <footer>Engine: self-trained neural network with Monte Carlo tree search, running on the host's GPU.
+    Finished games are saved as move lists only.</footer>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
