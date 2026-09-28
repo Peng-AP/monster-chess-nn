@@ -201,6 +201,19 @@ def record_game(game_id, moves, engine, human_color, st, sha256, sims, reason=No
 # ----------------------------------------------------------------------------
 # HTTP.
 
+def asset_version(name):
+    import hashlib
+    return hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:10]
+
+
+def versioned_page(html):
+    """Point the page at /style.css?v=<hash> and /app.js?v=<hash>."""
+    text = html.decode("utf-8")
+    for name in ("style.css", "app.js"):
+        text = text.replace(f'"/{name}"', f'"/{name}?v={asset_version(name)}"')
+    return text.encode("utf-8")
+
+
 _rate = defaultdict(deque)
 _rate_lock = threading.Lock()
 
@@ -248,10 +261,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(404, dict(error="not found"))
         name, ctype = STATIC_FILES[path]
         body = (STATIC / name).read_bytes()
+        page = name == "index.html"
+        if page:
+            body = versioned_page(body)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache")
+        # The page is never cached; assets are, under content-hashed URLs, so a
+        # change reaches every visitor at once despite CDN and browser caches.
+        self.send_header("Cache-Control", "no-store" if page else "public, max-age=31536000, immutable")
         self.end_headers()
         self.wfile.write(body)
 

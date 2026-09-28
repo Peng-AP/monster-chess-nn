@@ -113,3 +113,16 @@ def test_http_rejects_traversal_bad_moves_and_unknown_engines(http_server):
     assert request(http_server, "POST", "/api/state", dict(moves=["e2e5"]))[0] == 400
     assert request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="nope"))[0] == 400
     assert request(http_server, "POST", "/api/state", [1, 2])[0] == 400
+
+
+def test_page_references_content_hashed_assets_and_is_not_cached(http_server):
+    conn = http.client.HTTPConnection("127.0.0.1", http_server, timeout=30)
+    conn.request("GET", "/")
+    res = conn.getresponse()
+    body = res.read().decode()
+    assert res.getheader("Cache-Control") == "no-store"
+    assert f'/style.css?v={web.asset_version("style.css")}' in body
+    assert f'/app.js?v={web.asset_version("app.js")}' in body
+    conn.request("GET", f'/app.js?v={web.asset_version("app.js")}')
+    res = conn.getresponse(); res.read()
+    assert res.status == 200 and "immutable" in res.getheader("Cache-Control")
