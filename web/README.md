@@ -46,8 +46,26 @@ The server listens on 127.0.0.1 only. A Cloudflare Tunnel makes an outbound
 connection from this PC, so no router ports are opened and the home IP is not
 exposed. One-time setup (the domain must use Cloudflare's DNS):
 
+cloudflared is installed as a standalone program (no admin rights; the MSI
+installer's elevation prompt cannot appear from a non-interactive session):
+`%LOCALAPPDATA%\Programs\cloudflared\cloudflared.exe`, version 2026.9.3,
+SHA256 `f096265e…ea7e2`, which matches Cloudflare's release notes. Below,
+`cloudflared` means that path.
+
+**Before a domain exists: temporary public link (no account needed)**
+
 ```powershell
-winget install --id Cloudflare.cloudflared      # Windows may ask for approval
+py -3 tools/runs.py start --name web_tunnel -- "%LOCALAPPDATA%\Programs\cloudflared\cloudflared.exe" tunnel --url http://localhost:8765
+```
+
+The log (`py -3 tools/runs.py tail --name web_tunnel`) shows a random
+`https://….trycloudflare.com` address. It changes on every restart, and
+Cloudflare does not guarantee uptime for quick tunnels.
+
+**With a domain bought through Cloudflare Registrar** (its DNS is already on
+Cloudflare):
+
+```powershell
 cloudflared tunnel login                          # opens a browser: pick the domain
 cloudflared tunnel create monster-chess
 cloudflared tunnel route dns monster-chess chess.YOURDOMAIN
