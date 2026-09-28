@@ -1,7 +1,10 @@
 // Monster Chess client: the server is the rules authority; the page only draws and asks.
 "use strict";
 
-const GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+// U+FE0E asks for the text (not emoji) presentation; phones otherwise draw the pawn as an emoji.
+const GLYPH = Object.fromEntries(Object.entries({ k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" })
+  .map(([k, v]) => [k, v + "︎"]));
+const THEME = "monster-chess-theme";
 const STORE = "monster-chess-game-v1";
 const $ = (id) => document.getElementById(id);
 
@@ -129,7 +132,7 @@ function renderStatus(message, kind) {
     el.textContent = `${outcome} (${st.reason}).`;
     return;
   }
-  if (busy) { el.textContent = "Engine is thinking…"; return; }
+  if (busy) { el.classList.add("thinking"); el.textContent = "Engine is thinking"; return; }
   const who = state.turn === game.human ? "Your move" : "Engine to move";
   const half = state.turn === "white" ? ` — White move ${state.half} of 2` : "";
   el.textContent = `${who}${half}. Turn ${state.full_turn}.`;
@@ -237,8 +240,33 @@ async function copyMoves() {
   catch (_) { renderStatus("Copy failed; select the move list manually.", "error"); }
 }
 
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme !== "dark";
+  if (dark) document.documentElement.dataset.theme = "dark"; else delete document.documentElement.dataset.theme;
+  $("theme").innerHTML = dark ? "&#9788;" : "&#9790;";
+  try { localStorage.setItem(THEME, dark ? "dark" : "light"); } catch (_) { /* ignore */ }
+}
+
+// ?moves=e2e4,d2d4,d7d5 opens a game from that position, playing the side to move.
+async function fromLink() {
+  const raw = new URLSearchParams(location.search).get("moves");
+  if (raw === null) return false;
+  const moves = raw.split(",").map((m) => m.trim()).filter(Boolean);
+  let st;
+  try { st = await api("/api/state", { moves }); }
+  catch (err) { renderStatus("That link's moves are not a legal game: " + err.message, "error"); return true; }
+  game = { id: newId(), engine: $("engine").value, human: st.turn, moves };
+  $("color").value = game.human;
+  history.replaceState(null, "", location.pathname);
+  save();
+  await resume();
+  return true;
+}
+
 async function init() {
   $("new-game").addEventListener("click", startGame);
+  $("theme").addEventListener("click", toggleTheme);
+  if (document.documentElement.dataset.theme === "dark") $("theme").innerHTML = "&#9788;";
   $("resign").addEventListener("click", resign);
   $("copy").addEventListener("click", copyMoves);
   try {
@@ -253,6 +281,7 @@ async function init() {
     renderStatus("The engine server is not reachable: " + err.message, "error");
     return;
   }
+  if (await fromLink()) return;
   const saved = load();
   if (saved && saved.id && Array.isArray(saved.moves)) {
     game = saved;

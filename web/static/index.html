@@ -3,16 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>try { if (localStorage.getItem("monster-chess-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (_) {}</script>
 <title>Monster Chess</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <main>
   <header>
-    <h1>Monster Chess</h1>
-    <p class="rules">White has a king and four pawns but moves <strong>twice</strong> per turn.
-      Black has the full army and moves once. You win by <strong>capturing the king</strong>;
-      repetition or the 150-turn limit is a draw.</p>
+    <div>
+      <h1>Monster <span>Chess</span></h1>
+      <p class="rules">White has a king and four pawns but moves <strong>twice</strong> per turn.
+        Black has the full army and moves once. You win by <strong>capturing the king</strong>;
+        repetition or the 150-turn limit is a draw.</p>
+    </div>
+    <button id="theme" type="button" aria-label="Switch colour theme" title="Switch colour theme">&#9790;</button>
   </header>
 
   <section class="controls" aria-label="New game">
