@@ -33,7 +33,23 @@ statements are not current status.
 - Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
   (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
-**September 28, 18:03: gen52 COMPLETE, no gen53 launched. Nothing running.**
+**September 28, evening: research paused (owner). Browser play server built
+and running.** `web/server.py` plus `web/static/` (guide `web/README.md`):
+
+- Standard library only; binds 127.0.0.1:8765.
+- Engines: v28 (default) and gen51 deep-value (experimental), both at
+  3,200 simulations, about 0.3 s per engine turn.
+- The server replays each client's move list with the rules code.
+- Games are recorded without IPs to `data/raw/web_games/`.
+- Managed run name `web_server`.
+- Public access: cloudflared 2026.9.3 standalone at
+  `%LOCALAPPDATA%\Programs\cloudflared\` (checksum-verified; the winget MSI
+  cannot elevate from a non-interactive session).
+- The owner is buying a domain through Cloudflare; then a named tunnel goes to
+  `chess.<domain>`. Until then a trycloudflare quick tunnel is possible.
+- **Stop the server during research runs** (they share the GPU).
+
+**September 28, 18:03: gen52 COMPLETE, no gen53 launched.**
 See `docs/experiments/gen52/GEN52_RESULTS.md`.
 
 - **Neither gen52 arm passed gate v4** against its teacher (gen51
