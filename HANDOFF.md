@@ -45,8 +45,9 @@ and running.** `web/server.py` plus `web/static/` (guide `web/README.md`):
 - Public access: cloudflared 2026.9.3 standalone at
   `%LOCALAPPDATA%\Programs\cloudflared\` (checksum-verified; the winget MSI
   cannot elevate from a non-interactive session).
-- The owner is buying a domain through Cloudflare; then a named tunnel goes to
-  `chess.<domain>`. Until then a trycloudflare quick tunnel is possible.
+- **Live at https://chess.aaronpeng.dev** (Cloudflare named tunnel
+  `monster-chess`; managed runs `web_server` and `web_tunnel`). Neither
+  auto-starts after a reboot yet.
 - **Stop the server during research runs** (they share the GPU).
 
 **September 28, 18:03: gen52 COMPLETE, no gen53 launched.**

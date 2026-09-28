@@ -1,5 +1,12 @@
 # Play Monster Chess in a browser
 
+**Live at <https://chess.aaronpeng.dev>** (set up 2026-09-28): Cloudflare
+named tunnel `monster-chess` (id `b3cfc883-4c4f-4fb6-a312-a26ea3bf407e`),
+config `%USERPROFILE%\.cloudflared\config.yml`. Managed runs: `web_server`
+(the game) and `web_tunnel` (the tunnel). Both must be running and the PC on.
+The tunnel credentials JSON in `%USERPROFILE%\.cloudflared\` is secret and
+never goes in git.
+
 `web/server.py` serves a game page and a small JSON API from this PC. It uses
 the project's own rules code and GPU engine, and only Python's standard
 library (no extra packages).
