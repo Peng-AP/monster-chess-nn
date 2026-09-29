@@ -32,9 +32,21 @@
   </section>
 
   <section class="play">
-    <div class="board-wrap">
-      <div id="board" role="grid" aria-label="Board"></div>
-      <div id="promotion" class="promotion" hidden></div>
+    <div class="board-col">
+      <div class="board-wrap">
+        <div id="board" role="grid" aria-label="Board"></div>
+        <svg id="marks" viewBox="0 0 8 8" aria-hidden="true"></svg>
+        <div id="promotion" class="promotion" hidden></div>
+        <div id="result" class="result" hidden role="dialog" aria-live="assertive"></div>
+      </div>
+      <div class="nav" aria-label="Move navigation">
+        <button id="first" type="button" title="Start (Home)" aria-label="Go to start">&#9198;</button>
+        <button id="prev" type="button" title="Back (&#8592;)" aria-label="Previous move">&#9664;</button>
+        <button id="next" type="button" title="Forward (&#8594;)" aria-label="Next move">&#9654;</button>
+        <button id="last" type="button" title="Current position (End)" aria-label="Go to current position">&#9197;</button>
+      </div>
+      <p class="hint">Drag or click to move. Right-drag draws an arrow, right-click highlights a square
+        (hold Shift, Alt or Ctrl for other colours); a left click clears them. &#8592; &#8594; step through the game.</p>
     </div>
     <aside>
       <div id="status" class="status" aria-live="polite">Choose an engine and a colour, then start a new game.</div>
