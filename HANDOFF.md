@@ -33,6 +33,22 @@ statements are not current status.
 - Measured Sept 25: distinct value-row inputs fell from 62.4% (gen49) to 53.0%
   (gen50), and the 100 most repeated positions are 14.5% of gen50 value rows.
 
+**September 29: v29 PROMOTED** (gen51 deep-value nominee, SHA256
+`dbf26b9e…e84e2`, `models/bootstrap_v29/`). The owner reported that the models
+now exceed his ability to judge strength by playtest, so promotion follows the
+new evidence rule `docs/protocols/PROMOTION_RULE.md`:
+
+- gate v4 PASS against the release;
+- held-out mean (B2, v27) no worse than the release's − 1 pp;
+- the owner approves a one-page evidence summary.
+
+v29 against v28: gate v4 PASS (74.9% at 3,200, 85.0% at 12,800); held-out mean
+92.7% vs 82.3%. The champion pointer (backup
+`champion_before_v29_20260929.json`) and `tools/gate.py` BAR (`vs_v29`) moved;
+the web site now defaults to v29 (v28 still selectable; old "gen51" saved games
+alias to v29). gen52 Arm C (capped deep-value) is running; see
+`docs/plans/GEN52_POOLCAP_PLAN.md`.
+
 **September 28, evening: research paused (owner). Browser play server built
 and running.** `web/server.py` plus `web/static/` (guide `web/README.md`):
 

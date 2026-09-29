@@ -58,12 +58,12 @@ class TestThresholds(unittest.TestCase):
         # over 600 book games at 1600 sims (z=+18.6). This assertion exists
         # to make the bar move only by deliberate edit, never by drift.
         # Owner 2026-09-07: gen42 -> v25, gen45 -> v26, gen46 -> v27;
-        # 2026-09-25: gen50 + calibrated value -> v28.
-        self.assertEqual(gate.BAR, "vs_v28")
+        # 2026-09-25: gen50 + calibrated value -> v28; 2026-09-29: gen51 deep-value -> v29.
+        self.assertEqual(gate.BAR, "vs_v29")
         self.assertIn(gate.BAR, gate.AGGREGATE_LEGS)
-        self.assertIn("bootstrap_v28", gate.BAR_MODEL)
+        self.assertIn("bootstrap_v29", gate.BAR_MODEL)
         self.assertEqual(gate.BAR_MODEL, gate.NUMBERED_INCUMBENT)
-        self.assertIn("bootstrap_v28", gate.NUMBERED_INCUMBENT)
+        self.assertIn("bootstrap_v29", gate.NUMBERED_INCUMBENT)
         self.assertIn("fresh_start_v18_ramp", gate.SPARRING)
 
     def test_the_bar_leg_is_played_first(self):

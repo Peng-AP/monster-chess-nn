@@ -285,7 +285,7 @@ async function init() {
   const saved = load();
   if (saved && saved.id && Array.isArray(saved.moves)) {
     game = saved;
-    $("engine").value = game.engine;
+    if ([...$("engine").options].some((o) => o.value === game.engine)) $("engine").value = game.engine;
     $("color").value = game.human;
     await resume();
   } else {

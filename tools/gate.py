@@ -12,7 +12,7 @@ Why this exists (DIRECTIVE Phase 0):
 * The thresholds are constants, not flags. The owner's binding rule is that a
   threshold is never weakened to let a recipe through, so there is deliberately
   no way to pass one on the command line.
-* **The bar is the strongest promoted engine on record, `v28`.** A candidate
+* **The bar is the strongest promoted engine on record, `v29`.** A candidate
   must beat the bar on aggregate, clear the per-side floor on every leg, and then
   beat it *again* on a fresh opening seed.
   `fresh_start_v18_ramp` remains a floor-bearing leg -- a distinct style.
@@ -87,15 +87,17 @@ SIMS = 400
 # at 400 sims. Per-colour scores here reference that par, never 0.50.
 # 2026-09-07: owner authorized three milestone releases: gen42/v25,
 # gen45/v26, gen46/v27. Thresholds and historical reports are unchanged.
+# 2026-09-29: owner promoted gen51 deep-value as v29 under the evidence rule
+# (docs/protocols/PROMOTION_RULE.md); the bar follows the release.
 # 2026-09-25: owner promoted gen50 + calibrated value head as v28; the bar
 # follows the release. Thresholds and historical reports are unchanged.
-BAR = "vs_v28"
-AGGREGATE_LEGS = ("vs_v28", "vs_ramp")
+BAR = "vs_v29"
+AGGREGATE_LEGS = ("vs_v29", "vs_ramp")
 
 NUMBERED_INCUMBENT = os.path.join(
-    ROOT, "models", "bootstrap_v28", "best_value_net.pt")
+    ROOT, "models", "bootstrap_v29", "best_value_net.pt")
 BAR_MODEL = os.path.join(
-    ROOT, "models", "bootstrap_v28", "best_value_net.pt")
+    ROOT, "models", "bootstrap_v29", "best_value_net.pt")
 SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
                         "best_value_net.pt")
 
@@ -104,7 +106,7 @@ SPARRING = os.path.join(ROOT, "models", "rejected", "fresh_start_v18_ramp",
 # per-leg variance is dominated by the sampled opening set, so one leg above
 # 0.50 is not a definitive anything. A candidate that passes therefore replays
 # the bar leg on a different opening seed and must clear it twice.
-CONFIRM_LEG = "vs_v28_confirm"
+CONFIRM_LEG = "vs_v29_confirm"
 CONFIRM_SEED_OFFSET = 424242
 
 # The bar played against ITSELF on the bar leg's own book block. Its true score
@@ -168,12 +170,12 @@ SEED_BASE_FOR_TEST = 20260801   # the --seed default; named so tests share it
 # (bar_spec[1]), so both binding reads widen together, and the full gate now
 # needs 1220 book entries rather than 820.
 FULL_LEGS = [
-    ("vs_v28", BAR_MODEL, 1200),
+    ("vs_v29", BAR_MODEL, 1200),
     ("vs_ramp", SPARRING, 40),
     ("anchor", None, 20),
 ]
 QUICK_LEGS = [
-    ("vs_v28", BAR_MODEL, 4),
+    ("vs_v29", BAR_MODEL, 4),
     ("vs_ramp", SPARRING, 4),
     ("anchor", None, 2),
 ]

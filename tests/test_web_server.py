@@ -62,9 +62,10 @@ def test_records_are_written_once_per_game(tmp_path, monkeypatch):
 
 class FakePool:
     """Plays the first legal half-move(s) for its side; no GPU."""
-    models = {"v28": dict(sha256="x", sims=8)}
+    models = {"v29": dict(sha256="x", sims=8)}
 
     def search(self, name, moves):
+        name = web.ALIASES.get(name, name)
         if name not in self.models:
             raise web.BadRequest("unknown engine")
         played = []
@@ -101,8 +102,8 @@ def test_http_page_state_and_engine_turn(http_server):
     status, body = request(http_server, "GET", "/")
     assert status == 200 and b"Monster Chess" in body
     status, body = request(http_server, "GET", "/api/engines")
-    assert status == 200 and json.loads(body)[0]["id"] == "v28"
-    status, body = request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="v28"))
+    assert status == 200 and json.loads(body)[0]["id"] == "v29"
+    status, body = request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="v29"))
     data = json.loads(body)
     assert status == 200 and len(data["engine_moves"]) == 2 and data["state"]["turn"] == "black"
 

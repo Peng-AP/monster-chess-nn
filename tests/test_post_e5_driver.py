@@ -42,7 +42,7 @@ class TestPostE5Ladder(unittest.TestCase):
         self.assertEqual(driver.GATE_SIMS, 3200)
         # Second pin on the bar (gate.py holds the first). Moved to v24 when
         # the owner promoted the generation-30 bootstrap candidate 2026-08-22.
-        self.assertEqual(gate.BAR, "vs_v28")
+        self.assertEqual(gate.BAR, "vs_v29")
         source = (ROOT / "tools" / "post_e5_driver.py").read_text(encoding="utf-8")
         self.assertIn('"--engine", "native", "--sims", str(GATE_SIMS)', source)
 

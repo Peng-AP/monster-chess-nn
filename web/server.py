@@ -46,12 +46,14 @@ ENGINE_MOVES_PER_MINUTE = 60  # per client
 MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
 
 ENGINES = {
-    "v28": dict(label="v28 (current release)", path="models/bootstrap_v28/best_value_net.pt",
+    "v29": dict(label="v29 (current release)", path="models/bootstrap_v29/best_value_net.pt",
                 sims=3200, default=True),
-    "gen51": dict(label="gen51 deep-value (experimental)",
-                  path="models/candidates/bootstrap_main_gen_0051_deepvalue/arena_selected.pt",
-                  sims=3200, default=False),
+    "v28": dict(label="v28 (previous release)", path="models/bootstrap_v28/best_value_net.pt",
+                sims=3200, default=False),
 }
+# Saved games may name an engine that has since been renamed; v29 is the former gen51 deep-value.
+ALIASES = {"gen51": "v29"}
+DEFAULT_ENGINE = next(k for k, v in ENGINES.items() if v["default"])
 
 
 class BadRequest(Exception):
@@ -125,6 +127,7 @@ class EnginePool:
         """Play the engine's whole turn (both halves when it is White)."""
         from benchmark import _FinisherEngine
         from native_mcts import NativeMCTS
+        name = ALIASES.get(name, name)
         spec = self.models.get(name)
         if spec is None:
             raise BadRequest(f"unknown engine {name!r}")
@@ -287,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/engine-move":
                 if not allowed(self.client()):
                     return self.send_json(429, dict(error="too many requests; slow down a little"))
-                name = data.get("engine", "v28")
+                name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
                 played = self.pool.search(name, moves)
                 state = state_payload(moves + played)
                 if state["status"]["over"]:
@@ -296,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
                                 state["status"], spec["sha256"], spec["sims"])
                 return self.send_json(200, dict(engine_moves=played, state=state))
             if self.path == "/api/record":
-                name = data.get("engine", "v28")
+                name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
                 spec = self.pool.models.get(name)
                 if spec is None:
                     raise BadRequest(f"unknown engine {name!r}")
@@ -320,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--engines", default="v28,gen51", help="comma-separated engine ids")
+    ap.add_argument("--engines", default=",".join(ENGINES), help="comma-separated engine ids")
     args = ap.parse_args()
     os.chdir(ROOT)
     names = [n for n in args.engines.split(",") if n]
