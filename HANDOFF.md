@@ -46,8 +46,24 @@ v29 against v28: gate v4 PASS (74.9% at 3,200, 85.0% at 12,800); held-out mean
 92.7% vs 82.3%. The champion pointer (backup
 `champion_before_v29_20260929.json`) and `tools/gate.py` BAR (`vs_v29`) moved;
 the web site now defaults to v29 (v28 still selectable; old "gen51" saved games
-alias to v29). gen52 Arm C (capped deep-value) is running; see
-`docs/plans/GEN52_POOLCAP_PLAN.md`.
+alias to v29).
+
+**September 29, 15:06: gen52 Arm C (capped deep-value share) COMPLETE —
+inconclusive by the pre-declared criteria; nothing promoted, no gen53.**
+See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
+
+- Deep-value share of value weight: 12.4% (vs Arm B's 22.3%).
+- Gate v4 against the teacher (v29): FAIL. 65.3% at 3,200, but White is
+  −15.6 pp against the teacher's self-par, and the 12,800 guard scored 44.7%.
+- Held-out mean 86.9% (Arm B 91.4%).
+- Against Arm B: 41.9% at 3,200 (Arm C's White won 1 of 200), 53.1% at 12,800.
+- The White regression appears in all three gen52 trainings, whatever the
+  deep-value share. The teacher's own White pessimism is the remaining
+  untested hypothesis.
+
+Site, September 29: drag-and-drop moves, right-drag arrows and right-click
+highlights, arrow-key and move-list review, and a game-over card. Games
+finished by the player's own move are now recorded too.
 
 **September 28, evening: research paused (owner). Browser play server built
 and running.** `web/server.py` plus `web/static/` (guide `web/README.md`):
