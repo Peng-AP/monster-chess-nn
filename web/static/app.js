@@ -11,6 +11,7 @@ const STORE = "monster-chess-game-v1";
 const THEME = "monster-chess-theme";
 const MARK_COLORS = { green: "#15781b", red: "#c0392b", blue: "#1f5fbf", yellow: "#e6a700" };
 const $ = (id) => document.getElementById(id);
+const MARKS = $("marks");  // arrow layer; re-attached inside #board on every redraw
 
 let game = null;          // { id, engine, human, moves: [] }
 let state = null;         // latest /api/state payload (the live position)
@@ -133,6 +134,7 @@ function drawBoard(fen) {
       el.appendChild(cell);
     }
   }
+  el.appendChild(MARKS);
   $("board").classList.toggle("reviewing", !live);
   drawMarks();
   renderMoves();
@@ -145,13 +147,15 @@ function drawBoard(fen) {
 }
 
 function drawMarks() {
+  // Square highlights live on the cells themselves (under the piece), so they cannot drift off the grid.
+  for (const cell of $("board").querySelectorAll(".sq")) {
+    const color = squares.get(cell.dataset.sq);
+    cell.classList.toggle("marked", Boolean(color));
+    if (color) cell.style.setProperty("--mark", MARK_COLORS[color]); else cell.style.removeProperty("--mark");
+  }
   const defs = Object.entries(MARK_COLORS).map(([name, c]) =>
     `<marker id="head-${name}" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6"
        orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join("");
-  const rects = [...squares].map(([sq, color]) => {
-    const { x, y } = squareXY(sq);
-    return `<rect x="${x}" y="${y}" width="1" height="1" fill="${MARK_COLORS[color]}" opacity=".5"/>`;
-  }).join("");
   const lines = [...arrows].map(([move, color]) => {
     const a = squareXY(move.slice(0, 2));
     const b = squareXY(move.slice(2, 4));
@@ -162,7 +166,7 @@ function drawMarks() {
     return `<line x1="${x1}" y1="${y1}" x2="${ex}" y2="${ey}" stroke="${MARK_COLORS[color]}" stroke-width=".17"
               stroke-linecap="round" opacity=".82" marker-end="url(#head-${color})"/>`;
   }).join("");
-  $("marks").innerHTML = `<defs>${defs}</defs>${rects}${lines}`;
+  MARKS.innerHTML = `<defs>${defs}</defs>${lines}`;
 }
 
 function renderMoves() {
