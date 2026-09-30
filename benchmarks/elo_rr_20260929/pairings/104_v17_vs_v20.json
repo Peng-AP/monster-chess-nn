@@ -1,0 +1,112 @@
+{
+  "match": "fresh_start_v17 vs fresh_start_v20",
+  "name_a": "fresh_start_v17",
+  "name_b": "fresh_start_v20",
+  "games": 40,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3504000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 40,
+    "unique_states": 32,
+    "unique_fraction": 0.8,
+    "unique_as_white": 20,
+    "unique_as_black": 12,
+    "effective_unique_games": 32,
+    "effective_unique_fraction": 0.8,
+    "duplicate_games": 8,
+    "max_multiplicity": 9,
+    "multiplicity_histogram": {
+      "1": 31,
+      "9": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "ed4c200f1aeaaedc9dfef66180041072a8657837461b56fc75591c7b9cfdbfad",
+    "top_duplicates": [
+      {
+        "count": 9,
+        "fen": "r2qkbnr/ppp3pp/2npp3/8/2P1PK2/8/8/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.025,
+  "a_as_white": {
+    "games": 20,
+    "wins": 0,
+    "losses": 20,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.0,
+    "mean_plies": 70.2,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 70.2
+  },
+  "a_as_black": {
+    "games": 20,
+    "wins": 1,
+    "losses": 19,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.05,
+    "mean_plies": 32.65,
+    "mean_plies_when_won": 102.0,
+    "mean_plies_when_lost": 29.0
+  },
+  "elapsed_sec": 167.2,
+  "timestamp": "2026-09-29T21:00:03",
+  "_artifact_path": null,
+  "pair": [
+    "v17",
+    "v20"
+  ],
+  "index": 104,
+  "summary": {
+    "a": "v17",
+    "b": "v20",
+    "games": 40,
+    "wins": 1,
+    "draws": 0,
+    "losses": 39,
+    "a_white": {
+      "games": 20,
+      "wins": 0,
+      "draws": 0,
+      "losses": 20
+    },
+    "a_black": {
+      "games": 20,
+      "wins": 1,
+      "draws": 0,
+      "losses": 19
+    },
+    "mean_plies": 51.4
+  }
+}

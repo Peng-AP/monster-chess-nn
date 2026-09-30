@@ -61,6 +61,16 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**September 29, 21:40: Elo round robin COMPLETE.** 16 models, 4,800 games
+at 3,200 simulations, anchored with v21 = 1600 (the weakest version that beats
+the owner). See `docs/experiments/elo_rr/ELO_RR_RESULTS.md`.
+
+- v29 rates 2592. gen52 Arm C (2576) and Arm B (2570) are statistically
+  level with it.
+- The rest of the ladder: v28 2497, gen49 2466, B2 2326, v27 2199, v24 2071,
+  v23 1774.
+- Arm C beats v29 head-to-head (66%) but rates below it.
+
 Site, September 29: drag-and-drop moves, right-drag arrows and right-click
 highlights, arrow-key and move-list review, and a game-over card. Games
 finished by the player's own move are now recorded too.
