@@ -174,13 +174,21 @@ def main():
     ap.add_argument("--smoke", action="store_true",
                     help="two cheap settings, 2 + 2 games, separate directory: plumbing only")
     ap.add_argument("--fit-only", action="store_true")
+    ap.add_argument("--setting", action="append", default=[],
+                    help="name=model_path@sims (repeatable); replaces the default ladder, e.g. to place a new model")
     args = ap.parse_args()
     args.stage1, args.stage2 = STAGE1_GAMES, STAGE2_GAMES
     out, ladder = args.out, LADDER
+    if args.setting:
+        ladder = []
+        for s in args.setting:
+            name, rest = s.split("=", 1)
+            path, sims = rest.rsplit("@", 1)
+            ladder.append((name, path, int(sims)))
     if args.smoke:
         global POOL_SIMS
         POOL_SIMS, args.stage1, args.stage2, args.workers = 16, 2, 2, 2
-        ladder = [("v29@12", V29, 12), ("v17@8", V17, 8)]
+        ladder = [(n, p, 12) for n, p, _s in ladder] if args.setting else [("v29@12", V29, 12), ("v17@8", V17, 8)]
         out = out + "_smoke" if args.out == OUT else out
     if not args.fit_only:
         play(args, out, ladder)
