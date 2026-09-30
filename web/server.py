@@ -45,11 +45,29 @@ OPENING_TEMPERATURE = 0.5
 ENGINE_MOVES_PER_MINUTE = 60  # per client
 MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
 
+V29, V28 = "models/bootstrap_v29/best_value_net.pt", "models/bootstrap_v28/best_value_net.pt"
+V23, V21 = "models/bootstrap_v23/best_value_net.pt", "models/fresh_start_v21/best_value_net.pt"
+V19, V17 = "models/fresh_start_v19/best_value_net.pt", "models/fresh_start_v17/best_value_net.pt"
+
+
+def _level(elo, text, path, sims, default=False):
+    return dict(label=f"{elo} · {text}", elo=elo, path=path, sims=sims, default=default)
+
+
+# Difficulty levels, strongest first. Elo from the joint fit of the September 29
+# round robin and the September 30 ladder (7,680 engine games, v21 = 1600):
+# benchmarks/elo_ladder_20260930/ratings.json, docs/experiments/elo_rr/LADDER_RESULTS.md.
 ENGINES = {
-    "v29": dict(label="v29 (current release)", path="models/bootstrap_v29/best_value_net.pt",
-                sims=3200, default=True),
-    "v28": dict(label="v28 (previous release)", path="models/bootstrap_v28/best_value_net.pt",
-                sims=3200, default=False),
+    "v29": _level(2450, "v29, full strength (current release)", V29, 3200, default=True),
+    "v28": _level(2326, "v28, previous release", V28, 3200),
+    "v29-800": _level(2325, "v29, 800 simulations", V29, 800),
+    "v29-200": _level(2201, "v29, 200 simulations", V29, 200),
+    "v29-12": _level(2015, "v29, 12 simulations (almost no search)", V29, 12),
+    "v23": _level(1748, "v23", V23, 3200),
+    "v21": _level(1600, "v21", V21, 3200),
+    "v19": _level(1477, "v19", V19, 3200),
+    "v17": _level(1255, "v17", V17, 3200),
+    "v17-8": _level(1128, "v17, 8 simulations (easiest)", V17, 8),
 }
 # Saved games may name an engine that has since been renamed; v29 is the former gen51 deep-value.
 ALIASES = {"gen51": "v29"}
@@ -117,11 +135,14 @@ class EnginePool:
         from match_evidence import file_hash
         self.models, self.lock, self.waiting = {}, threading.Lock(), 0
         self.count_lock = threading.Lock()
+        evaluators = {}  # levels that share a network share one evaluator
         for name in names:
             spec = ENGINES[name]
-            self.models[name] = dict(spec, evaluator=NNEvaluator(str(ROOT / spec["path"])),
-                                     sha256=file_hash(ROOT / spec["path"]))
-            print(f"loaded {name}: {spec['path']}", flush=True)
+            if spec["path"] not in evaluators:
+                evaluators[spec["path"]] = (NNEvaluator(str(ROOT / spec["path"])), file_hash(ROOT / spec["path"]))
+            evaluator, sha = evaluators[spec["path"]]
+            self.models[name] = dict(spec, evaluator=evaluator, sha256=sha)
+            print(f"loaded {name}: {spec['path']} at {spec['sims']} sims", flush=True)
 
     def search(self, name, moves):
         """Play the engine's whole turn (both halves when it is White)."""
@@ -258,7 +279,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/engines":
-            return self.send_json(200, [dict(id=k, label=v["label"], sims=v["sims"], default=v["default"])
+            return self.send_json(200, [dict(id=k, label=v["label"], sims=v["sims"], default=v["default"],
+                                             elo=v.get("elo"))
                                         for k, v in ENGINES.items() if k in self.pool.models])
         if path not in STATIC_FILES:
             return self.send_json(404, dict(error="not found"))

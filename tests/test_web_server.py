@@ -60,6 +60,14 @@ def test_records_are_written_once_per_game(tmp_path, monkeypatch):
     assert "ip" not in files[0].read_text().lower()
 
 
+def test_levels_are_rated_ordered_and_have_one_default():
+    elos = [spec["elo"] for spec in web.ENGINES.values()]
+    assert elos == sorted(elos, reverse=True)
+    assert [k for k, v in web.ENGINES.items() if v["default"]] == ["v29"]
+    for spec in web.ENGINES.values():
+        assert spec["label"].startswith(str(spec["elo"])) and (ROOT / spec["path"]).exists()
+
+
 class FakePool:
     """Plays the first legal half-move(s) for its side; no GPU."""
     models = {"v29": dict(sha256="x", sims=8)}

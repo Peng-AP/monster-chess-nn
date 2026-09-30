@@ -218,7 +218,7 @@ function renderStatus(message, kind) {
   const el = $("status");
   el.className = "status" + (kind ? " " + kind : "");
   if (message) { el.textContent = message; return; }
-  if (!game || !state) { el.textContent = "Choose an engine and a colour, then start a new game."; return; }
+  if (!game || !state) { el.textContent = "Choose an opponent and a colour, then start a new game."; return; }
   if (!isLive()) {
     el.classList.add("review");
     el.textContent = `Reviewing half-move ${viewPly()} of ${plies()}. ← → to step, End to return.`;

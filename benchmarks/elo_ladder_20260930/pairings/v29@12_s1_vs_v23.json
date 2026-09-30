@@ -1,0 +1,104 @@
+{
+  "match": "bootstrap_v29 vs bootstrap_v23",
+  "name_a": "bootstrap_v29",
+  "name_b": "bootstrap_v23",
+  "games": 8,
+  "sims": 12,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3605110000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 8,
+    "unique_states": 8,
+    "unique_fraction": 1.0,
+    "unique_as_white": 4,
+    "unique_as_black": 4,
+    "effective_unique_games": 8,
+    "effective_unique_fraction": 1.0,
+    "duplicate_games": 0,
+    "max_multiplicity": 1,
+    "multiplicity_histogram": {
+      "1": 8
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "0442dbf5861aa5ff724410d10d731db61adccdc6ec087c36e76acc35247c15f9",
+    "top_duplicates": []
+  },
+  "workers": 8,
+  "a_score": 0.5,
+  "a_as_white": {
+    "games": 4,
+    "wins": 2,
+    "losses": 1,
+    "draws": 1,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.625,
+    "mean_plies": 40.75,
+    "mean_plies_when_won": 24.5,
+    "mean_plies_when_lost": 66.0
+  },
+  "a_as_black": {
+    "games": 4,
+    "wins": 1,
+    "losses": 2,
+    "draws": 1,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.375,
+    "mean_plies": 67.75,
+    "mean_plies_when_won": 111.0,
+    "mean_plies_when_lost": 45.5
+  },
+  "elapsed_sec": 26.9,
+  "timestamp": "2026-09-30T02:52:30",
+  "_artifact_path": null,
+  "pair": [
+    "v29@12",
+    "v23"
+  ],
+  "stage": 1,
+  "summary": {
+    "a": "v29@12",
+    "b": "v23",
+    "games": 8,
+    "wins": 3,
+    "draws": 2,
+    "losses": 3,
+    "a_white": {
+      "games": 4,
+      "wins": 2,
+      "draws": 1,
+      "losses": 1
+    },
+    "a_black": {
+      "games": 4,
+      "wins": 1,
+      "draws": 1,
+      "losses": 2
+    },
+    "mean_plies": 54.2
+  }
+}

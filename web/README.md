@@ -20,9 +20,13 @@ py -3 tools/runs.py start --name web_server -- py -3 -u web/server.py --port 876
 Open <http://127.0.0.1:8765>. Stop with
 `py -3 tools/runs.py stop --name web_server`.
 
-- Engines: **v28** (current release, default) and **gen51 deep-value**
-  (experimental, unpromoted), both at 3,200 simulations. Change the list in
-  `ENGINES` in `server.py`. `--engines v28` serves only v28.
+- Opponents: ten difficulty levels from 1128 to 2450 Elo (v21 = 1600),
+  strongest first. **v29 at 3,200 simulations is the default.** Weaker
+  levels are older networks, or v29 with fewer simulations; levels that
+  share a network share one loaded evaluator.
+  - The ratings come from `docs/experiments/elo_rr/LADDER_RESULTS.md`.
+  - Change the list in `ENGINES` in `server.py`; `--engines v29,v21` serves
+    only those two.
 - An engine turn takes about 0.1–0.4 s on the RTX 5060 Ti. Searches run one
   at a time behind a lock; at most 8 can queue before visitors see "busy".
   Each visitor may request 60 engine moves a minute.

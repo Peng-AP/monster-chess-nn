@@ -1,0 +1,104 @@
+{
+  "match": "fresh_start_v17 vs fresh_start_v20",
+  "name_a": "fresh_start_v17",
+  "name_b": "fresh_start_v20",
+  "games": 32,
+  "sims": 8,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3606060000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 32,
+    "unique_states": 32,
+    "unique_fraction": 1.0,
+    "unique_as_white": 16,
+    "unique_as_black": 16,
+    "effective_unique_games": 32,
+    "effective_unique_fraction": 1.0,
+    "duplicate_games": 0,
+    "max_multiplicity": 1,
+    "multiplicity_histogram": {
+      "1": 32
+    },
+    "incomplete_openings": 2,
+    "states_sha256": "e4b8c3ea30848c1f52f8796997551ec7ac6b2743ab0fd866d309bb0ce89956ee",
+    "top_duplicates": []
+  },
+  "workers": 8,
+  "a_score": 0.0,
+  "a_as_white": {
+    "games": 16,
+    "wins": 0,
+    "losses": 16,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.0,
+    "mean_plies": 59.81,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 59.81
+  },
+  "a_as_black": {
+    "games": 16,
+    "wins": 0,
+    "losses": 16,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.0,
+    "mean_plies": 23.56,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 23.56
+  },
+  "elapsed_sec": 43.7,
+  "timestamp": "2026-09-30T03:14:18",
+  "_artifact_path": null,
+  "pair": [
+    "v17@8",
+    "v20"
+  ],
+  "stage": 2,
+  "summary": {
+    "a": "v17@8",
+    "b": "v20",
+    "games": 32,
+    "wins": 0,
+    "draws": 0,
+    "losses": 32,
+    "a_white": {
+      "games": 16,
+      "wins": 0,
+      "draws": 0,
+      "losses": 16
+    },
+    "a_black": {
+      "games": 16,
+      "wins": 0,
+      "draws": 0,
+      "losses": 16
+    },
+    "mean_plies": 41.7
+  }
+}

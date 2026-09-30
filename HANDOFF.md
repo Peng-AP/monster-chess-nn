@@ -61,6 +61,18 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**September 30, 04:58: strength ladder COMPLETE; the site now has Elo levels.**
+See `docs/experiments/elo_rr/LADDER_RESULTS.md`.
+
+- **Search stops paying above about 3,200 simulations.** v29 gains about
+  62 Elo per doubling from 50 to 3,200, then +19 and +9. Directly against
+  v29 at 3,200 it scores 51% at 6,400 and 55% at 12,800. Strength must come
+  from the network.
+- The joint fit (7,680 games) compresses the round-robin scale: v29 is 2450
+  and v17 1255.
+- The site offers ten opponents from 1128 to 2450; the default is still v29
+  at 3,200.
+
 **September 29, 21:40: Elo round robin COMPLETE.** 16 models, 4,800 games
 at 3,200 simulations, anchored with v21 = 1600 (the weakest version that beats
 the owner). See `docs/experiments/elo_rr/ELO_RR_RESULTS.md`.

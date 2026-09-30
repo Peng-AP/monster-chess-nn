@@ -1,5 +1,10 @@
 # Elo round robin: September 29, 2026
 
+> **Update, September 30:** the strength ladder (`LADDER_RESULTS.md`) added
+> 2,880 games. A joint fit over all 7,680 games keeps this order but
+> compresses the scale: v29 moves to 2450 (from 2592) and v17 to 1255. The
+> website uses the joint fit. The numbers below are the round robin alone.
+
 Owner request: *"an evaluatory round robin tournament aimed at finding out elo
 values. Set the weakest version that beats human to be 1600 elo … a large pool
 of players, but don't make it go too long."*

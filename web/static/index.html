@@ -21,7 +21,7 @@
   </header>
 
   <section class="controls" aria-label="New game">
-    <label>Engine <select id="engine"></select></label>
+    <label>Opponent (Elo) <select id="engine"></select></label>
     <label>You play
       <select id="color">
         <option value="black">Black (full army)</option>
@@ -30,6 +30,8 @@
     </label>
     <button id="new-game" type="button">New game</button>
   </section>
+  <p class="levels-note">Ratings come from 7,680 engine-vs-engine games, anchored so v21 = 1600.
+    Every 100 points is about a 64% expected score.</p>
 
   <section class="play">
     <div class="board-col">
@@ -48,7 +50,7 @@
         (hold Shift, Alt or Ctrl for other colours); a left click clears them. &#8592; &#8594; step through the game.</p>
     </div>
     <aside>
-      <div id="status" class="status" aria-live="polite">Choose an engine and a colour, then start a new game.</div>
+      <div id="status" class="status" aria-live="polite">Choose an opponent and a colour, then start a new game.</div>
       <ol id="moves" class="moves"></ol>
       <div class="actions">
         <button id="resign" type="button" disabled>Resign</button>
