@@ -92,16 +92,47 @@ rate 2150+ (v27 and up, B2, the gen49/gen52 models, v29 at 200+ sims) leaves
    +0.05 more pessimistic about White, and the intervals do not overlap.
    That is roughly 2.5 points of expected score, in the direction of every
    gen52 arm's White failure.
-2. **This fits the outcome-label pathway.** The students learned from v29's
-   1,600-simulation self-play outcomes (gen52 data: White won 21.3%, Black
-   54.1%). Those games are far more Black-favoured than strong games between
-   different models. The labels are final results, but **results of the
-   teacher playing itself**.
+2. ~~This fits the outcome-label pathway.~~ **Withdrawn the same day.** That
+   claim compared a win rate with a score. gen52's self-play White *score* is
+   33.6% (21.3% wins + 24.6% draws ÷ 2). The qualifying strong rating games
+   (no B2/v27, not v29 against itself; 1,744 games) score **32.3%** for
+   White. The teacher's self-play outcomes are not more Black-favoured, so
+   training on rating-game outcomes is not expected to help, and it was not
+   run.
 3. **Late-game overconfidence is separate and shared** (+0.08 to +0.14
    within 30 plies of the end, every model, strong games included). It is a
    real calibration issue, but it is not the gen52 regression.
 
-**Next experiment this supports:** Arm B's data plus value-only rows from
-games *not* played by the teacher against itself (the ~8,400 rating games),
-judged by the same pre-declared criteria and audited by this tool before
-playing.
+## Where the bias comes from: the deep-value label scale
+
+All arms were audited on the same strong games:
+
+| Model | Deep-value share of value weight | Bias (95%) | 60+ plies from end |
+|---|---:|---|---:|
+| gen51 control | 0% | −0.040 (−0.047 to −0.032) | −0.231 |
+| v29 (gen51 deep-value) | 13.0% | +0.017 (0.009–0.024) | −0.168 |
+| gen52 Arm C | 12.4% | +0.049 (0.039–0.058) | −0.119 |
+| gen52 Arm B (+ pool) | 22.3% | +0.063 (0.054–0.072) | −0.085 |
+| gen52 Arm A | 22.3% | +0.075 (0.067–0.083) | −0.073 |
+
+- **The White pessimism tracks the deep-value share.** Within gen51, adding
+  the deep-value data moved the bias by +0.056. Within gen52, the pool games
+  dilute it (B below A).
+- **Mechanism:** deep-value rows carry strict capture-only results with **no
+  distance discount** (`process_linked_extra.py`, value floor 1.0), at value
+  weight 4. Everywhere else, a result 60+ plies from the end trains toward
+  half strength.
+  - Most results are Black wins, so the undiscounted rows pull predictions
+    toward "Black wins", most of all far from the end.
+  - That is exactly where the shift is largest, and the 60+ column falls in
+    the same order as the deep-value share.
+  - It is a label-scale mismatch between two sources, not learned pessimism
+    from self-play.
+- **It does not explain the gen52 White gate failures on its own.** Arm C has
+  less bias than Arm B but the same White deficit against v29 (−15.6 vs
+  −13.4 pp). The same data also produced v29's +95 Elo gain.
+
+**Candidate next experiment (not started; owner's call):** Arm B with the
+deep-value increments relabelled on the main ramp (floor 0.5, horizon 60)
+instead of strict undiscounted captures. It is training-only and tests
+whether consistent label scales keep the deep-value gain without the shift.

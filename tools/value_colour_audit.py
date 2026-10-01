@@ -38,7 +38,10 @@ MODELS = {
     "v29": "models/bootstrap_v29/best_value_net.pt",
     "v28": "models/bootstrap_v28/best_value_net.pt",
     "gen49": "models/candidates/bootstrap_main_gen_0049/arena_selected.pt",
+    "gen51ctl": "models/candidates/bootstrap_main_gen_0051/arena_selected.pt",
+    "gen52A": "models/candidates/bootstrap_main_gen_0052/arena_selected.pt",
     "gen52B": "models/candidates/bootstrap_main_gen_0052_pool/arena_selected.pt",
+    "gen52C": "models/candidates/bootstrap_main_gen_0052_poolcap/arena_selected.pt",
     "gen52L": "models/candidates/bootstrap_main_gen_0052_large/arena_selected.pt",
     "B2": "models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt",
 }
