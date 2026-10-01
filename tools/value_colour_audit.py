@@ -42,6 +42,11 @@ MODELS = {
     "gen52L": "models/candidates/bootstrap_main_gen_0052_large/arena_selected.pt",
     "B2": "models/candidates/b2_seed9053_state_cnn/selected_epoch_008.pt",
 }
+# Weak players fail to convert won positions, which by itself makes a strong
+# model look overconfident; this subset keeps only games between players rated
+# 2150+ on the joint scale (v27 and up, B2, the gen49/gen52 models, v29 at 200+).
+STRONG = {"v27", "v28", "v29", "B2", "gen49", "gen52B", "gen52C", "v29@200", "v29@800", "v29@6400",
+          "v29@12800", "gen52L@800", "gen52L@3200", "gen52L@6400", "gen52L@12800"}
 OPENING_PLIES = 16
 FLOOR, HORIZON = 0.5, 60
 PHASES = [(0, 10), (10, 30), (30, 60), (60, 10_000)]
@@ -84,7 +89,7 @@ def positions():
             target = z * (FLOOR ** (min(ptd, HORIZON) / HORIZON))
             rows.append(dict(game=gi, fen=p["fen"], half=bool(p.get("half")), turn_count=int(p["turn_count"]),
                              white_to_move=p["fen"].split()[1] == "w", ptd=ptd, z=z, target=target,
-                             v29_played=v29_played, white=white))
+                             v29_played=v29_played, white=white, strong=all(p in STRONG for p in players)))
     return rows
 
 
@@ -146,8 +151,11 @@ def main():
     no_v29 = ~np.array([r["v29_played"] for r in rows])
     subsets = {"all": np.ones(len(rows), bool), "without_v29_games": no_v29,
                "white_to_move": stm, "black_to_move": ~stm}
+    strong = np.array([r["strong"] for r in rows])
+    subsets["strong_games"] = strong
     for lo, hi in PHASES:
         subsets[f"plies_to_end_{lo}_{hi}"] = (ptd >= lo) & (ptd < hi)
+        subsets[f"strong_plies_to_end_{lo}_{hi}"] = strong & (ptd >= lo) & (ptd < hi)
     report = dict(sources=SOURCES, opening_plies=OPENING_PLIES, floor=FLOOR, horizon=HORIZON, models={})
     for name in args.models.split(","):
         pred = predict(MODELS[name], rows)

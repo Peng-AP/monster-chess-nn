@@ -69,7 +69,39 @@ v29 calibration (predicted vs realised):
    "calibrated value head" release. Its calibration evidently did not
    transfer to games played by other models.
 
-**Verdict:** weak support for the teacher-pessimism hypothesis. The effect
-that passes from teacher to students is real but small (~0.02–0.04). The
-larger miscalibration is overconfidence late in games, which every model
-shares.
+## Strong-only check (confound control)
+
+Weak players (v17–v23) fail to convert won positions, which alone makes a
+strong model look overconfident. Restricting to games where both players
+rate 2150+ (v27 and up, B2, the gen49/gen52 models, v29 at 200+ sims) leaves
+2,728 games and 147,726 positions:
+
+| Model | Bias (95%) | 0–10 | 10–30 | 30–60 | 60+ |
+|---|---|---:|---:|---:|---:|
+| v29 (teacher) | **+0.017** (0.009–0.024) | +0.089 | +0.102 | −0.031 | −0.168 |
+| gen52 Arm B | **+0.063** (0.054–0.072) | +0.109 | +0.129 | +0.033 | −0.085 |
+| gen52 Arm L | **+0.071** (0.062–0.079) | +0.114 | +0.135 | +0.042 | −0.077 |
+| v28 | +0.097 (0.089–0.105) | +0.117 | +0.161 | +0.083 | −0.061 |
+| gen49 | −0.080 (−0.088 to −0.072) | +0.054 | +0.023 | −0.156 | −0.308 |
+| B2 | −0.044 (−0.052 to −0.035) | +0.081 | +0.072 | −0.124 | −0.281 |
+
+## Verdict (revised by the strong-only check)
+
+1. **The teacher is not the pessimist; its students are.** Against strong
+   games, v29 is nearly unbiased (+0.017). Both gen52 students sit about
+   +0.05 more pessimistic about White, and the intervals do not overlap.
+   That is roughly 2.5 points of expected score, in the direction of every
+   gen52 arm's White failure.
+2. **This fits the outcome-label pathway.** The students learned from v29's
+   1,600-simulation self-play outcomes (gen52 data: White won 21.3%, Black
+   54.1%). Those games are far more Black-favoured than strong games between
+   different models. The labels are final results, but **results of the
+   teacher playing itself**.
+3. **Late-game overconfidence is separate and shared** (+0.08 to +0.14
+   within 30 plies of the end, every model, strong games included). It is a
+   real calibration issue, but it is not the gen52 regression.
+
+**Next experiment this supports:** Arm B's data plus value-only rows from
+games *not* played by the teacher against itself (the ~8,400 rating games),
+judged by the same pre-declared criteria and audited by this tool before
+playing.
