@@ -61,6 +61,20 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 1: gen52 Arm L (2× wider network, 4.0M params) COMPLETE + depth
+scaling.** See `docs/experiments/gen52/LARGE_RESULTS.md`.
+
+- **Pre-declared verdict: capacity helps, narrowly.** Arm L scored 55.25% vs
+  Arm B (95% range 52.7–57.8%), but only 50.5% counting distinct games once.
+  Held-out mean 92.5%.
+- **Not stronger than v29:** gate v4 FAIL at 3,200 (45.9%, White −14.6 pp);
+  Elo level with v29.
+- **Depth scaling does not confirm a better-scaling network.** Joint fit:
+  from 3,200 to 12,800, Arm L gains +57 and v29 +36 (±45). Arm L's
+  deep-search wins over v29 (73.75%) are specific to v29.
+- A Windows restart at 04:49 on October 1 took the site and the ladder down
+  until 10:18. **Services still do not auto-start after a reboot.**
+
 **September 30, 04:58: strength ladder COMPLETE; the site now has Elo levels.**
 See `docs/experiments/elo_rr/LADDER_RESULTS.md`.
 
