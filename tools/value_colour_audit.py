@@ -146,7 +146,13 @@ def summarize(rows, pred, mask):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", default=",".join(MODELS))
+    ap.add_argument("--model", action="append", default=[], help="extra name=path (repeatable); added to --models")
+    ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
+    for spec in args.model:
+        name, path = spec.split("=", 1)
+        MODELS[name] = os.path.relpath(path, ROOT) if os.path.isabs(path) else path
+        args.models += "," + name
     rows = positions()
     print(f"{len(rows):,} positions from {len({r['game'] for r in rows}):,} games", flush=True)
     stm = np.array([r["white_to_move"] for r in rows])
@@ -177,10 +183,10 @@ def main():
               f"without v29 {a['without_v29_games']['bias']:+.4f} {np.round(a['without_v29_games']['bias_ci95'], 4)} | "
               f"W-to-move {a['white_to_move']['bias']:+.4f} B-to-move {a['black_to_move']['bias']:+.4f} | "
               f"mse {a['all']['mse']:.4f}", flush=True)
-    os.makedirs(OUT, exist_ok=True)
-    with open(os.path.join(OUT, "report.json"), "w", encoding="utf-8") as fh:
+    os.makedirs(args.out, exist_ok=True)
+    with open(os.path.join(args.out, "report.json"), "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
-    print(f"-> {OUT}/report.json")
+    print(f"-> {args.out}/report.json")
 
 
 if __name__ == "__main__":
