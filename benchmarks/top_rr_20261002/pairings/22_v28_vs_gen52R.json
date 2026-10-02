@@ -1,0 +1,172 @@
+{
+  "match": "bootstrap_v28 vs bootstrap_main_gen_0052_ramp",
+  "name_a": "bootstrap_v28",
+  "name_b": "bootstrap_main_gen_0052_ramp",
+  "games": 100,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3922000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 100,
+    "unique_states": 47,
+    "unique_fraction": 0.47,
+    "unique_as_white": 24,
+    "unique_as_black": 27,
+    "effective_unique_games": 51,
+    "effective_unique_fraction": 0.51,
+    "duplicate_games": 53,
+    "max_multiplicity": 10,
+    "multiplicity_histogram": {
+      "7": 1,
+      "4": 4,
+      "1": 31,
+      "3": 3,
+      "2": 4,
+      "5": 2,
+      "9": 1,
+      "10": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "3053232ef1034811d4b4c0bc783022ecfdefa94f76484434772700f1a762aadb",
+    "top_duplicates": [
+      {
+        "count": 10,
+        "fen": "rnbqkb1r/ppp2npp/4P3/8/8/4K3/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 9,
+        "fen": "rnb1kbnr/ppp1q1pp/4P3/4PK2/2p5/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 7,
+        "fen": "r1bqkbnr/pp2p1pp/2p5/3PP3/3nKP2/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 5,
+        "fen": "r1b1kb1r/ppp1p1pp/2nqP2n/3p4/2PP4/3K4/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 5,
+        "fen": "r1bqkbnr/ppp3pp/2n1p3/3PP3/2p1K3/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/pp2p1pp/2P5/4P3/3nK3/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/pp2p1pp/2p5/3PP3/3K4/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r2qkb1r/pbppp1pp/5n2/2P1pP2/8/8/5K2/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "rnbqkb1r/ppp2npp/4P3/8/2P5/8/4K3/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "r1bqkb1r/ppp1p1pp/4P2K/3p4/3n1P2/8/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.255,
+  "a_as_white": {
+    "games": 50,
+    "wins": 0,
+    "losses": 39,
+    "draws": 11,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.11,
+    "mean_plies": 72.24,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 79.92
+  },
+  "a_as_black": {
+    "games": 50,
+    "wins": 5,
+    "losses": 15,
+    "draws": 30,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.4,
+    "mean_plies": 53.58,
+    "mean_plies_when_won": 92.4,
+    "mean_plies_when_lost": 23.4
+  },
+  "elapsed_sec": 453.0,
+  "timestamp": "2026-10-02T09:13:20",
+  "_artifact_path": null,
+  "pair": [
+    "v28",
+    "gen52R"
+  ],
+  "index": 22,
+  "summary": {
+    "a": "v28",
+    "b": "gen52R",
+    "games": 100,
+    "wins": 5,
+    "draws": 41,
+    "losses": 54,
+    "a_white": {
+      "games": 50,
+      "wins": 0,
+      "draws": 11,
+      "losses": 39
+    },
+    "a_black": {
+      "games": 50,
+      "wins": 5,
+      "draws": 30,
+      "losses": 15
+    },
+    "mean_plies": 62.9
+  }
+}

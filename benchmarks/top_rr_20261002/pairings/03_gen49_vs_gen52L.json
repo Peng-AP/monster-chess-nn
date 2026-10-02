@@ -1,0 +1,171 @@
+{
+  "match": "bootstrap_main_gen_0049 vs bootstrap_main_gen_0052_large",
+  "name_a": "bootstrap_main_gen_0049",
+  "name_b": "bootstrap_main_gen_0052_large",
+  "games": 100,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3903000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 100,
+    "unique_states": 34,
+    "unique_fraction": 0.34,
+    "unique_as_white": 11,
+    "unique_as_black": 24,
+    "effective_unique_games": 35,
+    "effective_unique_fraction": 0.35,
+    "duplicate_games": 66,
+    "max_multiplicity": 16,
+    "multiplicity_histogram": {
+      "8": 1,
+      "4": 3,
+      "16": 2,
+      "1": 21,
+      "2": 4,
+      "6": 2,
+      "7": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "d7a899c7794182f60ba98c6b10f56c5739ff1bb326e9471ab2037102bea266d4",
+    "top_duplicates": [
+      {
+        "count": 16,
+        "fen": "r2qkbnr/ppp3pp/2n1b3/3PPp2/3K1P2/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 16,
+        "fen": "rnb1kbnr/ppp1q1pp/4P3/4PK2/2p5/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 8,
+        "fen": "r1bqkbnr/pp2p1pp/2p5/3PP3/3nKP2/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 7,
+        "fen": "rnbqk2r/ppp2ppp/3Pp2n/2K1P3/8/8/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 6,
+        "fen": "r2qkb1r/pbppp1pp/5n2/2P1pP2/8/8/5K2/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 6,
+        "fen": "rnbqk2r/ppp2ppp/4p2n/2bPP3/2PK4/8/8/8 w kq - 5 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/pp2p1pp/2p5/3PP3/3K4/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/ppp3pp/2n1p3/3PP3/2p1K3/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "rnb1kbnr/ppp1q1pp/4P3/4PK2/2p5/5P2/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/ppp1nppp/2n5/3PP3/5K2/8/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.37,
+  "a_as_white": {
+    "games": 50,
+    "wins": 0,
+    "losses": 42,
+    "draws": 8,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.08,
+    "mean_plies": 83.76,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 89.43
+  },
+  "a_as_black": {
+    "games": 50,
+    "wins": 21,
+    "losses": 5,
+    "draws": 24,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.66,
+    "mean_plies": 76.3,
+    "mean_plies_when_won": 90.0,
+    "mean_plies_when_lost": 37.4
+  },
+  "elapsed_sec": 745.7,
+  "timestamp": "2026-10-02T06:09:29",
+  "_artifact_path": null,
+  "pair": [
+    "gen49",
+    "gen52L"
+  ],
+  "index": 3,
+  "summary": {
+    "a": "gen49",
+    "b": "gen52L",
+    "games": 100,
+    "wins": 21,
+    "draws": 32,
+    "losses": 47,
+    "a_white": {
+      "games": 50,
+      "wins": 0,
+      "draws": 8,
+      "losses": 42
+    },
+    "a_black": {
+      "games": 50,
+      "wins": 21,
+      "draws": 24,
+      "losses": 5
+    },
+    "mean_plies": 80.0
+  }
+}
