@@ -41,7 +41,9 @@ def main():
         print(f"CHAIN STOPPED: Arm R did not complete ({status})", flush=True)
         sys.exit(1)
     call = json.loads((RAMP / "summary.json").read_text())["verdict"]["call"]
-    variant = "lr" if call == "labels_help" else "l2"
+    # Arm R's driver reuses Arm L's verdict function, which names the positive
+    # outcome "capacity_helps"; for Arm R that IS the plan's "labels_help".
+    variant = "lr" if call in ("labels_help", "capacity_helps") else "l2"
     print(f"CHAIN: Arm R verdict {call} -> variant {variant}", flush=True)
     step("top_round_robin", ["tools/top_round_robin.py"])
     step(f"variant_{variant}", ["tools/gen52_variant_campaign.py", "--variant", variant])
