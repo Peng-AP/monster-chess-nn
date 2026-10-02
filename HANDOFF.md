@@ -61,6 +61,20 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 2, 05:27: gen52 Arm R (deep-value data on the main ramped labels)
+COMPLETE: labels help vs Arm B; still not above v29.** See
+`docs/experiments/gen52/RAMP_RESULTS.md` and `VALUE_AUDIT.md`.
+
+- **Against Arm B:** 59.1% (95% range 56.8–61.4%), 53.1% counting distinct
+  games once. Held-out mean 91.9%.
+- **The White bias is gone:** −0.005, against Arm B's +0.063.
+- **Against v29:** Elo level (2583 vs 2582); gate v4 FAIL (38.7%
+  game-weighted, 59.4% counting distinct games). v29's Black repeatedly
+  beats R's White in v29's favourite lines.
+- **Overnight chain** (`docs/plans/OVERNIGHT_20261002_PLAN.md`, managed run
+  `overnight_chain`): top-group round robin, then Arm LR (wide tower on R's
+  data).
+
 **October 1: gen52 Arm L (2× wider network, 4.0M params) COMPLETE + depth
 scaling.** See `docs/experiments/gen52/LARGE_RESULTS.md`.
 
