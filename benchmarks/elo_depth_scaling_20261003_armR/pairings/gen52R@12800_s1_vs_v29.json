@@ -1,0 +1,119 @@
+{
+  "match": "bootstrap_main_gen_0052_ramp vs bootstrap_v29",
+  "name_a": "bootstrap_main_gen_0052_ramp",
+  "name_b": "bootstrap_v29",
+  "games": 8,
+  "sims": 12800,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3608230000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 8,
+    "unique_states": 3,
+    "unique_fraction": 0.375,
+    "unique_as_white": 1,
+    "unique_as_black": 2,
+    "effective_unique_games": 3,
+    "effective_unique_fraction": 0.375,
+    "duplicate_games": 5,
+    "max_multiplicity": 4,
+    "multiplicity_histogram": {
+      "3": 1,
+      "1": 1,
+      "4": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "5ec9c6daed328fa95a07f18b26a46e77e933dc79d5a8897bbf85060bb83e6274",
+    "top_duplicates": [
+      {
+        "count": 4,
+        "fen": "r1bqk1nr/ppp2ppp/n3p3/2KPP3/2P5/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "rnbqkb1r/ppp2npp/4P3/8/2P5/8/4K3/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.5625,
+  "a_as_white": {
+    "games": 4,
+    "wins": 0,
+    "losses": 0,
+    "draws": 4,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.5,
+    "mean_plies": 114.0,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": null
+  },
+  "a_as_black": {
+    "games": 4,
+    "wins": 1,
+    "losses": 0,
+    "draws": 3,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.625,
+    "mean_plies": 79.5,
+    "mean_plies_when_won": 87.0,
+    "mean_plies_when_lost": null
+  },
+  "elapsed_sec": 151.4,
+  "timestamp": "2026-10-03T09:01:58",
+  "_artifact_path": null,
+  "pair": [
+    "gen52R@12800",
+    "v29"
+  ],
+  "stage": 1,
+  "summary": {
+    "a": "gen52R@12800",
+    "b": "v29",
+    "games": 8,
+    "wins": 1,
+    "draws": 7,
+    "losses": 0,
+    "a_white": {
+      "games": 4,
+      "wins": 0,
+      "draws": 4,
+      "losses": 0
+    },
+    "a_black": {
+      "games": 4,
+      "wins": 1,
+      "draws": 3,
+      "losses": 0
+    },
+    "mean_plies": 96.8
+  }
+}

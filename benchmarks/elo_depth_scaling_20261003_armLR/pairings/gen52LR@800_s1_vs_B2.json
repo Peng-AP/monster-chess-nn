@@ -1,0 +1,112 @@
+{
+  "match": "bootstrap_main_gen_0052_large_ramp vs b2_seed9053_state_cnn",
+  "name_a": "bootstrap_main_gen_0052_large_ramp",
+  "name_b": "b2_seed9053_state_cnn",
+  "games": 8,
+  "sims": 800,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3600250000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 8,
+    "unique_states": 6,
+    "unique_fraction": 0.75,
+    "unique_as_white": 4,
+    "unique_as_black": 2,
+    "effective_unique_games": 6,
+    "effective_unique_fraction": 0.75,
+    "duplicate_games": 2,
+    "max_multiplicity": 3,
+    "multiplicity_histogram": {
+      "1": 5,
+      "3": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "e6fb9220d5d5f9a77d0a4f66c16baa7a09c5053a40e82bc34b1fa0d968693dc0",
+    "top_duplicates": [
+      {
+        "count": 3,
+        "fen": "r1bqkbnr/ppp3pp/2n1p3/3PP3/2p1K3/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.625,
+  "a_as_white": {
+    "games": 4,
+    "wins": 1,
+    "losses": 3,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.25,
+    "mean_plies": 72.5,
+    "mean_plies_when_won": 50.0,
+    "mean_plies_when_lost": 80.0
+  },
+  "a_as_black": {
+    "games": 4,
+    "wins": 4,
+    "losses": 0,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 1.0,
+    "mean_plies": 83.25,
+    "mean_plies_when_won": 83.25,
+    "mean_plies_when_lost": null
+  },
+  "elapsed_sec": 34.7,
+  "timestamp": "2026-10-03T05:54:44",
+  "_artifact_path": null,
+  "pair": [
+    "gen52LR@800",
+    "B2"
+  ],
+  "stage": 1,
+  "summary": {
+    "a": "gen52LR@800",
+    "b": "B2",
+    "games": 8,
+    "wins": 5,
+    "draws": 0,
+    "losses": 3,
+    "a_white": {
+      "games": 4,
+      "wins": 1,
+      "draws": 0,
+      "losses": 3
+    },
+    "a_black": {
+      "games": 4,
+      "wins": 4,
+      "draws": 0,
+      "losses": 0
+    },
+    "mean_plies": 77.9
+  }
+}
