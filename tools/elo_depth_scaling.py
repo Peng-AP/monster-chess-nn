@@ -34,11 +34,15 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--depths", default=",".join(str(s) for s, _ in DEPTHS),
+                    help="comma-separated subset of 800,6400,12800,3200 (each keeps its own seed block)")
     args = ap.parse_args()
     if not os.path.exists(os.path.join(ROOT, args.model)):
         raise SystemExit(f"missing model {args.model}")
-    ladder = [(f"{args.name}@{sims}", args.model, sims) for sims, _ in DEPTHS]
-    blocks = [block for _, block in DEPTHS]
+    wanted = {int(s) for s in args.depths.split(",")}
+    depths = [(s, b) for s, b in DEPTHS if s in wanted]
+    ladder = [(f"{args.name}@{sims}", args.model, sims) for sims, _ in depths]
+    blocks = [block for _, block in depths]
     original = el.seed_for
     el.seed_for = lambda cand, opp, stage: original(blocks[cand], opp, stage)
     el.play(SimpleNamespace(workers=args.workers, stage1=el.STAGE1_GAMES, stage2=el.STAGE2_GAMES), args.out, ladder)
