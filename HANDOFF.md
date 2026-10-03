@@ -61,6 +61,18 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 3, 10:20: morning evaluation chain COMPLETE.** See
+`docs/experiments/gen52/MORNING_20261003.md`.
+
+- **Arm LR:** debiased (−0.007); beats v29 72% head-to-head (100 games);
+  +38 vs v29 against the group.
+- **Arm R:** +58 vs v29 against the group, but loses to v29 head-to-head.
+- **Arm R is the only model whose search keeps paying:** +149 Elo from 3,200
+  to 12,800, rated 2511, against +38 to +56 for v29, L and LR. Two depth
+  points only; replicate before relying on it.
+- No candidate passes gate v4 against v29, so none is eligible for
+  promotion.
+
 **October 3, 04:12: gen52 Arm LR (wide tower on R's relabelled data)
 COMPLETE: null vs Arm L.** See `docs/experiments/gen52/LR_RESULTS.md`.
 
