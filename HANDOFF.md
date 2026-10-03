@@ -61,6 +61,18 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 3, 04:12: gen52 Arm LR (wide tower on R's relabelled data)
+COMPLETE: null vs Arm L.** See `docs/experiments/gen52/LR_RESULTS.md`.
+
+- **Against Arm L:** 50.4% (95% range 47.6–53.1%).
+- **Held out:** 89.7%, slipped below Arm L's 92.5% − 1.
+- **Gate v4 against v29: 70%** on both 3,200 legs and 75.3% on the deep guard,
+  but FAIL on the White floor (−9.6 and −7.4 pp against −5).
+- **Elo 2589** vs v29's 2559 (overlapping intervals).
+- **The two gains do not stack:** LR loses to Arm R 45.1%.
+- **Top-group round robin** (October 2): Arm R +40 Elo vs v29 against the
+  group, but v29 wins head-to-head 57.5%. See `TOP_RR_RESULTS.md`.
+
 **October 2, 05:27: gen52 Arm R (deep-value data on the main ramped labels)
 COMPLETE: labels help vs Arm B; still not above v29.** See
 `docs/experiments/gen52/RAMP_RESULTS.md` and `VALUE_AUDIT.md`.
