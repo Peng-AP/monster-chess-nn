@@ -61,6 +61,22 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 4: gen53 LAUNCHED with teacher gen52 Arm R** (managed run
+`gen53_production`). The owner revised GEN53 rule 1: the teacher comes from
+the teacher-selection rule, and gate v4 against the previous teacher is no
+longer required. See `docs/plans/GEN53_PLAN.md` (revision section) and
+`docs/plans/gen53_teacher_decision.json`.
+
+- **Recipe:** single arm; the pool is dropped by rule 3 (Arm B's gen49 score
+  was below Arm A's).
+- **Deep-value data:** ramped labels; only the gen52 and gen53 deep
+  increments are in the replay.
+- **Disk cleanup** (owner request): 62 composed replays retired from
+  `data/processed/` (about 338 GB). Their manifests are kept in
+  `data/processed/retired_replay_manifests/`, and every replay can be rebuilt
+  from the per-generation increments, which are all kept. Arm R's replay was
+  kept. Free space went from 164 GB to 502 GB.
+
 **October 4, 00:57: teacher selection COMPLETE: recommended gen53 teacher
 is gen52 Arm R.** See `docs/experiments/gen53_prep/TEACHER_SELECTION.md`
 (rule in `docs/plans/TEACHER_SELECTION_PLAN.md`).
