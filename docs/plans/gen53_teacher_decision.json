@@ -1,0 +1,34 @@
+{
+  "teacher": "models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt",
+  "teacher_sha256": "bfb1857d8166ae13b750d5a7708450f6d6b2e3df2a1b36922cecb71df4cc0f28",
+  "teacher_description": "gen52 Arm R nominee (selected_epoch_021): Arm B data with ramped deep-value labels; recommended by docs/plans/TEACHER_SELECTION_PLAN.md; not promoted",
+  "deep_value": true,
+  "deep_value_labels": "ramped",
+  "reference": "models/bootstrap_v29/best_value_net.pt",
+  "pool": false,
+  "prior_extra_sources": [
+    {
+      "name": "gen_0052_deepvalue",
+      "path": "data/processed/bootstrap_extra_main_gen_0052_disagreement_ramped"
+    }
+  ],
+  "rule": "GEN53_PLAN.md revision of 2026-10-04: teacher by TEACHER_SELECTION_PLAN.md; pool by rule 3 as declared; deep-value labels ramped (Arm R's recipe); only gen52+gen53 deep increments in the replay.",
+  "evidence": {
+    "selection": "benchmarks/teacher_selection_20261003/selection.json",
+    "teacher_score_vs_v29": 137.5,
+    "runner_up": "gen52LR",
+    "runner_up_score": 88.6,
+    "difference_ci95": [
+      26.3,
+      69.3
+    ],
+    "rule3": {
+      "arm_b_held_out": 0.914,
+      "arm_a_held_out": 0.809,
+      "arm_b_gen49": 0.606,
+      "arm_a_gen49": 0.619,
+      "pool_kept": false
+    }
+  },
+  "decided": "2026-10-04 (owner: revise the rule; begin with Arm R)"
+}

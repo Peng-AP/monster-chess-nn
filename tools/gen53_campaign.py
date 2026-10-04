@@ -48,7 +48,7 @@ V26 = "models/bootstrap_v26/best_value_net.pt"
 POOL = [V28, GEN49, GEN48, V26]
 HELD_OUT = [prior.HOLDOUT, prior.RELEASE]  # B2 and v27: never training opponents
 PINNED = ["tools/gen53_campaign.py", "tools/gen52_campaign.py", "tools/gen51_campaign.py", "tools/disagreement_continuations.py",
-          "tools/process_linked_extra.py", "tools/stateful_generation.py", "tools/iterate_stateful.py",
+          "tools/process_linked_extra.py", "tools/process_linked_extra_ramped.py", "tools/stateful_generation.py", "tools/iterate_stateful.py",
           "tools/reanalyze_coverage.py", "tools/reanalyze_stateful.py", "tools/reanalyze.py",
           "tools/reanalysis_journal.py", "tools/process_families.py", "tools/compose_processed.py",
           "tools/checkpoint_screen.py", "tools/audit_generation_data.py", "tools/gate_depth.py", "tools/match.py",
@@ -167,7 +167,18 @@ def deep_source(campaign, smoke):
         "--parent-increment", str(paths["new_processed"]), "--output-dir", str(extra["deep"]),
         "--seed", g51.iteration_seed(smoke), "--value-weight", str(g51.DEEP_VALUE_WEIGHT)],
         [extra["deep"] / "derivation.json"])
-    return extra["deep"]
+    if d.get("deep_value_labels") != "ramped":
+        return extra["deep"]
+    # Arm R's recipe (GEN53_PLAN revision 2026-10-04): the same rows on the main
+    # corpus's ramped game-result labels instead of undiscounted strict captures.
+    ramped = ramped_path(extra["deep"])
+    campaign.stage("deep_increment_ramped", ["tools/process_linked_extra_ramped.py",
+        "--original-increment", str(extra["deep"]), "--output-dir", str(ramped)], [ramped / "derivation.json"])
+    return ramped
+
+
+def ramped_path(path):
+    return Path(path).with_name(Path(path).name + "_ramped")
 
 
 def pool_source(campaign, smoke):

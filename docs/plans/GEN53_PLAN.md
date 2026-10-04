@@ -1,4 +1,36 @@
-# Gen53 — decision rules declared before gen52 results (draft, September 28, 2026)
+# Gen53: decision rules (declared September 28; revised by the owner October 4, 2026)
+
+## Revision, October 4, 2026 (owner: "Revise the rule, it doesn't have to be so strict … begin with arm R")
+
+- **Rule 1 (revised): gen53 launches with the teacher chosen by
+  `docs/plans/TEACHER_SELECTION_PLAN.md`.** That rule is bias-eligible, with
+  the best mean Elo at the teaching depths 1,600, 6,400 and 12,800, and was
+  declared before its games.
+  - A teacher no longer has to pass gate v4 against the previous teacher.
+  - Gate v4 remains the promotion standard (`PROMOTION_RULE.md`) and is still
+    run against the new teacher for every gen53 nominee.
+- **Rule 2 (superseded):** the teacher is **gen52 Arm R**
+  (`docs/experiments/gen53_prep/TEACHER_SELECTION.md`: +137.5 mean Elo vs
+  v29; +49 over Arm LR, 95% interval +26 to +69).
+- **Rule 3 (applied as declared):** the pool is **dropped**.
+  - Arm B's held-out mean 91.4% is ≥ Arm A's 80.9% − 1, which passes.
+  - Arm B's gen49 score 60.6% is below Arm A's 61.9%, which fails.
+  - gen53 is a single-recipe generation (Arm A only).
+- **Deep-value source, changed to carry Arm R's proven recipe:**
+  - continuations are processed as before (`process_linked_extra.py`), then
+    relabelled with `process_linked_extra_ramped.py` to the main ramped game
+    results (floor 0.5, horizon 60), weight 4, policy 0;
+  - **only gen52's (ramped) and gen53's own deep increments are in the
+    replay.** That is two sources, as in Arm R (about 22% of value weight).
+    gen51's is not rolled forward, because three sources would raise the
+    share toward the level gen52 showed can hurt.
+- **Disagreement reference:** v29, the previous teacher, as v28 was for
+  gen52.
+- Everything else below is unchanged.
+
+---
+
+# Original text (September 28, 2026)
 
 Status: **draft; rules fixed before any gen52 selection, gate or diagnostic
 result existed** (gen52 was training Arm B when this was written). The owner

@@ -51,6 +51,18 @@ def test_generation_number_and_namespaces_advance():
                                           extra["a"]["replay"], extra["b"]["replay"], extra["pool"], extra["deep"]))
 
 
+def test_revised_decision_uses_arm_r_with_ramped_deep_labels():
+    d = g.decision()
+    assert d["teacher"].endswith("bootstrap_main_gen_0052_ramp/arena_selected.pt")
+    assert d["deep_value"] and d["deep_value_labels"] == "ramped" and d["pool"] is False
+    assert [s["name"] for s in d["prior_extra_sources"]] == ["gen_0052_deepvalue"]
+    assert all(s["path"].endswith("_ramped") and (ROOT / s["path"] / "derivation.json").exists()
+               for s in d["prior_extra_sources"])
+    for name in ("gen53.json", "gen53_rehearsal.json", "gen53_pool.json", "gen53_pool_rehearsal.json"):
+        assert recipe(name)["model"] == d["teacher"]
+    assert g.ramped_path(g.paths_for(False)[1]["deep"]).name.endswith("_disagreement_ramped")
+
+
 def test_the_pool_arm_is_conditional_on_the_decision():
     source = (ROOT / "tools/gen53_campaign.py").read_text()
     work = source[source.index("def work("):source.index("def main(")]
