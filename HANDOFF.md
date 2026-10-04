@@ -61,6 +61,17 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 4, 00:57: teacher selection COMPLETE: recommended gen53 teacher
+is gen52 Arm R.** See `docs/experiments/gen53_prep/TEACHER_SELECTION.md`
+(rule in `docs/plans/TEACHER_SELECTION_PLAN.md`).
+
+- **Mean Elo vs v29 at the teaching depths** (1,600 / 6,400 / 12,800): R
+  +137.5, LR +88.6. R − LR is +26 to +69, so not a tie.
+- **R's lead grows with depth:** +100, +130, +183.
+- **Caveat:** R is level with v29 head-to-head at depth (53%, 50%); LR beats
+  v29 75–78%.
+- gen53 is not launched; its rule 1 needs the owner's waiver or revision.
+
 **October 3, 10:20: morning evaluation chain COMPLETE.** See
 `docs/experiments/gen52/MORNING_20261003.md`.
 

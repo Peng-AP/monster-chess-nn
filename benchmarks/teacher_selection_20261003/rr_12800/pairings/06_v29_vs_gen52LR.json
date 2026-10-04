@@ -1,0 +1,133 @@
+{
+  "match": "bootstrap_v29 vs bootstrap_main_gen_0052_large_ramp",
+  "name_a": "bootstrap_v29",
+  "name_b": "bootstrap_main_gen_0052_large_ramp",
+  "games": 60,
+  "sims": 12800,
+  "sims_b": 12800,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 4066000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 60,
+    "unique_states": 7,
+    "unique_fraction": 0.1167,
+    "unique_as_white": 2,
+    "unique_as_black": 6,
+    "effective_unique_games": 8,
+    "effective_unique_fraction": 0.1333,
+    "duplicate_games": 53,
+    "max_multiplicity": 24,
+    "multiplicity_histogram": {
+      "14": 1,
+      "17": 1,
+      "24": 1,
+      "1": 3,
+      "2": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "f6c6356f6f03ce60d75d0da32c44da10753e995dcecc318526a92fb381e28bd3",
+    "top_duplicates": [
+      {
+        "count": 24,
+        "fen": "r1bqk1nr/ppp2ppp/n3p3/2KPP3/2P5/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 17,
+        "fen": "rnbqk2r/ppp2ppp/4p2n/2bPP3/2PK4/8/8/8 w kq - 5 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 14,
+        "fen": "rnbqkb1r/ppp2npp/4P3/8/2P5/8/4K3/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 2,
+        "fen": "r1bqkb1r/ppp3pp/2n4n/3p4/3PPP2/3K4/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.225,
+  "a_as_white": {
+    "games": 30,
+    "wins": 0,
+    "losses": 14,
+    "draws": 16,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.2667,
+    "mean_plies": 139.4,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 93.0
+  },
+  "a_as_black": {
+    "games": 30,
+    "wins": 5,
+    "losses": 24,
+    "draws": 1,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.1833,
+    "mean_plies": 60.6,
+    "mean_plies_when_won": 89.4,
+    "mean_plies_when_lost": 53.0
+  },
+  "elapsed_sec": 2302.0,
+  "timestamp": "2026-10-03T22:15:07",
+  "_artifact_path": null,
+  "pair": [
+    "v29",
+    "gen52LR"
+  ],
+  "index": 6,
+  "summary": {
+    "a": "v29",
+    "b": "gen52LR",
+    "games": 60,
+    "wins": 5,
+    "draws": 17,
+    "losses": 38,
+    "a_white": {
+      "games": 30,
+      "wins": 0,
+      "draws": 16,
+      "losses": 14
+    },
+    "a_black": {
+      "games": 30,
+      "wins": 5,
+      "draws": 1,
+      "losses": 24
+    },
+    "mean_plies": 100.0
+  }
+}
