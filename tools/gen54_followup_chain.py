@@ -34,7 +34,8 @@ def run(label, cmd):
 def main():
     while running("gen54_production"):
         time.sleep(60)
-    status = json.loads((GEN54 / "status.json").read_text())
+    status_path = GEN54 / "status.json"
+    status = json.loads(status_path.read_text()) if status_path.exists() else {"status": "missing"}
     if status.get("status") != "complete":
         print(f"FOLLOWUP STOPPED: gen54 did not complete ({status})", flush=True)
         sys.exit(1)

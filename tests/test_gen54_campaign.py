@@ -68,6 +68,12 @@ def test_seed_blocks_are_disjoint_and_below_2_32():
     assert all(b - a >= 1_000_000 for a, b in zip(seeds, seeds[1:])), seeds
 
 
+def test_each_generated_source_has_its_own_directory():
+    source = (ROOT / "tools/gen54_campaign.py").read_text()
+    body = source[source.index("def generated_source("):source.index("def extra_sources(")]
+    assert '"generation" / label / "summary.json"' in body
+
+
 def test_single_arm_composes_all_sources():
     source = (ROOT / "tools/gen54_campaign.py").read_text()
     work = source[source.index("def work("):source.index("def main(")]

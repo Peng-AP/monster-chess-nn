@@ -183,8 +183,15 @@ def deep_source(campaign, smoke):
 
 
 def generated_source(campaign, smoke, label, recipe, raw, out, games):
-    """Run a stateful_generation recipe and process its games as their own increment (ramped labels)."""
-    summary = campaign.root / f"{label}_generation_summary.json"
+    """Run a stateful_generation recipe and process its games as their own increment (ramped labels).
+
+    Each run gets its own directory: stateful_generation keeps its resume
+    manifest and per-game receipts next to the summary, and task ids
+    (selfplay/game_00000, ...) repeat across recipes, so a shared directory
+    would make the second run collide with the first.
+    """
+    summary = campaign.root / "generation" / label / "summary.json"
+    summary.parent.mkdir(parents=True, exist_ok=True)
     campaign.stage(f"{label}_games", ["tools/stateful_generation.py", "--config", str(recipe.relative_to(ROOT)),
                                       "--raw", str(raw), "--summary", str(summary)], [summary])
     record = read(summary)
