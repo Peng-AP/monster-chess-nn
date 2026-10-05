@@ -86,6 +86,8 @@ class FakePool:
             if st["status"]["over"] or st["turn"] != side:
                 return played
             played.append(st["legal"][0])
+            if isinstance(options.get("evals"), list):
+                options["evals"].append(dict(move=played[-1], value=0.25))
             if side == "black":
                 return played
 
@@ -153,9 +155,15 @@ def test_watch_page_options_reach_the_engine_and_watch_games_are_not_recorded(ht
     status, body = request(http_server, "GET", "/watch")
     assert status == 200 and b"Watch engines" in body and f'/watch.js?v={web.asset_version("watch.js")}'.encode() in body
     FakePool.calls.clear()
-    status, _ = request(http_server, "POST", "/api/engine-move",
-                        dict(moves=[], engine="v29", watch=True, sims=200, temperature=1.0, temp_plies=4))
-    assert status == 200 and FakePool.calls[-1] == dict(sims=200, temperature=1.0, temp_plies=4)
+    status, body = request(http_server, "POST", "/api/engine-move",
+                           dict(moves=[], engine="v29", watch=True, sims=200, temperature=1.0, temp_plies=4))
+    data = json.loads(body)
+    sent = {k: v for k, v in FakePool.calls[-1].items() if k != "evals"}
+    assert status == 200 and sent == dict(sims=200, temperature=1.0, temp_plies=4)
+    assert [e["move"] for e in data["evals"]] == data["engine_moves"]
+    # Ordinary play gets no evals and passes no options.
+    status, body = request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="v29"))
+    assert status == 200 and "evals" not in json.loads(body) and FakePool.calls[-1] == {}
     assert request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="v29", sims=7))[0] == 400
     # The engine's move completes a repetition. A watch game is not written; a played game is.
     cycle = ["e1d1", "d1e1", "g8f6", "e1d1", "d1e1", "f6g8"]
@@ -172,3 +180,14 @@ def test_watch_page_options_reach_the_engine_and_watch_games_are_not_recorded(ht
     status, _ = request(http_server, "POST", "/api/engine-move",
                         dict(moves=moves, engine="v29", game_id="cd" * 16, human_color="white"))
     assert status == 200 and len(list(tmp_path.rglob("*.json"))) == 1
+
+
+def test_search_constant_overrides_are_validated():
+    good = dict(c_puct=2.5, fpu_reduction=0.0, policy_temperature=1.5, late_temperature=0.3,
+                root_noise=True, finisher=False)
+    assert web.search_options(good) == dict(c_puct=2.5, fpu_reduction=0.0, policy_temperature=1.5,
+                                            late_temperature=0.3, root_noise=True, finisher=False)
+    for bad in (dict(c_puct=0), dict(c_puct=9), dict(fpu_reduction=-1), dict(policy_temperature=0.1),
+                dict(late_temperature=2), dict(root_noise="yes"), dict(finisher=1), dict(c_puct=True)):
+        with pytest.raises(web.BadRequest):
+            web.search_options(bad)

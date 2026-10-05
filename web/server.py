@@ -52,6 +52,9 @@ MAX_WAITING = 8               # searches queued behind the GPU lock before "busy
 WATCH_SIMS = (16, 50, 200, 800, 1600, 3200, 6400, 12800)
 MAX_TEMPERATURE = 2.0
 MAX_TEMP_PLIES = 80
+# Search-constant overrides: (min, max) inclusive. Defaults are the engine's own (config.py).
+SEARCH_RANGES = {"c_puct": (0.25, 5.0), "fpu_reduction": (0.0, 1.0), "policy_temperature": (0.5, 3.0),
+                 "late_temperature": (0.0, 1.0)}
 
 V29, V28 = "models/bootstrap_v29/best_value_net.pt", "models/bootstrap_v28/best_value_net.pt"
 GEN53 = "models/candidates/bootstrap_main_gen_0053/arena_selected.pt"
@@ -156,11 +159,14 @@ class EnginePool:
             self.models[name] = dict(spec, evaluator=evaluator, sha256=sha)
             print(f"loaded {name}: {spec['path']} at {spec['sims']} sims", flush=True)
 
-    def search(self, name, moves, sims=None, temperature=None, temp_plies=None):
+    def search(self, name, moves, sims=None, temperature=None, temp_plies=None, late_temperature=None,
+               c_puct=None, fpu_reduction=None, policy_temperature=None, root_noise=None, finisher=None,
+               evals=None):
         """Play the engine's whole turn (both halves when it is White).
 
-        sims / temperature / temp_plies override the level's depth and the
-        opening sampler (the Watch tab); omitted, play is unchanged.
+        The keyword overrides come from the Watch tab (validated by search_options);
+        omitted, play is unchanged. When `evals` is a list, each played move's search
+        value is appended in White's perspective (None for a forced-capture solver move).
         """
         from benchmark import _FinisherEngine
         from native_mcts import NativeMCTS
@@ -172,17 +178,26 @@ class EnginePool:
         if status(game, repeated)["over"]:
             raise BadRequest("the game is already over")
         with self._slot():
-            engine = _FinisherEngine(NativeMCTS(num_simulations=sims or spec["sims"], eval_fn=spec["evaluator"],
-                                                root_noise=False, allow_early_stop=True,
-                                                reuse_across_moves=True))
+            constants = {k: v for k, v in (("c_puct", c_puct), ("fpu_reduction", fpu_reduction),
+                                           ("policy_temperature", policy_temperature)) if v is not None}
+            engine = NativeMCTS(num_simulations=sims or spec["sims"], eval_fn=spec["evaluator"],
+                                root_noise=bool(root_noise), allow_early_stop=True,
+                                reuse_across_moves=True, **constants)
+            if finisher is not False:
+                engine = _FinisherEngine(engine)
             played, side = [], game.is_white_turn
             while game.is_white_turn == side and not game.is_terminal():
                 ply = len(moves) + len(played)
                 limit = OPENING_TEMP_PLIES if temp_plies is None else temp_plies
                 warm = OPENING_TEMPERATURE if temperature is None else temperature
-                move = engine.get_best_action(game, temperature=warm if ply < limit else 0.0)[0]
+                move, _probs, value = engine.get_best_action(
+                    game, temperature=warm if ply < limit else (late_temperature or 0.0))
                 if move is None:
                     raise RuntimeError("engine returned no move in a live position")
+                if evals is not None:
+                    # The search reports the root side-to-move's value; flip Black's to White's view.
+                    evals.append(dict(move=move.uci(), value=None if value is None
+                                      else round(float(value) * (1 if game.is_white_turn else -1), 4)))
                 game.apply_search_action(move)
                 played.append(move.uci())
                 if side is False:
@@ -264,6 +279,17 @@ def search_options(data):
         if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= MAX_TEMP_PLIES:
             raise BadRequest(f"temp_plies must be an integer between 0 and {MAX_TEMP_PLIES}")
         options["temp_plies"] = n
+    for key, (lo, hi) in SEARCH_RANGES.items():
+        if data.get(key) is not None:
+            v = data[key]
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+                raise BadRequest(f"{key} must be between {lo} and {hi}")
+            options[key] = float(v)
+    for key in ("root_noise", "finisher"):
+        if data.get(key) is not None:
+            if not isinstance(data[key], bool):
+                raise BadRequest(f"{key} must be true or false")
+            options[key] = data[key]
     return options
 
 
@@ -350,14 +376,21 @@ class Handler(BaseHTTPRequestHandler):
                 if not allowed(self.client()):
                     return self.send_json(429, dict(error="too many requests; slow down a little"))
                 name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
-                played = self.pool.search(name, moves, **search_options(data))
+                evals = [] if data.get("watch") else None
+                options = search_options(data)
+                if evals is not None:
+                    options["evals"] = evals
+                played = self.pool.search(name, moves, **options)
                 state = state_payload(moves + played)
                 # Engine-vs-engine games (Watch tab) are not human games and are not recorded.
                 if state["status"]["over"] and not data.get("watch"):
                     spec = self.pool.models[name]
                     record_game(data.get("game_id"), moves + played, name, data.get("human_color"),
                                 state["status"], spec["sha256"], spec["sims"])
-                return self.send_json(200, dict(engine_moves=played, state=state))
+                reply = dict(engine_moves=played, state=state)
+                if evals is not None:
+                    reply["evals"] = evals
+                return self.send_json(200, reply)
             if self.path == "/api/record":
                 name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
                 spec = self.pool.models.get(name)

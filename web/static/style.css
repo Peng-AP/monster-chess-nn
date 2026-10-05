@@ -152,3 +152,29 @@ input[type="number"], input[type="text"] { font: inherit; padding: 8px 10px; bor
 .dot.w { background: #fff; } .dot.b { background: #161616; }
 .button-link { display: inline-block; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--panel); color: var(--fg); text-decoration: none; }
+
+/* Watch tab: search settings, evaluation bar and graph, series score. */
+.advanced .check { flex-direction: row; align-items: center; gap: 8px; color: var(--fg); font-size: .85rem; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 12px; }
+fieldset.search { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 12px 12px;
+  border: 1px solid var(--border); border-radius: 10px; }
+fieldset.search legend { padding: 0 6px; font-weight: 600; font-size: .85rem; color: var(--muted); }
+fieldset.search label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
+fieldset.search label.check { flex-direction: row; align-items: center; color: var(--fg); }
+.advanced > .hint { text-align: left; margin: 12px 0 2px; }
+button.linkish { padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; font-size: inherit; }
+.evalbar { position: relative; max-width: 560px; height: 22px; margin: 0 auto 8px; border-radius: 6px; overflow: hidden;
+  background: #262626; border: 1px solid var(--border); }
+.evalbar-fill { height: 100%; width: 50%; background: #f4f4f4; transition: width .4s ease; }
+.evalbar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; font-weight: 700; color: #888; mix-blend-mode: difference; }
+.eval-graph { display: block; width: 100%; height: 70px; margin: 10px 0 0; border-radius: 8px; cursor: pointer;
+  background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.eval-graph .mid { stroke: var(--border); stroke-width: .4; }
+.eval-graph .curve { fill: none; stroke: var(--accent); stroke-width: .9; vector-effect: non-scaling-stroke; }
+.eval-graph .cursor { stroke: var(--danger); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.series-score { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: .85rem; }
+.series-score .score { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
+.series-score strong { font-size: 1.2rem; }
+.series-score .muted, .matchup .muted { color: var(--muted); }
