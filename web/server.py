@@ -46,6 +46,7 @@ ENGINE_MOVES_PER_MINUTE = 60  # per client
 MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
 
 V29, V28 = "models/bootstrap_v29/best_value_net.pt", "models/bootstrap_v28/best_value_net.pt"
+GEN53 = "models/candidates/bootstrap_main_gen_0053/arena_selected.pt"
 V23, V21 = "models/bootstrap_v23/best_value_net.pt", "models/fresh_start_v21/best_value_net.pt"
 V19, V17 = "models/fresh_start_v19/best_value_net.pt", "models/fresh_start_v17/best_value_net.pt"
 
@@ -57,7 +58,10 @@ def _level(elo, text, path, sims, default=False):
 # Difficulty levels, strongest first. Elo from the joint fit of the September 29
 # round robin and the September 30 ladder (7,680 engine games, v21 = 1600):
 # benchmarks/elo_ladder_20260930/ratings.json, docs/experiments/elo_rr/LADDER_RESULTS.md.
+# gen53 (unpromoted) is placed relative to v29: +105 Elo in the October 5 top-group
+# round robin (docs/experiments/gen53/MORNING_20261005.md), so 2450 + 105.
 ENGINES = {
+    "gen53": _level(2555, "gen53, strongest yet (experimental, not a release)", GEN53, 3200),
     "v29": _level(2450, "v29, full strength (current release)", V29, 3200, default=True),
     "v28": _level(2326, "v28, previous release", V28, 3200),
     "v29-800": _level(2325, "v29, 800 simulations", V29, 800),
