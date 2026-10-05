@@ -14,7 +14,10 @@ class BookPartitionManifestContracts(unittest.TestCase):
     def test_pinned_book_and_blocks_remain_valid(self):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         book_path = ROOT / manifest["book"]
-        digest = hashlib.sha256(book_path.read_bytes()).hexdigest()
+        # The pin is of the training machine's Windows checkout (CRLF); git stores the
+        # book with LF, so hash the CRLF form to check the same content on any platform.
+        crlf = book_path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        digest = hashlib.sha256(crlf).hexdigest()
         self.assertEqual(digest, manifest["book_sha256"])
         book = json.loads(book_path.read_text(encoding="utf-8"))
         entries = book["entries"]
