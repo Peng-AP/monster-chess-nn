@@ -61,6 +61,19 @@ See `docs/experiments/gen52/POOLCAP_RESULTS.md`.
   deep-value share. The teacher's own White pessimism is the remaining
   untested hypothesis.
 
+**October 5: gen53 COMPLETE: passes gate v4 against BOTH Arm R and v29;
+not promotion-eligible.** See `docs/experiments/gen53/GEN53_RESULTS.md`.
+
+- **Gate v4 vs Arm R:** 66.1% / 67.1%; White +18.75 / +22.25 pp.
+- **Gate v4 vs v29: PASS** (53.25% / 52.6%, deep guard 62.5%). It is the
+  first candidate to pass against v29.
+- **Held-out mean 88.3%** (B2 98.4%, v27 78.1%), below the 91.7% that
+  `PROMOTION_RULE.md` requires, so it is not eligible.
+- **The v27 dip is one endgame:** 32/32 losses from a single position that
+  Arm R and v29 *win* 10/10 as White. Its opening is fine; its endgame play
+  there is broken.
+- **Other diagnostics:** unbiased (−0.006); gen49 89.7%; v28 84.7%.
+
 **October 4: gen53 LAUNCHED with teacher gen52 Arm R** (managed run
 `gen53_production`). The owner revised GEN53 rule 1: the teacher comes from
 the teacher-selection rule, and gate v4 against the previous teacher is no

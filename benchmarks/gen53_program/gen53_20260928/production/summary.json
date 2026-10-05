@@ -1,0 +1,1337 @@
+{
+  "complete": true,
+  "rehearsal": false,
+  "decision": {
+    "teacher": "models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt",
+    "teacher_sha256": "bfb1857d8166ae13b750d5a7708450f6d6b2e3df2a1b36922cecb71df4cc0f28",
+    "teacher_description": "gen52 Arm R nominee (selected_epoch_021): Arm B data with ramped deep-value labels; recommended by docs/plans/TEACHER_SELECTION_PLAN.md; not promoted",
+    "deep_value": true,
+    "deep_value_labels": "ramped",
+    "reference": "models/bootstrap_v29/best_value_net.pt",
+    "pool": false,
+    "prior_extra_sources": [
+      {
+        "name": "gen_0052_deepvalue",
+        "path": "data/processed/bootstrap_extra_main_gen_0052_disagreement_ramped"
+      }
+    ],
+    "rule": "GEN53_PLAN.md revision of 2026-10-04: teacher by TEACHER_SELECTION_PLAN.md; pool by rule 3 as declared; deep-value labels ramped (Arm R's recipe); only gen52+gen53 deep increments in the replay.",
+    "evidence": {
+      "selection": "benchmarks/teacher_selection_20261003/selection.json",
+      "teacher_score_vs_v29": 137.5,
+      "runner_up": "gen52LR",
+      "runner_up_score": 88.6,
+      "difference_ci95": [
+        26.3,
+        69.3
+      ],
+      "rule3": {
+        "arm_b_held_out": 0.914,
+        "arm_a_held_out": 0.809,
+        "arm_b_gen49": 0.606,
+        "arm_a_gen49": 0.619,
+        "pool_kept": false
+      }
+    },
+    "decided": "2026-10-04 (owner: revise the rule; begin with Arm R)"
+  },
+  "nominees": {
+    "a": {
+      "arm": "a",
+      "name": "selected_epoch_015",
+      "rule": "best_screen_rank_passing_deep_guard",
+      "eligible": [
+        "selected_epoch_015",
+        "selected_epoch_011",
+        "selected_epoch_013"
+      ],
+      "candidates": [
+        {
+          "name": "selected_epoch_015",
+          "checkpoint": "models/candidates/bootstrap_main_gen_0053/selected_epoch_015.pt",
+          "stage": "screen",
+          "rank": [
+            1.0,
+            0.17000000000000004,
+            0.14500000000000002
+          ],
+          "deep": {
+            "score": 0.5125,
+            "sides": {
+              "white": {
+                "n": 40,
+                "wins": 0,
+                "draws": 40,
+                "losses": 0,
+                "score": 0.5,
+                "se": 0.0
+              },
+              "black": {
+                "n": 40,
+                "wins": 2,
+                "draws": 38,
+                "losses": 0,
+                "score": 0.525,
+                "se": 0.01744956101130282
+              }
+            },
+            "par_comparisons": {
+              "white": {
+                "delta_from_par": 0.012500000000000011,
+                "nominal_se": 0.006190756956795607,
+                "nominal_95_interval": [
+                  0.00036611636468062217,
+                  0.0246338836353194
+                ]
+              },
+              "black": {
+                "delta_from_par": 0.012500000000000067,
+                "nominal_se": 0.018515200544020383,
+                "nominal_95_interval": [
+                  -0.02378979306627988,
+                  0.048789793066280014
+                ]
+              }
+            }
+          }
+        },
+        {
+          "name": "selected_epoch_011",
+          "checkpoint": "models/candidates/bootstrap_main_gen_0053/selected_epoch_011.pt",
+          "stage": "screen",
+          "rank": [
+            1.0,
+            0.16749999999999998,
+            0.14
+          ],
+          "deep": {
+            "score": 0.6625000000000001,
+            "sides": {
+              "white": {
+                "n": 40,
+                "wins": 0,
+                "draws": 37,
+                "losses": 3,
+                "score": 0.4625,
+                "se": 0.021088184807174337
+              },
+              "black": {
+                "n": 40,
+                "wins": 29,
+                "draws": 11,
+                "losses": 0,
+                "score": 0.8625,
+                "se": 0.03574975345082637
+              }
+            },
+            "par_comparisons": {
+              "white": {
+                "delta_from_par": -0.024999999999999967,
+                "nominal_se": 0.021978102969993835,
+                "nominal_95_interval": [
+                  -0.06807708182118788,
+                  0.018077081821187946
+                ]
+              },
+              "black": {
+                "delta_from_par": 0.3500000000000001,
+                "nominal_se": 0.03628181835979263,
+                "nominal_95_interval": [
+                  0.27888763601480654,
+                  0.42111236398519364
+                ]
+              }
+            }
+          }
+        },
+        {
+          "name": "selected_epoch_013",
+          "checkpoint": "models/candidates/bootstrap_main_gen_0053/selected_epoch_013.pt",
+          "stage": "screen",
+          "rank": [
+            1.0,
+            0.13,
+            0.05499999999999999
+          ],
+          "deep": {
+            "score": 0.64375,
+            "sides": {
+              "white": {
+                "n": 40,
+                "wins": 1,
+                "draws": 35,
+                "losses": 4,
+                "score": 0.4625,
+                "se": 0.027662688932465675
+              },
+              "black": {
+                "n": 40,
+                "wins": 26,
+                "draws": 14,
+                "losses": 0,
+                "score": 0.825,
+                "se": 0.038188130791298666
+              }
+            },
+            "par_comparisons": {
+              "white": {
+                "delta_from_par": -0.024999999999999967,
+                "nominal_se": 0.028346954522002397,
+                "nominal_95_interval": [
+                  -0.08056003086312466,
+                  0.030560030863124733
+                ]
+              },
+              "black": {
+                "delta_from_par": 0.3125,
+                "nominal_se": 0.03868667477351144,
+                "nominal_95_interval": [
+                  0.2366741174439176,
+                  0.3883258825560824
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0053\\arena_selected.pt",
+      "sha256": "8f1b8803ec321fb8627be6a5e6813e347328197d3cc0e2d897243df33d1220a1"
+    }
+  },
+  "results": {
+    "a": {
+      "verdict": "PASS",
+      "primary": {
+        "verdict": "PASS",
+        "raw_verdict": "PASS",
+        "confirmed": true,
+        "eligible": true,
+        "inconclusive_reasons": [],
+        "failures": [],
+        "par_comparisons": {
+          "vs_bar": {
+            "white": {
+              "delta_from_par": 0.1875,
+              "nominal_se": 0.020422733037231237,
+              "nominal_95_interval": [
+                0.14747144324702677,
+                0.22752855675297323
+              ]
+            },
+            "black": {
+              "delta_from_par": 0.135,
+              "nominal_se": 0.021634732325602472,
+              "nominal_95_interval": [
+                0.09259592464181916,
+                0.17740407535818087
+              ]
+            }
+          },
+          "vs_bar_confirm": {
+            "white": {
+              "delta_from_par": 0.22250000000000003,
+              "nominal_se": 0.021013936141218336,
+              "nominal_95_interval": [
+                0.18131268516321208,
+                0.263687314836788
+              ]
+            },
+            "black": {
+              "delta_from_par": 0.12,
+              "nominal_se": 0.022360035566589827,
+              "nominal_95_interval": [
+                0.07617433028948394,
+                0.16382566971051604
+              ]
+            }
+          }
+        },
+        "interpretation": "point-estimate gate; not proof of per-color improvement"
+      },
+      "guard": {
+        "verdict": "PASS",
+        "inconclusive_reasons": [],
+        "failures": [],
+        "par_comparisons": {
+          "white": {
+            "delta_from_par": 0.024999999999999967,
+            "nominal_se": 0.013949031210020042,
+            "nominal_95_interval": [
+              -0.0023401011716393146,
+              0.052340101171639244
+            ]
+          },
+          "black": {
+            "delta_from_par": 0.012500000000000067,
+            "nominal_se": 0.013734697936041979,
+            "nominal_95_interval": [
+              -0.014420007954642211,
+              0.039420007954642344
+            ]
+          }
+        }
+      },
+      "legs": {
+        "vs_bar": {
+          "sampled": {
+            "n": 400,
+            "score": 0.66125,
+            "se": 0.012244563453666051,
+            "sides": {
+              "white": {
+                "n": 200,
+                "wins": 26,
+                "draws": 156,
+                "losses": 18,
+                "score": 0.52,
+                "se": 0.016564173969639488
+              },
+              "black": {
+                "n": 200,
+                "wins": 123,
+                "draws": 75,
+                "losses": 2,
+                "score": 0.8025,
+                "se": 0.018037335651002746
+              }
+            },
+            "elo": 116.19455246431201
+          },
+          "unique": {
+            "n": 56,
+            "score": 0.5981554677206851,
+            "se": 0.043283502490752565,
+            "sides": {
+              "white": {
+                "n": 23,
+                "wins": 3,
+                "draws": 10,
+                "losses": 10,
+                "score": 0.34782608695652173,
+                "se": 0.07328259374600457
+              },
+              "black": {
+                "n": 33,
+                "wins": 24,
+                "draws": 8,
+                "losses": 1,
+                "score": 0.8484848484848485,
+                "se": 0.046081534320441056
+              }
+            },
+            "elo": 69.1024054041272
+          },
+          "novel": {
+            "n": 56,
+            "score": 0.5981554677206851,
+            "se": 0.043283502490752565,
+            "sides": {
+              "white": {
+                "n": 23,
+                "wins": 3,
+                "draws": 10,
+                "losses": 10,
+                "score": 0.34782608695652173,
+                "se": 0.07328259374600457
+              },
+              "black": {
+                "n": 33,
+                "wins": 24,
+                "draws": 8,
+                "losses": 1,
+                "score": 0.8484848484848485,
+                "se": 0.046081534320441056
+              }
+            },
+            "elo": 69.1024054041272
+          },
+          "overlap": 0,
+          "duplicates": 344,
+          "incomplete_openings": 0,
+          "endpoint_outcome_conflicts": 0,
+          "endpoint_history_collisions": 30,
+          "endpoint_repetition_collisions": 13,
+          "missing_history_records": 0,
+          "endings": {
+            "repetition": 231,
+            "king_capture": 169
+          },
+          "mean_plies": 67.4525
+        },
+        "vs_bar_confirm": {
+          "sampled": {
+            "n": 400,
+            "score": 0.67125,
+            "se": 0.012807462393652543,
+            "sides": {
+              "white": {
+                "n": 200,
+                "wins": 36,
+                "draws": 150,
+                "losses": 14,
+                "score": 0.555,
+                "se": 0.017287838116250058
+              },
+              "black": {
+                "n": 200,
+                "wins": 119,
+                "draws": 77,
+                "losses": 4,
+                "score": 0.7875,
+                "se": 0.018901191103357168
+              }
+            },
+            "elo": 124.00741488391911
+          },
+          "unique": {
+            "n": 73,
+            "score": 0.6145662847790507,
+            "se": 0.03490766963220534,
+            "sides": {
+              "white": {
+                "n": 26,
+                "wins": 2,
+                "draws": 14,
+                "losses": 10,
+                "score": 0.34615384615384615,
+                "se": 0.06056929133855239
+              },
+              "black": {
+                "n": 47,
+                "wins": 37,
+                "draws": 9,
+                "losses": 1,
+                "score": 0.8829787234042553,
+                "se": 0.03472092371107551
+              }
+            },
+            "elo": 81.04761195010887
+          },
+          "novel": {
+            "n": 36,
+            "score": 0.5409090909090909,
+            "se": 0.043161877373467016,
+            "sides": {
+              "white": {
+                "n": 11,
+                "wins": 0,
+                "draws": 4,
+                "losses": 7,
+                "score": 0.18181818181818182,
+                "se": 0.07606000241218869
+              },
+              "black": {
+                "n": 25,
+                "wins": 20,
+                "draws": 5,
+                "losses": 0,
+                "score": 0.9,
+                "se": 0.0408248290463863
+              }
+            },
+            "elo": 28.490235043955263
+          },
+          "overlap": 37,
+          "duplicates": 327,
+          "incomplete_openings": 0,
+          "endpoint_outcome_conflicts": 0,
+          "endpoint_history_collisions": 28,
+          "endpoint_repetition_collisions": 13,
+          "missing_history_records": 0,
+          "endings": {
+            "repetition": 227,
+            "king_capture": 173
+          },
+          "mean_plies": 66.57
+        },
+        "deep_guard": {
+          "sampled": {
+            "n": 160,
+            "score": 0.51875,
+            "se": 0.008754519628400558,
+            "sides": {
+              "white": {
+                "n": 80,
+                "wins": 3,
+                "draws": 76,
+                "losses": 1,
+                "score": 0.5125,
+                "se": 0.0125
+              },
+              "black": {
+                "n": 80,
+                "wins": 4,
+                "draws": 76,
+                "losses": 0,
+                "score": 0.525,
+                "se": 0.012260361156842101
+              }
+            },
+            "elo": 13.034946881436854
+          },
+          "unique": {
+            "n": 19,
+            "score": 0.6083333333333334,
+            "se": 0.06123724356957945,
+            "sides": {
+              "white": {
+                "n": 10,
+                "wins": 2,
+                "draws": 7,
+                "losses": 1,
+                "score": 0.55,
+                "se": 0.08975274678557507
+              },
+              "black": {
+                "n": 9,
+                "wins": 3,
+                "draws": 6,
+                "losses": 0,
+                "score": 0.6666666666666666,
+                "se": 0.08333333333333333
+              }
+            },
+            "elo": 76.49000087389541
+          },
+          "novel": {
+            "n": 5,
+            "score": 0.5,
+            "se": null,
+            "sides": {
+              "white": {
+                "n": 4,
+                "wins": 1,
+                "draws": 2,
+                "losses": 1,
+                "score": 0.5,
+                "se": 0.2041241452319315
+              },
+              "black": {
+                "n": 1,
+                "wins": 0,
+                "draws": 1,
+                "losses": 0,
+                "score": 0.5,
+                "se": null
+              }
+            },
+            "elo": 0.0
+          },
+          "overlap": 14,
+          "duplicates": 141,
+          "incomplete_openings": 0,
+          "endpoint_outcome_conflicts": 0,
+          "endpoint_history_collisions": 11,
+          "endpoint_repetition_collisions": 1,
+          "missing_history_records": 0,
+          "endings": {
+            "repetition": 152,
+            "king_capture": 8
+          },
+          "mean_plies": 67.6625
+        }
+      },
+      "combined_h2h": {
+        "sampled": {
+          "n": 800,
+          "score": 0.66625,
+          "se": 0.00886118051109023,
+          "sides": {
+            "white": {
+              "n": 400,
+              "wins": 62,
+              "draws": 306,
+              "losses": 32,
+              "score": 0.5375,
+              "se": 0.011988272255800583
+            },
+            "black": {
+              "n": 400,
+              "wins": 242,
+              "draws": 152,
+              "losses": 6,
+              "score": 0.795,
+              "se": 0.013052333451199568
+            }
+          },
+          "elo": 120.08637906479882
+        },
+        "unique": {
+          "n": 92,
+          "score": 0.5824036511156186,
+          "se": 0.032264704558773165,
+          "sides": {
+            "white": {
+              "n": 34,
+              "wins": 3,
+              "draws": 14,
+              "losses": 17,
+              "score": 0.29411764705882354,
+              "se": 0.05631924163272577
+            },
+            "black": {
+              "n": 58,
+              "wins": 44,
+              "draws": 13,
+              "losses": 1,
+              "score": 0.8706896551724138,
+              "se": 0.03149901050786073
+            }
+          },
+          "elo": 57.78695841010868
+        },
+        "novel": {
+          "n": 92,
+          "score": 0.5824036511156186,
+          "se": 0.032264704558773165,
+          "sides": {
+            "white": {
+              "n": 34,
+              "wins": 3,
+              "draws": 14,
+              "losses": 17,
+              "score": 0.29411764705882354,
+              "se": 0.05631924163272577
+            },
+            "black": {
+              "n": 58,
+              "wins": 44,
+              "draws": 13,
+              "losses": 1,
+              "score": 0.8706896551724138,
+              "se": 0.03149901050786073
+            }
+          },
+          "elo": 57.78695841010868
+        },
+        "overlap": 0,
+        "duplicates": 708,
+        "incomplete_openings": 0,
+        "endpoint_outcome_conflicts": 0,
+        "endpoint_history_collisions": 40,
+        "endpoint_repetition_collisions": 19,
+        "missing_history_records": 0,
+        "endings": {
+          "repetition": 458,
+          "king_capture": 342
+        },
+        "mean_plies": 67.01125
+      },
+      "diagnostics": {
+        "vs_b2": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 160,
+              "score": 0.984375,
+              "se": 0.006880751334269438,
+              "sides": {
+                "white": {
+                  "n": 80,
+                  "wins": 76,
+                  "draws": 4,
+                  "losses": 0,
+                  "score": 0.975,
+                  "se": 0.012260361156842101
+                },
+                "black": {
+                  "n": 80,
+                  "wins": 79,
+                  "draws": 1,
+                  "losses": 0,
+                  "score": 0.99375,
+                  "se": 0.0062499999999999995
+                }
+              },
+              "elo": 719.7362197814326
+            },
+            "unique": {
+              "n": 28,
+              "score": 0.9474358974358974,
+              "se": 0.02976063677208733,
+              "sides": {
+                "white": {
+                  "n": 15,
+                  "wins": 13,
+                  "draws": 2,
+                  "losses": 0,
+                  "score": 0.9333333333333333,
+                  "se": 0.0454256762579498
+                },
+                "black": {
+                  "n": 13,
+                  "wins": 12,
+                  "draws": 1,
+                  "losses": 0,
+                  "score": 0.9615384615384616,
+                  "se": 0.038461538461538464
+                }
+              },
+              "elo": 502.34423267003604
+            },
+            "novel": {
+              "n": 28,
+              "score": 0.9474358974358974,
+              "se": 0.02976063677208733,
+              "sides": {
+                "white": {
+                  "n": 15,
+                  "wins": 13,
+                  "draws": 2,
+                  "losses": 0,
+                  "score": 0.9333333333333333,
+                  "se": 0.0454256762579498
+                },
+                "black": {
+                  "n": 13,
+                  "wins": 12,
+                  "draws": 1,
+                  "losses": 0,
+                  "score": 0.9615384615384616,
+                  "se": 0.038461538461538464
+                }
+              },
+              "elo": 502.34423267003604
+            },
+            "overlap": 0,
+            "duplicates": 132,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 12,
+            "endpoint_repetition_collisions": 9,
+            "missing_history_records": 0,
+            "endings": {
+              "king_capture": 155,
+              "repetition": 5
+            },
+            "mean_plies": 65.18125
+          },
+          "endings": {
+            "white_capture": 76,
+            "repetition": 5,
+            "black_capture": 79
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 26,
+            "largest_endpoint_count": 47,
+            "top_five_counts": [
+              47,
+              26,
+              12,
+              11,
+              8
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_b2.jsonl": "0b164ca5f3ed21d0ac90e1147b8ba79ab9eed288d79e25e729ce29f3bda410e6",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_b2.jsonl.manifest.json": "040287ff80c1e10b463099b328613b04c9ef224bd8594476dbeff0265e623532"
+          }
+        },
+        "vs_v27": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 160,
+              "score": 0.78125,
+              "se": 0.027188613937604494,
+              "sides": {
+                "white": {
+                  "n": 80,
+                  "wins": 43,
+                  "draws": 4,
+                  "losses": 33,
+                  "score": 0.5625,
+                  "se": 0.05437722787520899
+                },
+                "black": {
+                  "n": 80,
+                  "wins": 80,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 221.1367874631123
+            },
+            "unique": {
+              "n": 28,
+              "score": 0.9090909090909092,
+              "se": 0.03506894317320271,
+              "sides": {
+                "white": {
+                  "n": 22,
+                  "wins": 16,
+                  "draws": 4,
+                  "losses": 2,
+                  "score": 0.8181818181818182,
+                  "se": 0.07013788634640541
+                },
+                "black": {
+                  "n": 6,
+                  "wins": 6,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 400.00000000000017
+            },
+            "novel": {
+              "n": 28,
+              "score": 0.9090909090909092,
+              "se": 0.03506894317320271,
+              "sides": {
+                "white": {
+                  "n": 22,
+                  "wins": 16,
+                  "draws": 4,
+                  "losses": 2,
+                  "score": 0.8181818181818182,
+                  "se": 0.07013788634640541
+                },
+                "black": {
+                  "n": 6,
+                  "wins": 6,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 400.00000000000017
+            },
+            "overlap": 0,
+            "duplicates": 132,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 6,
+            "endpoint_repetition_collisions": 4,
+            "missing_history_records": 0,
+            "endings": {
+              "king_capture": 156,
+              "repetition": 4
+            },
+            "mean_plies": 62.84375
+          },
+          "endings": {
+            "white_capture": 43,
+            "repetition": 4,
+            "black_capture": 113
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 27,
+            "largest_endpoint_count": 37,
+            "top_five_counts": [
+              37,
+              32,
+              23,
+              17,
+              15
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_v27.jsonl": "ee81d62a92a61fa2b986e9932c39a4762d4cc6ce8ae89ab9fabf9609c50c425a",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_v27.jsonl.manifest.json": "620cf0a8caf7f5ea1ff0f1e874ad71b549e636bb9b433d251b8de7565be67e98"
+          }
+        },
+        "vs_gen49": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 160,
+              "score": 0.896875,
+              "se": 0.01730665686478596,
+              "sides": {
+                "white": {
+                  "n": 80,
+                  "wins": 55,
+                  "draws": 21,
+                  "losses": 4,
+                  "score": 0.81875,
+                  "se": 0.03236919881068374
+                },
+                "black": {
+                  "n": 80,
+                  "wins": 76,
+                  "draws": 4,
+                  "losses": 0,
+                  "score": 0.975,
+                  "se": 0.012260361156842101
+                }
+              },
+              "elo": 375.7471827424419
+            },
+            "unique": {
+              "n": 36,
+              "score": 0.81875,
+              "se": 0.04234912590493788,
+              "sides": {
+                "white": {
+                  "n": 16,
+                  "wins": 7,
+                  "draws": 8,
+                  "losses": 1,
+                  "score": 0.6875,
+                  "se": 0.07739239842086129
+                },
+                "black": {
+                  "n": 20,
+                  "wins": 18,
+                  "draws": 2,
+                  "losses": 0,
+                  "score": 0.95,
+                  "se": 0.034412360080584264
+                }
+              },
+              "elo": 261.9493191027233
+            },
+            "novel": {
+              "n": 36,
+              "score": 0.81875,
+              "se": 0.04234912590493788,
+              "sides": {
+                "white": {
+                  "n": 16,
+                  "wins": 7,
+                  "draws": 8,
+                  "losses": 1,
+                  "score": 0.6875,
+                  "se": 0.07739239842086129
+                },
+                "black": {
+                  "n": 20,
+                  "wins": 18,
+                  "draws": 2,
+                  "losses": 0,
+                  "score": 0.95,
+                  "se": 0.034412360080584264
+                }
+              },
+              "elo": 261.9493191027233
+            },
+            "overlap": 0,
+            "duplicates": 124,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 19,
+            "endpoint_repetition_collisions": 11,
+            "missing_history_records": 0,
+            "endings": {
+              "king_capture": 135,
+              "repetition": 25
+            },
+            "mean_plies": 65.68125
+          },
+          "endings": {
+            "white_capture": 55,
+            "repetition": 25,
+            "black_capture": 80
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 33,
+            "largest_endpoint_count": 43,
+            "top_five_counts": [
+              43,
+              25,
+              17,
+              9,
+              9
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_gen49.jsonl": "c3a8194098ec5a70c34f648bc9270d24a609ec52c5282f90a6b15322ce381457",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_gen49.jsonl.manifest.json": "749555bfed65f71b438b8e8340ff18952a0b1f44e3c40a789a2873ca962de42f"
+          }
+        },
+        "vs_v28": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 160,
+              "score": 0.846875,
+              "se": 0.017505508852640458,
+              "sides": {
+                "white": {
+                  "n": 80,
+                  "wins": 37,
+                  "draws": 37,
+                  "losses": 6,
+                  "score": 0.69375,
+                  "se": 0.035011017705280915
+                },
+                "black": {
+                  "n": 80,
+                  "wins": 80,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 297.1092843383569
+            },
+            "unique": {
+              "n": 53,
+              "score": 0.8541666666666667,
+              "se": 0.03957618165752441,
+              "sides": {
+                "white": {
+                  "n": 24,
+                  "wins": 14,
+                  "draws": 6,
+                  "losses": 4,
+                  "score": 0.7083333333333334,
+                  "se": 0.07915236331504882
+                },
+                "black": {
+                  "n": 29,
+                  "wins": 29,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 307.07432668219155
+            },
+            "novel": {
+              "n": 53,
+              "score": 0.8541666666666667,
+              "se": 0.03957618165752441,
+              "sides": {
+                "white": {
+                  "n": 24,
+                  "wins": 14,
+                  "draws": 6,
+                  "losses": 4,
+                  "score": 0.7083333333333334,
+                  "se": 0.07915236331504882
+                },
+                "black": {
+                  "n": 29,
+                  "wins": 29,
+                  "draws": 0,
+                  "losses": 0,
+                  "score": 1.0,
+                  "se": 0.0
+                }
+              },
+              "elo": 307.07432668219155
+            },
+            "overlap": 0,
+            "duplicates": 107,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 24,
+            "endpoint_repetition_collisions": 11,
+            "missing_history_records": 0,
+            "endings": {
+              "king_capture": 123,
+              "repetition": 37
+            },
+            "mean_plies": 62.65
+          },
+          "endings": {
+            "white_capture": 37,
+            "repetition": 37,
+            "black_capture": 86
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 51,
+            "largest_endpoint_count": 22,
+            "top_five_counts": [
+              22,
+              13,
+              11,
+              7,
+              7
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_v28.jsonl": "af2ee595d89915dfc78c7bed3a61f7fa1973083a61b834d681d2b01b5f2b0912",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_vs_v28.jsonl.manifest.json": "35cbbd3ffe02418362c1aa4008ecbd950eda1c93f4d8201e53ffdae6ed426b4e"
+          }
+        },
+        "self": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 200,
+              "score": 0.48750000000000004,
+              "se": 0.010380999543163053,
+              "sides": {
+                "white": {
+                  "n": 100,
+                  "wins": 0,
+                  "draws": 88,
+                  "losses": 12,
+                  "score": 0.44,
+                  "se": 0.016329931618554522
+                },
+                "black": {
+                  "n": 100,
+                  "wins": 7,
+                  "draws": 93,
+                  "losses": 0,
+                  "score": 0.535,
+                  "se": 0.012821619998812138
+                }
+              },
+              "elo": -8.687699877294483
+            },
+            "unique": {
+              "n": 34,
+              "score": 0.4913194444444444,
+              "se": 0.03563993526831323,
+              "sides": {
+                "white": {
+                  "n": 18,
+                  "wins": 0,
+                  "draws": 14,
+                  "losses": 4,
+                  "score": 0.3888888888888889,
+                  "se": 0.050415845165168345
+                },
+                "black": {
+                  "n": 16,
+                  "wins": 3,
+                  "draws": 13,
+                  "losses": 0,
+                  "score": 0.59375,
+                  "se": 0.05038911092686594
+                }
+              },
+              "elo": -6.0324739319277
+            },
+            "novel": {
+              "n": 34,
+              "score": 0.4913194444444444,
+              "se": 0.03563993526831323,
+              "sides": {
+                "white": {
+                  "n": 18,
+                  "wins": 0,
+                  "draws": 14,
+                  "losses": 4,
+                  "score": 0.3888888888888889,
+                  "se": 0.050415845165168345
+                },
+                "black": {
+                  "n": 16,
+                  "wins": 3,
+                  "draws": 13,
+                  "losses": 0,
+                  "score": 0.59375,
+                  "se": 0.05038911092686594
+                }
+              },
+              "elo": -6.0324739319277
+            },
+            "overlap": 0,
+            "duplicates": 166,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 15,
+            "endpoint_repetition_collisions": 3,
+            "missing_history_records": 0,
+            "endings": {
+              "repetition": 181,
+              "king_capture": 19
+            },
+            "mean_plies": 78.185
+          },
+          "endings": {
+            "repetition": 181,
+            "black_capture": 19
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 23,
+            "largest_endpoint_count": 93,
+            "top_five_counts": [
+              93,
+              31,
+              15,
+              13,
+              10
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_self.jsonl": "de0fc277c8db134c75a828ed9b39c371268a3601272ebd4445f03c7e78430f63",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_self.jsonl.manifest.json": "339b2b76c69a0338eeafae9ead43ed1bc5ae6a11fe50baa3d7d2bbae320bae49"
+          },
+          "actual_color_self_par": {
+            "n": 200,
+            "score": 0.5,
+            "sides": {
+              "white": {
+                "n": 200,
+                "wins": 0,
+                "draws": 181,
+                "losses": 19,
+                "score": 0.4525,
+                "se": 0.010392727936872457
+              },
+              "black": {
+                "n": 200,
+                "wins": 19,
+                "draws": 181,
+                "losses": 0,
+                "score": 0.5475,
+                "se": 0.010392727936872457
+              }
+            },
+            "color_estimates_are_complements": true
+          }
+        },
+        "deep_self": {
+          "replay_audited": true,
+          "diagnostics": {
+            "sampled": {
+              "n": 160,
+              "score": 0.49687499999999996,
+              "se": 0.0069165888232109824,
+              "sides": {
+                "white": {
+                  "n": 80,
+                  "wins": 0,
+                  "draws": 77,
+                  "losses": 3,
+                  "score": 0.48125,
+                  "se": 0.010687409781986524
+                },
+                "black": {
+                  "n": 80,
+                  "wins": 2,
+                  "draws": 78,
+                  "losses": 0,
+                  "score": 0.5125,
+                  "se": 0.008782714611631593
+                }
+              },
+              "elo": -2.171500684559314
+            },
+            "unique": {
+              "n": 13,
+              "score": 0.48809523809523814,
+              "se": 0.07002591033263211,
+              "sides": {
+                "white": {
+                  "n": 6,
+                  "wins": 0,
+                  "draws": 4,
+                  "losses": 2,
+                  "score": 0.3333333333333333,
+                  "se": 0.10540925533894599
+                },
+                "black": {
+                  "n": 7,
+                  "wins": 2,
+                  "draws": 5,
+                  "losses": 0,
+                  "score": 0.6428571428571429,
+                  "se": 0.09221388919541469
+                }
+              },
+              "elo": -8.273839543940387
+            },
+            "novel": {
+              "n": 13,
+              "score": 0.48809523809523814,
+              "se": 0.07002591033263211,
+              "sides": {
+                "white": {
+                  "n": 6,
+                  "wins": 0,
+                  "draws": 4,
+                  "losses": 2,
+                  "score": 0.3333333333333333,
+                  "se": 0.10540925533894599
+                },
+                "black": {
+                  "n": 7,
+                  "wins": 2,
+                  "draws": 5,
+                  "losses": 0,
+                  "score": 0.6428571428571429,
+                  "se": 0.09221388919541469
+                }
+              },
+              "elo": -8.273839543940387
+            },
+            "overlap": 0,
+            "duplicates": 147,
+            "incomplete_openings": 0,
+            "endpoint_outcome_conflicts": 0,
+            "endpoint_history_collisions": 9,
+            "endpoint_repetition_collisions": 0,
+            "missing_history_records": 0,
+            "endings": {
+              "repetition": 155,
+              "king_capture": 5
+            },
+            "mean_plies": 100.225
+          },
+          "endings": {
+            "repetition": 155,
+            "black_capture": 5
+          },
+          "opening_concentration": {
+            "unique_actual_endpoints": 8,
+            "largest_endpoint_count": 56,
+            "top_five_counts": [
+              56,
+              38,
+              38,
+              22,
+              3
+            ]
+          },
+          "evidence": {
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_deep_self.jsonl": "71705326a2f10680badb1b54e65f4d0a9f1a862711dd42d2c11ead3fb4feecee",
+            "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen53_program\\gen53_20260928\\production\\play\\a_deep_self.jsonl.manifest.json": "1d83c2c91670e5a42eb2129406c7d5ae31fd06df7270c18d89349446d7b0cc1a"
+          },
+          "actual_color_self_par": {
+            "n": 160,
+            "score": 0.5,
+            "sides": {
+              "white": {
+                "n": 160,
+                "wins": 0,
+                "draws": 155,
+                "losses": 5,
+                "score": 0.484375,
+                "se": 0.0068992568075739395
+              },
+              "black": {
+                "n": 160,
+                "wins": 5,
+                "draws": 155,
+                "losses": 0,
+                "score": 0.515625,
+                "se": 0.0068992568075739395
+              }
+            },
+            "color_estimates_are_complements": true
+          }
+        }
+      },
+      "held_out": [
+        "vs_b2",
+        "vs_v27"
+      ],
+      "pool_opponents_not_independent_for_arm_b": [
+        "vs_gen49",
+        "vs_v28"
+      ]
+    }
+  },
+  "head_to_head": null,
+  "manifest_sha256": "fa9351747dda5203f6596cb19835115bd25f44526eab5d65df625ee77339b61f",
+  "notes": [
+    "All branches ran regardless of measured results.",
+    "Nothing promoted.",
+    "B2 and v27 are held out (never training opponents); pool opponents are not independent for Arm B."
+  ]
+}
