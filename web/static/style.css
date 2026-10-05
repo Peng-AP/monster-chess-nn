@@ -5,12 +5,16 @@
   --select: rgba(246, 246, 105, .85); --last: rgba(246, 246, 105, .55);
   --dot: rgba(20, 30, 20, .28); --ring: rgba(20, 30, 20, .32);
   --accent: #3b7a3b; --accent-fg: #ffffff; --danger: #b3261e; --win: #1f7a3f;
+  --curve-w: #c98a00; --curve-b: #3d5afe;
+  color-scheme: light;
   --shadow: 0 10px 30px rgba(40, 32, 20, .18);
 }
 :root[data-theme="dark"] {
   --bg: #1d2127; --bg2: #262b33; --fg: #eef1f4; --muted: #a8b0ba; --panel: #2a3038; --border: #3a414b;
   --light: #eeeed2; --dark: #769656; --frame: #11161b;
   --accent: #6fbf6f; --accent-fg: #0e1a0e; --danger: #ff8a80; --win: #7fe0a0;
+  --curve-w: #ffc94d; --curve-b: #8fa3ff;
+  color-scheme: dark;
   --shadow: 0 10px 30px rgba(0, 0, 0, .45);
 }
 * { box-sizing: border-box; }
@@ -140,10 +144,6 @@ button.primary, .button-link.primary { background: var(--accent); color: var(--a
 .watch-controls .buttons { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 .advanced { flex: 1 1 100%; border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
 .advanced summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
-.advanced-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
-.advanced-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
-.advanced-grid .wide { grid-column: 1 / -1; }
-.advanced-grid .hint { text-align: left; margin: 0; }
 input[type="number"], input[type="text"] { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--panel); color: var(--fg); max-width: 100%; min-width: 0; }
 .matchup { margin: 10px 0 0; font-size: .85rem; line-height: 1.6; }
@@ -154,24 +154,40 @@ input[type="number"], input[type="text"] { font: inherit; padding: 8px 10px; bor
   background: var(--panel); color: var(--fg); text-decoration: none; }
 
 /* Watch tab: search settings, evaluation bar and graph, series score. */
-.advanced .check { flex-direction: row; align-items: center; gap: 8px; color: var(--fg); font-size: .85rem; }
-.search-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 12px; }
-fieldset.search { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 8px 12px 12px;
-  border: 1px solid var(--border); border-radius: 10px; }
-fieldset.search legend { padding: 0 6px; font-weight: 600; font-size: .85rem; color: var(--muted); }
-fieldset.search label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
-fieldset.search label.check { flex-direction: row; align-items: center; color: var(--fg); }
-.advanced > .hint { text-align: left; margin: 12px 0 2px; }
 button.linkish { padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; font-size: inherit; }
-.evalbar { position: relative; max-width: 560px; height: 22px; margin: 0 auto 8px; border-radius: 6px; overflow: hidden;
-  background: #262626; border: 1px solid var(--border); }
+.adv { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; font-size: .85rem; }
+.adv-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.adv-line > span { color: var(--muted); min-width: 9.5em; }
+.adv-line #opening { flex: 1 1 220px; }
+.controls .adv label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; flex: 0 1 auto;
+  font-size: inherit; color: var(--fg); }
+.controls .adv label.adv-line { display: flex; flex: 1 1 100%; }
+.adv input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.adv input[type="number"] { width: 4.6em; padding: 4px 6px; border-radius: 6px; }
+.adv input[type="text"] { padding: 4px 8px; border-radius: 6px; }
+.adv-table { border-collapse: collapse; width: 100%; max-width: 480px; }
+.adv-table th, .adv-table td { padding: 3px 8px 3px 0; text-align: left; font-weight: normal; }
+.adv-table thead th { color: var(--muted); font-size: .78rem; border-bottom: 1px solid var(--border); }
+.adv-table tbody th { cursor: help; }
+.adv-note { margin: 0; color: var(--muted); font-size: .78rem; }
+.evals { max-width: 560px; margin: 0 auto 8px; display: flex; flex-direction: column; gap: 4px; }
+.eval-row { display: grid; grid-template-columns: minmax(0, 13em) 1fr 6.5em; align-items: center; gap: 8px; font-size: .8rem; }
+.eval-row .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eval-row .pct { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.eval-row .pct.stale { opacity: .5; font-weight: 400; }
+.evalbar { position: relative; height: 12px; border-radius: 4px; overflow: hidden; background: #262626; border: 1px solid var(--border); }
+.eval-caption { color: var(--muted); font-size: .72rem; text-align: center; }
+.eval-graph .curve { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.eval-graph .curve.white, .graph-legend .key.kw { stroke: var(--curve-w); background: var(--curve-w); }
+.eval-graph .curve.black, .graph-legend .key.kb { stroke: var(--curve-b); background: var(--curve-b); }
+.graph-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 4px 0 0; font-size: .75rem; }
+.graph-legend .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-left: 4px; }
+.graph-legend .muted { color: var(--muted); }
+@media (max-width: 560px) { .eval-row { grid-template-columns: minmax(0, 9em) 1fr 5.5em; } }
 .evalbar-fill { height: 100%; width: 50%; background: #f4f4f4; transition: width .4s ease; }
-.evalbar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: .78rem; font-weight: 700; color: #888; mix-blend-mode: difference; }
 .eval-graph { display: block; width: 100%; height: 70px; margin: 10px 0 0; border-radius: 8px; cursor: pointer;
   background: color-mix(in srgb, var(--muted) 10%, transparent); }
 .eval-graph .mid { stroke: var(--border); stroke-width: .4; }
-.eval-graph .curve { fill: none; stroke: var(--accent); stroke-width: .9; vector-effect: non-scaling-stroke; }
 .eval-graph .cursor { stroke: var(--danger); stroke-width: .5; vector-effect: non-scaling-stroke; }
 .series-score { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, transparent);
   font-size: .85rem; }

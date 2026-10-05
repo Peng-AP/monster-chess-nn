@@ -91,6 +91,12 @@ class FakePool:
             if side == "black":
                 return played
 
+    def evaluate(self, name, moves, plies, **options):
+        FakePool.calls.append(dict(options, plies=plies))
+        if web.ALIASES.get(name, name) not in self.models:
+            raise web.BadRequest("unknown engine")
+        return [dict(ply=p, value=-0.5, best=web.state_payload(moves[:p])["legal"][0]) for p in plies]
+
 
 @pytest.fixture()
 def http_server(tmp_path, monkeypatch):
@@ -191,3 +197,20 @@ def test_search_constant_overrides_are_validated():
                 dict(late_temperature=2), dict(root_noise="yes"), dict(finisher=1), dict(c_puct=True)):
         with pytest.raises(web.BadRequest):
             web.search_options(bad)
+
+
+def test_watch_evaluate_returns_the_listed_positions_and_validates_them(http_server):
+    FakePool.calls.clear()
+    game = ["e2e4", "d2d4", "d7d5"]
+    status, body = request(http_server, "POST", "/api/evaluate",
+                           dict(moves=game, engine="v29", plies=[0, 1], sims=50, c_puct=2.0))
+    data = json.loads(body)
+    assert status == 200 and [e["ply"] for e in data["evals"]] == [0, 1]
+    assert data["evals"][1]["best"] in web.state_payload(game[:1])["legal"]
+    assert FakePool.calls[-1] == dict(sims=50, c_puct=2.0, plies=[0, 1])
+    for bad in (dict(plies=[]), dict(plies=[4]), dict(plies=[-1]), dict(plies=[0, 1, 2, 3]), dict(plies="0"),
+                dict(plies=[True]), dict(plies=[0], sims=7), dict(plies=[0], engine="nope")):
+        body = dict(moves=game, engine="v29", **bad) if "engine" not in bad else dict(moves=game, **bad)
+        assert request(http_server, "POST", "/api/evaluate", body)[0] == 400, bad
+    assert request(http_server, "POST", "/api/evaluate", dict(moves=["e2e5"], engine="v29", plies=[0]))[0] == 400
+    assert request(http_server, "POST", "/api/evaluate", dict(moves=5, engine="v29", plies=[0]))[0] == 400

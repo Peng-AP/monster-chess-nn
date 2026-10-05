@@ -49,40 +49,45 @@
       </select>
     </label>
     <details class="advanced">
-      <summary>Advanced</summary>
-      <div class="advanced-grid">
-        <label>Opening randomness (temperature)
-          <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.5"></label>
-        <label>Randomised half-moves from the start
-          <input id="temp-plies" type="number" min="0" max="80" step="1" value="16"></label>
-        <label>Randomness after the opening (temperature)
-          <input id="late-temperature" type="number" min="0" max="1" step="0.05" value="0"></label>
-        <label class="check"><input id="swap" type="checkbox" checked> Swap colours each game of a series</label>
-        <label class="wide">Start from these moves (UCI, space or comma separated)
-          <input id="opening" type="text" placeholder="e.g. e2e4 d2d4 d7d5" autocomplete="off" spellcheck="false"></label>
+      <summary>Advanced settings</summary>
+      <div class="adv">
+        <div class="adv-line">
+          <span>Opening randomness</span>
+          <label class="inline">temperature <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.5"></label>
+          <label class="inline">for <input id="temp-plies" type="number" min="0" max="80" step="1" value="16"> half-moves,</label>
+          <label class="inline">then <input id="late-temperature" type="number" min="0" max="1" step="0.05" value="0"></label>
+        </div>
+        <label class="adv-line">
+          <span>Start from moves</span>
+          <input id="opening" type="text" placeholder="e.g. e2e4 d2d4 d7d5" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="adv-line">
+          <label class="inline"><input id="both-eval" type="checkbox" checked> Both engines evaluate every position (about 2&times; slower)</label>
+          <label class="inline"><input id="swap" type="checkbox" checked> Swap colours in a series</label>
+        </div>
+        <table class="adv-table">
+          <thead><tr><th>Search</th><th>White</th><th>Black</th></tr></thead>
+          <tbody>
+            <tr><th title="How widely the search tries alternatives">Exploration (c_puct)</th>
+              <td><input data-side="white" data-key="c_puct" type="number" min="0.25" max="5" step="0.05" value="1.5"></td>
+              <td><input data-side="black" data-key="c_puct" type="number" min="0.25" max="5" step="0.05" value="1.5"></td></tr>
+            <tr><th title="Lower tries untested moves sooner">First-play urgency reduction</th>
+              <td><input data-side="white" data-key="fpu_reduction" type="number" min="0" max="1" step="0.05" value="0.3"></td>
+              <td><input data-side="black" data-key="fpu_reduction" type="number" min="0" max="1" step="0.05" value="0.3"></td></tr>
+            <tr><th title="Higher trusts the network's move suggestions less">Policy temperature</th>
+              <td><input data-side="white" data-key="policy_temperature" type="number" min="0.5" max="3" step="0.1" value="1"></td>
+              <td><input data-side="black" data-key="policy_temperature" type="number" min="0.5" max="3" step="0.1" value="1"></td></tr>
+            <tr><th title="Random variety inside the search itself">Root noise</th>
+              <td><input data-side="white" data-key="root_noise" type="checkbox"></td>
+              <td><input data-side="black" data-key="root_noise" type="checkbox"></td></tr>
+            <tr><th title="Black's exact king-capture finder near the end of games">Forced-capture solver</th>
+              <td><input data-side="white" data-key="finisher" type="checkbox" checked></td>
+              <td><input data-side="black" data-key="finisher" type="checkbox" checked></td></tr>
+          </tbody>
+        </table>
+        <p class="adv-note">Hover a setting for what it does. All zero randomness repeats the same game.
+          <button id="reset-advanced" type="button" class="linkish">Reset to defaults</button></p>
       </div>
-      <div class="search-grid">
-        <fieldset class="search" data-side="white">
-          <legend>White's search</legend>
-          <label>Exploration (c_puct) <input data-key="c_puct" type="number" min="0.25" max="5" step="0.05" value="1.5"></label>
-          <label>First-play urgency reduction <input data-key="fpu_reduction" type="number" min="0" max="1" step="0.05" value="0.3"></label>
-          <label>Policy temperature <input data-key="policy_temperature" type="number" min="0.5" max="3" step="0.1" value="1"></label>
-          <label class="check"><input data-key="root_noise" type="checkbox"> Root noise (random variety in the search)</label>
-          <label class="check"><input data-key="finisher" type="checkbox" checked> Forced-capture solver (Black's exact endgame finder)</label>
-        </fieldset>
-        <fieldset class="search" data-side="black">
-          <legend>Black's search</legend>
-          <label>Exploration (c_puct) <input data-key="c_puct" type="number" min="0.25" max="5" step="0.05" value="1.5"></label>
-          <label>First-play urgency reduction <input data-key="fpu_reduction" type="number" min="0" max="1" step="0.05" value="0.3"></label>
-          <label>Policy temperature <input data-key="policy_temperature" type="number" min="0.5" max="3" step="0.1" value="1"></label>
-          <label class="check"><input data-key="root_noise" type="checkbox"> Root noise (random variety in the search)</label>
-          <label class="check"><input data-key="finisher" type="checkbox" checked> Forced-capture solver (Black's exact endgame finder)</label>
-        </fieldset>
-      </div>
-      <p class="hint">Temperature 0 everywhere and no root noise makes both engines play their best move every time, so the
-        same game repeats. Exploration widens the search; a lower first-play urgency reduction makes it try untested moves
-        sooner; a higher policy temperature trusts the network's move suggestions less. The engines' defaults are the
-        values shown. <button id="reset-advanced" type="button" class="linkish">Reset to defaults</button></p>
     </details>
     <div class="buttons">
       <button id="start" type="button" class="primary">Start match</button>
@@ -93,9 +98,12 @@
 
   <section class="play">
     <div class="board-col">
-      <div class="evalbar" title="Engine estimate of White's winning chances">
-        <div id="eval-fill" class="evalbar-fill"></div>
-        <span id="eval-text" class="evalbar-text">White —</span>
+      <div class="evals" aria-live="polite">
+        <div class="eval-row"><span class="who"><span class="dot w"></span><span id="eval-white-name">White engine</span></span>
+          <div class="evalbar"><div id="eval-white-fill" class="evalbar-fill"></div></div><span id="eval-white-text" class="pct">—</span></div>
+        <div class="eval-row"><span class="who"><span class="dot b"></span><span id="eval-black-name">Black engine</span></span>
+          <div class="evalbar"><div id="eval-black-fill" class="evalbar-fill"></div></div><span id="eval-black-text" class="pct">—</span></div>
+        <div class="eval-caption">Each engine's own estimate of White's winning chances in the position on the board.</div>
       </div>
       <div class="board-wrap">
         <div id="board" role="grid" aria-label="Board"></div>
@@ -115,7 +123,9 @@
       <div id="series-score" class="series-score" hidden></div>
       <div id="matchup" class="matchup"></div>
       <svg id="eval-graph" class="eval-graph" viewBox="0 0 100 40" preserveAspectRatio="none" role="img"
-           aria-label="Evaluation over the game; click to jump"></svg>
+           aria-label="Both engines' evaluations over the game; click to jump"></svg>
+      <div class="graph-legend"><span class="key kw"></span>White engine <span class="key kb"></span>Black engine
+        <span class="muted">(above the line favours White)</span></div>
       <ol id="moves" class="moves"></ol>
       <div class="actions">
         <button id="copy" type="button" disabled>Copy moves</button>
@@ -124,8 +134,8 @@
     </aside>
   </section>
 
-  <footer>Engine-vs-engine games run on the host's GPU one move at a time and are not saved. The evaluation is each
-    engine's own search estimate after its move, shown from White's side.</footer>
+  <footer>Engine-vs-engine games run on the host's GPU one move at a time and are not saved. Evaluations are each
+    engine's own search estimate, shown as White's winning chances.</footer>
 </main>
 <script src="/watch.js"></script>
 </body>

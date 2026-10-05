@@ -10,12 +10,13 @@ const SETTINGS = "monster-chess-watch-v2";
 const DEPTHS = [16, 50, 200, 800, 1600, 3200, 6400, 12800];
 // The engine's own defaults (src/config.py); only values that differ are sent.
 const SEARCH_DEFAULTS = { c_puct: 1.5, fpu_reduction: 0.3, policy_temperature: 1, root_noise: false, finisher: true };
-const MATCH_DEFAULTS = { temperature: "0.5", "temp-plies": "16", "late-temperature": "0", opening: "", swap: true };
+const MATCH_DEFAULTS = { temperature: "0.5", "temp-plies": "16", "late-temperature": "0", opening: "", swap: true, "both-eval": true };
 const NEXT_GAME_DELAY = 3000;
 const $ = (id) => document.getElementById(id);
 
 let engines = [];
-let match = null;        // one game: { white, black, whiteSims, blackSims, search: {white, black}, ..., moves, evals }
+let match = null;        // one game: { white, black, whiteSims, blackSims, search: {white, black}, ..., moves, pos }
+                         // pos[p] = { white, black }: each engine's value (White's view, -1..1) of the position after p half-moves
 let series = null;       // { total, swap, index, a, b, score: {a, b}, draws }
 let state = null;        // latest /api/state payload of the live game
 let running = false, paused = false, busy = false, flipped = false;
@@ -121,8 +122,10 @@ function renderMoves() {
       const span = document.createElement("span");
       span.className = "mv" + (j === i + 2 ? " black" : "") + (j + 1 === current ? " current" : "");
       span.textContent = match.moves[j];
-      const v = match.evals[j];
-      if (v !== null && v !== undefined) span.title = `White ${Math.round((v + 1) * 50)}% after this move`;
+      const after = match.pos[j + 1] || {};
+      const opinions = ["white", "black"].filter((side) => known(after[side]))
+        .map((side) => `${engineName(side)}: White ${pct(after[side])}%`);
+      if (opinions.length) span.title = "After this move\n" + opinions.join("\n");
       span.addEventListener("click", () => setView(j + 1));
       li.appendChild(span);
     }
@@ -132,35 +135,48 @@ function renderMoves() {
   if (cur) cur.scrollIntoView({ block: "nearest" });
 }
 
-// Latest engine estimate at or before the viewed ply (White's perspective, -1..1).
-function evalAt(ply) {
-  if (!match) return null;
-  for (let i = Math.min(ply, match.evals.length) - 1; i >= 0; i--) {
-    if (match.evals[i] !== null && match.evals[i] !== undefined) return match.evals[i];
+const known = (v) => v !== null && v !== undefined;
+const pct = (v) => Math.round((v + 1) * 50);
+const engineName = (side) => (match ? `${shortLabel(match[side])} (${side === "white" ? "White" : "Black"})` : side);
+
+// One engine's latest value at or before position `ply`, and the position it came from.
+function evalAt(side, ply) {
+  for (let p = Math.min(ply, match.pos.length - 1); p >= 0; p--) {
+    const v = match.pos[p] && match.pos[p][side];
+    if (known(v)) return { v, p };
   }
   return null;
 }
 
 function renderEval() {
   const ply = viewPly();
-  const st = state && state.status;
-  let v = evalAt(ply);
-  if (st && st.over && view === null) v = st.result === "white" ? 1 : st.result === "black" ? -1 : 0;
-  const pct = v === null ? 50 : Math.round((v + 1) * 50);
-  $("eval-fill").style.width = `${pct}%`;
-  $("eval-text").textContent = v === null ? "White —" : `White ${pct}%`;
-  // Evaluation graph: carry each estimate forward over the moves that have none.
+  for (const side of ["white", "black"]) {
+    const e = match ? evalAt(side, ply) : null;
+    $(`eval-${side}-name`).textContent = match ? engineName(side) : `${side === "white" ? "White" : "Black"} engine`;
+    $(`eval-${side}-fill`).style.width = `${e ? pct(e.v) : 50}%`;
+    const text = $(`eval-${side}-text`);
+    text.textContent = e ? `White ${pct(e.v)}%` : "—";
+    // An estimate carried from an earlier position (this one is not searched yet) is dimmed.
+    const stale = !!e && e.p !== ply;
+    text.classList.toggle("stale", stale);
+    text.title = !e ? "No estimate yet" : stale ? `From the position after half-move ${e.p}` : "This position";
+  }
+  // Graph over positions 0..n, one line per engine, carried forward over positions it did not search.
   const svg = $("eval-graph");
   if (!match || !match.moves.length) { svg.innerHTML = ""; return; }
-  const n = match.moves.length, pts = [];
-  let carry = 0;
-  for (let i = 0; i < n; i++) {
-    if (match.evals[i] !== null && match.evals[i] !== undefined) carry = match.evals[i];
-    pts.push(`${((i + 1) / n * 100).toFixed(2)},${(20 - carry * 18).toFixed(2)}`);
-  }
+  const n = match.moves.length;
+  const line = (side) => {
+    const pts = [];
+    let carry = null;
+    for (let p = 0; p <= n; p++) {
+      const v = match.pos[p] && match.pos[p][side];
+      if (known(v)) carry = v;
+      if (carry !== null) pts.push(`${(p / n * 100).toFixed(2)},${(20 - carry * 18).toFixed(2)}`);
+    }
+    return pts.length ? `<polyline points="${pts.join(" ")}" class="curve ${side}"/>` : "";
+  };
   const x = (ply / n * 100).toFixed(2);
-  svg.innerHTML = `<line x1="0" y1="20" x2="100" y2="20" class="mid"/>
-    <polyline points="0,20 ${pts.join(" ")}" class="curve"/>
+  svg.innerHTML = `<line x1="0" y1="20" x2="100" y2="20" class="mid"/>${line("black")}${line("white")}
     <line x1="${x}" y1="0" x2="${x}" y2="40" class="cursor"/>`;
 }
 
@@ -253,6 +269,7 @@ async function step() {
   busy = true;
   renderStatus();
   const side = state.turn;
+  let start;
   try {
     const res = await api("/api/engine-move", {
       moves: match.moves, watch: true, engine: side === "white" ? match.white : match.black,
@@ -260,9 +277,10 @@ async function step() {
       temperature: match.temperature, temp_plies: match.tempPlies, late_temperature: match.lateTemperature,
       ...match.search[side],
     });
+    start = match.moves.length;
     match.moves = match.moves.concat(res.engine_moves);
-    match.evals = match.evals.concat((res.evals || []).map((e) => (e.value === undefined ? null : e.value)));
-    while (match.evals.length < match.moves.length) match.evals.push(null);
+    // Each searched move reports the mover's value of the position it was played from.
+    (res.evals || []).forEach((e, i) => { setPos(start + i, side, e.value); });
     state = res.state;
     fenCache.set(match.moves.length, state.fen);
   } catch (err) {
@@ -276,10 +294,38 @@ async function step() {
     stopMatch();
     return;
   }
-  busy = false;
   if (view === null) drawBoard(state.fen); else { renderMoves(); renderEval(); }
+  if ($("both-eval").checked) {
+    const game = match;
+    await askOther(side, start);
+    if (game !== match) return;  // a new game started meanwhile
+    if (view === null) drawBoard(state.fen); else { renderMoves(); renderEval(); }
+  }
+  busy = false;
+  if (!running) return;
   if (state.status.over) { finishGame(); return; }
   schedule(Number($("pace").value));
+}
+
+function setPos(ply, side, value, game = match) {
+  while (game.pos.length <= ply) game.pos.push({});
+  if (known(value)) game.pos[ply][side] = value;
+}
+
+// The engine that did not move searches the same positions with its own depth and settings.
+// Its opinion is informational: a failure (rate limit, busy engine) skips it and play goes on.
+async function askOther(mover, start) {
+  const other = mover === "white" ? "black" : "white";
+  const game = match;
+  const plies = [];
+  for (let p = start; p < game.moves.length; p++) plies.push(p);
+  if (!plies.length) return;
+  const { finisher, ...search } = game.search[other];
+  try {
+    const res = await api("/api/evaluate", { moves: game.moves, engine: game[other], plies,
+      sims: other === "white" ? game.whiteSims : game.blackSims, ...search });
+    for (const e of res.evals) setPos(e.ply, other, e.value, game);
+  } catch (_) { /* skipped */ }
 }
 
 function finishGame() {
@@ -302,9 +348,8 @@ function finishGame() {
 }
 
 function readSearch(side) {
-  const box = document.querySelector(`fieldset.search[data-side="${side}"]`);
   const out = {};
-  for (const input of box.querySelectorAll("[data-key]")) {
+  for (const input of document.querySelectorAll(`.adv-table [data-side="${side}"][data-key]`)) {
     const key = input.dataset.key;
     const value = input.type === "checkbox" ? input.checked : Number(input.value);
     if (typeof value === "number" && !Number.isFinite(value)) throw new Error(`${side}'s ${key} is not a number.`);
@@ -356,7 +401,7 @@ async function startMatch(newSeries) {
   match = { white: W.id, black: Bk.id, whiteSims: W.sims, blackSims: Bk.sims, aWhite,
             search: { white: W.search, black: Bk.search },
             temperature: s.temperature, tempPlies: s.tempPlies, lateTemperature: s.lateTemperature,
-            moves: s.opening.slice(), evals: s.opening.map(() => null) };
+            moves: s.opening.slice(), pos: [] };
   fenCache.clear(); fenCache.set(0, START_FEN); fenCache.set(match.moves.length, state.fen);
   running = true; paused = false; busy = false; view = null;
   $("pause").disabled = false; $("pause").textContent = "Pause"; $("stop").disabled = false;
@@ -409,15 +454,13 @@ async function copyMoves() {
 // --- settings and setup ----------------------------------------------------------
 
 const SIMPLE_IDS = ["white-engine", "white-sims", "black-engine", "black-sims", "pace", "series", "temperature",
-                    "temp-plies", "late-temperature", "opening", "swap"];
+                    "temp-plies", "late-temperature", "opening", "swap", "both-eval"];
 
 function saveSettings() {
   const out = {};
   for (const id of SIMPLE_IDS) out[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value;
-  for (const box of document.querySelectorAll("fieldset.search")) {
-    for (const input of box.querySelectorAll("[data-key]")) {
-      out[`${box.dataset.side}:${input.dataset.key}`] = input.type === "checkbox" ? input.checked : input.value;
-    }
+  for (const input of document.querySelectorAll(".adv-table [data-key]")) {
+    out[`${input.dataset.side}:${input.dataset.key}`] = input.type === "checkbox" ? input.checked : input.value;
   }
   try { localStorage.setItem(SETTINGS, JSON.stringify(out)); } catch (_) { /* storage may be unavailable */ }
 }
@@ -430,7 +473,7 @@ function loadSettings() {
     let el;
     if (key.includes(":")) {
       const [side, k] = key.split(":");
-      el = document.querySelector(`fieldset.search[data-side="${side}"] [data-key="${k}"]`);
+      el = document.querySelector(`.adv-table [data-side="${side}"][data-key="${k}"]`);
     } else {
       el = $(key);
     }
@@ -445,7 +488,7 @@ function resetAdvanced() {
   for (const [id, v] of Object.entries(MATCH_DEFAULTS)) {
     if ($(id).type === "checkbox") $(id).checked = v; else $(id).value = v;
   }
-  for (const input of document.querySelectorAll("fieldset.search [data-key]")) {
+  for (const input of document.querySelectorAll(".adv-table [data-key]")) {
     const v = SEARCH_DEFAULTS[input.dataset.key];
     if (input.type === "checkbox") input.checked = v; else input.value = v;
   }

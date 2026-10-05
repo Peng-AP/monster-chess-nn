@@ -11,6 +11,7 @@ Endpoints:
   GET  /api/engines           engines a player may choose
   POST /api/state             {moves}                     -> position, legal half-moves, status
   POST /api/engine-move       {moves, engine, game_id}    -> the engine's whole turn, then state
+  POST /api/evaluate         {moves, engine, plies}      -> that engine's value of each listed position (Watch tab)
   POST /api/record            {moves, engine, game_id, human_color, reason?} -> store an unfinished game
 
 Finished games are stored once per game_id under data/raw/web_games/<date>/
@@ -49,6 +50,7 @@ ENGINE_MOVES_PER_MINUTE = 60  # per client
 MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
 # Engine-vs-engine (Watch tab) overrides. Depth is a fixed menu so one visitor
 # cannot ask for an arbitrarily long search on the shared GPU.
+MAX_EVAL_POSITIONS = 3  # a White turn is two searched positions
 WATCH_SIMS = (16, 50, 200, 800, 1600, 3200, 6400, 12800)
 MAX_TEMPERATURE = 2.0
 MAX_TEMP_PLIES = 80
@@ -203,6 +205,39 @@ class EnginePool:
                 if side is False:
                     break  # Black moves once
         return played
+
+    def evaluate(self, name, moves, plies, sims=None, c_puct=None, fpu_reduction=None,
+                 policy_temperature=None, root_noise=None, **_ignored):
+        """Search positions without moving: the value for White of moves[:p] for each p in plies.
+
+        Used by the Watch tab so the engine that is NOT to move gives its own opinion
+        of the positions its opponent just searched. Temperature and the solver do not
+        apply; a finished position gets value None.
+        """
+        from native_mcts import NativeMCTS
+        name = ALIASES.get(name, name)
+        spec = self.models.get(name)
+        if spec is None:
+            raise BadRequest(f"unknown engine {name!r}")
+        positions = []
+        for ply in plies:
+            game, repeated = replay(moves[:ply])
+            positions.append((ply, game, status(game, repeated)["over"]))
+        out = []
+        with self._slot():
+            constants = {k: v for k, v in (("c_puct", c_puct), ("fpu_reduction", fpu_reduction),
+                                           ("policy_temperature", policy_temperature)) if v is not None}
+            for ply, game, over in positions:
+                if over:
+                    out.append(dict(ply=ply, value=None, best=None))
+                    continue
+                engine = NativeMCTS(num_simulations=sims or spec["sims"], eval_fn=spec["evaluator"],
+                                    root_noise=bool(root_noise), allow_early_stop=True, **constants)
+                move, _probs, value = engine.get_best_action(game, temperature=0.0)
+                out.append(dict(ply=ply, value=None if value is None
+                                else round(float(value) * (1 if game.is_white_turn else -1), 4),
+                                best=move.uci() if move is not None else None))
+        return out
 
     def _slot(self):
         pool = self
@@ -391,6 +426,16 @@ class Handler(BaseHTTPRequestHandler):
                 if evals is not None:
                     reply["evals"] = evals
                 return self.send_json(200, reply)
+            if self.path == "/api/evaluate":
+                if not allowed(self.client()):
+                    return self.send_json(429, dict(error="too many requests; slow down a little"))
+                name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
+                replay(moves)  # the whole game must be legal, not just the prefixes
+                plies = data.get("plies")
+                if not (isinstance(plies, list) and 0 < len(plies) <= MAX_EVAL_POSITIONS
+                        and all(type(p) is int and 0 <= p <= len(moves) for p in plies)):
+                    raise BadRequest(f"plies must list 1 to {MAX_EVAL_POSITIONS} positions of this game")
+                return self.send_json(200, dict(evals=self.pool.evaluate(name, moves, plies, **search_options(data))))
             if self.path == "/api/record":
                 name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
                 spec = self.pool.models.get(name)
