@@ -1,0 +1,172 @@
+{
+  "match": "bootstrap_main_gen_0053 vs bootstrap_main_gen_0052_ramp",
+  "name_a": "bootstrap_main_gen_0053",
+  "name_b": "bootstrap_main_gen_0052_ramp",
+  "games": 100,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 4007000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1
+  },
+  "opening_temp_plies": 16,
+  "book": null,
+  "paired": null,
+  "opening_diversity": {
+    "games_observed": 100,
+    "unique_states": 32,
+    "unique_fraction": 0.32,
+    "unique_as_white": 18,
+    "unique_as_black": 22,
+    "effective_unique_games": 40,
+    "effective_unique_fraction": 0.4,
+    "duplicate_games": 68,
+    "max_multiplicity": 24,
+    "multiplicity_histogram": {
+      "24": 1,
+      "2": 6,
+      "4": 2,
+      "3": 4,
+      "5": 1,
+      "1": 15,
+      "9": 2,
+      "6": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "fda70b8d8c771498d4db66d3a443a4d38935eb3cd584a0d0692fc15ac6ac0fab",
+    "top_duplicates": [
+      {
+        "count": 24,
+        "fen": "rnbqkb1r/ppp2npp/4P3/8/8/4K3/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 9,
+        "fen": "rnb1kbnr/pppq1ppp/8/3PP3/8/5K2/8/8 w kq - 2 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 9,
+        "fen": "rnbqk2r/ppp2ppp/4p2n/2bPP3/2PK4/8/8/8 w kq - 5 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 6,
+        "fen": "rnb1kbnr/pppq1ppp/8/3PP3/4K3/8/8/8 w kq - 2 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 5,
+        "fen": "r2qkb1r/pbppp1pp/5n2/2P1pP2/8/8/3K4/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqk1nr/ppp2ppp/n3p3/2KPP3/2P5/8/8/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/ppp3pp/2n1p3/3PP3/2p1K3/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "r1bqkb1r/ppp3pp/2n4n/3p4/3PPP2/3K4/2P5/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "r2qkb1r/pbppp1pp/5n2/2P1pP2/8/8/5K2/8 w kq - 1 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "rnb1kbnr/ppp1q1pp/4P3/4PK2/2p5/8/5P2/8 w kq - 0 6",
+        "half": true,
+        "turn_count": 10
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.645,
+  "a_as_white": {
+    "games": 50,
+    "wins": 6,
+    "losses": 8,
+    "draws": 36,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.48,
+    "mean_plies": 58.64,
+    "mean_plies_when_won": 62.0,
+    "mean_plies_when_lost": 86.25
+  },
+  "a_as_black": {
+    "games": 50,
+    "wins": 33,
+    "losses": 2,
+    "draws": 15,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.81,
+    "mean_plies": 78.86,
+    "mean_plies_when_won": 88.91,
+    "mean_plies_when_lost": 35.0
+  },
+  "elapsed_sec": 518.5,
+  "timestamp": "2026-10-05T08:34:48",
+  "_artifact_path": null,
+  "pair": [
+    "gen53",
+    "gen52R"
+  ],
+  "index": 7,
+  "summary": {
+    "a": "gen53",
+    "b": "gen52R",
+    "games": 100,
+    "wins": 39,
+    "draws": 51,
+    "losses": 10,
+    "a_white": {
+      "games": 50,
+      "wins": 6,
+      "draws": 36,
+      "losses": 8
+    },
+    "a_black": {
+      "games": 50,
+      "wins": 33,
+      "draws": 15,
+      "losses": 2
+    },
+    "mean_plies": 68.8
+  }
+}
