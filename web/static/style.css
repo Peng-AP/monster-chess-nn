@@ -121,3 +121,34 @@ footer { margin-top: 22px; color: var(--muted); font-size: .85rem; }
 .result .primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+
+/* Section tabs (Play / Watch engines). */
+.tabs { display: flex; gap: 6px; margin: 8px 0 2px; }
+.tab { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); color: var(--fg);
+  text-decoration: none; font-size: .9rem; background: var(--panel); }
+.tab:hover { filter: brightness(1.05); }
+.tab.active { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
+
+/* Watch tab controls. */
+button.primary, .button-link.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
+.watch-controls { align-items: stretch; }
+.watch-controls fieldset.side { display: flex; gap: 8px; flex: 1 1 300px; min-width: 0; margin: 0; padding: 8px 10px 10px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.watch-controls fieldset.side legend { padding: 0 6px; font-weight: 600; font-size: .85rem; color: var(--muted); }
+.watch-controls fieldset.side label { flex: 1 1 0; }
+.watch-controls .speed { flex: 0 1 200px; }
+.watch-controls .buttons { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.advanced { flex: 1 1 100%; border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
+.advanced summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+.advanced-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.advanced-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); }
+.advanced-grid .wide { grid-column: 1 / -1; }
+.advanced-grid .hint { text-align: left; margin: 0; }
+input[type="number"], input[type="text"] { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--fg); max-width: 100%; min-width: 0; }
+.matchup { margin: 10px 0 0; font-size: .85rem; line-height: 1.6; }
+.matchup .muted { color: var(--muted); }
+.dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: 6px; border: 1px solid #555; vertical-align: -1px; }
+.dot.w { background: #fff; } .dot.b { background: #161616; }
+.button-link { display: inline-block; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--fg); text-decoration: none; }

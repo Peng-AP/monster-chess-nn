@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<script>try { if (localStorage.getItem("monster-chess-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (_) {}</script>
+<title>Monster Chess · Watch</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Monster <span>Chess</span></h1>
+      <nav class="tabs" aria-label="Sections"><a class="tab" href="/">Play</a><a class="tab active" href="/watch" aria-current="page">Watch engines</a></nav>
+      <p class="rules">Pick two engines and watch them play. White has a king and four pawns and moves
+        <strong>twice</strong> per turn; Black has the full army. Capturing the king wins.</p>
+    </div>
+    <button id="theme" type="button" aria-label="Switch colour theme" title="Switch colour theme">&#9790;</button>
+  </header>
+
+  <section class="controls watch-controls" aria-label="Match settings">
+    <fieldset class="side">
+      <legend>White</legend>
+      <label>Engine <select id="white-engine"></select></label>
+      <label>Depth <select id="white-sims"></select></label>
+    </fieldset>
+    <fieldset class="side">
+      <legend>Black</legend>
+      <label>Engine <select id="black-engine"></select></label>
+      <label>Depth <select id="black-sims"></select></label>
+    </fieldset>
+    <label class="speed">Pace
+      <select id="pace">
+        <option value="0">As fast as possible</option>
+        <option value="500">Quick (0.5 s)</option>
+        <option value="1200" selected>Normal (1.2 s)</option>
+        <option value="2500">Slow (2.5 s)</option>
+      </select>
+    </label>
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <div class="advanced-grid">
+        <label>Opening randomness (temperature)
+          <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.5"></label>
+        <label>Randomised half-moves from the start
+          <input id="temp-plies" type="number" min="0" max="80" step="1" value="16"></label>
+        <label class="wide">Start from these moves (UCI, space or comma separated)
+          <input id="opening" type="text" placeholder="e.g. e2e4 d2d4 d7d5" autocomplete="off" spellcheck="false"></label>
+        <p class="hint wide">Temperature 0 makes both engines play their best move every time (the same game repeats);
+          higher values vary the opening. Randomised half-moves count from the very first move, including any you enter.</p>
+      </div>
+    </details>
+    <div class="buttons">
+      <button id="start" type="button" class="primary">Start match</button>
+      <button id="pause" type="button" disabled>Pause</button>
+      <button id="stop" type="button" disabled>Stop</button>
+    </div>
+  </section>
+
+  <section class="play">
+    <div class="board-col">
+      <div class="board-wrap">
+        <div id="board" role="grid" aria-label="Board"></div>
+        <div id="result" class="result" hidden role="dialog" aria-live="assertive"></div>
+      </div>
+      <div class="nav" aria-label="Move navigation">
+        <button id="first" type="button" title="Start (Home)" aria-label="Go to start">&#9198;</button>
+        <button id="prev" type="button" title="Back (&#8592;)" aria-label="Previous move">&#9664;</button>
+        <button id="next" type="button" title="Forward (&#8594;)" aria-label="Next move">&#9654;</button>
+        <button id="last" type="button" title="Current position (End)" aria-label="Go to current position">&#9197;</button>
+      </div>
+      <p class="hint">&#8592; &#8594; step through the game while it plays. The board follows the live game until you step back.</p>
+    </div>
+    <aside>
+      <div id="status" class="status" aria-live="polite">Choose two engines and press Start match.</div>
+      <div id="matchup" class="matchup"></div>
+      <ol id="moves" class="moves"></ol>
+      <div class="actions">
+        <button id="copy" type="button" disabled>Copy moves</button>
+        <a id="take-over" class="button-link" href="/" hidden>Play on from here</a>
+      </div>
+    </aside>
+  </section>
+
+  <footer>Engine-vs-engine games run on the host's GPU one move at a time and are not saved.</footer>
+</main>
+<script src="/watch.js"></script>
+</body>
+</html>

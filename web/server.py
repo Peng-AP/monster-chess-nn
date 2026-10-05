@@ -34,7 +34,10 @@ sys.path[:0] = [str(ROOT / "src"), str(ROOT / "tools")]
 STATIC = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {"/": ("index.html", "text/html; charset=utf-8"),
                 "/index.html": ("index.html", "text/html; charset=utf-8"),
+                "/watch": ("watch.html", "text/html; charset=utf-8"),
+                "/watch.html": ("watch.html", "text/html; charset=utf-8"),
                 "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/watch.js": ("watch.js", "text/javascript; charset=utf-8"),
                 "/style.css": ("style.css", "text/css; charset=utf-8")}
 GAMES = ROOT / "data/raw/web_games"
 MOVE_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
@@ -44,6 +47,11 @@ OPENING_TEMP_PLIES = 16     # the gate's sampler: some variety early, then best 
 OPENING_TEMPERATURE = 0.5
 ENGINE_MOVES_PER_MINUTE = 60  # per client
 MAX_WAITING = 8               # searches queued behind the GPU lock before "busy"
+# Engine-vs-engine (Watch tab) overrides. Depth is a fixed menu so one visitor
+# cannot ask for an arbitrarily long search on the shared GPU.
+WATCH_SIMS = (16, 50, 200, 800, 1600, 3200, 6400, 12800)
+MAX_TEMPERATURE = 2.0
+MAX_TEMP_PLIES = 80
 
 V29, V28 = "models/bootstrap_v29/best_value_net.pt", "models/bootstrap_v28/best_value_net.pt"
 GEN53 = "models/candidates/bootstrap_main_gen_0053/arena_selected.pt"
@@ -148,8 +156,12 @@ class EnginePool:
             self.models[name] = dict(spec, evaluator=evaluator, sha256=sha)
             print(f"loaded {name}: {spec['path']} at {spec['sims']} sims", flush=True)
 
-    def search(self, name, moves):
-        """Play the engine's whole turn (both halves when it is White)."""
+    def search(self, name, moves, sims=None, temperature=None, temp_plies=None):
+        """Play the engine's whole turn (both halves when it is White).
+
+        sims / temperature / temp_plies override the level's depth and the
+        opening sampler (the Watch tab); omitted, play is unchanged.
+        """
         from benchmark import _FinisherEngine
         from native_mcts import NativeMCTS
         name = ALIASES.get(name, name)
@@ -160,14 +172,15 @@ class EnginePool:
         if status(game, repeated)["over"]:
             raise BadRequest("the game is already over")
         with self._slot():
-            engine = _FinisherEngine(NativeMCTS(num_simulations=spec["sims"], eval_fn=spec["evaluator"],
+            engine = _FinisherEngine(NativeMCTS(num_simulations=sims or spec["sims"], eval_fn=spec["evaluator"],
                                                 root_noise=False, allow_early_stop=True,
                                                 reuse_across_moves=True))
             played, side = [], game.is_white_turn
             while game.is_white_turn == side and not game.is_terminal():
                 ply = len(moves) + len(played)
-                temperature = OPENING_TEMPERATURE if ply < OPENING_TEMP_PLIES else 0.0
-                move = engine.get_best_action(game, temperature=temperature)[0]
+                limit = OPENING_TEMP_PLIES if temp_plies is None else temp_plies
+                warm = OPENING_TEMPERATURE if temperature is None else temperature
+                move = engine.get_best_action(game, temperature=warm if ply < limit else 0.0)[0]
                 if move is None:
                     raise RuntimeError("engine returned no move in a live position")
                 game.apply_search_action(move)
@@ -234,10 +247,30 @@ def asset_version(name):
     return hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:10]
 
 
+def search_options(data):
+    """Validated Watch-tab overrides from a request body; {} when none are given."""
+    options = {}
+    if data.get("sims") is not None:
+        if data["sims"] not in WATCH_SIMS:
+            raise BadRequest(f"sims must be one of {list(WATCH_SIMS)}")
+        options["sims"] = int(data["sims"])
+    if data.get("temperature") is not None:
+        t = data["temperature"]
+        if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0 <= t <= MAX_TEMPERATURE:
+            raise BadRequest(f"temperature must be between 0 and {MAX_TEMPERATURE}")
+        options["temperature"] = float(t)
+    if data.get("temp_plies") is not None:
+        n = data["temp_plies"]
+        if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= MAX_TEMP_PLIES:
+            raise BadRequest(f"temp_plies must be an integer between 0 and {MAX_TEMP_PLIES}")
+        options["temp_plies"] = n
+    return options
+
+
 def versioned_page(html):
-    """Point the page at /style.css?v=<hash> and /app.js?v=<hash>."""
+    """Point the page at content-hashed /style.css, /app.js and /watch.js URLs."""
     text = html.decode("utf-8")
-    for name in ("style.css", "app.js"):
+    for name in ("style.css", "app.js", "watch.js"):
         text = text.replace(f'"/{name}"', f'"/{name}?v={asset_version(name)}"')
     return text.encode("utf-8")
 
@@ -290,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(404, dict(error="not found"))
         name, ctype = STATIC_FILES[path]
         body = (STATIC / name).read_bytes()
-        page = name == "index.html"
+        page = name.endswith(".html")
         if page:
             body = versioned_page(body)
         self.send_response(200)
@@ -317,9 +350,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not allowed(self.client()):
                     return self.send_json(429, dict(error="too many requests; slow down a little"))
                 name = ALIASES.get(data.get("engine", DEFAULT_ENGINE), data.get("engine", DEFAULT_ENGINE))
-                played = self.pool.search(name, moves)
+                played = self.pool.search(name, moves, **search_options(data))
                 state = state_payload(moves + played)
-                if state["status"]["over"]:
+                # Engine-vs-engine games (Watch tab) are not human games and are not recorded.
+                if state["status"]["over"] and not data.get("watch"):
                     spec = self.pool.models[name]
                     record_game(data.get("game_id"), moves + played, name, data.get("human_color"),
                                 state["status"], spec["sha256"], spec["sims"])

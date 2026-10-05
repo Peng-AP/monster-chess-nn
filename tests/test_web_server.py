@@ -72,7 +72,10 @@ class FakePool:
     """Plays the first legal half-move(s) for its side; no GPU."""
     models = {"v29": dict(sha256="x", sims=8)}
 
-    def search(self, name, moves):
+    calls = []
+
+    def search(self, name, moves, **options):
+        FakePool.calls.append(options)
         name = web.ALIASES.get(name, name)
         if name not in self.models:
             raise web.BadRequest("unknown engine")
@@ -135,3 +138,37 @@ def test_page_references_content_hashed_assets_and_is_not_cached(http_server):
     conn.request("GET", f'/app.js?v={web.asset_version("app.js")}')
     res = conn.getresponse(); res.read()
     assert res.status == 200 and "immutable" in res.getheader("Cache-Control")
+
+
+def test_search_options_are_validated():
+    assert web.search_options({}) == {}
+    assert web.search_options(dict(sims=800, temperature=0, temp_plies=0)) == dict(sims=800, temperature=0.0, temp_plies=0)
+    for bad in (dict(sims=999), dict(sims=10 ** 9), dict(temperature=-0.1), dict(temperature=5),
+                dict(temperature=True), dict(temp_plies=1.5), dict(temp_plies=81), dict(temp_plies=-1)):
+        with pytest.raises(web.BadRequest):
+            web.search_options(bad)
+
+
+def test_watch_page_options_reach_the_engine_and_watch_games_are_not_recorded(http_server, tmp_path):
+    status, body = request(http_server, "GET", "/watch")
+    assert status == 200 and b"Watch engines" in body and f'/watch.js?v={web.asset_version("watch.js")}'.encode() in body
+    FakePool.calls.clear()
+    status, _ = request(http_server, "POST", "/api/engine-move",
+                        dict(moves=[], engine="v29", watch=True, sims=200, temperature=1.0, temp_plies=4))
+    assert status == 200 and FakePool.calls[-1] == dict(sims=200, temperature=1.0, temp_plies=4)
+    assert request(http_server, "POST", "/api/engine-move", dict(moves=[], engine="v29", sims=7))[0] == 400
+    # The engine's move completes a repetition. A watch game is not written; a played game is.
+    cycle = ["e1d1", "d1e1", "g8f6", "e1d1", "d1e1", "f6g8"]
+    moves = (cycle * 2)[:-1]
+
+    class Repeats(FakePool):
+        def search(self, name, moves, **options):
+            return ["f6g8"]
+
+    web.Handler.pool = Repeats()
+    status, body = request(http_server, "POST", "/api/engine-move",
+                           dict(moves=moves, engine="v29", watch=True, game_id="ab" * 16, human_color="white"))
+    assert status == 200 and json.loads(body)["state"]["status"]["over"] and not list(tmp_path.rglob("*.json"))
+    status, _ = request(http_server, "POST", "/api/engine-move",
+                        dict(moves=moves, engine="v29", game_id="cd" * 16, human_color="white"))
+    assert status == 200 and len(list(tmp_path.rglob("*.json"))) == 1
