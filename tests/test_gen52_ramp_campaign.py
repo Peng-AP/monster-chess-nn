@@ -1,4 +1,5 @@
 """Arm R contracts (CPU only): only the deep-value labels change; new directories; non-colliding seeds."""
+import pytest
 from pathlib import Path
 import sys
 
@@ -12,6 +13,7 @@ import gen52_ramp_campaign as R
 import gen53_campaign as g53
 
 
+@pytest.mark.local_artifacts
 def test_compose_swaps_only_the_deep_value_sources_and_output():
     for smoke in (False, True):
         original = R.read(R.gen52_root(smoke) / "receipts/compose_b.json")["command"]
@@ -27,6 +29,7 @@ def test_compose_swaps_only_the_deep_value_sources_and_output():
     assert [n for n, _ in R.deep_sources(False)] == ["gen_0051_deepvalue", "gen_0052_deepvalue"]
 
 
+@pytest.mark.local_artifacts
 def test_train_command_changes_only_directories():
     for smoke in (False, True):
         original = R.read(R.gen52_root(smoke) / "receipts/train_b.json")["command"]

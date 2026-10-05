@@ -1,4 +1,5 @@
 """Arm L contracts (CPU only): the one declared change, matched seeds, fixed verdict rule."""
+import pytest
 from pathlib import Path
 import sys
 
@@ -11,6 +12,7 @@ import gen52_poolcap_campaign as c
 import gen53_campaign as g53
 
 
+@pytest.mark.local_artifacts
 def test_train_command_changes_only_model_dir_and_tower():
     for smoke in (False, True):
         receipt = L.read(L.gen52_root(smoke) / "receipts/train_b.json")["command"]

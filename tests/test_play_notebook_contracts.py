@@ -1,3 +1,4 @@
+import pytest
 import json
 import re
 import unittest
@@ -32,11 +33,13 @@ class PlayNotebookContracts(unittest.TestCase):
         ):
             self.assertIn(f'importlib.reload({alias})', self.setup)
 
+    @pytest.mark.local_artifacts
     def test_setup_uses_refreshable_model_catalog(self):
         self.assertIn('importlib.reload(model_catalog)', self.setup)
         self.assertIn('model_catalog.discover_model_choices(PROJECT_ROOT, MODEL_DIR)', self.setup)
         self.assertIn('_refresh_button.on_click(_refresh_models)', self.setup)
 
+    @pytest.mark.local_artifacts
     def test_refresh_preserves_loaded_selection_without_reloading_engine(self):
         import ast
         import ipywidgets as widgets
@@ -59,6 +62,7 @@ class PlayNotebookContracts(unittest.TestCase):
         self.assertIsNone(dropdown.value)
         self.assertEqual(loads, [None])
 
+    @pytest.mark.local_artifacts
     def test_latest_candidate_discovers_new_generations_at_click_time(self):
         import ast
         import ipywidgets as widgets
@@ -125,6 +129,7 @@ class PlayNotebookContracts(unittest.TestCase):
                 os.utime(report, (100 + index, 100 + index))
             self.assertTrue(discover_model_choices(root)[1][1].endswith('epoch_2.pt'))
 
+    @pytest.mark.local_artifacts
     def test_color_selector_is_beside_model_and_drives_standard_game(self):
         self.assertIn('_color_dropdown = widgets.Dropdown(', self.setup)
         self.assertIn(

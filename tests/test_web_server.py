@@ -65,7 +65,13 @@ def test_levels_are_rated_ordered_and_have_one_default():
     assert elos == sorted(elos, reverse=True)
     assert [k for k, v in web.ENGINES.items() if v["default"]] == ["v29"]
     for spec in web.ENGINES.values():
-        assert spec["label"].startswith(str(spec["elo"])) and (ROOT / spec["path"]).exists()
+        assert spec["label"].startswith(str(spec["elo"]))
+
+
+@pytest.mark.local_artifacts
+def test_every_level_has_its_weights():
+    for spec in web.ENGINES.values():
+        assert (ROOT / spec["path"]).exists()
 
 
 class FakePool:

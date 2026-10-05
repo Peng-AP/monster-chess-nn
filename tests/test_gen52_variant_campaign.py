@@ -1,4 +1,5 @@
 """Overnight variant contracts (CPU only): one declared change each, new dirs, non-colliding seeds."""
+import pytest
 from pathlib import Path
 import sys
 
@@ -19,6 +20,7 @@ def changed_flags(original, ours):
     return sorted(original[i - 1] for i, (a, b) in enumerate(zip(original, ours)) if a != b)
 
 
+@pytest.mark.local_artifacts
 def test_lr_changes_only_data_and_model_dirs_from_arm_l():
     for smoke in (False, True):
         parent = V.read(V.root(smoke, L.RUN) / "receipts/train_l.json")["command"]
@@ -27,6 +29,7 @@ def test_lr_changes_only_data_and_model_dirs_from_arm_l():
         assert ours[ours.index("--data-dir") + 1] == str(R.arm_r_paths(smoke)[2]["replay"])
 
 
+@pytest.mark.local_artifacts
 def test_l2_changes_only_seed_and_model_dir_from_arm_l():
     for smoke in (False, True):
         parent = V.read(V.root(smoke, L.RUN) / "receipts/train_l.json")["command"]

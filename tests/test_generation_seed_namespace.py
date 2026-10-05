@@ -11,6 +11,7 @@ def option(command, name):
     return command[command.index(name) + 1]
 
 
+@pytest.mark.local_artifacts
 def test_large_data_namespaces_are_disjoint_and_preserve_training_seed(tmp_path):
     args = iterate.build_parser().parse_args([
         "--seed", "3173", "--data-seed-base", "1000000000",
@@ -30,6 +31,7 @@ def test_large_data_namespaces_are_disjoint_and_preserve_training_seed(tmp_path)
         assert int(option(plan['binding_gate']['commands'][0], '--seed')) < 1000000000
 
 
+@pytest.mark.local_artifacts
 def test_historical_data_seed_remains_unchanged(tmp_path):
     args = iterate.build_parser().parse_args(['--seed', '3173'])
     arch = iterate._checkpoint_spec(iterate.DEFAULT_CHAMPION)

@@ -1,3 +1,4 @@
+import pytest
 import argparse
 import json
 import os
@@ -25,6 +26,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
                         it.PHASES.index("self_skew"))
         self.assertEqual(it.PHASES[-1], "promote")
 
+    @pytest.mark.local_artifacts
     def test_offline_metrics_are_advisory_by_default(self):
         args = it.build_parser().parse_args([])
         architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
@@ -44,6 +46,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         args = it.build_parser().parse_args([])
         self.assertEqual(args.workers, it.DEFAULT_GAME_WORKERS)
 
+    @pytest.mark.local_artifacts
     def test_iteration_defaults_to_successful_scratch_recipe(self):
         args = it.build_parser().parse_args([])
         architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)
@@ -73,6 +76,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         self.assertEqual(
             reanalyze[reanalyze.index("--simulations") + 1], "3200")
 
+    @pytest.mark.local_artifacts
     def test_book_blocks_are_disjoint_across_every_play_phase(self):
         # A synthetic book, not a real one. This test is about the LAYOUT of
         # the phases inside a book, and pinning it to a checked-in file made it
@@ -187,6 +191,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
         resolved = it._resolve_champion(explicit=it.DEFAULT_CHAMPION)
         self.assertEqual(resolved, it.DEFAULT_CHAMPION.resolve())
 
+    @pytest.mark.local_artifacts
     def test_architecture_inference_reads_v20_attention_geometry(self):
         spec = it._checkpoint_spec(it.DEFAULT_CHAMPION)
         self.assertEqual(spec["policy_head"], "attention")
@@ -295,6 +300,7 @@ class BootstrapPipelineContracts(unittest.TestCase):
                 it._validate_generation_summaries(
                     {"outputs": [str(summary)]}, minimum_success_rate=1.0)
 
+    @pytest.mark.local_artifacts
     def test_generation_and_league_seeds_do_not_overlap(self):
         args = it.build_parser().parse_args([])
         architecture = it._checkpoint_spec(it.DEFAULT_CHAMPION)

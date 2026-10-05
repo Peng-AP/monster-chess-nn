@@ -1,4 +1,5 @@
 """Gen54 contracts (CPU only): teacher mix, hole-scan pool, held-out isolation, seeds, one arm."""
+import pytest
 import json
 from pathlib import Path
 import sys
@@ -17,6 +18,7 @@ def recipe(kind, smoke=False):
     return json.loads(g.recipe_path(kind, smoke).read_text())
 
 
+@pytest.mark.local_artifacts
 def test_decision_is_the_owner_mix_with_held_out_isolation():
     d = g.decision()
     assert d["teacher"].endswith("bootstrap_main_gen_0053/arena_selected.pt")
@@ -31,6 +33,7 @@ def test_decision_is_the_owner_mix_with_held_out_isolation():
                for s in d["prior_extra_sources"])
 
 
+@pytest.mark.local_artifacts
 def test_recipes_match_the_decision_and_split_evenly():
     d = g.decision()
     for smoke in (False, True):
@@ -46,6 +49,7 @@ def test_recipes_match_the_decision_and_split_evenly():
     assert {k for k in set(old) | set(canonical) if old.get(k) != canonical.get(k)} == {"model", "seed"}
 
 
+@pytest.mark.local_artifacts
 def test_identity_validates():
     i = g.identity()
     assert [e["generation"] for e in i["replay"]][-1] == 53

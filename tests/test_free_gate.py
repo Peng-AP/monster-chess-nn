@@ -139,6 +139,7 @@ def test_match_interruption_and_resume_schedules_only_missing_tasks(tmp_path, mo
     assert result["games"] == 4
 
 
+@pytest.mark.local_artifacts
 def test_pipeline_free_recipe_and_promotion_provenance(tmp_path, monkeypatch):
     import iterate
     import match_evidence
@@ -212,6 +213,7 @@ def test_gate_resumes_partial_confirmation_without_counting_completed_games_twic
     assert len(played) == 6
 
 
+@pytest.mark.local_artifacts
 def test_pipeline_pass_path_skips_redundant_gate_and_never_promotes_without_flag(tmp_path, monkeypatch):
     import iterate
     args = iterate.build_parser().parse_args(["--run-root", str(tmp_path),

@@ -1,4 +1,5 @@
 """Teacher selection (CPU only): eligibility, scoring, tie rule, seed blocks."""
+import pytest
 from pathlib import Path
 import sys
 
@@ -59,6 +60,7 @@ def test_seed_blocks_are_disjoint_and_below_2_32():
         assert not top.SEED_BASE <= b < top.SEED_BASE + 28 * top.SEED_STRIDE
 
 
+@pytest.mark.local_artifacts
 def test_candidates_exist_and_audits_cover_them():
     for _, path in trr.CANDIDATES:
         assert (ROOT / path).exists()

@@ -144,6 +144,7 @@ def test_fixed_schedule_all_pairs_depths_and_disjoint_seeds(smoke,games,probes):
     assert all(t['sample_index']==0 for t in driver.make_tasks('draw_crossplay',cases,smoke))
 
 
+@pytest.mark.local_artifacts
 def test_cases_are_actual_legal_complete_history():
     cases = driver.build_cases()
     assert len(cases) == 9
@@ -184,6 +185,7 @@ def test_same_checkpoint_still_builds_separate_color_searches(monkeypatch):
         study.initialize([('same.pt',3200)],False)
 
 
+@pytest.mark.local_artifacts
 def test_unequal_search_is_not_equal_agent_selfplay(tmp_path):
     result, plies, _, opening = play_one(LoopEngine(),LoopEngine(),opening_temp_plies=16,return_opening=True)
     game = opening.pop('game')

@@ -1,4 +1,5 @@
 """Gen53 campaign contracts (CPU only): declared changes from gen52, pool switch, seeds."""
+import pytest
 import json
 from pathlib import Path
 import sys
@@ -51,6 +52,7 @@ def test_generation_number_and_namespaces_advance():
                                           extra["a"]["replay"], extra["b"]["replay"], extra["pool"], extra["deep"]))
 
 
+@pytest.mark.local_artifacts
 def test_revised_decision_uses_arm_r_with_ramped_deep_labels():
     d = g.decision()
     assert d["teacher"].endswith("bootstrap_main_gen_0052_ramp/arena_selected.pt")

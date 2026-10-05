@@ -19,6 +19,7 @@ from stateful_generation import ordinary_batches
 from types import SimpleNamespace
 
 
+@pytest.mark.local_artifacts
 def test_mainline_recipe_has_no_external_starts_or_opponents():
     config = campaign.read(ROOT / 'tools/recipes/gen49.json')
     validate_recipe(config)
@@ -127,6 +128,7 @@ def write_journal(tmp_path, good_row):
     return path, rows
 
 
+@pytest.mark.local_artifacts
 def test_journal_audit_and_actual_color_par(tmp_path, good_row):
     path, _ = write_journal(tmp_path, good_row)
     out = audit_match(path, campaign.TEACHER, campaign.TEACHER, 2, 42, 8)
@@ -139,6 +141,7 @@ def test_journal_audit_and_actual_color_par(tmp_path, good_row):
     assert out['opening_concentration']['unique_actual_endpoints'] == 1
 
 
+@pytest.mark.local_artifacts
 @pytest.mark.parametrize('fault', ['duplicate', 'missing', 'seed', 'settings'])
 def test_journal_audit_rejects_wrong_task_evidence(tmp_path, good_row, fault):
     path, rows = write_journal(tmp_path, good_row)

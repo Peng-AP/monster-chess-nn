@@ -21,6 +21,7 @@ def option(command, name):
     return command[command.index(name) + 1]
 
 
+@pytest.mark.local_artifacts
 def test_sampled_recipe_changes_measurement_not_learning(tmp_path):
     args = iterate.build_parser().parse_args([])
     assert args.gate_backend == "sampled"
@@ -47,6 +48,7 @@ def test_sampled_recipe_changes_measurement_not_learning(tmp_path):
     assert args.lr == .002 and args.epochs == 30 and args.patience == 10
 
 
+@pytest.mark.local_artifacts
 def test_sampled_pipeline_seed_namespaces_are_disjoint(tmp_path):
     args = iterate.build_parser().parse_args([])
     arch = iterate._checkpoint_spec(iterate.DEFAULT_CHAMPION)

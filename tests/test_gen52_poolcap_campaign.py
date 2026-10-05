@@ -1,4 +1,5 @@
 """Arm C contracts (CPU only): the one declared change, matched seeds, new namespaces."""
+import pytest
 from pathlib import Path
 import sys
 
@@ -10,6 +11,7 @@ import gen52_campaign as g52
 import gen53_campaign as g53
 
 
+@pytest.mark.local_artifacts
 def test_arm_c_drops_only_the_rolled_forward_gen51_source():
     names = [n for n, _ in c.sources(False)]
     assert names == ["gen_0052_deepvalue", "gen_0052_pool"] and c.DROPPED not in names
