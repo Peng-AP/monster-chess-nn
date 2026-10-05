@@ -36,7 +36,16 @@ OUT = os.path.join(ROOT, "benchmarks", "position_probe_20261005")
 
 
 def main():
+    global CANDIDATES, OUT
+    import argparse
     from match import run_match
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--candidate", action="append", default=[], help="name=path (repeatable); replaces the default list")
+    ap.add_argument("--out", default=OUT)
+    args = ap.parse_args()
+    if args.candidate:
+        CANDIDATES = [tuple(c.split("=", 1)) for c in args.candidate]
+    OUT = args.out
     os.makedirs(OUT, exist_ok=True)
     book = os.path.join(OUT, "probe_book.json")
     with open(book, "w", encoding="utf-8") as fh:

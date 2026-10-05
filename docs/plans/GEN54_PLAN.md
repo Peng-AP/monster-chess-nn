@@ -1,4 +1,58 @@
-# Gen54: DRAFT plan for the owner's decision (October 5, 2026; not launched)
+# Gen54 plan (drafted October 5, 2026; owner decision the same day)
+
+## Owner decision (October 5): "a mix of teachers as well as the other proposed changes. 1 arm only."
+
+This replaces the draft's teacher and arms questions.
+
+**One arm, all changes together.** That means no A/B, so the pool's own
+effect is not separately measured.
+
+**Teacher mix (self-play games, all at 1,600 simulations, 30-ply
+exploration):**
+
+| Teacher | Games | Role | Why |
+|---|---:|---|---|
+| **gen53** | 2,800 | Main teacher: canonical self-play, 400 forks, reanalysis at 12,800, deep-value continuations (reference v29) | Strongest model |
+| gen52 Arm R | 700 | Extra increment (policy and value) | Best teacher at the deep teaching depths |
+| gen52 Arm LR | 700 | Extra increment (policy and value) | Wide tower, a different architecture; beats v29 head-to-head |
+
+The main teacher contributes two-thirds of the self-play. v29 is not a
+teacher; it is the weakest at the teaching depths.
+
+**Opponent pool (hole-scan rule):** v29 and gen52 Arms A, B, C, L, LR and R.
+
+- 1,204 gen53-vs-pool games, 86 per opponent per colour.
+- Only gen53's moves carry policy weight.
+
+**Labels:** every source on the main ramped game results. The deep-value
+data is gen53's (ramped) plus gen54's own (ramped).
+
+**Unchanged:**
+
+- 1.9M tower, scratch training, seed 3173, replay gen47–gen54;
+- selection and gate v4 against the teacher (gen53);
+- diagnostics against B2, v27, gen49, v28 and self-play.
+
+**Follow-ups, as for gen53** (`tools/gen54_followup_chain.py`):
+
+- gate v4 against the release (v29);
+- the v27-position probe ("did gen54 fix gen53's endgame hole?");
+- the value audit.
+
+**Primary question, without an A/B:** is gen54 stronger than gen53, and is
+the endgame hole closed? Evidence:
+
+- gate v4 against gen53;
+- the probe;
+- held-out v27;
+- promotion eligibility under `PROMOTION_RULE.md` (the owner decides).
+
+Driver `tools/gen54_campaign.py`. Decision file
+`docs/plans/gen54_teacher_decision.json`.
+
+---
+
+# Original draft (superseded where the decision above differs)
 
 Status: **draft**. Nothing here runs until the owner approves it. Evidence:
 
