@@ -20,8 +20,9 @@ py -3 tools/runs.py start --name web_server -- py -3 -u web/server.py --port 876
 Open <http://127.0.0.1:8765>. Stop with
 `py -3 tools/runs.py stop --name web_server`.
 
-- Opponents: ten difficulty levels from 1128 to 2450 Elo (v21 = 1600),
-  strongest first. **v29 at 3,200 simulations is the default.** Weaker
+- Opponents: eleven difficulty levels from 1128 to 2555 Elo (v21 = 1600),
+  strongest first. gen53 (2555) is listed as experimental; **v29 at 3,200
+  simulations is the default.** Weaker
   levels are older networks, or v29 with fewer simulations; levels that
   share a network share one loaded evaluator.
   - The ratings come from `docs/experiments/elo_rr/LADDER_RESULTS.md`.
@@ -35,6 +36,25 @@ Open <http://127.0.0.1:8765>. Stop with
 - **Heavy research jobs and the server share the GPU.** Stop the server
   during a generation run, or expect slower engine replies and slightly slower
   research.
+
+## Watch engines tab (`/watch`)
+
+Two engines of the visitor's choice play each other, one server request per
+turn.
+
+- **Per side:** the engine, the depth (16 to 12,800 simulations), and search
+  settings: exploration (c_puct), first-play urgency reduction, policy
+  temperature, root noise, and the forced-capture solver.
+- **For the game:** the opening temperature and how many half-moves it lasts,
+  a temperature after that, a dictated opening (UCI moves), and a series
+  (1–20 games, optionally swapping colours).
+- **Both engines' evaluations:** after each turn, the engine that did not move
+  searches the same positions with its own depth and settings
+  (`POST /api/evaluate`). Two labelled bars, a two-line graph and the move
+  tooltips show each engine's opinion. This is on by default and about 2×
+  slower.
+- Watch games are not recorded. "Play on from here" opens the reviewed
+  position on the Play tab.
 
 ## How it works
 

@@ -1,10 +1,13 @@
 # Monster Chess NN
 
 Current project state, model identities, latest results and next steps:
-[consolidated handoff](HANDOFF.md). **Current release: v28**
-(`models/bootstrap_v28`, gen50 epoch14 with the September 17 calibrated value
-head, promoted September 25). Plans and results for every campaign are indexed
-in [docs/README.md](docs/README.md).
+[handoff](HANDOFF.md). **Current release: v29** (`models/bootstrap_v29`, gen51
+deep-value, promoted September 29). The strongest model is gen53
+(experimental, not eligible for promotion). Plans and results for every
+campaign are indexed in [docs/README.md](docs/README.md).
+
+Play it in a browser at <https://chess.aaronpeng.dev>: against eleven
+Elo-rated levels, or watch two engines play each other ([web/README.md](web/README.md)).
 
 A neural-network + Monte-Carlo-tree-search engine for **Monster Chess**, an
 asymmetric chess variant:
@@ -432,6 +435,7 @@ tools/                 # gate, matches, probes, corpus and deck builders
   reanalyze.py         # general deep-search policy teachers
   compose_processed.py # immutable processed-corpus replay composition
   phase3_driver.py     # train+gate a set of corpus arms unattended
+web/                   # browser play and engine-vs-engine server (stdlib) + static pages
 tests/                 # contract tests
 campaigns/             # finished root campaign drivers, frozen (see its README)
 docs/                  # protocols, per-campaign plans/results, history ledgers
@@ -447,12 +451,13 @@ worktree at the commit it ran on (September work: `b46ce1c`). Git holds source,
 docs and small evidence summaries; weights, arrays, per-game task records and
 JSONL journals stay on disk only. `benchmarks/` can also contain trained
 checkpoints. Only regenerable caches were deleted in the September 25 cleanup;
-completed logs were archived, not discarded. See [CLEANUP_20260925.md](docs/history/CLEANUP_20260925.md).
+completed logs were archived, not discarded. See [CLEANUP_20260925.md](docs/history/CLEANUP_20260925.md)
+and [CLEANUP_20261006.md](docs/history/CLEANUP_20261006.md).
 
 ## Tests
 
 ```bash
-python -m unittest discover -s tests
+py -3 -m pytest tests -q
 ```
 
 Contract tests cover the rules (including the unconditional-king-capture edge
@@ -462,4 +467,6 @@ several hazards that have produced wrong numbers here before (ramp labels are
 positional, so filtering records silently relabels survivors; match seeds closer
 than the game count replay the same games; worker defaults derived from
 `cpu_count()` crash CUDA init on this box). CI runs the suite on push
-(`.github/workflows/contract-tests.yml`).
+(`.github/workflows/contract-tests.yml`) with `-m "not local_artifacts"`: tests
+that need weights, receipts, journals or the local notebook carry that mark and
+run only on the training machine.
