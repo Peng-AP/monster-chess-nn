@@ -225,3 +225,19 @@ native/*.dll
 # Keep the directory documentation tracked.
 /logs/**
 !/logs/README.md
+
+# Benchmark artifacts that stay local under the snapshot policy (docs/history/CLEANUP_20261006.md):
+# game journals, per-game task records, rehearsal and smoke output, raw dumps,
+# per-root continuation receipts, campaign locks, arrays/weights and profiler traces.
+# Small JSON evidence (reports, summaries, receipts, manifests) is still committed.
+/benchmarks/**/*.jsonl
+/benchmarks/**/tasks/
+/benchmarks/**/raw/
+/benchmarks/**/rehearsal*/
+/benchmarks/**/continuations/receipts/
+/benchmarks/**/*smoke*
+/benchmarks/**/campaign.lock
+/benchmarks/**/*.npz
+/benchmarks/**/*.npy
+/benchmarks/**/*.pt
+/benchmarks/**/*.trace.json
