@@ -9,7 +9,7 @@ campaign drivers are frozen in `campaigns/`.
 
 | Document | Status |
 |---|---|
-| [plans/GEN54_PLAN.md](plans/GEN54_PLAN.md) | **Running** (launched October 5): gen53 teacher with Arm R/LR extra self-play, hole-scan pool, one arm |
+| [plans/GEN54_PLAN.md](plans/GEN54_PLAN.md) | Done October 7: gen53 teacher with Arm R/LR extra self-play, hole-scan pool, one arm |
 | [plans/GEN53_PLAN.md](plans/GEN53_PLAN.md) | Done October 5 (revision section: teacher by selection rule) |
 | [plans/TEACHER_SELECTION_PLAN.md](plans/TEACHER_SELECTION_PLAN.md) | Pre-declared teacher-selection rule (used for gen53) |
 | [plans/OVERNIGHT_20261002_PLAN.md](plans/OVERNIGHT_20261002_PLAN.md) | Done October 3 (top-group round robin, Arm LR) |
@@ -30,6 +30,7 @@ campaign drivers are frozen in `campaigns/`.
 
 | Folder | Dates | Outcome |
 |---|---|---|
+| [experiments/gen54/](experiments/gen54/) | Oct 5–7 | gen54: passes gate v4 vs gen53 (79%), fixes the v27 hole, held-out 92.2%; **fails vs v29 on the White floor**; not eligible |
 | [experiments/gen53/](experiments/gen53/) | Oct 4–5 | gen53: +105 Elo vs v29, passes gate v4 vs v29; not eligible (v27 endgame hole); hole scan |
 | [experiments/gen53_prep/](experiments/gen53_prep/) | Oct 3–4 | Teacher selection: gen52 Arm R |
 | [experiments/gen52/](experiments/gen52/) | Sep 27 – Oct 3 | Arms A/B (pool), C (capped deep value), L (wide), R (ramped labels), LR; value audit; top-group round robins |

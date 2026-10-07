@@ -1,4 +1,4 @@
-# Monster Chess NN — handoff (current state, October 6, 2026)
+# Monster Chess NN — handoff (current state, October 7, 2026)
 
 This is the entry point for the next developer or agent. It describes what is
 true now. The dated history is in `docs/history/`:
@@ -24,15 +24,17 @@ true now. The dated history is in `docs/history/`:
     that only v27 exploits (32 of 32 losses come from a single position).
   - It is on the site as "experimental".
   - See `docs/experiments/gen53/`.
-- **Running: gen54**. This is one arm:
-  - gen53 is the main teacher, with extra self-play from gen52 Arms R and LR;
-  - a hole-scan opponent pool (v29 and gen52 Arms A, B, C, L, LR and R);
-  - ramped game-result labels.
-
-  Managed runs `gen54_production`, then `gen54_followup` (gate v4 vs v29,
-  the v27-position probe, the value audit). Plan:
-  `docs/plans/GEN54_PLAN.md`. Results will go to
-  `docs/experiments/gen54/GEN54_RESULTS.md`.
+- **gen54 (done October 7): not eligible.** One arm: gen53 teacher plus Arm R/LR
+  self-play, a hole-scan pool, ramped labels
+  (`docs/experiments/gen54/GEN54_RESULTS.md`).
+  - Gate v4 vs gen53: **PASS** (79.9% / 78.5%).
+  - It fixed gen53's v27 hole (10/10 as White).
+  - Held-out mean: 92.2%.
+  - Gate v4 vs v29: **FAIL** on the White floor (White −19 / −21 pp at 3,200;
+    Black about 99%).
+  - Its value head is unbiased (no White pessimism), so the White weakness is
+    in its play.
+  - Next steps proposed in the results doc; nothing is running.
 - **Nothing is ever promoted automatically.** The owner decides, using
   `docs/protocols/PROMOTION_RULE.md`:
   - gate v4 PASS against the release;
@@ -68,6 +70,7 @@ true now. The dated history is in `docs/history/`:
 |---|---|---|---|
 | v29 | `models/bootstrap_v29/best_value_net.pt` | Release, gate bar | `dbf26b9e` |
 | gen53 | `models/candidates/bootstrap_main_gen_0053/arena_selected.pt` | Strongest; gen54 teacher | `8f1b8803` |
+| gen54 | `models/candidates/bootstrap_main_gen_0054/arena_selected.pt` | Strongest Black; fails vs v29 on White; not eligible | `1f5d53ba` |
 | gen52 Arm R | `models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt` | gen53's teacher; gen54 extra teacher | `bfb1857d` |
 | gen52 Arm LR | `models/candidates/bootstrap_main_gen_0052_large_ramp/arena_selected.pt` | Wide tower; gen54 extra teacher | |
 | gen52 Arms A, B, C, L | `models/candidates/bootstrap_main_gen_0052{,_pool,_poolcap,_large}/` | gen54 pool | |
@@ -165,8 +168,8 @@ The full list is `CONTEXT.md` §4. The rules of the game are `CONTEXT.md` §1.
 
 ## 8. Reading order
 
-1. This file, then `docs/plans/GEN54_PLAN.md` and, once written, the gen54
-   results.
+1. This file, then `docs/experiments/gen54/GEN54_RESULTS.md` (including its
+   next steps).
 2. `docs/experiments/gen53/` (results and the hole scan), then
    `docs/experiments/gen52/` (arms, value audit, round robins).
 3. `docs/protocols/PROMOTION_RULE.md`, then `SAMPLED_GATE_PROTOCOL.md`.
