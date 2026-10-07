@@ -30,6 +30,7 @@ campaign drivers are frozen in `campaigns/`.
 
 | Folder | Dates | Outcome |
 |---|---|---|
+| [experiments/repetition_search/](experiments/repetition_search/) | Oct 7 | The search scores threefold repetition as a draw: the owner's Watch-game conversions 1/4 → 4/4; gen54 vs v28/B2 71.9 → 76.9% and 92.2 → 98.4%; neutral in same-network A/B |
 | [experiments/gen54/](experiments/gen54/) | Oct 5–7 | gen54: passes gate v4 vs gen53 (79%), fixes the v27 hole, held-out 92.2%; **fails vs v29 on the White floor**; not eligible |
 | [experiments/gen53/](experiments/gen53/) | Oct 4–5 | gen53: +105 Elo vs v29, passes gate v4 vs v29; not eligible (v27 endgame hole); hole scan |
 | [experiments/gen53_prep/](experiments/gen53_prep/) | Oct 3–4 | Teacher selection: gen52 Arm R |

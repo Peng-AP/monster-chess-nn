@@ -34,7 +34,14 @@ true now. The dated history is in `docs/history/`:
     Black about 99%).
   - Its value head is unbiased (no White pessimism), so the White weakness is
     in its play.
-  - Next steps proposed in the results doc; nothing is running.
+  - Next steps proposed in the results doc.
+- **Engine: repetition awareness (October 7, owner-requested).**
+  - The search scores a threefold repetition as a draw, so it no longer
+    repeats when ahead (`docs/experiments/repetition_search/RESULTS.md`).
+  - gen54's 43 Black repetition draws against v28 and B2 all became wins
+    (76.9% and 98.4%).
+  - Same-network on vs off is neutral (49.4% / 50.3%).
+  - **The runtime identity changed, so every gate measures its par afresh.**
 - **Nothing is ever promoted automatically.** The owner decides, using
   `docs/protocols/PROMOTION_RULE.md`:
   - gate v4 PASS against the release;
