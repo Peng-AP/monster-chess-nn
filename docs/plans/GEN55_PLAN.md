@@ -1,4 +1,30 @@
-# Gen55 plan (draft, October 7, 2026; awaiting the owner)
+# Gen55 plan (October 7, 2026)
+
+## Owner decision (October 7): "Add gen 54 to the website. Should add one more teacher to the pool. Then start 55"
+
+The draft below stands, with these changes:
+
+- **Teachers:** gen54 2,800 + 400 forks; extra teachers gen53, gen52 Arm R
+  **and gen52 Arm LR**, 700 games each. LR was in gen54's mix and is the
+  "one more teacher".
+- **Pool:** gen54's hole-scan pool plus gen53. That is 8 opponents, 86 games
+  per opponent per colour, 1,376 games.
+- **v29's par is measured once at the start.** The selection's White check and
+  the gate against v29 both use it.
+- **Evaluation folded into production:**
+  - gate v4 against gen54 and against v29;
+  - the diagnostics;
+  - the v27-position probe;
+  - the value audit;
+  - promotion eligibility in the summary.
+- Driver `tools/gen55_campaign.py`. Decision
+  `docs/plans/gen55_teacher_decision.json`. Recipes `tools/recipes/gen55*.json`.
+- Seeds: 3.530e9 (production) and 3.565e9 (rehearsal), clear of every
+  earlier block.
+
+---
+
+# Original draft (superseded where the decision above differs)
 
 Goal: the **next release**. The release candidate must pass gate v4 against
 v29 and keep the held-out mean at or above 91.7% (`PROMOTION_RULE.md`).

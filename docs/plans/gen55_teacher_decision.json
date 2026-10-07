@@ -1,0 +1,55 @@
+{
+  "teacher": "models/candidates/bootstrap_main_gen_0054/arena_selected.pt",
+  "teacher_sha256": "1f5d53baa0b180023ef6434384f56fcf2ccb2d2ca7e40de41f776dee5e4eae35",
+  "teacher_description": "gen54 nominee (selected_epoch_013): 79% vs gen53 in gate v4, fixed the v27 hole, held-out 92.2%; failed gate v4 vs v29 on the White floor; not promoted",
+  "extra_teachers": [
+    {
+      "name": "gen53",
+      "model": "models/candidates/bootstrap_main_gen_0053/arena_selected.pt",
+      "sha256": "8f1b8803ec321fb8627be6a5e6813e347328197d3cc0e2d897243df33d1220a1",
+      "games": 700
+    },
+    {
+      "name": "r",
+      "model": "models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt",
+      "sha256": "bfb1857d8166ae13b750d5a7708450f6d6b2e3df2a1b36922cecb71df4cc0f28",
+      "games": 700
+    },
+    {
+      "name": "lr",
+      "model": "models/candidates/bootstrap_main_gen_0052_large_ramp/arena_selected.pt",
+      "sha256": "6330430f4f2abb60292b15239ff651861e5bfb2aa987c03c5652350b7a3dd111",
+      "games": 700
+    }
+  ],
+  "deep_value": true,
+  "deep_value_labels": "ramped",
+  "reference": "models/bootstrap_v29/best_value_net.pt",
+  "pool": true,
+  "pool_opponents": [
+    "models/bootstrap_v29/best_value_net.pt",
+    "models/candidates/bootstrap_main_gen_0052/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0052_pool/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0052_poolcap/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0052_large/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0052_large_ramp/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt",
+    "models/candidates/bootstrap_main_gen_0053/arena_selected.pt"
+  ],
+  "release": "models/bootstrap_v29/best_value_net.pt",
+  "release_sha256": "dbf26b9eff47009b25b63929be33bbf534f364599af87b233ed3a4ed313e84e2",
+  "white_check": {
+    "games": 160,
+    "sims": 3200,
+    "max_white_deficit_vs_release_par": 0.05
+  },
+  "single_arm": true,
+  "prior_extra_sources": [
+    {
+      "name": "gen_0054_deepvalue",
+      "path": "data/processed/bootstrap_extra_main_gen_0054_disagreement_ramped"
+    }
+  ],
+  "rule": "Owner 2026-10-07: 'Should add one more teacher to the pool. Then start 55' on docs/plans/GEN55_PLAN.md: teachers gen54 + gen53 + Arm R + Arm LR; pool + gen53; selection adds a White check vs v29; repetition-aware engine.",
+  "decided": "2026-10-07"
+}
