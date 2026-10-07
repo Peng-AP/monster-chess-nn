@@ -57,6 +57,9 @@ pub struct Node {
     /// become a proof -- treating it as one would let the search "prove" wins
     /// that were merely positions it liked when the clock ran out.
     pub proof: Option<f64>,
+    /// `Game::repetition_key` of this node's state, computed only while the
+    /// arena tracks repetitions (`Arena::rep_threshold > 0`).
+    pub rep_key: Option<u64>,
 }
 
 impl Node {
@@ -73,6 +76,7 @@ impl Node {
             children: Vec::new(),
             is_expanded: false,
             proof: None,
+            rep_key: None,
         }
     }
 
@@ -95,18 +99,84 @@ impl Node {
 
 pub struct Arena {
     pub nodes: Vec<Node>,
+    /// Occurrences of each settled position in the game up to and including
+    /// the root (the driver has already counted the root), keyed by
+    /// `Game::repetition_key`.
+    pub rep_counts: std::collections::HashMap<u64, u32>,
+    /// Occurrences that draw the game (the driver's rule; 3 = threefold).
+    /// 0 = the tree knows nothing about repetition, the behaviour before
+    /// 2026-10-07.
+    pub rep_threshold: u32,
 }
 
 impl Arena {
     pub fn new(root_state: Game) -> Self {
         Arena {
             nodes: vec![Node::new(root_state, None, None, 1.0)],
+            rep_counts: std::collections::HashMap::new(),
+            rep_threshold: 0,
         }
     }
 
-    pub fn add_child(&mut self, parent: usize, state: Game, action: String, prior: f64) -> usize {
+    /// Repetition awareness (owner, 2026-10-07: "if it can help it it
+    /// shouldn't repeat"). The repetition rule is the driver's, but a search
+    /// that does not know it values a repeated position by the network --
+    /// as a win for a side that is far ahead -- and walks into the draw.
+    /// Here a child whose settled position would be its `rep_threshold`-th
+    /// occurrence (game history + this path) is marked drawn, so the search
+    /// sees value 0 there: the better side steers away, and the worse side
+    /// may still steer towards it, as the rule allows.
+    ///
+    /// Path-dependent by construction, which a tree (no transposition table)
+    /// supports. Counts stay exact under `reroot`, which only moves the root
+    /// along moves actually played and folds them into `rep_counts`.
+    fn repetition_draw_for(&self, parent: usize, key: u64) -> bool {
+        let mut seen = self.rep_counts.get(&key).copied().unwrap_or(0);
+        let mut current = Some(parent);
+        while let Some(i) = current {
+            if i == 0 {
+                break; // the root is already in rep_counts
+            }
+            if self.nodes[i].rep_key == Some(key) {
+                seen += 1;
+            }
+            current = self.nodes[i].parent;
+        }
+        seen + 1 >= self.rep_threshold
+    }
+
+    /// Fold the path from the root to `child` (excluding the old root, which
+    /// is already counted) into `rep_counts` before `child` becomes the root.
+    fn count_path_to(&mut self, child: usize) {
+        if self.rep_threshold == 0 {
+            return;
+        }
+        let mut current = Some(child);
+        while let Some(i) = current {
+            if i == 0 {
+                break;
+            }
+            if let Some(k) = self.nodes[i].rep_key {
+                *self.rep_counts.entry(k).or_insert(0) += 1;
+            }
+            current = self.nodes[i].parent;
+        }
+    }
+
+    pub fn add_child(&mut self, parent: usize, mut state: Game, action: String, prior: f64) -> usize {
         let idx = self.nodes.len();
-        self.nodes.push(Node::new(state, Some(parent), Some(action), prior));
+        let mut key = None;
+        if self.rep_threshold > 0 {
+            key = state.repetition_key();
+            if let Some(k) = key {
+                if self.repetition_draw_for(parent, k) {
+                    state.repetition_draw = true;
+                }
+            }
+        }
+        let mut node = Node::new(state, Some(parent), Some(action), prior);
+        node.rep_key = key;
+        self.nodes.push(node);
         self.nodes[parent].children.push(idx);
         idx
     }
@@ -855,6 +925,7 @@ impl Arena {
     /// which costs it the whole tree on every Black move. With this the tree
     /// survives the entire game, as LC0's does.
     pub fn reroot(&mut self, child: usize) {
+        self.count_path_to(child);
         let old_root_white = self.nodes[0].state.is_white_turn;
         let new_root_white = self.nodes[child].state.is_white_turn;
         if old_root_white != new_root_white {
@@ -896,6 +967,7 @@ impl Arena {
                     .collect(),
                 is_expanded: old.is_expanded,
                 proof: old.proof,
+                rep_key: old.rep_key,
             });
         }
         self.nodes = fresh;
@@ -905,6 +977,7 @@ impl Arena {
     /// rather than cloning every retained Game/action/children allocation.
     /// Opt-in while timed-baseline parity/performance is validated.
     pub fn reroot_fast(&mut self, child: usize) {
+        self.count_path_to(child);
         if self.nodes[0].state.is_white_turn != self.nodes[child].state.is_white_turn {
             self.nodes[child].total_value = -self.nodes[child].total_value;
         }
@@ -1014,12 +1087,15 @@ pub struct PyTree {
 #[pymethods]
 impl PyTree {
     #[new]
-    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0, history=None))]
+    #[pyo3(signature = (fen, white_half_pending=false, turn_count=0, history=None,
+                        repetition_counts=None, repetition_threshold=0))]
     fn new(
         fen: &str,
         white_half_pending: bool,
         turn_count: u32,
         history: Option<Vec<String>>,
+        repetition_counts: Option<Vec<(String, u32)>>,
+        repetition_threshold: u32,
     ) -> PyResult<Self> {
         // None of these are decoration. `pending` selects a different action
         // set, `turn_count` decides the cap, and `history` is what the
@@ -1032,7 +1108,44 @@ impl PyTree {
             &history.unwrap_or_default(),
         )
         .map_err(PyValueError::new_err)?;
-        Ok(PyTree { arena: Arena::new(root), probes_used: 0, probe_hits: 0 })
+        let mut arena = Arena::new(root);
+        // `repetition_counts`: the driver's settled-position counts, each key
+        // the first four FEN fields (placement, side, castling, ep), exactly
+        // `repetition.position_key`. Hashed through the same board parse the
+        // tree uses, so the two identities cannot drift apart.
+        if repetition_threshold > 0 {
+            if let Some(counts) = repetition_counts {
+                for (prefix, n) in counts {
+                    let board = crate::bitboard::parse_fen(&format!("{} 0 1", prefix))
+                        .map_err(PyValueError::new_err)?;
+                    *arena.rep_counts
+                        .entry(crate::game::board_repetition_hash(&board))
+                        .or_insert(0) += n;
+                }
+                arena.rep_threshold = repetition_threshold;
+            }
+        }
+        Ok(PyTree { arena, probes_used: 0, probe_hits: 0 })
+    }
+
+    /// True if the search marked this node drawn by repetition.
+    fn repetition_draw(&self, idx: usize) -> bool {
+        self.arena.nodes[idx].state.repetition_draw
+    }
+
+    /// The tree's repetition threshold (0 = not tracking).
+    fn repetition_threshold(&self) -> u32 {
+        self.arena.rep_threshold
+    }
+
+    /// Root moves the search scored as a draw by repetition.
+    fn root_repetition_draws(&self) -> Vec<String> {
+        self.arena.nodes[0]
+            .children
+            .iter()
+            .filter(|&&c| self.arena.nodes[c].state.repetition_draw)
+            .filter_map(|&c| self.arena.nodes[c].action.clone())
+            .collect()
     }
 
     /// Add a child by applying one half-move action to the parent's state.
@@ -1707,3 +1820,90 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("OSCILLATION_VISIT_PENALTY", OSCILLATION_VISIT_PENALTY)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod repetition_tests {
+    use super::*;
+    use crate::bitboard::parse_fen;
+    use crate::game::board_repetition_hash;
+
+    // Black: king e8, rook a8. White: bare king e1. Black to move.
+    const START: &str = "r3k3/8/8/8/8/8/8/4K3 b - - 0 40";
+
+    fn key_of(fen: &str) -> u64 {
+        board_repetition_hash(&parse_fen(fen).unwrap())
+    }
+
+    #[test]
+    fn key_of_a_played_position_equals_key_of_its_fen() {
+        let mut g = Game::from_fen(START).unwrap();
+        g.apply_half("a8a2").unwrap();
+        let played = g.repetition_key().unwrap();
+        assert_eq!(played, key_of("4k3/8/8/8/8/8/r7/4K3 w - - 1 41"));
+        // Clocks are not part of the identity.
+        assert_eq!(played, key_of("4k3/8/8/8/8/8/r7/4K3 w - - 37 99"));
+        // White mid-turn is not a settled position.
+        g.apply_half("e1d1").unwrap();
+        assert!(g.repetition_key().is_none());
+    }
+
+    #[test]
+    fn the_nth_occurrence_is_a_terminal_draw_and_reroot_keeps_counts() {
+        let root = Game::from_fen(START).unwrap();
+        let mut arena = Arena::new(root.clone());
+        arena.rep_threshold = 3;
+        // The position after ...Ra2 has occurred twice already in the game.
+        let after = "4k3/8/8/8/8/8/r7/4K3 w - - 0 1";
+        arena.rep_counts.insert(key_of(after), 2);
+        arena.rep_counts.insert(root.repetition_key().unwrap(), 1);
+
+        let mut child = root.clone();
+        child.apply_half("a8a2").unwrap();
+        let repeat = arena.add_child(0, child, "a8a2".into(), 0.5);
+        let mut other = root.clone();
+        other.apply_half("a8a3").unwrap();
+        let fresh = arena.add_child(0, other, "a8a3".into(), 0.5);
+
+        assert!(arena.nodes[repeat].state.repetition_draw);
+        assert!(arena.nodes[repeat].state.is_terminal_rust());
+        assert_eq!(arena.nodes[repeat].state.result_rust(), Some(0.0));
+        assert!(arena.nodes[repeat].state.search_actions_rust().is_empty());
+        assert!(!arena.nodes[fresh].state.repetition_draw);
+
+        // A repetition inside the tree counts too. From ...Ra3 (White to
+        // move): White shuffles Kd1-e1, Black Ra8, White shuffles again,
+        // Black Ra3 -- the ...Ra3 position's second occurrence on this path.
+        let mut at = fresh;
+        for mv in ["e1d1", "d1e1", "a3a8", "e1d1", "d1e1"] {
+            let mut st = arena.nodes[at].state.clone();
+            st.apply_half(mv).unwrap();
+            at = arena.add_child(at, st, mv.into(), 1.0);
+            assert!(!arena.nodes[at].state.repetition_draw, "{mv}");
+        }
+        let mut again = arena.nodes[at].state.clone();
+        again.apply_half("a8a3").unwrap();
+        let second = arena.add_child(at, again.clone(), "a8a3".into(), 1.0);
+        assert!(!arena.nodes[second].state.repetition_draw); // 2nd of 3
+        arena.rep_threshold = 2;
+        let drawn = arena.add_child(at, again, "a8a3".into(), 1.0);
+        assert!(arena.nodes[drawn].state.repetition_draw); // 2nd of 2
+        arena.rep_threshold = 3;
+
+        // Rerooting onto ...Ra3 folds that position into the counts.
+        let a3_key = arena.nodes[fresh].rep_key.unwrap();
+        arena.reroot(fresh);
+        assert_eq!(arena.rep_counts.get(&a3_key), Some(&1));
+    }
+
+    #[test]
+    fn no_threshold_means_no_repetition_tracking() {
+        let root = Game::from_fen(START).unwrap();
+        let mut arena = Arena::new(root.clone());
+        let mut child = root.clone();
+        child.apply_half("a8a2").unwrap();
+        let idx = arena.add_child(0, child, "a8a2".into(), 1.0);
+        assert!(!arena.nodes[idx].state.repetition_draw);
+        assert!(arena.nodes[idx].rep_key.is_none());
+    }
+}
+

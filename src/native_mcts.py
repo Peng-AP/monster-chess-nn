@@ -42,6 +42,10 @@ from config import (C_PUCT, FPU_REDUCTION, POLICY_TEMPERATURE,
                     MOVES_LEFT_SLOPE)  # noqa: E402
 
 HISTORY_PLIES = 8
+# Repetition awareness in the tree (owner, 2026-10-07) is ON whenever the
+# driver's repetition rule is; this switches only the search's knowledge of it
+# off, for A/B measurement. The rule itself is `MONSTER_NO_REPETITION`.
+REPETITION_SEARCH_OFF_ENV = "MONSTER_NO_REPETITION_SEARCH"
 
 
 def _underlying_nn(evaluator):
@@ -361,6 +365,24 @@ class NativeMCTS:
         stack = getattr(state.board, "move_stack", [])
         return [m.uci() for m in stack[-HISTORY_PLIES:]]
 
+    @staticmethod
+    def _repetition(state):
+        """The driver's settled-position counts and threshold, for the tree.
+
+        `RepetitionTracker.record` attaches them to the game. A state that no
+        tracker recorded (a bare FEN, a clone) carries none, and the tree then
+        searches exactly as before. Keys are `repetition.position_key` tuples;
+        the tree takes the first four FEN fields of each settled one.
+        """
+        counts = getattr(state, "repetition_counts", None)
+        threshold = int(getattr(state, "repetition_threshold", 0) or 0)
+        if not counts or threshold <= 0:
+            return None, 0
+        if os.environ.get(REPETITION_SEARCH_OFF_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+            return None, 0
+        return ([(" ".join(key[:4]), int(n)) for key, n in counts.items() if not key[4]],
+                threshold)
+
     def _tree_for(self, state):
         key = self._state_key(state)
         if self._reuse_tree is not None and self._reuse_key == key:
@@ -370,10 +392,13 @@ class NativeMCTS:
             return tree
         self._reuse_tree = None
         self._reuse_key = None
+        counts, threshold = self._repetition(state)
         return mn.Tree(state.fen(),
                        bool(getattr(state, "white_half_pending", False)),
                        int(getattr(state, "turn_count", 0)),
-                       self._history(state))
+                       self._history(state),
+                       repetition_counts=counts,
+                       repetition_threshold=threshold)
 
     def _remember(self, state, tree, selected_uci, fast=False):
         """Keep the played subtree so the next search continues this tree.

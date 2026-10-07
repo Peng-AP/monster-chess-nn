@@ -112,9 +112,17 @@ class RepetitionTracker:
         self.fired_at = None
 
     def record(self, game, ply=None):
-        """Count this position. Returns True once the threshold is reached."""
+        """Count this position. Returns True once the threshold is reached.
+
+        Also hands the counts to the game object, so a search given this game
+        knows the rule it is playing under (`native_mcts` passes them to the
+        tree, which scores a position's Nth occurrence as a draw). The Counter
+        is shared, not copied: later records stay visible to the search.
+        """
         if not self.enabled:
             return False
+        game.repetition_counts = self.counts
+        game.repetition_threshold = self.threshold
         if getattr(game, "white_half_pending", False):
             return False
         self.counts[position_key(game)] += 1

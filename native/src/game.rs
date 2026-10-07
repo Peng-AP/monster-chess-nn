@@ -45,6 +45,35 @@ pub struct Game {
     pub turn_count: u32,
     #[pyo3(get)]
     pub white_half_pending: bool,
+    /// Set only by the search tree (`Arena::add_child`) on a node whose position
+    /// would be its Nth occurrence under the driver's repetition rule: the game
+    /// is drawn there, so the node is terminal with result 0. Never set on a
+    /// state the drivers build, so it changes nothing outside the tree.
+    pub repetition_draw: bool,
+}
+
+/// Hash of the repetition identity of a board: see `Game::repetition_key`.
+///
+/// splitmix64 over the piece bitboards, colour occupancy, side to move,
+/// python-chess's cleaned castling rights and the en-passant square only when
+/// a legal capture exists -- exactly the fields `to_fen` writes before the
+/// clocks. Deterministic across runs and builds (no random hasher keys).
+pub fn board_repetition_hash(board: &Board) -> u64 {
+    fn mix(h: u64, x: u64) -> u64 {
+        let mut z = h ^ x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    let ep = match board.ep_square {
+        Some(sq) if board.has_legal_ep() => sq as u64 + 1,
+        _ => 0,
+    };
+    let fields = [
+        board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings,
+        board.occupied_co[WHITE], board.turn as u64, board.clean_castling(), ep,
+    ];
+    fields.iter().fold(0x6A09_E667_F3BC_C908, |h, &x| mix(h, x))
 }
 
 fn parse_uci(uci: &str) -> Option<Move> {
@@ -118,6 +147,7 @@ impl Game {
             is_white_turn,
             turn_count,
             white_half_pending: white_half_pending && is_white_turn,
+            repetition_draw: false,
         })
     }
 
@@ -129,16 +159,34 @@ impl Game {
         &self.board
     }
 
+    /// Repetition identity of a SETTLED position, or None mid-turn.
+    ///
+    /// The same identity `repetition.position_key` uses -- placement, side to
+    /// move, castling, en passant (python-chess's "legal" convention, as
+    /// `to_fen` writes it) -- hashed from the bitboards rather than a FEN
+    /// string, because the tree computes one per child. The mid-turn state
+    /// between White's halves is not a position either side can repeat, so it
+    /// has no key (the driver does not count it either).
+    pub fn repetition_key(&self) -> Option<u64> {
+        if self.white_half_pending {
+            return None;
+        }
+        Some(board_repetition_hash(&self.board))
+    }
+
     /// Terminal test, callable from the search without the interpreter.
     pub fn is_terminal_rust(&self) -> bool {
-        self.board.king_square(WHITE).is_none()
+        self.repetition_draw
+            || self.board.king_square(WHITE).is_none()
             || self.board.king_square(BLACK).is_none()
             || self.turn_count >= MAX_GAME_TURNS
     }
 
     /// Terminal result, including the cap's heuristic relabel. None if live.
     pub fn result_rust(&self) -> Option<f64> {
-        if self.board.king_square(WHITE).is_none() {
+        if self.repetition_draw {
+            Some(0.0)
+        } else if self.board.king_square(WHITE).is_none() {
             Some(-1.0)
         } else if self.board.king_square(BLACK).is_none() {
             Some(1.0)
