@@ -61,7 +61,8 @@ def _init_worker(model_a, model_b, sims, sims_b=None,
                  moves_left_threshold_a=MOVES_LEFT_THRESHOLD,
                  moves_left_threshold_b=MOVES_LEFT_THRESHOLD,
                  moves_left_slope_a=MOVES_LEFT_SLOPE,
-                 moves_left_slope_b=MOVES_LEFT_SLOPE):
+                 moves_left_slope_b=MOVES_LEFT_SLOPE,
+                 repetition_search_a=True, repetition_search_b=True):
     # Workers are separate processes: the choice must be passed in, not read
     # from a parent-side global.
     from benchmark import _build_engine
@@ -72,7 +73,8 @@ def _init_worker(model_a, model_b, sims, sims_b=None,
         moves_left_utility=moves_left_utility_a,
         moves_left_max_effect=moves_left_max_effect_a,
         moves_left_threshold=moves_left_threshold_a,
-        moves_left_slope=moves_left_slope_a)
+        moves_left_slope=moves_left_slope_a,
+        repetition_search=repetition_search_a)
     _engines["b"], _ = _build_engine(
         model_b, sims_b or sims, batch_b, engine=engine, c_puct=c_puct_b,
         fpu_reduction=fpu_reduction_b,
@@ -80,7 +82,8 @@ def _init_worker(model_a, model_b, sims, sims_b=None,
         moves_left_utility=moves_left_utility_b,
         moves_left_max_effect=moves_left_max_effect_b,
         moves_left_threshold=moves_left_threshold_b,
-        moves_left_slope=moves_left_slope_b)
+        moves_left_slope=moves_left_slope_b,
+        repetition_search=repetition_search_b)
 
 
 def load_book(path):
@@ -372,6 +375,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
               moves_left_threshold_b=MOVES_LEFT_THRESHOLD,
               moves_left_slope_a=MOVES_LEFT_SLOPE,
               moves_left_slope_b=MOVES_LEFT_SLOPE,
+              repetition_search_a=True, repetition_search_b=True,
               stall_timeout=600.0, checkpoint_path=None, book=None,
               game_log=None,
               book_offset=0, book_temp_plies=0, resume=False):
@@ -433,7 +437,8 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
                   moves_left_utility_b, moves_left_max_effect_a,
                   moves_left_max_effect_b, moves_left_threshold_a,
                   moves_left_threshold_b, moves_left_slope_a,
-                  moves_left_slope_b)) if tasks else None
+                  moves_left_slope_b, repetition_search_a,
+                  repetition_search_b)) if tasks else None
     try:
         iterator = pool.imap_unordered(_play, tasks) if pool else None
         # A 200-game match at 1600 sims runs for the better part of an hour and
@@ -504,6 +509,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
             "moves_left_max_effect": moves_left_max_effect_a,
             "moves_left_threshold": moves_left_threshold_a,
             "moves_left_slope": moves_left_slope_a,
+            "repetition_search": repetition_search_a,
         },
         "search_b": {
             "c_puct": c_puct_b,
@@ -513,6 +519,7 @@ def run_match(model_a, model_b, games, sims, seed, opening_temp_plies=None,
             "moves_left_max_effect": moves_left_max_effect_b,
             "moves_left_threshold": moves_left_threshold_b,
             "moves_left_slope": moves_left_slope_b,
+            "repetition_search": repetition_search_b,
         },
         "opening_temp_plies": opening_temp_plies,
         # Present only for book matches. Its absence marks a score measured
@@ -585,6 +592,10 @@ def main():
                     default=MOVES_LEFT_SLOPE)
     ap.add_argument("--moves-left-slope-b", type=float,
                     default=MOVES_LEFT_SLOPE)
+    ap.add_argument("--no-repetition-search-a", action="store_true",
+                    help="model A's search ignores the repetition rule (A/B control)")
+    ap.add_argument("--no-repetition-search-b", action="store_true",
+                    help="model B's search ignores the repetition rule (A/B control)")
     ap.add_argument("--seed", type=int, default=20260704)
     # Left as None so resolve_opening_temp_plies() can pick the default from the
     # opponent: heuristic tie-breaks already diversify anchor games, so only
@@ -640,6 +651,8 @@ def main():
                     moves_left_threshold_b=args.moves_left_threshold_b,
                     moves_left_slope_a=args.moves_left_slope_a,
                     moves_left_slope_b=args.moves_left_slope_b,
+                    repetition_search_a=not args.no_repetition_search_a,
+                    repetition_search_b=not args.no_repetition_search_b,
                     stall_timeout=args.stall_timeout,
                     checkpoint_path=_artifact_path(args), book=args.book,
                     book_offset=args.book_offset,

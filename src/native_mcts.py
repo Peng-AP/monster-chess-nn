@@ -256,6 +256,7 @@ class NativeMCTS:
 
     def __init__(self, num_simulations=800, eval_fn=None, batch_size=16,
                  root_noise=False, allow_early_stop=True, seed=None,
+                 repetition_search=True,
                  reuse_across_moves=False, solver=False, c_puct=C_PUCT,
                  fpu_reduction=FPU_REDUCTION,
                  policy_temperature=POLICY_TEMPERATURE,
@@ -312,6 +313,8 @@ class NativeMCTS:
         self.eval_fn = eval_fn
         self.batch_size = batch_size
         self.root_noise = root_noise
+        # Per-engine, so one match can play awareness on against off.
+        self.repetition_search = bool(repetition_search)
         self.allow_early_stop = allow_early_stop
         self.reuse_across_moves = reuse_across_moves
         self.solver = solver
@@ -392,7 +395,8 @@ class NativeMCTS:
             return tree
         self._reuse_tree = None
         self._reuse_key = None
-        counts, threshold = self._repetition(state)
+        counts, threshold = (self._repetition(state) if self.repetition_search
+                             else (None, 0))
         return mn.Tree(state.fen(),
                        bool(getattr(state, "white_half_pending", False)),
                        int(getattr(state, "turn_count", 0)),

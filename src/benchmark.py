@@ -160,7 +160,8 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
                   moves_left_utility=False,
                   moves_left_max_effect=MOVES_LEFT_MAX_EFFECT,
                   moves_left_threshold=MOVES_LEFT_THRESHOLD,
-                  moves_left_slope=MOVES_LEFT_SLOPE):
+                  moves_left_slope=MOVES_LEFT_SLOPE,
+                  repetition_search=True):
     """Return (engine, label). NN engine if a model is given, else heuristic.
 
     batch_size is the MCTS leaf-parallel width. The default (16) was chosen for
@@ -195,7 +196,8 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
         reuse = _default_on(REUSE_OFF_ENV)
         search = NativeMCTS(num_simulations=sims, eval_fn=eval_fn,
                             root_noise=False, allow_early_stop=True,
-                            solver=solver, reuse_across_moves=reuse, **kwargs)
+                            solver=solver, reuse_across_moves=reuse,
+                            repetition_search=repetition_search, **kwargs)
         label = f"{label}|native"
         if solver:
             label += "+solver"
@@ -203,6 +205,8 @@ def _build_engine(model_path, sims, batch_size=None, engine=None,
             label += "+reuse"
         if moves_left_utility:
             label += "+mlh"
+        if not repetition_search:
+            label += "-repsearch"
     else:
         search = MCTS(num_simulations=sims, eval_fn=eval_fn, root_noise=False,
                       allow_early_stop=True, **kwargs)
