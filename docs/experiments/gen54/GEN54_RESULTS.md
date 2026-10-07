@@ -149,6 +149,28 @@ Prediction minus target, with the 95% interval, on strong games:
 gen54's value head is as unbiased as gen53's and the most accurate of the
 three. **The White weakness is not a value bias.**
 
+## Rating (for the site, provisional)
+
+The rating is gen54's own matches at 3,200, fitted with the ladder ratings
+held fixed:
+
+| Opponent | Fixed rating | gen54's score | Games |
+|---|---:|---:|---:|
+| v29 | 2450 | 64.3% | 800 |
+| gen53 | 2555 | 79.2% | 800 |
+| v28 | 2326 | 74.4% | 320 (old and new engine) |
+| gen49 | 2301 | 80.6% | 160 |
+| B2 | 2171 | 95.3% | 320 (old and new engine) |
+| v27 | 2064 | 92.2% | 160 |
+
+**Result: 2641** (likelihood 95% range 2625–2658). The data is non-transitive:
+
+- the v29 result alone implies about 2550;
+- the gen53 result alone implies about 2785.
+
+A round-robin extension, like gen53's, would settle the rating. The site lists
+gen54 as experimental with this provisional rating.
+
 ## Promotion eligibility (`docs/protocols/PROMOTION_RULE.md`)
 
 | Criterion | gen54 | Required | Met |
