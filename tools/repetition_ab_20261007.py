@@ -10,6 +10,7 @@ Runs sequentially (one GPU job at a time), each step resumable:
 
 Evidence: benchmarks/repetition_search_20261007/. Nothing here changes a model or a release.
 """
+import json
 import os
 import subprocess
 import sys
@@ -29,12 +30,21 @@ STEPS = [
 ]
 
 
+def complete(report, games):
+    """match.py rewrites its report as a checkpoint during play; done means every game counted."""
+    if not os.path.exists(report):
+        return False
+    with open(report, encoding="utf-8") as fh:
+        r = json.load(fh)
+    return r.get("a_as_white", {}).get("games", 0) + r.get("a_as_black", {}).get("games", 0) == games
+
+
 def main():
     os.chdir(ROOT)
     os.makedirs(OUT, exist_ok=True)
     for name, a, b, games, seed, extra in STEPS:
         report = os.path.join(OUT, f"{name}.json")
-        if os.path.exists(report):
+        if complete(report, games):
             print(f"REPETITION AB {name}: done, skipped", flush=True)
             continue
         cmd = [sys.executable, "-u", "tools/match.py", "--model-a", a, "--model-b", b,
