@@ -1,4 +1,4 @@
-# Monster Chess NN — handoff (current state, October 7, 2026)
+# Monster Chess NN — handoff (current state, October 9, 2026)
 
 This is the entry point for the next developer or agent. It describes what is
 true now. The dated history is in `docs/history/`:
@@ -35,6 +35,17 @@ true now. The dated history is in `docs/history/`:
   - Its value head is unbiased (no White pessimism), so the White weakness is
     in its play.
   - Next steps proposed in the results doc.
+- **gen55 (done October 9): not eligible.**
+  - Teacher gen54, plus gen53, Arm R and Arm LR; pool plus gen53; a White
+    check against v29 in selection (`docs/experiments/gen55/GEN55_RESULTS.md`).
+  - Gate v4 vs gen54: **PASS** (68.8% / 70.6%).
+  - Gate v4 vs v29: **FAIL** on the White floor again; it won all 480 Black
+    games against v29.
+  - Held-out mean 92.5%; v27 position 10/10; unbiased value head, best MSE yet.
+  - Each generation fixes one losing White line and finds another.
+  - Leading suspect: training self-play is 69–78% Black wins at 30
+    half-moves of exploration. An exploration test is proposed; nothing is
+    running.
 - **Engine: repetition awareness (October 7, owner-requested).**
   - The search scores a threefold repetition as a draw, so it no longer
     repeats when ahead (`docs/experiments/repetition_search/RESULTS.md`).
@@ -77,7 +88,8 @@ true now. The dated history is in `docs/history/`:
 |---|---|---|---|
 | v29 | `models/bootstrap_v29/best_value_net.pt` | Release, gate bar | `dbf26b9e` |
 | gen53 | `models/candidates/bootstrap_main_gen_0053/arena_selected.pt` | Strongest; gen54 teacher | `8f1b8803` |
-| gen54 | `models/candidates/bootstrap_main_gen_0054/arena_selected.pt` | Strongest Black; fails vs v29 on White; not eligible | `1f5d53ba` |
+| gen55 | `models/candidates/bootstrap_main_gen_0055/arena_selected.pt` | 70% vs gen54; fails vs v29 on White; not eligible | `76d348e8` |
+| gen54 | `models/candidates/bootstrap_main_gen_0054/arena_selected.pt` | gen55's teacher; fails vs v29 on White | `1f5d53ba` |
 | gen52 Arm R | `models/candidates/bootstrap_main_gen_0052_ramp/arena_selected.pt` | gen53's teacher; gen54 extra teacher | `bfb1857d` |
 | gen52 Arm LR | `models/candidates/bootstrap_main_gen_0052_large_ramp/arena_selected.pt` | Wide tower; gen54 extra teacher | |
 | gen52 Arms A, B, C, L | `models/candidates/bootstrap_main_gen_0052{,_pool,_poolcap,_large}/` | gen54 pool | |
@@ -175,8 +187,8 @@ The full list is `CONTEXT.md` §4. The rules of the game are `CONTEXT.md` §1.
 
 ## 8. Reading order
 
-1. This file, then `docs/experiments/gen54/GEN54_RESULTS.md` (including its
-   next steps).
+1. This file, then `docs/experiments/gen55/GEN55_RESULTS.md` (including its
+   next steps), then `docs/experiments/gen54/`.
 2. `docs/experiments/gen53/` (results and the hole scan), then
    `docs/experiments/gen52/` (arms, value audit, round robins).
 3. `docs/protocols/PROMOTION_RULE.md`, then `SAMPLED_GATE_PROTOCOL.md`.
