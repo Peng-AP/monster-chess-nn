@@ -26,15 +26,20 @@ from exploration_test_20261009 import MODEL, GAMES, tally  # noqa: E402
 
 OUT = ROOT / "benchmarks/depth_temperature_test_20261010"
 ARMS = (("sims3200_t0.1", 3200, None), ("sims1600_t0", 1600, 0.0), ("sims3200_t0", 3200, 0.0))
+# Added after those three stayed at 14-20% White: the generator's engine has
+# Dirichlet root noise on at every move, match engines do not.
+NOISE_ARMS = (("sims1600_t0.1_nonoise", 1600, None), ("sims3200_t0_nonoise", 3200, 0.0))
 SEED = 2_710_000_000
 
 
-def recipe(sims, late, i):
+def recipe(sims, late, i, root_noise=None):
     r = dict(model=MODEL, free_games=GAMES, fresh_games=0, league_games=0, fork_games=0,
              sims=sims, fork_sims=sims, workers=8, seed=SEED + i * 1_000_000,
              coverage_reanalysis=False, temperature_plies=16, prefix_models=[], opponents=[])
     if late is not None:
         r["late_temperature"] = late
+    if root_noise is not None:
+        r["root_noise"] = root_noise
     return r
 
 
@@ -42,11 +47,12 @@ def main():
     os.chdir(ROOT)
     baseline = json.loads((ROOT / "benchmarks/exploration_test_20261009/report.json").read_text())["16"]
     report = {"baseline_sims1600_t0.1": baseline}
-    for i, (name, sims, late) in enumerate(ARMS):
+    arms = [(n, s, t, None) for n, s, t in ARMS] + [(n, s, t, False) for n, s, t in NOISE_ARMS]
+    for i, (name, sims, late, noise) in enumerate(arms):
         arm = OUT / name
         arm.mkdir(parents=True, exist_ok=True)
         config, summary = arm / "recipe.json", arm / "summary.json"
-        config.write_text(json.dumps(recipe(sims, late, i), indent=2))
+        config.write_text(json.dumps(recipe(sims, late, i, noise), indent=2))
         if not summary.exists():
             print(f"DEPTH/TEMP TEST {name}", flush=True)
             subprocess.run([sys.executable, "-u", "tools/stateful_generation.py", "--config", str(config),

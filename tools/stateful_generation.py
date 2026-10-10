@@ -52,10 +52,10 @@ def init_worker(models):
     _evaluators = {p: NNEvaluator(p) for p in dict.fromkeys(models)}
 
 
-def engine(model, sims):
+def engine(model, sims, root_noise=True):
     from native_mcts import NativeMCTS
     return NativeMCTS(num_simulations=sims, eval_fn=_evaluators[model],
-                      root_noise=True, allow_early_stop=False)
+                      root_noise=root_noise, allow_early_stop=False)
 
 
 def play_task(task):
@@ -80,7 +80,7 @@ def play_task(task):
         initial_fen, moves = game.fen(), []
     if game.is_terminal() or repetition.fired_at is not None:
         raise ValueError('cannot continue terminal position')
-    engines = {p: engine(p, task['sims']) for p in dict.fromkeys([task['model'], task.get('other', task['model'])])}
+    engines = {p: engine(p, task['sims'], task.get('root_noise', True)) for p in dict.fromkeys([task['model'], task.get('other', task['model'])])}
     prefix_engine = engines.get(task.get('other'))
     records = []
     finisher_on, depth, nodes, material_max = _finisher_settings()
@@ -153,6 +153,11 @@ def with_exploration(task, config):
         if isinstance(late, bool) or not isinstance(late, (int, float)) or not 0 <= late <= 1:
             raise ValueError('late_temperature must be a number in 0..1')
         task['late_temperature'] = float(late)
+    # Opt-in likewise (2026-10-10): Dirichlet noise at every root, all game.
+    if 'root_noise' in config:
+        if not isinstance(config['root_noise'], bool):
+            raise ValueError('root_noise must be true or false')
+        task['root_noise'] = config['root_noise']
     return task
 
 
