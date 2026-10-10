@@ -102,7 +102,8 @@ def play_task(task):
             # Recipes may lengthen the exploratory opening (gen51: 30 plies);
             # tasks without the key keep the historical config value.
             plies = task.get('temperature_plies', TEMPERATURE_MOVES)
-            temperature = TEMPERATURE_HIGH if len(moves) < plies else TEMPERATURE_LOW
+            temperature = (TEMPERATURE_HIGH if len(moves) < plies
+                           else task.get('late_temperature', TEMPERATURE_LOW))
             action, policy, value = chosen_engine.get_best_action(game, temperature=temperature)
         else:
             from evaluation import evaluate
@@ -145,6 +146,13 @@ def with_exploration(task, config):
         if not isinstance(plies, int) or not 0 <= plies <= 200:
             raise ValueError('temperature_plies must be an integer in 0..200')
         task['temperature_plies'] = plies
+    # Opt-in likewise (2026-10-10, exploration test): the temperature after the
+    # exploratory opening; 0 plays the search's top move, as matches do.
+    if 'late_temperature' in config:
+        late = config['late_temperature']
+        if isinstance(late, bool) or not isinstance(late, (int, float)) or not 0 <= late <= 1:
+            raise ValueError('late_temperature must be a number in 0..1')
+        task['late_temperature'] = float(late)
     return task
 
 

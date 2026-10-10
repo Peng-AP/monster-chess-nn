@@ -184,3 +184,9 @@ def test_exploration_length_is_opt_in_and_leaves_old_task_digests_unchanged():
     import pytest
     with pytest.raises(ValueError):
         sg.ordinary_batches(dict(base, temperature_plies=-1))
+    assert all('late_temperature' not in t for t in explored)
+    greedy = sg.ordinary_batches(dict(base, temperature_plies=16, late_temperature=0))[0]
+    assert [t['late_temperature'] for t in greedy] == [0.0, 0.0]
+    for bad in (-0.1, 2, True, '0'):
+        with pytest.raises(ValueError):
+            sg.ordinary_batches(dict(base, late_temperature=bad))
