@@ -88,7 +88,7 @@ def complete(report, games):
     return r.get("a_as_white", {}).get("games", 0) + r.get("a_as_black", {}).get("games", 0) == games
 
 
-def run_pairings(phase_dir, book_path, n_entries, sims, pairings, seed_base):
+def run_pairings(phase_dir, book_path, n_entries, sims, pairings, seed_base, temp_plies=BOOK_TEMP_PLIES):
     for i, (name, a, b) in enumerate(pairings):
         report, log = phase_dir / f"{name}.json", phase_dir / f"{name}.jsonl"
         games = 2 * n_entries
@@ -98,7 +98,7 @@ def run_pairings(phase_dir, book_path, n_entries, sims, pairings, seed_base):
         cmd = [sys.executable, "-u", "tools/match.py", "--model-a", MODELS[a], "--model-b", MODELS[b],
                "--games", str(games), "--sims", str(sims), "--sims-b", str(sims), "--engine", "native",
                "--workers", "8", "--seed", str(seed_base + i * 1_000_000), "--book", str(book_path),
-               "--book-temp-plies", str(BOOK_TEMP_PLIES), "--stall-timeout", "1800",
+               "--book-temp-plies", str(temp_plies), "--stall-timeout", "1800",
                "--game-log", str(log), "--report-path", str(report), "--resume"]
         print(f"CENSUS {phase_dir.name} {name}: {games} games at {sims}", flush=True)
         subprocess.run(cmd, check=True, cwd=ROOT)
@@ -141,11 +141,11 @@ def summary_md(title, report):
     return "\n".join(lines) + "\n"
 
 
-def phase(name, labels, entries, copies, sims, pairings, seed_base, note):
+def phase(name, labels, entries, copies, sims, pairings, seed_base, note, temp_plies=BOOK_TEMP_PLIES):
     phase_dir = OUT / name
     book = phase_dir / "book.json"
     write_book(book, labels, entries, copies, note)
-    run_pairings(phase_dir, book, len(labels) * copies, sims, pairings, seed_base)
+    run_pairings(phase_dir, book, len(labels) * copies, sims, pairings, seed_base, temp_plies)
     report = aggregate(phase_dir, labels, copies, pairings)
     (phase_dir / "report.json").write_text(json.dumps(dict(labels=labels, copies=copies, sims=sims,
                                                            pairings=pairings, positions=report), indent=1))
@@ -157,6 +157,8 @@ def phase(name, labels, entries, copies, sims, pairings, seed_base, note):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rehearsal", action="store_true", help="2 positions, 1 copy, 16 sims, into OUT/rehearsal")
+    ap.add_argument("--diversity", action="store_true",
+                    help="phase1b: phase 2's positions again at 3,200 with 8 sampled half-moves and 20 copies")
     args = ap.parse_args()
     global OUT
     os.chdir(ROOT)
@@ -169,6 +171,19 @@ def main():
         print("CENSUS REHEARSAL COMPLETE", flush=True)
         return
     assert len(labels) == 58, len(labels)
+    if args.diversity:
+        # Added 2026-10-12 after phase 1: its 4 sampled half-moves left many cells at 1-7 distinct
+        # games, so per-position rankings were fragile. Pre-declared before any phase1b result:
+        # phase 2's 14 positions (phase-1 top 12 + most played), 8 sampled half-moves, 20 copies,
+        # the same three pairings, 3,200 sims. Seeds 3.692e9-3.695e9.
+        while "CENSUS ALL COMPLETE" not in (ROOT / "logs/opening_census.log").read_text(errors="ignore") or                 "DRAW CONVERSION COMPLETE" not in (ROOT / "logs/draw_conversion.log").read_text(errors="ignore"):
+            import time
+            time.sleep(300)
+        chosen = json.loads((OUT / "phase2/report.json").read_text())["labels"]
+        phase("phase1b", chosen, entries, 20, 3200, PAIRINGS, SEED + 52_000_000,
+              "phase 2 positions, 8 sampled half-moves", temp_plies=8)
+        print("CENSUS DIVERSITY COMPLETE", flush=True)
+        return
     p1 = phase("phase1", labels, entries, 10, 3200, PAIRINGS, SEED, "58 White first turns")
     ranked = sorted(labels, key=lambda k: -p1[k]["mean_white_score"])
     chosen = ranked[:12] + [k for k in MOST_PLAYED if k not in ranked[:12]]
