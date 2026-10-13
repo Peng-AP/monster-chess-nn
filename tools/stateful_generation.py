@@ -207,8 +207,9 @@ def book_tasks(config):
     Recipes without `book_games` produce no book tasks and unchanged digests.
 
     Optional `book_pairings` (2026-10-13, per-colour teachers) lists
-    {white: model, black: model}: each position's games are dealt round-robin
-    over the pairings, the named models play their colours, and both sides'
+    {white: model, black: model}: games are dealt round-robin over the pairings
+    in task order (each pairing within one game of the others, overall and per
+    position), the named models play their colours, and both sides'
     moves are policy targets.
     """
     count = config.get('book_games', 0)
@@ -248,12 +249,12 @@ def book_tasks(config):
         counts[i] += 1
     tasks = []
     for state, n in zip(states, counts):
-        for j in range(n):
+        for _ in range(n):
             index = len(tasks)
             task = dict(id=f'book/game_{index:05d}', kind='book', model=config['model'],
                         sims=config['sims'], seed=config['seed'] + 700000 + index, state=state)
             if pairings:
-                pairing = pairings[j % len(pairings)]
+                pairing = pairings[index % len(pairings)]
                 task.update(white_model=pairing['white'], black_model=pairing['black'])
             tasks.append(with_exploration(task, config))
     return tasks

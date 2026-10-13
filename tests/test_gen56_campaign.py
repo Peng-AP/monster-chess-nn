@@ -29,10 +29,13 @@ def book_lines():
 def test_decision_shape_and_held_out_isolation():
     d = DECISION
     assert d["teacher"].endswith("bootstrap_main_gen_0055/arena_selected.pt")
-    assert [t["name"] for t in d["extra_teachers"]] == ["v29", "gen54"] and all(t["games"] == 700 for t in d["extra_teachers"])
+    assert "extra_teachers" not in d and d["paired_book_games"] == 1400
+    assert [(p["white"], p["black"]) for p in d["book_pairings"]] == [
+        ("gen55", "gen53"), ("gen55", "v29"), ("gen54", "gen53"), ("gen54", "v29")]
+    assert d["pairing_models"]["gen55"]["model"] == d["teacher"] and d["pairing_models"]["v29"]["model"] == d["release"]
     assert len(d["pool_opponents"]) == 8 and d["pool_opponents"][0] == d["release"]
     held = {str(Path(p)) for p in g.HELD_OUT}
-    everyone = [d["teacher"], *(t["model"] for t in d["extra_teachers"]), *d["pool_opponents"]]
+    everyone = [d["teacher"], *(m["model"] for m in d["pairing_models"].values()), *d["pool_opponents"]]
     assert not {str(Path(p)) for p in everyone} & held
     assert d["colour_check"]["black_tolerance"] == 0.02 and d["proposed_promotion"]["per_colour_tolerance"] == 0.03
 
@@ -57,11 +60,30 @@ def test_recipes_match_the_decision():
         assert canonical["model"] == DECISION["teacher"] and canonical["book_starts"] == book_lines()
         assert recipe("_pool", smoke)["opponents"] == DECISION["pool_opponents"]
         assert recipe("_pool", smoke)["league_games"] % (2 * len(DECISION["pool_opponents"])) == 0
-        for t in DECISION["extra_teachers"]:
-            r = recipe(f"_teacher_{t['name']}", smoke)
-            assert r["model"] == t["model"] and r["free_games"] == 0 and r["book_starts"] == book_lines()
+        r = recipe("_paired", smoke)
+        assert r["model"] == DECISION["teacher"] and r["free_games"] == 0 and r["book_starts"] == book_lines()
+        assert r["book_pairings"] == g.pairings(DECISION) and r["temperature_plies"] == 30
+        assert r["book_games"] % len(r["book_pairings"]) == 0
     assert recipe("")["free_games"] == 1400 and recipe("")["book_games"] == 1400
-    assert recipe("_teacher_v29")["book_games"] == 700 and recipe("_pool")["league_games"] == 86 * 2 * 8
+    assert recipe("_paired")["book_games"] == DECISION["paired_book_games"] == 1400
+    assert recipe("_paired")["sims"] == 1600 and recipe("_pool")["league_games"] == 86 * 2 * 8
+
+
+def test_paired_book_tasks_give_every_pairing_an_equal_share():
+    import stateful_generation as sg
+    r = recipe("_paired")
+    tasks = sg.book_tasks(r)
+    assert len(tasks) == 1400
+    shares = {}
+    for t in tasks:
+        key = (t["white_model"], t["black_model"])
+        shares[key] = shares.get(key, 0) + 1
+    assert sorted(shares) == sorted((p["white"], p["black"]) for p in r["book_pairings"])
+    assert max(shares.values()) - min(shares.values()) <= 1
+    for line in {tuple(t["state"]["moves"]) for t in tasks}:
+        mine = [(t["white_model"], t["black_model"]) for t in tasks if tuple(t["state"]["moves"]) == line]
+        counts = [mine.count(p) for p in set(shares)]
+        assert max(counts) - min(counts) <= 1
 
 
 @pytest.mark.local_artifacts

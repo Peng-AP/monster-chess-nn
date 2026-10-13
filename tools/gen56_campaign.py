@@ -6,7 +6,8 @@ recommendations: "Yes, work on it"). Derived from tools/gen55_campaign.py; the c
  1. Teacher gen55. Half its self-play starts from the census book (70 lines:
     14 key first turns, Black's two best replies to the best 6 first turns,
     the other 44 first turns for breadth), half from the normal start.
- 2. Extra teachers v29 and gen54, 700 book-start games each.
+ 2. Per-colour teachers (owner 2026-10-13, option d): 1,400 book-start games,
+    White gen55 or gen54 against Black gen53 or v29, both sides policy targets.
  3. Pool: v29, gen54, gen53, gen52 B/C/L/LR/R; 86 games per opponent per colour.
  4. Selection: deep guard against gen55, plus a per-colour check against gen55
     and v29 on the census key book (14 x 6, 8 sampled half-moves): White at
@@ -37,13 +38,13 @@ import gen51_campaign as g51
 import start_gen49 as prior
 
 RUN = ROOT / "benchmarks/gen56_program/gen56_20261013"
-SMOKE_ROOT = ROOT / "iterations/rehearsal_gen56_20261013"
+SMOKE_ROOT = ROOT / "iterations/rehearsal_gen56d_20261013"   # option d; the first rehearsal is superseded
 DECISION = ROOT / "docs/plans/gen56_teacher_decision.json"
 V28, GEN49 = g51.V28, g51.GEN49
 HELD_OUT = [prior.HOLDOUT, prior.RELEASE]  # B2 and v27: never training opponents or teachers
 # PROMOTION_RULE.md: held-out mean no worse than the release's (v29: 92.7%) minus 1 pp.
 HELD_OUT_MIN = 0.917
-RECIPE_KINDS = ("", "_pool", "_teacher_v29", "_teacher_gen54")
+RECIPE_KINDS = ("", "_pool", "_paired")
 # v29's per-colour scores on the census book (phase 1b), the baseline of the proposed rule.
 CENSUS_REPORT = ROOT / "benchmarks/opening_census_20261012/phase1b/report.json"
 PINNED = ["tools/gen56_campaign.py", "tools/opening_census.py", "tools/colour_instrument.py", "tools/gen51_campaign.py", "tools/disagreement_continuations.py",
@@ -64,7 +65,7 @@ PINNED = ["tools/gen56_campaign.py", "tools/opening_census.py", "tools/colour_in
 def decision():
     d = read(DECISION)
     checks = [(d["teacher"], d["teacher_sha256"]), (d["release"], d["release_sha256"])]
-    for model, sha in checks + [(t["model"], t["sha256"]) for t in d["extra_teachers"]]:
+    for model, sha in checks + [(m["model"], m["sha256"]) for m in d["pairing_models"].values()]:
         if file_hash(ROOT / model) != sha:
             raise ValueError(f"checkpoint changed: {model}")
     if file_hash(ROOT / d["colour_book"]) != d["colour_book_sha256"]:
@@ -96,14 +97,21 @@ def recipe_path(kind, smoke):
     return ROOT / "tools/recipes" / f"gen56{kind}{'_rehearsal' if smoke else ''}.json"
 
 
+def pairings(d):
+    """The decision's per-colour pairings as model paths, in recipe form."""
+    m = d["pairing_models"]
+    return [dict(white=m[p["white"]]["model"], black=m[p["black"]]["model"]) for p in d["book_pairings"]]
+
+
 def identity():
     d = decision()
-    models = {p: file_hash(ROOT / p) for p in [d["teacher"], d["release"], *(t["model"] for t in d["extra_teachers"]),
-                                                *d["pool_opponents"], *HELD_OUT]}
+    paired = [p for pair in pairings(d) for p in pair.values()]
+    models = {p: file_hash(ROOT / p) for p in [d["teacher"], d["release"], *paired, *d["pool_opponents"], *HELD_OUT]}
     held = {str(Path(p)) for p in HELD_OUT}
     for smoke in (False, True):
-        for kind, model in [("", d["teacher"]), ("_pool", d["teacher"])] + \
-                [(f"_teacher_{t['name']}", t["model"]) for t in d["extra_teachers"]]:
+        if read(recipe_path("_paired", smoke)).get("book_pairings") != pairings(d):
+            raise ValueError("paired recipe pairings differ from the decision")
+        for kind, model in [("", d["teacher"]), ("_pool", d["teacher"]), ("_paired", d["teacher"])]:
             recipe = read(recipe_path(kind, smoke))
             prior.validate_recipe(recipe)
             if recipe["model"] != model or recipe.get("temperature_plies") != 30:
@@ -115,7 +123,7 @@ def identity():
                 raise ValueError("held-out opponents may never be training opponents")
         if read(recipe_path("_pool", smoke))["opponents"] != d["pool_opponents"]:
             raise ValueError("pool recipe opponents differ from the decision")
-    if {str(Path(t["model"])) for t in d["extra_teachers"]} & held or str(Path(d["teacher"])) in held:
+    if {str(Path(p)) for p in paired} & held or str(Path(d["teacher"])) in held:
         raise ValueError("held-out models may never be teachers")
     replay = sorted((e for e in read(ROOT / "iterations/accepted_data.json")["entries"]
                      if int(e["generation"]) < 56), key=lambda e: int(e["generation"]))[-7:]
@@ -225,13 +233,10 @@ def generated_source(campaign, smoke, label, recipe, raw, out, games):
 def extra_sources(campaign, smoke):
     _, extra = paths_for(smoke)
     n = layout(smoke)["generation"]
-    sources = []
-    for t in decision()["extra_teachers"]:
-        recipe = recipe_path(f"_teacher_{t['name']}", smoke)
-        raw, out = extra["teacher"](t["name"])
-        sources.append((f"gen_{n:04d}_teacher_{t['name']}",
-                        generated_source(campaign, smoke, f"teacher_{t['name']}", recipe, raw, out,
-                                         read(recipe)["free_games"] + read(recipe).get("book_games", 0))))
+    recipe = recipe_path("_paired", smoke)
+    raw, out = extra["teacher"]("paired")
+    sources = [(f"gen_{n:04d}_paired", generated_source(campaign, smoke, "paired", recipe, raw, out,
+                                                        read(recipe)["book_games"]))]
     recipe = recipe_path("_pool", smoke)
     sources.append((f"gen_{n:04d}_pool", generated_source(campaign, smoke, "pool", recipe, extra["pool_raw"],
                                                           extra["pool"], read(recipe)["league_games"])))
@@ -432,7 +437,8 @@ def work(campaign, smoke):
     pin_json(campaign.root / "summary.json", dict(
         complete=True, rehearsal=smoke, decision=d, nominee=nominee, result=result,
         manifest_sha256=file_hash(campaign.root / "manifest.json"),
-        notes=["Single arm: gen55 self-play, half from census book starts; v29 and gen54 book-start games; pool.",
+        notes=["Single arm: gen55 self-play, half from census book starts; per-colour teacher book games "
+               "(White gen55/gen54 vs Black gen53/v29); pool.",
                "Selection adds a per-colour check against gen55 and v29; the per-colour instrument is the primary measure.",
                "Nothing promoted.", "B2 and v27 are held out (never teachers or training opponents)."]))
     atomic_json(campaign.root / "status.json", dict(status="complete"))

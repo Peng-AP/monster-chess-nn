@@ -1,6 +1,7 @@
-# Gen56 plan (draft, October 13, 2026; awaiting the owner)
+# Gen56 plan (October 13, 2026; launched with option d)
 
 Owner, October 12, on the census recommendations: "Yes, work on it".
+Owner, October 13, on option d: "Yes, try it, and then start gen 56".
 
 Evidence: `docs/experiments/game_value/OPENING_CENSUS.md`.
 
@@ -24,8 +25,7 @@ Teacher: **gen55** (the strongest Black; 70% against gen54).
 |---|---:|---|
 | gen55 self-play, **normal start** (+ forks, reanalysis) | 1,400 + 400 forks | Halved |
 | gen55 self-play from **census book starts** | 1,400 | **New** |
-| Extra teacher **v29**, book starts | 700 | **New teacher.** It refutes gen55's d4 + f4 and draws lines gen55's White loses |
-| Extra teacher **gen54**, book starts | 700 | Replaces Arm R and LR. A different Black repertoire |
+| **Per-colour teachers**, book starts: White gen55 or gen54 vs Black gen53 or v29 (4 pairings × 350) | 1,400 | **New** (option d). Both sides' moves are policy targets. Replaces the v29 and gen54 self-play book games of the draft |
 | Pool: gen55 vs v29, gen54, gen53, gen52 B, C, L, LR, R | 1,376 (86 per opponent per colour) | gen54 in, Arm A out |
 | Deep-value continuations (gen55, reference v29), ramped | 768 × 2 | Unchanged |
 
@@ -155,14 +155,18 @@ different colors?"). Recommended in place of a.
   v27's Black. This is the known v27 hole.
 - This doesn't affect option d, which uses only gen53's Black.
 
-## Decisions needed
+## Decisions (owner, October 13)
 
-1. Approve the data plan: book starts, v29 and gen54 as extra teachers, and
-   the pool.
-2. Approve the per-colour selection rule.
-3. Approve or amend the promotion-rule revision.
-4. Approve launch. The rehearsal passed every stage on October 13 (07:08 to
-   07:17): book games, both extra teachers, the pool, training, the
-   colour check, both gates, the diagnostics and the instrument.
-5. Options a, b and d above. Taking a, b or d changes the decision file and the
-   recipes, followed by a fresh rehearsal (about 10 minutes).
+"Yes, try it, and then start gen 56", after option d was explained.
+
+1. **Data plan:** approved, with option d. The per-colour teacher games replace
+   the v29 and gen54 self-play book games. Option a (gen53 as a self-play
+   teacher) is subsumed.
+2. **Selection rule:** as written, with Black within 2 pp of the teacher's.
+   Option b (v29's cells as the Black reference) was not taken.
+3. **Promotion rule:** not decided. The campaign reports eligibility under both
+   the current rule and the proposed per-colour rule; the owner decides at
+   sign-off.
+4. **Launch:** approved. A fresh rehearsal runs first, with option d, under the
+   new rehearsal namespace `rehearsal_gen56d_20261013`. Production follows
+   automatically if it passes.
