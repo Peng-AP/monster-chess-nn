@@ -193,6 +193,45 @@ def test_book_starts_are_opt_in_weighted_and_replay_the_line():
             sg.book_tasks(dict(base, book_games=4, book_starts=bad))
 
 
+def test_book_pairings_deal_each_position_over_the_pairings():
+    import pytest
+    import stateful_generation as sg
+    base = dict(model='m.pt', sims=8, seed=100, free_games=0, fresh_games=0, league_games=0,
+                prefix_models=[], opponents=[], book_games=8,
+                book_starts=[dict(moves=['e2e4', 'd2d4'], weight=1), dict(moves=['c2c4', 'e2e4'], weight=1)])
+    assert all('white_model' not in t and 'black_model' not in t for t in sg.book_tasks(base))
+    pairs = [dict(white='w1.pt', black='b1.pt'), dict(white='w2.pt', black='b2.pt')]
+    tasks = sg.book_tasks(dict(base, book_pairings=pairs))
+    plain = sg.book_tasks(base)
+    assert [(t['id'], t['seed'], t['state']) for t in tasks] == [(t['id'], t['seed'], t['state']) for t in plain]
+    for moves in (['e2e4', 'd2d4'], ['c2c4', 'e2e4']):
+        dealt = [(t['white_model'], t['black_model']) for t in tasks if t['state']['moves'] == moves]
+        assert dealt == [('w1.pt', 'b1.pt'), ('w2.pt', 'b2.pt')] * 2
+    for bad in ([], [dict(white='w.pt')], [dict(white='w.pt', black='')], 'w.pt'):
+        with pytest.raises(ValueError, match='book_pairings'):
+            sg.book_tasks(dict(base, book_pairings=bad))
+
+
+def test_book_pairings_play_each_colour_with_its_teacher_and_keep_both_policies(monkeypatch):
+    import stateful_generation as generation
+    import data_generation
+    class FirstLegal:
+        def __init__(self, name):
+            self.name = name
+        def get_best_action(self, game, temperature):
+            actions = sorted(game.get_search_actions(), key=lambda m: m.uci())
+            return actions[0], {actions[0].uci(): 1.0}, 0.0
+    monkeypatch.setattr(generation, 'engine', lambda path, *a: FirstLegal(path))
+    monkeypatch.setattr(data_generation, '_finisher_settings', lambda: (False, 4, 100, 8))
+    game = MonsterChessGame()
+    rows = play_task(dict(id='book/game_00000', kind='book', seed=12, model='teacher.pt', sims=8,
+                          white_model='white.pt', black_model='black.pt',
+                          state=snapshot(game, game.fen(), [])))
+    assert {r['current_player'] for r in rows} == {'white', 'black'}
+    assert all(r['generator_model'] == ('white.pt' if r['current_player'] == 'white' else 'black.pt') for r in rows)
+    assert all(r['policy_weight'] == 1.0 for r in rows)
+
+
 def test_exploration_length_is_opt_in_and_leaves_old_task_digests_unchanged():
     import stateful_generation as sg
     from match_evidence import digest

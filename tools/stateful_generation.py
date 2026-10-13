@@ -80,7 +80,9 @@ def play_task(task):
         initial_fen, moves = game.fen(), []
     if game.is_terminal() or repetition.fired_at is not None:
         raise ValueError('cannot continue terminal position')
-    engines = {p: engine(p, task['sims'], task.get('root_noise', True)) for p in dict.fromkeys([task['model'], task.get('other', task['model'])])}
+    colour_teachers = [task[k] for k in ('white_model', 'black_model') if k in task]
+    engines = {p: engine(p, task['sims'], task.get('root_noise', True))
+               for p in dict.fromkeys([task['model'], task.get('other', task['model']), *colour_teachers])}
     prefix_engine = engines.get(task.get('other'))
     records = []
     finisher_on, depth, nodes, material_max = _finisher_settings()
@@ -92,6 +94,8 @@ def play_task(task):
         model = task['model']
         if task['kind'] == 'league' and game.is_white_turn != (task['train_side'] == 'white'):
             model = task['other']
+        if colour_teachers:
+            model = task['white_model'] if game.is_white_turn else task['black_model']
         chosen_engine = prefix_engine if prefix else engines[model]
         action = None
         proven = False
@@ -114,7 +118,7 @@ def play_task(task):
             record = dict(fen=game.fen(), half=int(game.white_half_pending),
                           current_player='white' if game.is_white_turn else 'black',
                           policy=policy, mcts_value=float(value),
-                          policy_weight=1.0 if model == task['model'] or proven else 0.0,
+                          policy_weight=1.0 if model == task['model'] or colour_teachers or proven else 0.0,
                           state=snapshot(game, initial_fen, moves),
                           played_action=action.uci(), source='stateful_' + task['kind'],
                           generator_model=model, task_id=task['id'])
@@ -201,6 +205,11 @@ def book_tasks(config):
     self-play from that position, with the line as its history, so the
     repetition rule and the record states are exactly those of a played game.
     Recipes without `book_games` produce no book tasks and unchanged digests.
+
+    Optional `book_pairings` (2026-10-13, per-colour teachers) lists
+    {white: model, black: model}: each position's games are dealt round-robin
+    over the pairings, the named models play their colours, and both sides'
+    moves are policy targets.
     """
     count = config.get('book_games', 0)
     if not count:
@@ -208,6 +217,11 @@ def book_tasks(config):
     starts = config.get('book_starts') or []
     if not isinstance(count, int) or count < 0 or not starts:
         raise ValueError('book_games needs a positive count and non-empty book_starts')
+    pairings = config.get('book_pairings')
+    if pairings is not None and (not isinstance(pairings, list) or not pairings or not all(
+            isinstance(p, dict) and set(p) == {'white', 'black'} and all(isinstance(p[k], str) and p[k] for k in p)
+            for p in pairings)):
+        raise ValueError('book_pairings must be a non-empty list of {white: model, black: model}')
     from monster_chess import MonsterChessGame
     import chess
     initial = MonsterChessGame().fen()
@@ -234,11 +248,14 @@ def book_tasks(config):
         counts[i] += 1
     tasks = []
     for state, n in zip(states, counts):
-        for _ in range(n):
+        for j in range(n):
             index = len(tasks)
-            tasks.append(with_exploration(dict(id=f'book/game_{index:05d}', kind='book', model=config['model'],
-                                               sims=config['sims'], seed=config['seed'] + 700000 + index,
-                                               state=state), config))
+            task = dict(id=f'book/game_{index:05d}', kind='book', model=config['model'],
+                        sims=config['sims'], seed=config['seed'] + 700000 + index, state=state)
+            if pairings:
+                pairing = pairings[j % len(pairings)]
+                task.update(white_model=pairing['white'], black_model=pairing['black'])
+            tasks.append(with_exploration(task, config))
     return tasks
 
 
@@ -332,8 +349,10 @@ def run(config, raw, summary):
     raw, summary = Path(raw), Path(summary)
     evidence = summary.parent / 'generation_receipts'
     manifest_path = summary.parent / 'stateful_generation_manifest.json'
+    paired = [p[k] for p in config.get('book_pairings') or [] for k in ('white', 'black')]
     manifest = dict(config=config, runtime=runtime_identity(), implementation=file_hash(__file__),
-                    models=[model_identity(p) for p in dict.fromkeys([config['model'], *config['prefix_models'], *config['opponents']])])
+                    models=[model_identity(p) for p in dict.fromkeys([config['model'], *config['prefix_models'],
+                                                                      *config['opponents'], *paired])])
     if manifest_path.exists() and json.loads(manifest_path.read_text()) != manifest:
         raise ValueError('generation resume provenance changed')
     atomic_json(manifest_path, manifest)

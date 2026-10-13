@@ -117,9 +117,31 @@ the decision file are unchanged; these are options for the owner.
 - Under the current rule, a candidate with gen55's Black passes selection
   but fails promotion on the cell where gen55 fails.
 
-**c. Re-measure gen53's held-out mean on the repetition-aware engine.**
+**d. Per-colour teachers** (owner, October 13: "different teachers for
+different colors?"). Recommended in place of a.
 
-- 320 games, about an hour.
+- Replace the two extra teachers' self-play book games (v29 700, gen54 700)
+  with 1,400 book games between a White teacher and a Black teacher.
+- **Whites:** gen55 (best White mean, 18.6%) and gen54 (best White against
+  v29's Black, 18.8%).
+- **Blacks:** gen53 (91.3%) and v29 (87.4%), the two best Blacks.
+- Four pairings × 350 games. Each position's games are dealt evenly over the
+  pairings.
+- Both sides' moves are policy targets. The value labels are the game
+  results, so White learns its outcomes against the Blacks that refute it.
+- **Why:** self-play hides a model's holes. gen55's White beats gen55's own
+  Black in e1e2 e2e3 and e2e3 f2f4 (21/40, 18/40), yet loses 19/20 and 20/20
+  there to v29's Black.
+- **Cost:** about the same.
+- **Generator:** opt-in `book_pairings` in `tools/stateful_generation.py`,
+  tested. Old recipes are unchanged.
+- gen55's own 1,400 book self-play games stay as they are.
+
+**c. Re-measure gen53's held-out mean on the repetition-aware engine** (running,
+`tools/heldout_remeasure_20261013.py`; v29 is measured too, because the bar is
+v29's mean minus 1 pp).
+
+- 640 games (gen53 and v29, each against B2 and v27).
 - gen53 failed promotion only on that mean (88.3% against 91.7%), measured on
   the old engine.
 - Under the proposed rule, it is the only model that passes the per-colour
@@ -134,5 +156,5 @@ the decision file are unchanged; these are options for the owner.
 4. Approve launch. The rehearsal passed every stage on October 13 (07:08 to
    07:17): book games, both extra teachers, the pool, training, the
    colour check, both gates, the diagnostics and the instrument.
-5. Options a–c above. Taking a or b changes the decision file and the
+5. Options a–d above. Taking a, b or d changes the decision file and the
    recipes, followed by a fresh rehearsal (about 10 minutes).
