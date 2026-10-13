@@ -55,8 +55,19 @@ true now. The dated history is in `docs/history/`:
     - **Black** contradicts the Elo order (gen53 91.3%, v29 87.4%, gen55
       83.4%, gen54 82.3%).
     - Only gen53 passes the proposed per-colour promotion rule.
-  - gen56 (`docs/plans/GEN56_PLAN.md`): the rehearsal passed on October 13.
-    Launch awaits the owner's decisions 1–5. Nothing is running.
+- **gen56: production RUNNING since October 13, 18:30** (`docs/plans/GEN56_PLAN.md`;
+  `py -3 -B tools/runs.py status`, `logs/gen56.log`). About 33 h.
+  - The owner approved it with option d, per-colour teachers: 1,400 book-start
+    games, White gen55 or gen54 against Black gen53 or v29, with both sides'
+    moves as policy targets.
+  - The selection rule is as written. The promotion rule is undecided; both
+    eligibilities are reported.
+  - Rehearsal `rehearsal_gen56e_20261013` passed. The earlier rehearsal
+    caught a model-preload bug, now fixed.
+  - Resume after a stop: `py -3 -B tools/runs.py start --name gen56 -- py -3 -u tools/gen56_campaign.py`.
+    Do not edit its PINNED files.
+- gen53's held-out mean on the current engine is 88.0%, against a bar of
+  91.8%. It is still ineligible: its White went 41/1/38 against v27.
 - **gen55 (done October 9): not eligible.**
   - Teacher gen54, plus gen53, Arm R and Arm LR; pool plus gen53; a White
     check against v29 in selection (`docs/experiments/gen55/GEN55_RESULTS.md`).
