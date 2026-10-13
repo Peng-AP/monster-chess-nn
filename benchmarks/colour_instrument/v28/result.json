@@ -1,0 +1,55 @@
+{
+ "candidate": "v28",
+ "model": "models/bootstrap_v28/best_value_net.pt",
+ "book": "benchmarks\\opening_census_20261012\\phase1b\\book.json",
+ "baselines": {
+  "gen55": {
+   "white": 0.217,
+   "black": 0.783,
+   "n": 560
+  },
+  "v29": {
+   "white": 0.0973,
+   "black": 0.9027,
+   "n": 560
+  }
+ },
+ "vs": {
+  "gen55": {
+   "white": {
+    "n": 280,
+    "w": 14,
+    "d": 4,
+    "l": 262,
+    "score": 0.0571,
+    "distinct": 211
+   },
+   "black": {
+    "n": 280,
+    "w": 174,
+    "d": 52,
+    "l": 54,
+    "score": 0.7143,
+    "distinct": 188
+   }
+  },
+  "v29": {
+   "white": {
+    "n": 280,
+    "w": 6,
+    "d": 25,
+    "l": 249,
+    "score": 0.0661,
+    "distinct": 197
+   },
+   "black": {
+    "n": 280,
+    "w": 231,
+    "d": 23,
+    "l": 26,
+    "score": 0.8661,
+    "distinct": 200
+   }
+  }
+ }
+}

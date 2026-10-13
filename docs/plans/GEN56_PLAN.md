@@ -91,11 +91,48 @@ Gate v4 stays as a reported diagnostic.
 About 33 hours, as gen55: 1,400 fewer normal-start games, plus 1,400 book
 games, plus about 2 hours of colour checks.
 
+## What the per-colour baselines change (October 13)
+
+Source: `docs/experiments/game_value/COLOUR_BASELINES.md`. The recipes and
+the decision file are unchanged; these are options for the owner.
+
+| Model | White mean | Black mean | Passes the proposed rule? |
+|---|---:|---:|---|
+| gen55 | 18.6% | 83.4% | No: Black vs gen55's White −6.2 pp |
+| v29 | 10.6% | 87.4% | (baseline) |
+| gen54 | 17.5% | 82.3% | No: Black vs v29's White −8.7 pp |
+| gen53 | 13.8% | **91.3%** | **Yes**, all four cells at or above v29 |
+
+**a. Swap extra teacher gen54 for gen53** (recommended).
+
+- gen53 has the best Black of the six models measured. gen54 has the
+  weakest Black of the three recent models.
+- gen55 already supplies the best White.
+- The cost is the same.
+
+**b. Make selection's Black reference v29's cells, not the teacher's**
+(recommended).
+
+- Selection and the proposed promotion rule would then test the same thing.
+- Under the current rule, a candidate with gen55's Black passes selection
+  but fails promotion on the cell where gen55 fails.
+
+**c. Re-measure gen53's held-out mean on the repetition-aware engine.**
+
+- 320 games, about an hour.
+- gen53 failed promotion only on that mean (88.3% against 91.7%), measured on
+  the old engine.
+- Under the proposed rule, it is the only model that passes the per-colour
+  part.
+
 ## Decisions needed
 
 1. Approve the data plan: book starts, v29 and gen54 as extra teachers, and
    the pool.
 2. Approve the per-colour selection rule.
 3. Approve or amend the promotion-rule revision.
-4. Approve launch. The driver is ready to rehearse once the per-colour
-   baselines finish (they hold the GPU until about 7 AM).
+4. Approve launch. The rehearsal passed every stage on October 13 (07:08 to
+   07:17): book games, both extra teachers, the pool, training, the
+   colour check, both gates, the diagnostics and the instrument.
+5. Options a–c above. Taking a or b changes the decision file and the
+   recipes, followed by a fresh rehearsal (about 10 minutes).

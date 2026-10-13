@@ -46,8 +46,17 @@ true now. The dated history is in `docs/history/`:
   - Strong-model draws are real holds: deeper search converts only 3–4%.
   - Practical value: a Black win against today's best Black. Perfect-play
     value: unproven.
-  - Recommendations (a per-colour instrument, census-book training, Black
-    refutation completeness) await the owner. Nothing is running.
+  - Per-colour baselines (October 13, `COLOUR_BASELINES.md`), measured on the
+    census book against gen55 and v29:
+    - **White** follows the Elo order (gen55 18.6%, gen54 17.5%, gen53
+      13.8%, v29 10.6%). gen54 and gen55 have the best Whites against
+      v29's Black, though both failed v29's gate on the White floor. That
+      floor measures repertoire.
+    - **Black** contradicts the Elo order (gen53 91.3%, v29 87.4%, gen55
+      83.4%, gen54 82.3%).
+    - Only gen53 passes the proposed per-colour promotion rule.
+  - gen56 (`docs/plans/GEN56_PLAN.md`): the rehearsal passed on October 13.
+    Launch awaits the owner's decisions 1–5. Nothing is running.
 - **gen55 (done October 9): not eligible.**
   - Teacher gen54, plus gen53, Arm R and Arm LR; pool plus gen53; a White
     check against v29 in selection (`docs/experiments/gen55/GEN55_RESULTS.md`).
