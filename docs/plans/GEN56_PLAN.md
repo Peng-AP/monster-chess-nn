@@ -168,5 +168,5 @@ different colors?"). Recommended in place of a.
    the current rule and the proposed per-colour rule; the owner decides at
    sign-off.
 4. **Launch:** approved. A fresh rehearsal runs first, with option d, under the
-   new rehearsal namespace `rehearsal_gen56d_20261013`. Production follows
+   new rehearsal namespace `rehearsal_gen56e_20261013`. Production follows
    automatically if it passes.

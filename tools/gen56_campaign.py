@@ -38,7 +38,7 @@ import gen51_campaign as g51
 import start_gen49 as prior
 
 RUN = ROOT / "benchmarks/gen56_program/gen56_20261013"
-SMOKE_ROOT = ROOT / "iterations/rehearsal_gen56d_20261013"   # option d; the first rehearsal is superseded
+SMOKE_ROOT = ROOT / "iterations/rehearsal_gen56e_20261013"   # option d; earlier rehearsals superseded (d: model preload bug)
 DECISION = ROOT / "docs/plans/gen56_teacher_decision.json"
 V28, GEN49 = g51.V28, g51.GEN49
 HELD_OUT = [prior.HOLDOUT, prior.RELEASE]  # B2 and v27: never training opponents or teachers

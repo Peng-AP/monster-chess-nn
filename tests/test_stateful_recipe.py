@@ -210,6 +210,11 @@ def test_book_pairings_deal_each_position_over_the_pairings():
     for bad in ([], [dict(white='w.pt')], [dict(white='w.pt', black='')], 'w.pt'):
         with pytest.raises(ValueError, match='book_pairings'):
             sg.book_tasks(dict(base, book_pairings=bad))
+    # Workers preload every model the batch plays with (a 2026-10-13 rehearsal loaded only the first task's).
+    assert sg.batch_models(tasks) == ['m.pt', 'w1.pt', 'b1.pt', 'w2.pt', 'b2.pt']
+    assert sg.batch_models(plain) == ['m.pt']
+    league = [dict(model='m.pt', other='o.pt'), dict(model='m.pt', other='o.pt')]
+    assert sg.batch_models(league) == ['m.pt', 'o.pt']
 
 
 def test_book_pairings_play_each_colour_with_its_teacher_and_keep_both_policies(monkeypatch):

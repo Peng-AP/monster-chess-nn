@@ -52,6 +52,12 @@ def init_worker(models):
     _evaluators = {p: NNEvaluator(p) for p in dict.fromkeys(models)}
 
 
+def batch_models(tasks):
+    """Every model a batch's tasks play with, in first-use order (each worker loads them once)."""
+    return list(dict.fromkeys(p for t in tasks for p in (t['model'], t.get('other', t['model']),
+                                                         *(t[k] for k in ('white_model', 'black_model') if k in t))))
+
+
 def engine(model, sims, root_noise=True):
     from native_mcts import NativeMCTS
     return NativeMCTS(num_simulations=sims, eval_fn=_evaluators[model],
@@ -312,7 +318,7 @@ def run_batch(tasks, raw, evidence, workers):
             pending_tasks.append(task)
     if not pending_tasks:
         return
-    models = list(dict.fromkeys([tasks[0]['model'], tasks[0].get('other', tasks[0]['model'])]))
+    models = batch_models(tasks)
     pool = futures.ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context('spawn'),
                                        initializer=init_worker, initargs=(models,))
     pending = {pool.submit(play_task, task): task for task in pending_tasks}
