@@ -110,13 +110,12 @@ The normal-start order is gen55 > gen54 > gen53 > v29 > v28 > gen49:
 - gen55 fails on Black vs gen55's White (−6.2 pp).
 - gen54 fails on Black vs v29's White (−8.7 pp).
 
-**2. gen53's eligibility is an open question:**
+**2. gen53 is still ineligible:**
 
-- gen53 failed only the held-out mean: 88.3% against 91.7%.
-- That was measured before the repetition-aware engine. gen54's B2 score rose
-  from 92.2% to 98.4% when the engine changed, because its repetition draws
-  became wins.
-- gen53's held-out mean on the current engine has not been measured.
+- Re-measured on the repetition-aware engine on October 13: held-out mean
+  88.0% against a bar of 91.8% (v29's 92.8% minus 1 pp).
+- The gap is gen53's White against v27: 41/1/38 W/D/L, from the normal start.
+- See `docs/plans/GEN56_PLAN.md`, option c.
 
 **3. Selection's Black reference is weak:**
 
