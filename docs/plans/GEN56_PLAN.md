@@ -137,15 +137,23 @@ different colors?"). Recommended in place of a.
   tested. Old recipes are unchanged.
 - gen55's own 1,400 book self-play games stay as they are.
 
-**c. Re-measure gen53's held-out mean on the repetition-aware engine** (running,
-`tools/heldout_remeasure_20261013.py`; v29 is measured too, because the bar is
-v29's mean minus 1 pp).
+**c. gen53's held-out mean on the repetition-aware engine: done, still fails.**
 
-- 640 games (gen53 and v29, each against B2 and v27).
-- gen53 failed promotion only on that mean (88.3% against 91.7%), measured on
-  the old engine.
-- Under the proposed rule, it is the only model that passes the per-colour
-  part.
+- Driver: `tools/heldout_remeasure_20261013.py`.
+- Evidence: `benchmarks/heldout_remeasure_20261013/`.
+- Settings: 160 games per match at 3,200 sims, 16 sampled plies.
+
+| Model | vs B2 | vs v27 | Mean | Old engine |
+|---|---:|---:|---:|---:|
+| gen53 | 100.0% | 75.9% | **88.0%** | 88.3% |
+| v29 | 98.8% | 86.9% | 92.8% | 92.7% |
+
+- The bar is 92.8% − 1.0 = 91.8%. gen53 misses it by 3.8 pp.
+- The whole gap is gen53's White against v27: 41/1/38 W/D/L. v29's White
+  went 38/42/0 there. gen53's Black won all 160 games.
+- So gen53 stays ineligible: its White still loses at the normal start to
+  v27's Black. This is the known v27 hole.
+- This doesn't affect option d, which uses only gen53's Black.
 
 ## Decisions needed
 
@@ -156,5 +164,5 @@ v29's mean minus 1 pp).
 4. Approve launch. The rehearsal passed every stage on October 13 (07:08 to
    07:17): book games, both extra teachers, the pool, training, the
    colour check, both gates, the diagnostics and the instrument.
-5. Options a–d above. Taking a, b or d changes the decision file and the
+5. Options a, b and d above. Taking a, b or d changes the decision file and the
    recipes, followed by a fresh rehearsal (about 10 minutes).
