@@ -171,6 +171,28 @@ def test_stateful_reanalysis_uses_history_and_clears_reuse(monkeypatch):
     assert result['plies_to_end'] == 4
 
 
+def test_book_starts_are_opt_in_weighted_and_replay_the_line():
+    import pytest
+    import stateful_generation as sg
+    base = dict(model='m.pt', sims=8, seed=100, free_games=2, fresh_games=0, league_games=0,
+                prefix_models=[], opponents=[])
+    assert sg.book_tasks(base) == []
+    book = dict(base, book_games=10, book_starts=[dict(moves=['e2e4', 'd2d4'], weight=3),
+                                                  dict(moves=['e2e4', 'd2d4', 'd7d5'], weight=1)])
+    tasks = sg.book_tasks(book)
+    assert len(tasks) == 10 and [t['id'] for t in tasks][:2] == ['book/game_00000', 'book/game_00001']
+    first = [t for t in tasks if t['state']['moves'] == ['e2e4', 'd2d4']]
+    assert len(first) in (7, 8) and all(t['kind'] == 'book' and t['state']['turn_count'] == 1 for t in first)
+    deeper = [t for t in tasks if len(t['state']['moves']) == 3]
+    assert len(deeper) == 10 - len(first) and deeper[0]['state']['half'] == 0
+    game, tracker = sg.restore_state(deeper[0]['state'])
+    assert game.is_white_turn and not game.white_half_pending
+    assert len({t['seed'] for t in tasks}) == 10 and min(t['seed'] for t in tasks) == 100 + 700000
+    for bad in ([dict(moves=['e2e4'], weight=0)], [], [dict(moves=['e2e5'], weight=1)]):
+        with pytest.raises(Exception):
+            sg.book_tasks(dict(base, book_games=4, book_starts=bad))
+
+
 def test_exploration_length_is_opt_in_and_leaves_old_task_digests_unchanged():
     import stateful_generation as sg
     from match_evidence import digest

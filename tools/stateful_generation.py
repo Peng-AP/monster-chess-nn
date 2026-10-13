@@ -192,6 +192,56 @@ def ordinary_batches(config):
     return batches
 
 
+def book_tasks(config):
+    """Self-play games started from listed positions (opt-in; 2026-10-13, census-book starts).
+
+    `book_starts` lists {moves: [uci, ...], weight: w > 0}, each a legal line
+    from the normal start; `book_games` games are shared across them in
+    proportion to weight (largest remainder). Each game is ordinary teacher
+    self-play from that position, with the line as its history, so the
+    repetition rule and the record states are exactly those of a played game.
+    Recipes without `book_games` produce no book tasks and unchanged digests.
+    """
+    count = config.get('book_games', 0)
+    if not count:
+        return []
+    starts = config.get('book_starts') or []
+    if not isinstance(count, int) or count < 0 or not starts:
+        raise ValueError('book_games needs a positive count and non-empty book_starts')
+    from monster_chess import MonsterChessGame
+    import chess
+    initial = MonsterChessGame().fen()
+    states, weights = [], []
+    for start in starts:
+        moves, weight = list(start['moves']), float(start['weight'])
+        if weight <= 0 or not moves:
+            raise ValueError('book start needs moves and a positive weight')
+        game = MonsterChessGame()
+        for uci in moves:
+            if game.is_terminal():
+                raise ValueError(f'book line ends the game: {moves}')
+            if uci not in {m.uci() for m in game.get_search_actions()}:
+                raise ValueError(f'illegal book move {uci} in {moves}')
+            game.apply_search_action(chess.Move.from_uci(uci))
+        if game.is_terminal():
+            raise ValueError(f'book line ends the game: {moves}')
+        states.append(snapshot(game, initial, moves))
+        weights.append(weight)
+    total = sum(weights)
+    shares = [count * w / total for w in weights]
+    counts = [int(s) for s in shares]
+    for i in sorted(range(len(shares)), key=lambda i: -(shares[i] - counts[i]))[:count - sum(counts)]:
+        counts[i] += 1
+    tasks = []
+    for state, n in zip(states, counts):
+        for _ in range(n):
+            index = len(tasks)
+            tasks.append(with_exploration(dict(id=f'book/game_{index:05d}', kind='book', model=config['model'],
+                                               sims=config['sims'], seed=config['seed'] + 700000 + index,
+                                               state=state), config))
+    return tasks
+
+
 def fork_tasks(config, raw):
     rng = random.Random(config['seed'] + 500000)
     paths = sorted(raw.glob('*/*.jsonl'))
@@ -290,10 +340,13 @@ def run(config, raw, summary):
     with worker_lease():
         for batch in ordinary_batches(config):
             run_batch(batch, raw, evidence, config['workers'])
+        book = book_tasks(config)
+        if book:
+            run_batch(book, raw, evidence, config['workers'])
         forks = fork_tasks(config, raw) if config['fork_games'] else []
         if forks:
             run_batch(forks, raw, evidence, config['workers'])
-    total = sum(config[k] for k in ('free_games', 'fresh_games', 'league_games', 'fork_games'))
+    total = sum(config[k] for k in ('free_games', 'fresh_games', 'league_games', 'fork_games')) + config.get('book_games', 0)
     atomic_json(summary, dict(num_games_requested=total, saved_games=total, failed_games=0,
                              recipe=config, manifest_sha256=file_hash(manifest_path)))
 
