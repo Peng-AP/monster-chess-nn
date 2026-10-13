@@ -1,4 +1,4 @@
-# Monster Chess NN — handoff (current state, October 9, 2026)
+# Monster Chess NN — handoff (current state, October 12, 2026)
 
 This is the entry point for the next developer or agent. It describes what is
 true now. The dated history is in `docs/history/`:
@@ -35,6 +35,19 @@ true now. The dated history is in `docs/history/`:
   - Its value head is unbiased (no White pessimism), so the White weakness is
     in its play.
   - Next steps proposed in the results doc.
+- **Game-value study (October 12; `docs/experiments/game_value/`).**
+  The opening census covered all 58 White first turns, the 14 best at
+  12,800, and Black's replies to the best 6.
+  - **No White first turn holds** against the strong Blacks: White scores
+    5–22%.
+  - Each best first turn has a Black reply that holds White to 0–19%
+    (e4 + d4 …d5 or …f5; d4 + f4 …d5; f4 + f5 …d6). Most other Black
+    replies lose.
+  - Strong-model draws are real holds: deeper search converts only 3–4%.
+  - Practical value: a Black win against today's best Black. Perfect-play
+    value: unproven.
+  - Recommendations (a per-colour instrument, census-book training, Black
+    refutation completeness) await the owner. Nothing is running.
 - **gen55 (done October 9): not eligible.**
   - Teacher gen54, plus gen53, Arm R and Arm LR; pool plus gen53; a White
     check against v29 in selection (`docs/experiments/gen55/GEN55_RESULTS.md`).
@@ -187,8 +200,8 @@ The full list is `CONTEXT.md` §4. The rules of the game are `CONTEXT.md` §1.
 
 ## 8. Reading order
 
-1. This file, then `docs/experiments/gen55/GEN55_RESULTS.md` (including its
-   next steps), then `docs/experiments/gen54/`.
+1. This file, then `docs/experiments/game_value/OPENING_CENSUS.md` and
+   `GAME_VALUE_20261012.md`, then `docs/experiments/gen55/GEN55_RESULTS.md`.
 2. `docs/experiments/gen53/` (results and the hole scan), then
    `docs/experiments/gen52/` (arms, value audit, round robins).
 3. `docs/protocols/PROMOTION_RULE.md`, then `SAMPLED_GATE_PROTOCOL.md`.

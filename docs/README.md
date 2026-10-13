@@ -31,6 +31,7 @@ campaign drivers are frozen in `campaigns/`.
 
 | Folder | Dates | Outcome |
 |---|---|---|
+| [experiments/game_value/](experiments/game_value/) | Oct 12 | Game value: no White first turn holds against strong Blacks; Black refutations named; strong-model draws are real holds; per-colour instrument proposed |
 | [experiments/gen55/](experiments/gen55/) | Oct 7–9 | gen55: 70% vs gen54 (PASS); **fails vs v29 on the White floor** (Black 480/480); held-out 92.5%; not eligible |
 | [experiments/repetition_search/](experiments/repetition_search/) | Oct 7 | The search scores threefold repetition as a draw: the owner's Watch-game conversions 1/4 → 4/4; gen54 vs v28/B2 71.9 → 76.9% and 92.2 → 98.4%; neutral in same-network A/B |
 | [experiments/gen54/](experiments/gen54/) | Oct 5–7 | gen54: passes gate v4 vs gen53 (79%), fixes the v27 hole, held-out 92.2%; **fails vs v29 on the White floor**; not eligible |

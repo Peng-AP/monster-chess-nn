@@ -1,0 +1,165 @@
+{
+  "match": "bootstrap_main_gen_0055 vs bootstrap_main_gen_0055",
+  "name_a": "bootstrap_main_gen_0055",
+  "name_b": "bootstrap_main_gen_0055",
+  "games": 200,
+  "sims": 12800,
+  "sims_b": 12800,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3691000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "opening_temp_plies": 2,
+  "book": {
+    "schema_version": 1,
+    "model": "strong-model repetition draws, 20 half-moves before",
+    "plies": 0,
+    "book_sha256": "b2bb01b2211753a2aa65f48007f3047749b3b9f491a8f082e06f15061a1b13cd",
+    "path": "C:/Users/perfp/Desktop/monster-chess-nn/benchmarks/game_value_20261012/draw_conversion/book.json",
+    "entries": 100,
+    "offset": 0,
+    "entries_used": [
+      0,
+      100
+    ],
+    "temp_plies": 2
+  },
+  "paired": {
+    "pairs": 100,
+    "pair_mean": 0.505,
+    "se_paired": 0.0035,
+    "pairs_incomplete": 0
+  },
+  "opening_diversity": {
+    "games_observed": 200,
+    "unique_states": 112,
+    "unique_fraction": 0.56,
+    "unique_as_white": 69,
+    "unique_as_black": 73,
+    "effective_unique_games": 142,
+    "effective_unique_fraction": 0.71,
+    "duplicate_games": 88,
+    "max_multiplicity": 27,
+    "multiplicity_histogram": {
+      "4": 2,
+      "2": 19,
+      "1": 79,
+      "3": 8,
+      "27": 1,
+      "6": 1,
+      "13": 1,
+      "5": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "5791eabd3ed12238f0a7866bb5ec6d274db1a0ff983ca00456c55b1ad77105de",
+    "top_duplicates": [
+      {
+        "count": 27,
+        "fen": "rnk2b2/2pb4/8/8/8/8/K7/8 w - - 0 18",
+        "half": true,
+        "turn_count": 34
+      },
+      {
+        "count": 13,
+        "fen": "r1bqkbnr/ppp1p1pp/8/3pPn2/5P1K/8/2P5/8 w kq - 9 8",
+        "half": true,
+        "turn_count": 14
+      },
+      {
+        "count": 6,
+        "fen": "r1bqkbnr/ppp1p1pp/7K/3pPn2/5P2/8/2P5/8 w kq - 9 8",
+        "half": true,
+        "turn_count": 14
+      },
+      {
+        "count": 5,
+        "fen": "8/8/8/8/3K4/1q6/k7/8 w - - 113 67",
+        "half": true,
+        "turn_count": 132
+      },
+      {
+        "count": 4,
+        "fen": "r1k5/2pb4/3b4/1p1P4/K7/8/8/8 w - - 43 37",
+        "half": true,
+        "turn_count": 72
+      },
+      {
+        "count": 4,
+        "fen": "rnbqkbnr/ppp1p1pp/8/4K3/2pP1P2/8/8/8 w - - 0 6",
+        "half": true,
+        "turn_count": 10
+      },
+      {
+        "count": 3,
+        "fen": "1nk5/2pbb3/r7/8/2K5/8/8/8 w - - 9 21",
+        "half": true,
+        "turn_count": 40
+      },
+      {
+        "count": 3,
+        "fen": "1rbk1r2/2p1b3/2n1P3/1p6/p1K5/8/8/8 w - - 4 22",
+        "half": true,
+        "turn_count": 42
+      },
+      {
+        "count": 3,
+        "fen": "6k1/5pp1/8/5K2/8/7p/8/4r3 w - - 1 35",
+        "half": true,
+        "turn_count": 68
+      },
+      {
+        "count": 3,
+        "fen": "8/8/8/3K4/4q3/4k3/8/8 w - - 110 65",
+        "half": true,
+        "turn_count": 128
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.505,
+  "a_as_white": {
+    "games": 100,
+    "wins": 0,
+    "losses": 3,
+    "draws": 97,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 19,
+    "score": 0.485,
+    "mean_plies": 76.91,
+    "mean_plies_when_won": null,
+    "mean_plies_when_lost": 133.0
+  },
+  "a_as_black": {
+    "games": 100,
+    "wins": 5,
+    "losses": 0,
+    "draws": 95,
+    "time_leaning_wins": 21,
+    "time_leaning_losses": 0,
+    "score": 0.525,
+    "mean_plies": 77.27,
+    "mean_plies_when_won": 128.8,
+    "mean_plies_when_lost": null
+  },
+  "elapsed_sec": 5716.2,
+  "timestamp": "2026-10-12T16:46:43"
+}

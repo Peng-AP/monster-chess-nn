@@ -1,0 +1,164 @@
+{
+  "match": "bootstrap_main_gen_0055 vs bootstrap_v29",
+  "name_a": "bootstrap_main_gen_0055",
+  "name_b": "bootstrap_v29",
+  "games": 152,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3680000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "opening_temp_plies": 4,
+  "book": {
+    "schema_version": 1,
+    "model": "Black replies to f2f4 f4f5",
+    "plies": 0,
+    "book_sha256": "57afe472cbdeebcc22ad6e32b8b93e88b8431fbaec6b0a0c0229b12f3e31ae87",
+    "path": "C:/Users/perfp/Desktop/monster-chess-nn/benchmarks/opening_census_20261012/phase3_f2f4_f4f5/book.json",
+    "entries": 76,
+    "offset": 0,
+    "entries_used": [
+      0,
+      76
+    ],
+    "temp_plies": 4
+  },
+  "paired": {
+    "pairs": 76,
+    "pair_mean": 0.5395,
+    "se_paired": 0.0199,
+    "pairs_incomplete": 0
+  },
+  "opening_diversity": {
+    "games_observed": 152,
+    "unique_states": 59,
+    "unique_fraction": 0.3882,
+    "unique_as_white": 39,
+    "unique_as_black": 43,
+    "effective_unique_games": 82,
+    "effective_unique_fraction": 0.5395,
+    "duplicate_games": 93,
+    "max_multiplicity": 7,
+    "multiplicity_histogram": {
+      "1": 23,
+      "2": 8,
+      "4": 12,
+      "3": 10,
+      "5": 3,
+      "7": 2,
+      "6": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "010af7ebe24ec550bfd3c2580d1f0964b8d8af142c7fe0b658accb3affaab338",
+    "top_duplicates": [
+      {
+        "count": 7,
+        "fen": "rnbqkb1r/pppp1ppp/5n2/4PP2/8/8/2P1PK2/8 w kq - 2 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 7,
+        "fen": "rnbqkbnr/pppppp1p/8/4Pp2/3P4/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 6,
+        "fen": "rnbq1bnr/pppp1kpp/8/8/3P4/8/2P1P3/4K3 w - - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 5,
+        "fen": "rnbqkb1r/p1pppppp/1p3n2/4PP2/8/8/2PPK3/8 w kq - 2 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 5,
+        "fen": "rnbqkb1r/pp1ppppp/2p2n2/4PP2/8/8/2PP1K2/8 w kq - 2 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 5,
+        "fen": "rnbqkb1r/ppppp1pp/5p1n/3P1P2/2P5/8/4P3/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "1nbqkbnr/1ppppppp/r7/p3PP2/3P4/8/2P5/4K3 w k - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkb1r/pppppppp/n4n2/4PP2/8/8/2PP1K2/8 w kq - 2 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkb1r/pppppppp/n4n2/4PP2/8/8/2PPK3/8 w kq - 2 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/pppppppp/8/4nP2/3P4/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.5395,
+  "a_as_white": {
+    "games": 76,
+    "wins": 63,
+    "losses": 9,
+    "draws": 4,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.8553,
+    "mean_plies": 43.01,
+    "mean_plies_when_won": 31.38,
+    "mean_plies_when_lost": 113.33
+  },
+  "a_as_black": {
+    "games": 76,
+    "wins": 13,
+    "losses": 55,
+    "draws": 8,
+    "time_leaning_wins": 2,
+    "time_leaning_losses": 0,
+    "score": 0.2237,
+    "mean_plies": 55.57,
+    "mean_plies_when_won": 112.38,
+    "mean_plies_when_lost": 33.2
+  },
+  "elapsed_sec": 553.1,
+  "timestamp": "2026-10-12T14:43:39"
+}

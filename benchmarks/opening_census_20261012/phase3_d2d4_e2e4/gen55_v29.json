@@ -1,0 +1,165 @@
+{
+  "match": "bootstrap_main_gen_0055 vs bootstrap_v29",
+  "name_a": "bootstrap_main_gen_0055",
+  "name_b": "bootstrap_v29",
+  "games": 160,
+  "sims": 3200,
+  "sims_b": 3200,
+  "batch_a": null,
+  "batch_b": null,
+  "seed": 3660000000,
+  "search_a": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "search_b": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3,
+    "policy_temperature": 1.0,
+    "moves_left_utility": false,
+    "moves_left_max_effect": 0.03,
+    "moves_left_threshold": 0.8,
+    "moves_left_slope": 0.1,
+    "repetition_search": true
+  },
+  "opening_temp_plies": 4,
+  "book": {
+    "schema_version": 1,
+    "model": "Black replies to d2d4 e2e4",
+    "plies": 0,
+    "book_sha256": "c7eb9018f677676775dcbd29c20bb54eba9141c386da5c142ca577a248866095",
+    "path": "C:/Users/perfp/Desktop/monster-chess-nn/benchmarks/opening_census_20261012/phase3_d2d4_e2e4/book.json",
+    "entries": 80,
+    "offset": 0,
+    "entries_used": [
+      0,
+      80
+    ],
+    "temp_plies": 4
+  },
+  "paired": {
+    "pairs": 80,
+    "pair_mean": 0.5719,
+    "se_paired": 0.0244,
+    "pairs_incomplete": 0
+  },
+  "opening_diversity": {
+    "games_observed": 160,
+    "unique_states": 68,
+    "unique_fraction": 0.425,
+    "unique_as_white": 40,
+    "unique_as_black": 41,
+    "effective_unique_games": 81,
+    "effective_unique_fraction": 0.5062,
+    "duplicate_games": 92,
+    "max_multiplicity": 16,
+    "multiplicity_histogram": {
+      "1": 36,
+      "4": 7,
+      "2": 12,
+      "6": 2,
+      "3": 6,
+      "8": 2,
+      "5": 2,
+      "16": 1
+    },
+    "incomplete_openings": 0,
+    "states_sha256": "73b007b1c59d38efb021c922580557cb6d54fc628a2feaa41e1b622ebb9ab044",
+    "top_duplicates": [
+      {
+        "count": 16,
+        "fen": "rnbqkb1r/pppp1ppp/4p2n/3PP3/5P2/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 8,
+        "fen": "r1bqkbnr/pp1ppppp/2n5/2P1P3/5P2/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 8,
+        "fen": "rnbqkbnr/pp1ppppp/8/3pP3/5P2/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 6,
+        "fen": "rnbqk1nr/ppppppbp/8/3PP1p1/2P5/8/5P2/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 6,
+        "fen": "rnbqkbnr/p2ppppp/2P5/1p2P3/8/8/2P2P2/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 5,
+        "fen": "rnbqkb1r/pppppppp/8/3nP3/5P2/8/2P5/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 5,
+        "fen": "rnbqkbnr/ppp1pppp/8/8/2PPp3/5P2/4K3/8 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkb1r/pppppppp/n3Pn2/3P4/8/8/2P2P2/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/ppppp1pp/n2P4/5P2/8/8/2P2P2/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      },
+      {
+        "count": 4,
+        "fen": "r1bqkbnr/ppppp1pp/n4p2/2P5/3PPP2/8/8/4K3 w kq - 0 3",
+        "half": true,
+        "turn_count": 4
+      }
+    ]
+  },
+  "workers": 8,
+  "a_score": 0.5719,
+  "a_as_white": {
+    "games": 80,
+    "wins": 68,
+    "losses": 5,
+    "draws": 7,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.8938,
+    "mean_plies": 42.71,
+    "mean_plies_when_won": 31.16,
+    "mean_plies_when_lost": 135.6
+  },
+  "a_as_black": {
+    "games": 80,
+    "wins": 20,
+    "losses": 60,
+    "draws": 0,
+    "time_leaning_wins": 0,
+    "time_leaning_losses": 0,
+    "score": 0.25,
+    "mean_plies": 45.34,
+    "mean_plies_when_won": 94.8,
+    "mean_plies_when_lost": 28.85
+  },
+  "elapsed_sec": 514.8,
+  "timestamp": "2026-10-12T13:59:56"
+}
