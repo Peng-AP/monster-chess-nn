@@ -1,0 +1,609 @@
+{
+  "instrument": "free_sampled_depth_guard_v4",
+  "mode": "gate",
+  "model": {
+    "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\candidates\\bootstrap_main_gen_0056\\arena_selected.pt",
+    "sha256": "935959b4c0ee50a9ce558ed861450670b642be9a891d91166ebd916361980cc7"
+  },
+  "search": {
+    "c_puct": 1.5,
+    "fpu_reduction": 0.3
+  },
+  "bar": {
+    "path": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\models\\bootstrap_v29\\best_value_net.pt",
+    "sha256": "dbf26b9eff47009b25b63929be33bbf534f364599af87b233ed3a4ed313e84e2"
+  },
+  "protocol": {
+    "version": "free_sampled_depth_guard_v4",
+    "runtime": {
+      "files": {
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\b2_attention.py": "6639d43e462fbb464658b6770b7a7d9ac716f55f7a5b36f04670021cf990ecf1",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\benchmark.py": "4047758106324bcf7899087dffcecf597b0a7d51b6c1b4d9ae4e2a41a20a387a",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\config.py": "786a91b9212df6eb0e5e5402cc4368b6353c03c6082ce9cda8938bddad649ff3",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\cpu_search_engine.py": "b4e2ff4db3d00375471b55b3ba540c7159fbe2930320dd7071fdc2e6e26e9e16",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\curriculum.py": "87ecbd330bbf8d8064a77e32af89e139d024a928643497f2c20b8b73c4ee9e52",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_generation.py": "805a599bef2a559ba61bdef108a8aab2290aeeb34fb73ec96dcf9ffba51d8e3e",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\data_processor.py": "ab88819e5d77b8763c46144152e79efb9c38369f42d06c6dd7fe7c15aa965d62",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\encoding.py": "e80a10beb12a033659f450636c34f8f0799c35bf43d952a954b946d3cf9cd043",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\evaluation.py": "84a586e45f5dd4f9b715123eb4027e1e0e7c0fd949434db5ade1886832c10240",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\forced_capture.py": "6ad1900c319d522809abb1f86f72c85ba7c64066cd738bfd8be1b62614523b0f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\inference_server.py": "96e6df87e6b17a86d9b798b1cb6f2107b529af1741dbfb487735cf802ad31c3c",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\iterate.py": "b5c6bf62ca31e120b318c30b6953b29eaa2bb490d38c2df34076c5cc30d34662",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\make_blackfocus_starts.py": "b57ad0b9b60ebf56a693ab9a87cf143a8b51ed931005df4e24e6c7cbea89de15",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\match_evidence.py": "9ff99d9c306c5b3ddd45d5b357a8dc6478ae841b8dc642e40f29070ff7adede6",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\mcts.py": "95ed2f36068dd66ff2bd64139fcf9e6f37988dec6f5f0311dde4e88370d9dcfb",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\model_catalog.py": "637b59c86a9ec18995d31080a1d9fabd0e11b0f9012e103d63de90fd5f9ef7bb",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\monster_chess.py": "4a3823d788e5deaf63e7efb0dcfa01dd0e5383e6e6d8fd1f03eec3fbda508787",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\native_mcts.py": "ce13605d02919c09ebdc41ba034b91651d5cd1915eed6d34611ac04784843715",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\play.py": "bd8f1867c133460afc0b74a6831882f9eb9446e62a85cf82dc517078255f0674",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_data.py": "6d5b4fccce9349a1c6c3d8b33a94957e06e30d4d37dad00adc6d9ff53b304cd4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\promotion_probe.py": "ba6f5d7b78348f2bf5a03dd3b3f518b253229af9da5dcf25b10eb9697f2d0861",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\repetition.py": "1cf0c67e4324ce1d51efe034cf1d6840f34cde1940aaa114d3390cfbd5f0833d",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\scripted_mate.py": "9b5045edf70f0e56386b1cc7bce422549c9422da316831e28cfe07360eaadd9f",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\sparse_policy.py": "1170153aa751f910b8f03ba43d69ae402c81e2a7730841b372ea171eeced28e2",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\train.py": "4aa1c13a29218bfa01acd3d539af444a2a53046531cfe56318f8f061b3e6dd8e",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\verify_scripted_mate.py": "b90118e83e5b0c72bdb9af5e52421dcf246dae9a3551a9c8842fd64160525e0a",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\worker_lease.py": "bdaebf8461b4592524a0461a7439faf4e2e63d1495ef52cd19c502b385fad69b",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\src\\__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\match.py": "ec7157cd43e2d7e55ac1248eae2458ef2dada0ff898bd7b8949ec92021a8d6d6",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\gate_free.py": "94563384e0a15472aacd5e9b634665c24122556dec7d7b302a0fc92ae3d41679",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\tools\\free_gate_stats.py": "5e192d8766cfde5dc182bcf0987b5600b5d044a94f1105dfc9006418b86285c4",
+        "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\native\\monster_native.pyd": "ad494962263da97aaa7f4f1bead635f55cf59ad1c043324533186501fc83775c"
+      },
+      "environment": {
+        "MONSTER_PINNED_INPUT": "1"
+      }
+    },
+    "implementation": {
+      "gate_depth.py": "2d124ef79e7e6a7b6403f32657a7e122d623635775b194f50157ba6baf3b9eca",
+      "sampled_gate_stats.py": "c3c3819dbbbc666851a29f1656441f4f180babba254403f8d3b0a88ed6385c7e",
+      "free_gate_stats.py": "5e192d8766cfde5dc182bcf0987b5600b5d044a94f1105dfc9006418b86285c4",
+      "free_play_audit.py": "258414e58b20e7fb1715d39d4b107de77a0cbc313238bd4e46b83a25a8c25fdc",
+      "match.py": "ec7157cd43e2d7e55ac1248eae2458ef2dada0ff898bd7b8949ec92021a8d6d6"
+    },
+    "engine": "native",
+    "workers": 8,
+    "opening_temp_plies": 16,
+    "opening_temperature": 0.5,
+    "primary_sims": 3200,
+    "guard_sims": 12800,
+    "counts": {
+      "par": 400,
+      "per_side": 200,
+      "deep_par": 160,
+      "deep": 160
+    },
+    "guard_aggregate_min": 0.475,
+    "guard_side_band": 0.1,
+    "bar_search": {
+      "c_puct": 1.5,
+      "fpu_reduction": 0.3
+    },
+    "seed": 4136000000,
+    "binding": true
+  },
+  "schedule": [
+    {
+      "name": "vs_bar",
+      "role": "h2h",
+      "games": 400,
+      "sims": 3200,
+      "seed": 4136000000
+    },
+    {
+      "name": "vs_bar_confirm",
+      "role": "h2h",
+      "games": 400,
+      "sims": 3200,
+      "seed": 4136200000
+    },
+    {
+      "name": "deep_guard",
+      "role": "h2h",
+      "games": 160,
+      "sims": 12800,
+      "seed": 4136400000
+    }
+  ],
+  "run_dir": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release",
+  "complete": true,
+  "par_source": {
+    "dir": "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\release_par",
+    "report_sha256": "1f5552bb5bf7a5b393f565044f769c7c62779e7d92888f5f303f1471cf3d6537"
+  },
+  "par": {
+    "n": 400,
+    "score": 0.5,
+    "sides": {
+      "white": {
+        "n": 400,
+        "wins": 7,
+        "draws": 373,
+        "losses": 20,
+        "score": 0.48375,
+        "se": 0.006452241649672183
+      },
+      "black": {
+        "n": 400,
+        "wins": 20,
+        "draws": 373,
+        "losses": 7,
+        "score": 0.51625,
+        "se": 0.006452241649672183
+      }
+    },
+    "color_estimates_are_complements": true
+  },
+  "deep_par": {
+    "n": 160,
+    "score": 0.5,
+    "sides": {
+      "white": {
+        "n": 160,
+        "wins": 1,
+        "draws": 65,
+        "losses": 94,
+        "score": 0.209375,
+        "se": 0.020058814366881995
+      },
+      "black": {
+        "n": 160,
+        "wins": 94,
+        "draws": 65,
+        "losses": 1,
+        "score": 0.790625,
+        "se": 0.020058814366881995
+      }
+    },
+    "color_estimates_are_complements": true
+  },
+  "legs": {
+    "vs_bar": {
+      "sampled": {
+        "n": 400,
+        "score": 0.7112499999999999,
+        "se": 0.009225248699511532,
+        "sides": {
+          "white": {
+            "n": 200,
+            "wins": 14,
+            "draws": 141,
+            "losses": 45,
+            "score": 0.4225,
+            "se": 0.018450497399023064
+          },
+          "black": {
+            "n": 200,
+            "wins": 200,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 156.60011460117067
+      },
+      "unique": {
+        "n": 56,
+        "score": 0.6726190476190477,
+        "se": 0.026243874400169735,
+        "sides": {
+          "white": {
+            "n": 42,
+            "wins": 5,
+            "draws": 19,
+            "losses": 18,
+            "score": 0.34523809523809523,
+            "se": 0.05248774880033947
+          },
+          "black": {
+            "n": 14,
+            "wins": 14,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 125.0863015956704
+      },
+      "novel": {
+        "n": 56,
+        "score": 0.6726190476190477,
+        "se": 0.026243874400169735,
+        "sides": {
+          "white": {
+            "n": 42,
+            "wins": 5,
+            "draws": 19,
+            "losses": 18,
+            "score": 0.34523809523809523,
+            "se": 0.05248774880033947
+          },
+          "black": {
+            "n": 14,
+            "wins": 14,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 125.0863015956704
+      },
+      "overlap": 0,
+      "duplicates": 344,
+      "incomplete_openings": 0,
+      "endpoint_outcome_conflicts": 0,
+      "endpoint_history_collisions": 25,
+      "endpoint_repetition_collisions": 16,
+      "missing_history_records": 0,
+      "endings": {
+        "king_capture": 259,
+        "repetition": 140,
+        "turn_cap": 1
+      },
+      "mean_plies": 115.265
+    },
+    "vs_bar_confirm": {
+      "sampled": {
+        "n": 400,
+        "score": 0.71375,
+        "se": 0.009608789292012363,
+        "sides": {
+          "white": {
+            "n": 200,
+            "wins": 17,
+            "draws": 137,
+            "losses": 46,
+            "score": 0.4275,
+            "se": 0.019217578584024727
+          },
+          "black": {
+            "n": 200,
+            "wins": 200,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 158.72025036238404
+      },
+      "unique": {
+        "n": 52,
+        "score": 0.6463414634146342,
+        "se": 0.026155622670155143,
+        "sides": {
+          "white": {
+            "n": 41,
+            "wins": 4,
+            "draws": 16,
+            "losses": 21,
+            "score": 0.2926829268292683,
+            "se": 0.052311245340310286
+          },
+          "black": {
+            "n": 11,
+            "wins": 11,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 104.75114868073318
+      },
+      "novel": {
+        "n": 18,
+        "score": 0.5833333333333334,
+        "se": 0.03984095364447979,
+        "sides": {
+          "white": {
+            "n": 15,
+            "wins": 1,
+            "draws": 3,
+            "losses": 11,
+            "score": 0.16666666666666666,
+            "se": 0.07968190728895957
+          },
+          "black": {
+            "n": 3,
+            "wins": 3,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 58.45121427129523
+      },
+      "overlap": 34,
+      "duplicates": 348,
+      "incomplete_openings": 0,
+      "endpoint_outcome_conflicts": 0,
+      "endpoint_history_collisions": 25,
+      "endpoint_repetition_collisions": 15,
+      "missing_history_records": 0,
+      "endings": {
+        "king_capture": 263,
+        "repetition": 137
+      },
+      "mean_plies": 115.8525
+    },
+    "deep_guard": {
+      "sampled": {
+        "n": 160,
+        "score": 0.5625,
+        "se": 0.01806501969854616,
+        "sides": {
+          "white": {
+            "n": 80,
+            "wins": 9,
+            "draws": 2,
+            "losses": 69,
+            "score": 0.125,
+            "se": 0.03613003939709232
+          },
+          "black": {
+            "n": 80,
+            "wins": 80,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 43.65778777002723
+      },
+      "unique": {
+        "n": 19,
+        "score": 0.671875,
+        "se": 0.05915529526875285,
+        "sides": {
+          "white": {
+            "n": 16,
+            "wins": 5,
+            "draws": 1,
+            "losses": 10,
+            "score": 0.34375,
+            "se": 0.1183105905375057
+          },
+          "black": {
+            "n": 3,
+            "wins": 3,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": 0.0
+          }
+        },
+        "elo": 124.4996643382669
+      },
+      "novel": {
+        "n": 4,
+        "score": 0.5,
+        "se": null,
+        "sides": {
+          "white": {
+            "n": 3,
+            "wins": 0,
+            "draws": 0,
+            "losses": 3,
+            "score": 0.0,
+            "se": 0.0
+          },
+          "black": {
+            "n": 1,
+            "wins": 1,
+            "draws": 0,
+            "losses": 0,
+            "score": 1.0,
+            "se": null
+          }
+        },
+        "elo": 0.0
+      },
+      "overlap": 15,
+      "duplicates": 141,
+      "incomplete_openings": 0,
+      "endpoint_outcome_conflicts": 0,
+      "endpoint_history_collisions": 11,
+      "endpoint_repetition_collisions": 6,
+      "missing_history_records": 0,
+      "endings": {
+        "king_capture": 158,
+        "turn_cap": 2
+      },
+      "mean_plies": 102.975
+    }
+  },
+  "primary": {
+    "verdict": "FAIL",
+    "raw_verdict": "FAIL",
+    "confirmed": true,
+    "eligible": false,
+    "inconclusive_reasons": [],
+    "failures": [
+      "vs_bar white below par - 0.05",
+      "vs_bar_confirm white below par - 0.05"
+    ],
+    "par_comparisons": {
+      "vs_bar": {
+        "white": {
+          "delta_from_par": -0.06125000000000003,
+          "nominal_se": 0.019546157591125712,
+          "nominal_95_interval": [
+            -0.09956046887860642,
+            -0.02293953112139363
+          ]
+        },
+        "black": {
+          "delta_from_par": 0.48375,
+          "nominal_se": 0.006452241649672183,
+          "nominal_95_interval": [
+            0.47110360636664256,
+            0.49639639363335747
+          ]
+        }
+      },
+      "vs_bar_confirm": {
+        "white": {
+          "delta_from_par": -0.05625000000000002,
+          "nominal_se": 0.020271821549602546,
+          "nominal_95_interval": [
+            -0.09598277023722102,
+            -0.01651722976277903
+          ]
+        },
+        "black": {
+          "delta_from_par": 0.48375,
+          "nominal_se": 0.006452241649672183,
+          "nominal_95_interval": [
+            0.47110360636664256,
+            0.49639639363335747
+          ]
+        }
+      }
+    },
+    "interpretation": "point-estimate gate; not proof of per-color improvement"
+  },
+  "guard": {
+    "verdict": "PASS",
+    "inconclusive_reasons": [],
+    "failures": [],
+    "par_comparisons": {
+      "white": {
+        "delta_from_par": -0.084375,
+        "nominal_se": 0.041324759898158814,
+        "nominal_95_interval": [
+          -0.1653715294003913,
+          -0.003378470599608732
+        ]
+      },
+      "black": {
+        "delta_from_par": 0.20937499999999998,
+        "nominal_se": 0.020058814366881995,
+        "nominal_95_interval": [
+          0.17005972384091128,
+          0.24869027615908867
+        ]
+      }
+    }
+  },
+  "verdict": "FAIL",
+  "combined_h2h": {
+    "sampled": {
+      "n": 800,
+      "score": 0.7125,
+      "se": 0.006652161538389764,
+      "sides": {
+        "white": {
+          "n": 400,
+          "wins": 31,
+          "draws": 278,
+          "losses": 91,
+          "score": 0.425,
+          "se": 0.013304323076779529
+        },
+        "black": {
+          "n": 400,
+          "wins": 400,
+          "draws": 0,
+          "losses": 0,
+          "score": 1.0,
+          "se": 0.0
+        }
+      },
+      "elo": 157.65880786195942
+    },
+    "unique": {
+      "n": 74,
+      "score": 0.6491228070175439,
+      "se": 0.022440789121611807,
+      "sides": {
+        "white": {
+          "n": 57,
+          "wins": 6,
+          "draws": 22,
+          "losses": 29,
+          "score": 0.2982456140350877,
+          "se": 0.04488157824322361
+        },
+        "black": {
+          "n": 17,
+          "wins": 17,
+          "draws": 0,
+          "losses": 0,
+          "score": 1.0,
+          "se": 0.0
+        }
+      },
+      "elo": 106.86869136120553
+    },
+    "novel": {
+      "n": 74,
+      "score": 0.6491228070175439,
+      "se": 0.022440789121611807,
+      "sides": {
+        "white": {
+          "n": 57,
+          "wins": 6,
+          "draws": 22,
+          "losses": 29,
+          "score": 0.2982456140350877,
+          "se": 0.04488157824322361
+        },
+        "black": {
+          "n": 17,
+          "wins": 17,
+          "draws": 0,
+          "losses": 0,
+          "score": 1.0,
+          "se": 0.0
+        }
+      },
+      "elo": 106.86869136120553
+    },
+    "overlap": 0,
+    "duplicates": 726,
+    "incomplete_openings": 0,
+    "endpoint_outcome_conflicts": 0,
+    "endpoint_history_collisions": 33,
+    "endpoint_repetition_collisions": 21,
+    "missing_history_records": 0,
+    "endings": {
+      "king_capture": 522,
+      "repetition": 277,
+      "turn_cap": 1
+    },
+    "mean_plies": 115.55875
+  },
+  "combined_par_comparisons": {
+    "white": {
+      "delta_from_par": -0.058750000000000024,
+      "nominal_se": 0.014786359756109436,
+      "nominal_95_interval": [
+        -0.08773126512197452,
+        -0.02976873487802553
+      ]
+    },
+    "black": {
+      "delta_from_par": 0.48375,
+      "nominal_se": 0.006452241649672183,
+      "nominal_95_interval": [
+        0.47110360636664256,
+        0.49639639363335747
+      ]
+    }
+  },
+  "evidence_hashes": {
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\manifest.json": "67cc76135ad4b81d61466fe221cff6c5e3e0ac62f74c70fa63f29008bafd12f3",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\deep_guard.jsonl": "1584af9a5251a21bf1014b85201b3ead512454ceea7661cefc160c3e09af3aa7",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\vs_bar.jsonl": "29e0ebdf7eb958e346e1cfca4bd56a55200290a34a88f05692565a8e94a1ec7a",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\vs_bar_confirm.jsonl": "2d0d151face6958d13f7706baf97c47b812aec27d4a99d52f6d9fccfe9fd78c5",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\deep_guard.jsonl.manifest.json": "7b499ea814fca42e1469d463fff61cfc3801226b787739719b28497df0c2a985",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\vs_bar.jsonl.manifest.json": "83f96e5529c81608e13bd02c1a1c25a1444028ddaef130ed1fc4b10a87783d8d",
+    "C:\\Users\\perfp\\Desktop\\monster-chess-nn\\benchmarks\\gen56_program\\gen56_20261013\\production\\gates\\release\\vs_bar_confirm.jsonl.manifest.json": "f87b16027cfb3594418d3ccb7f51d254af209a2a2bbae8278d7216a21f3757da"
+  }
+}

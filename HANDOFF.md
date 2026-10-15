@@ -55,17 +55,21 @@ true now. The dated history is in `docs/history/`:
     - **Black** contradicts the Elo order (gen53 91.3%, v29 87.4%, gen55
       83.4%, gen54 82.3%).
     - Only gen53 passes the proposed per-colour promotion rule.
-- **gen56: production RUNNING since October 13, 18:30** (`docs/plans/GEN56_PLAN.md`;
-  `py -3 -B tools/runs.py status`, `logs/gen56.log`). About 33 h.
-  - The owner approved it with option d, per-colour teachers: 1,400 book-start
-    games, White gen55 or gen54 against Black gen53 or v29, with both sides'
-    moves as policy targets.
-  - The selection rule is as written. The promotion rule is undecided; both
-    eligibilities are reported.
-  - Rehearsal `rehearsal_gen56e_20261013` passed. The earlier rehearsal
-    caught a model-preload bug, now fixed.
-  - Resume after a stop: `py -3 -B tools/runs.py start --name gen56 -- py -3 -u tools/gen56_campaign.py`.
-    Do not edit its PINNED files.
+- **gen56 (done October 15): not eligible under the current rule; eligible
+  under the proposed per-colour rule.** Owner decides
+  (`docs/experiments/gen56/GEN56_RESULTS.md`).
+  - Option d: per-colour teachers, plus census-book starts.
+  - Gate v4 vs gen55: the 3,200 legs scored 73.2% / 72.9%. The **deep guard
+    FAILS**: White 0/2/78 at 12,800, where gen55's own White holds
+    e4 d4 …d5 lines.
+  - Gate v4 vs v29: **FAIL** on the White floor by about 1 pp (−6.1 / −5.6
+    against −5). Black 480/480. The deep guard passes.
+  - Per-colour instrument: White 20.6% (the best measured), Black 89.0%. All
+    four cells are at or above v29's.
+  - Held-out mean 97.7% (best yet); v27 White 69/7/4.
+  - Regressions:
+    - the v27 probe position (White 0/10/0, Black 0/0/10);
+    - self-play at 12,800 (White 0/1/79).
 - gen53's held-out mean on the current engine is 88.0%, against a bar of
   91.8%. It is still ineligible: its White went 41/1/38 against v27.
 - **gen55 (done October 9): not eligible.**
