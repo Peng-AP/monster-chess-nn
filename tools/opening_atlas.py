@@ -297,7 +297,7 @@ def refined_minimax(b1_by_w1, g1_values, pooled, refined):
 
 def g3_nodes(minimax, b1_by_w1, g1_values, pooled, refined):
     ranked = sorted(minimax, key=lambda w: (-minimax[w][0], w))
-    w1s = ranked[:10] + [w for w in MOST_PLAYED if w not in ranked[:10]]
+    w1s = ranked[:10] + [w for w in MOST_PLAYED if w not in ranked[:10] and w in minimax]
     nodes = []
     for w1 in w1s:
         vals = sorted(((pooled[r]["value"] if r in refined else g1_values[r]), r) for r in b1_by_w1[w1]
