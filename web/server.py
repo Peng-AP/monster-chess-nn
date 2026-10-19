@@ -61,6 +61,7 @@ SEARCH_RANGES = {"c_puct": (0.25, 5.0), "fpu_reduction": (0.0, 1.0), "policy_tem
 V29, V28 = "models/bootstrap_v29/best_value_net.pt", "models/bootstrap_v28/best_value_net.pt"
 GEN53 = "models/candidates/bootstrap_main_gen_0053/arena_selected.pt"
 GEN54 = "models/candidates/bootstrap_main_gen_0054/arena_selected.pt"
+GEN56 = "models/candidates/bootstrap_main_gen_0056/arena_selected.pt"
 V23, V21 = "models/bootstrap_v23/best_value_net.pt", "models/fresh_start_v21/best_value_net.pt"
 V19, V17 = "models/fresh_start_v19/best_value_net.pt", "models/fresh_start_v17/best_value_net.pt"
 
@@ -78,6 +79,9 @@ ENGINES = {
     # Provisional: fitted to its own matches with the ladder ratings held fixed
     # (docs/experiments/gen54/GEN54_RESULTS.md); those matches are non-transitive.
     "gen54": _level(2641, "gen54, strongest as Black (experimental, rating provisional)", GEN54, 3200),
+    # Provisional, same method (docs/experiments/gen56/GEN56_RESULTS.md): v29 71.1% over 800,
+    # v28, gen49, B2, v27 -> 2600 (2578-2624). Head to head it beat gen55 73%, which beat gen54 70%.
+    "gen56": _level(2600, "gen56, best per-colour (experimental, rating provisional)", GEN56, 3200),
     "gen53": _level(2555, "gen53 (experimental, not a release)", GEN53, 3200),
     "v29": _level(2450, "v29, full strength (current release)", V29, 3200, default=True),
     "v28": _level(2326, "v28, previous release", V28, 3200),
