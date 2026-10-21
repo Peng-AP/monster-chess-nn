@@ -70,6 +70,16 @@ true now. The dated history is in `docs/history/`:
   - Regressions:
     - the v27 probe position (White 0/10/0, Black 0/0/10);
     - self-play at 12,800 (White 0/1/79).
+- gen56 is on the site as experimental (provisional 2600). v29 is still the
+  release.
+- **Opening atlas (done October 21; `docs/experiments/game_value/OPENING_ATLAS.md`).**
+  - Full width through Black's first reply: 20,776 games and 70,537 W2
+    positions searched.
+  - Every first turn loses to Black's best reply; 42 of 58 score 0%.
+  - Best first turns: e4–e5 25% at 3,200; c4 + d4 about 37% at 12,800.
+  - Black's refutations are always a centre pawn or a knight.
+  - Search values are White-optimistic in the opening (+0.19 to +0.60).
+  - A six-first-turn deep dive (about 45 h) is proposed and awaits the owner.
 - gen53's held-out mean on the current engine is 88.0%, against a bar of
   91.8%. It is still ineligible: its White went 41/1/38 against v27.
 - **gen55 (done October 9): not eligible.**
