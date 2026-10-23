@@ -79,7 +79,14 @@ true now. The dated history is in `docs/history/`:
   - Best first turns: e4–e5 25% at 3,200; c4 + d4 about 37% at 12,800.
   - Black's refutations are always a centre pawn or a knight.
   - Search values are White-optimistic in the opening (+0.19 to +0.60).
-  - A six-first-turn deep dive (about 45 h) is proposed and awaits the owner.
+  - **Deep dive (done October 23; `OPENING_DEEPDIVE.md`).**
+    - Two turns deep, including Black's answer, with strict minimax on fresh
+      games.
+    - e4 + d4 25% (…f5 d5 + c4 …e6, mostly draws); e4–e5 20.8% (…Nf6 d4 + c4
+      …c5, Black's only move); c4 + d4 12.5%; f4–f5 8.3%; d4 + f4 2.1%;
+      c4 + f3 0%.
+    - No first turn holds.
+    - A book of the deciding lines is listed for training.
 - gen53's held-out mean on the current engine is 88.0%, against a bar of
   91.8%. It is still ineligible: its White went 41/1/38 against v27.
 - **gen55 (done October 9): not eligible.**

@@ -283,20 +283,20 @@ Search value (White's view) against the game outcome (2 × score − 1):
 - **(c) Depth matters on exactly these lines.** Training-game sims (1,600)
   may be too shallow for them, as in gen56.
 
-## Next: the deep dive the owner asked for (proposal, not started)
+## Next: the deep dive (done October 23)
 
-**First turns:** the six with the best evidence. These are e4–e5, f4–f5,
-c4 + f3, c4 + d4, e4 + d4 and d4 + f4. They cover G0's top six apart from
-d3 + f4, which scored 12.5% at depth.
+See `OPENING_DEEPDIVE.md`. The six first turns were taken two turns deep,
+including Black's answer to White's best second turn, with strict minimax on
+fresh games.
 
-**"Only replies":** Black's replies within 10 pp of each first turn's minimax.
-The G2 data gives about 2–4 per first turn, so about 18 lines.
+| First turn | Value |
+|---|---:|
+| e4 + d4 | 25.0% (…f5 d5 + c4 …e6, 9/15 draws) |
+| e4–e5 | 20.8% (…Nf6 d4 + c4 …c5, Black's only move) |
+| c4 + d4 | 12.5% |
+| f4–f5 | 8.3% |
+| d4 + f4 | 2.1% |
+| c4 + f3 | 0.0% |
 
-| Stage | What | Games | Time |
-|---|---|---:|---:|
-| **A** | All of White's second turns on each line (about 60 each), 16 games each at 3,200 | about 17,000 | about 30 h |
-| **B** | The top 4 second turns per line at 12,800, 16 games each | about 1,150 | about 10 h |
-| **C** | For the best second turn per line, all of Black's second replies, 8 games each at 3,200 | about 3,000 | about 5 h |
-
-That is about 45 h of GPU. Rules are declared before results, as in the
-atlas.
+The depth-check leaders here, c4 + d4 and c4 + f3, are refuted by Black's
+third-move answers.
